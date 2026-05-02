@@ -1541,7 +1541,220 @@ DO $$ BEGIN
   CREATE POLICY "service_role_all_social_orders" ON public.social_inbox_orders TO service_role USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- Products catalog table
+CREATE TABLE IF NOT EXISTS public.products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  url TEXT,
+  image_url TEXT,
+  selling_price NUMERIC,
+  cog NUMERIC NOT NULL DEFAULT 0,
+  source_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_products" ON public.products TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE POLICY "auth_users_products" ON public.products TO authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 `;
+
+// ─── Products Catalog ────────────────────────────────────────────────────────
+
+app.get("/api/products", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return res.json({ products: data || [] });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/products/save", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const { products, sourceUrl } = req.body;
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ error: "products array required" });
+    }
+    const supabase = getServiceSupabase();
+    const rows = products.map((p) => ({
+      name: String(p.name || "").trim(),
+      url: p.url || null,
+      image_url: p.image_url || null,
+      selling_price: p.selling_price != null ? parseFloat(p.selling_price) : null,
+      cog: p.cog != null ? parseFloat(p.cog) : 0,
+      source_url: sourceUrl || null,
+    })).filter((r) => r.name);
+    if (!rows.length) return res.status(400).json({ error: "No valid products to save" });
+    const { data, error } = await supabase.from("products").insert(rows).select();
+    if (error) throw error;
+    return res.json({ saved: data.length, products: data });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/products/crawl", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "url required" });
+
+    // Fetch the page
+    const pageRes = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Seraphine/1.0)" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!pageRes.ok) return res.status(400).json({ error: `Could not fetch page: HTTP ${pageRes.status}` });
+    const html = await pageRes.text();
+
+    // Strip HTML tags to get plain text
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Extract product names and prices using common patterns
+    // Look for price patterns like ৳1,200 / BDT 1200 / Tk. 1200 / 1,200৳ / 1200.00
+    const pricePattern = /(?:৳|BDT|Tk\.?|TK\.?)\s*([\d,]+(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:৳|BDT|Tk\.?|TK)/g;
+    const prices = [];
+    let m;
+    while ((m = pricePattern.exec(text)) !== null) {
+      const raw = (m[1] || m[2]).replace(/,/g, "");
+      const val = parseFloat(raw);
+      if (val > 0 && val < 1000000) prices.push(val);
+    }
+
+    // Try to extract structured product data from JSON-LD schema
+    const jsonLdMatches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+    const products = [];
+
+    for (const block of jsonLdMatches) {
+      try {
+        const json = JSON.parse(block.replace(/<script[^>]*>|<\/script>/gi, ""));
+        const items = Array.isArray(json) ? json : [json];
+        for (const item of items) {
+          if (item["@type"] === "Product" && item.name) {
+            const price = item.offers?.price || item.offers?.lowPrice || null;
+            const img = item.image?.[0] || item.image || null;
+            const productUrl = item.url || item.offers?.url || null;
+            products.push({
+              name: item.name,
+              url: productUrl,
+              image_url: typeof img === "string" ? img : null,
+              selling_price: price ? parseFloat(price) : null,
+              cog: 0,
+            });
+          }
+          // ItemList
+          if (item["@type"] === "ItemList" && Array.isArray(item.itemListElement)) {
+            for (const el of item.itemListElement) {
+              const it = el.item || el;
+              if (it.name) {
+                products.push({
+                  name: it.name,
+                  url: it.url || null,
+                  image_url: it.image || null,
+                  selling_price: it.offers?.price ? parseFloat(it.offers.price) : null,
+                  cog: 0,
+                });
+              }
+            }
+          }
+        }
+      } catch { /* skip malformed JSON-LD */ }
+    }
+
+    // If no structured data, fall back to Open Graph / meta tags for single-product pages
+    if (products.length === 0) {
+      const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)/i)?.[1]
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i)?.[1];
+      const ogImage = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)/i)?.[1]
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i)?.[1];
+      const ogPrice = html.match(/<meta[^>]*property=["']product:price:amount["'][^>]*content=["']([^"']+)/i)?.[1]
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']product:price:amount["']/i)?.[1];
+
+      if (ogTitle) {
+        products.push({
+          name: ogTitle.trim(),
+          url: url,
+          image_url: ogImage || null,
+          selling_price: ogPrice ? parseFloat(ogPrice) : (prices[0] || null),
+          cog: 0,
+        });
+      }
+    }
+
+    // Deduplicate by name
+    const seen = new Set();
+    const unique = products.filter((p) => {
+      const key = p.name.toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (unique.length === 0) {
+      return res.json({ products: [], message: "No structured product data found. Try a product listing or detail page." });
+    }
+
+    return res.json({ products: unique });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/products/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const allowed = ["name", "url", "image_url", "selling_price", "cog"];
+    const update = {};
+    for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
+    if (!Object.keys(update).length) return res.status(400).json({ error: "Nothing to update" });
+    const supabase = getServiceSupabase();
+    const { data, error } = await supabase
+      .from("products")
+      .update(update)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    return res.json({ success: true, product: data });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/products/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { error } = await supabase.from("products").delete().eq("id", req.params.id);
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
 
 // DB schema SQL — restricted to admin users only
 app.get("/api/db-setup-sql", async (req, res) => {
