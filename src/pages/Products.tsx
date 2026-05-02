@@ -38,7 +38,7 @@ export default function Products() {
   const [cogEdits, setCogEdits] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
-  const { data, isLoading } = useQuery<{ products: Product[] }>({
+  const { data, isLoading, refetch } = useQuery<{ products: Product[] }>({
     queryKey: ["/api/products"],
     queryFn: async () => {
       const res = await apiFetch("/api/products");
