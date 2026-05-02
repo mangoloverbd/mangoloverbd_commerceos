@@ -12,12 +12,12 @@ import {
     SidebarMenuSubItem,
     useSidebar,
 } from "@/components/ui/sidebar";
-import { ChevronRight } from "lucide-react";
 import {
     Collapsible,
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ChevronRight } from "lucide-react";
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -47,18 +47,30 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
     return (
         <>
             {sections.map((section) => (
-                <SidebarGroup key={section.label || section.routes[0]?.id} className="py-0 px-0">
+                <SidebarGroup
+                    key={section.label || section.routes[0]?.id}
+                    className="py-1 px-2"
+                >
+                    {/* Section label */}
                     {!isCollapsed && section.label && (
-                        <SidebarGroupLabel className="text-[8px] font-medium tracking-[0.3em] text-foreground/65 uppercase px-4 py-2 h-auto">
+                        <SidebarGroupLabel className="text-[9px] font-semibold tracking-widest text-sidebar-foreground/35 uppercase px-2 py-1 h-auto mb-0.5">
                             {section.label}
                         </SidebarGroupLabel>
                     )}
+
+                    {isCollapsed && section.label && (
+                        <div className="flex justify-center py-1 mb-0.5">
+                            <div className="h-px w-4 bg-sidebar-border rounded-full" />
+                        </div>
+                    )}
+
                     <SidebarGroupContent>
-                        <SidebarMenu className="gap-0">
+                        <SidebarMenu className="gap-0.5">
                             {section.routes.map((route) => {
                                 const isActive = location.pathname === route.link;
                                 const hasSubs = route.subs && route.subs.length > 0;
 
+                                // ── Collapsed view ───────────────────────
                                 if (isCollapsed) {
                                     return (
                                         <SidebarMenuItem key={route.id}>
@@ -66,13 +78,13 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 asChild
                                                 tooltip={route.title}
                                                 className={cn(
-                                                    "rounded-none h-9 flex items-center justify-center border-l-[1.5px] transition-colors",
+                                                    "h-8 w-8 rounded-lg flex items-center justify-center mx-auto transition-all",
                                                     isActive
-                                                        ? "border-foreground text-foreground bg-foreground/[0.07]"
-                                                        : "border-transparent text-foreground/80 hover:text-foreground hover:bg-foreground/[0.05]"
+                                                        ? "bg-sidebar-accent text-sidebar-foreground shadow-sm"
+                                                        : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                                                 )}
                                             >
-                                                <Link to={route.link} className="flex w-full items-center justify-center">
+                                                <Link to={route.link} className="flex items-center justify-center w-full h-full">
                                                     {route.icon}
                                                 </Link>
                                             </SidebarMenuButton>
@@ -80,8 +92,14 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                     );
                                 }
 
+                                // ── Expanded view ────────────────────────
                                 return (
-                                    <Collapsible key={route.id} asChild className="group/collapsible" defaultOpen={false}>
+                                    <Collapsible
+                                        key={route.id}
+                                        asChild
+                                        className="group/collapsible"
+                                        defaultOpen={false}
+                                    >
                                         <SidebarMenuItem>
                                             {hasSubs ? (
                                                 <>
@@ -89,19 +107,24 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                         <SidebarMenuButton
                                                             tooltip={route.title}
                                                             className={cn(
-                                                                "rounded-none h-8 px-4 border-l-[1.5px] transition-colors gap-2.5",
+                                                                "h-8 rounded-lg px-2.5 gap-2.5 transition-all text-[12px]",
                                                                 isActive
-                                                                    ? "border-foreground text-foreground font-medium bg-foreground/[0.07]"
-                                                                    : "border-transparent text-foreground/80 hover:text-foreground hover:border-foreground/20 hover:bg-foreground/[0.05]"
+                                                                    ? "bg-sidebar-accent text-sidebar-foreground font-medium shadow-sm"
+                                                                    : "text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                                                             )}
                                                         >
-                                                            {route.icon}
-                                                            <span className="text-[11px] tracking-[0.08em]">{route.title}</span>
-                                                            <ChevronRight className="ml-auto size-3 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 opacity-40" />
+                                                            <span className={cn(
+                                                                "shrink-0 transition-colors",
+                                                                isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/50"
+                                                            )}>
+                                                                {route.icon}
+                                                            </span>
+                                                            <span className="font-medium">{route.title}</span>
+                                                            <ChevronRight className="ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                                         </SidebarMenuButton>
                                                     </CollapsibleTrigger>
                                                     <CollapsibleContent>
-                                                        <SidebarMenuSub>
+                                                        <SidebarMenuSub className="ml-6 mt-0.5 border-l border-sidebar-border pl-2 gap-0.5">
                                                             {route.subs?.map((sub) => {
                                                                 const subActive = location.pathname === sub.link;
                                                                 return (
@@ -109,15 +132,17 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                         <SidebarMenuSubButton
                                                                             asChild
                                                                             className={cn(
-                                                                                "transition-colors",
+                                                                                "h-7 rounded-md text-[11px] transition-all",
                                                                                 subActive
-                                                                                    ? "bg-foreground/[0.07] text-foreground font-medium"
-                                                                                    : "hover:bg-foreground/[0.05]"
+                                                                                    ? "bg-sidebar-accent text-sidebar-foreground font-medium"
+                                                                                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                                                                             )}
                                                                         >
-                                                                            <Link to={sub.link}>
-                                                                                {sub.icon}
-                                                                                <span className="text-[11px] tracking-[0.06em]">{sub.title}</span>
+                                                                            <Link to={sub.link} className="flex items-center gap-2">
+                                                                                {sub.icon && (
+                                                                                    <span className="shrink-0">{sub.icon}</span>
+                                                                                )}
+                                                                                {sub.title}
                                                                             </Link>
                                                                         </SidebarMenuSubButton>
                                                                     </SidebarMenuSubItem>
@@ -131,15 +156,20 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     asChild
                                                     tooltip={route.title}
                                                     className={cn(
-                                                        "rounded-none h-8 px-4 border-l-[1.5px] transition-colors gap-2.5",
+                                                        "h-8 rounded-lg px-2.5 gap-2.5 transition-all text-[12px]",
                                                         isActive
-                                                            ? "border-foreground text-foreground font-medium bg-foreground/[0.07] hover:bg-foreground/[0.07]"
-                                                            : "border-transparent text-foreground/80 hover:text-foreground hover:border-foreground/20 hover:bg-foreground/[0.05]"
+                                                            ? "bg-sidebar-accent text-sidebar-foreground font-medium shadow-sm"
+                                                            : "text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
                                                     )}
                                                 >
-                                                    <Link to={route.link}>
-                                                        {route.icon}
-                                                        <span className="text-[11px] tracking-[0.08em]">{route.title}</span>
+                                                    <Link to={route.link} className="flex items-center gap-2.5">
+                                                        <span className={cn(
+                                                            "shrink-0 transition-colors",
+                                                            isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/50"
+                                                        )}>
+                                                            {route.icon}
+                                                        </span>
+                                                        <span className="font-medium">{route.title}</span>
                                                     </Link>
                                                 </SidebarMenuButton>
                                             )}

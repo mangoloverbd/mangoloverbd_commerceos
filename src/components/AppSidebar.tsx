@@ -17,8 +17,10 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
 import {
     Receipt,
     ArrowSquareIn,
@@ -28,7 +30,6 @@ import {
     GearSix,
     Question,
     SignOut,
-    UserCircle,
     CaretUpDown,
     PaperPlaneTilt,
     Lightbulb,
@@ -37,6 +38,7 @@ import {
     WhatsappLogo,
     ClipboardText,
 } from "@phosphor-icons/react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Logo } from "./logo";
 import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
@@ -46,15 +48,15 @@ import { useOrgName } from "@/hooks/useOrgName";
 import { Link } from "react-router-dom";
 
 export function AppSidebar() {
-    const { state } = useSidebar();
+    const { state, toggleSidebar } = useSidebar();
     const isCollapsed = state === "collapsed";
-    const { isAdmin, loading: roleLoading } = useUserRole();
+    const { isAdmin } = useUserRole();
     const { signOut, user } = useAuth();
     const { orgName, isLoading: orgLoading } = useOrgName();
 
-    const navSections = useMemo((): NavSection[] => {
-        const iconCls = "shrink-0 text-foreground group-hover:text-foreground transition-colors";
+    const iconCls = "shrink-0 transition-colors";
 
+    const navSections = useMemo((): NavSection[] => {
         const product: NavSection = {
             label: "",
             routes: [
@@ -103,19 +105,19 @@ export function AppSidebar() {
                 {
                     id: "inbox-facebook",
                     title: "Facebook",
-                    icon: <FacebookLogo size={15} weight="fill" className={cn(iconCls, "text-[#1877F2]/70 group-hover:text-[#1877F2]")} />,
+                    icon: <FacebookLogo size={15} weight="fill" className={cn(iconCls, "text-[#1877F2]/60")} />,
                     link: "/inbox/facebook",
                 },
                 {
                     id: "inbox-instagram",
                     title: "Instagram",
-                    icon: <InstagramLogo size={15} weight="fill" className={cn(iconCls, "text-[#E1306C]/70 group-hover:text-[#E1306C]")} />,
+                    icon: <InstagramLogo size={15} weight="fill" className={cn(iconCls, "text-[#E1306C]/60")} />,
                     link: "/inbox/instagram",
                 },
                 {
                     id: "inbox-whatsapp",
                     title: "WhatsApp",
-                    icon: <WhatsappLogo size={15} weight="fill" className={cn(iconCls, "text-[#25D366]/70 group-hover:text-[#25D366]")} />,
+                    icon: <WhatsappLogo size={15} weight="fill" className={cn(iconCls, "text-[#25D366]/60")} />,
                     link: "/inbox/whatsapp",
                 },
                 {
@@ -146,125 +148,160 @@ export function AppSidebar() {
         return sections;
     }, []);
 
+    // Derive initials for avatar
+    const displayName = orgName || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Account";
+    const initials = displayName
+        .split(" ")
+        .map((w: string) => w[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+
     return (
-        <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-            {/* Brand header */}
-            <SidebarHeader className={cn(
-                "border-b border-sidebar-border",
-                isCollapsed ? "px-0 py-3 items-center justify-center" : "px-4 py-4"
-            )}>
-                <div className={cn("flex items-center min-w-0", isCollapsed ? "justify-center" : "justify-between")}>
-                    <motion.a
-                        href="#"
-                        className={cn("flex items-center gap-3 min-w-0 group", isCollapsed && "justify-center")}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5 }}
+        <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
+            {/* ── Brand header ────────────────────────────── */}
+            <SidebarHeader className="px-3 py-3 border-b border-sidebar-border">
+                <div className="flex items-center justify-between min-w-0">
+                    {/* Logo + name */}
+                    <Link
+                        to="/"
+                        className={cn(
+                            "flex items-center gap-2.5 min-w-0 group",
+                            isCollapsed && "justify-center w-full"
+                        )}
                     >
-                        <Logo className={cn("shrink-0 transition-opacity group-hover:opacity-80", isCollapsed ? "h-6 w-6" : "h-5 w-5")} />
+                        <div className="shrink-0 h-7 w-7 rounded-lg bg-foreground/[0.06] flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
+                            <Logo className="h-4 w-4" />
+                        </div>
                         {!isCollapsed && (
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                                 {orgLoading ? (
-                                    <div className="h-2.5 w-20 bg-foreground/10 animate-pulse mb-1.5" />
+                                    <div className="h-2.5 w-20 rounded bg-sidebar-foreground/10 animate-pulse mb-1" />
                                 ) : (
-                                    <span className="block text-[10px] font-medium tracking-[0.3em] text-foreground uppercase truncate">
+                                    <p className="text-[11px] font-semibold text-sidebar-foreground truncate leading-none">
                                         {orgName || "My Organisation"}
-                                    </span>
+                                    </p>
                                 )}
-                                <span className="block text-[7px] tracking-[0.08em] text-foreground uppercase whitespace-nowrap">
+                                <p className="text-[9px] text-sidebar-foreground/40 mt-0.5 leading-none">
                                     Arc Lab Technology
-                                </span>
+                                </p>
                             </div>
                         )}
-                    </motion.a>
+                    </Link>
+
+                    {/* Collapse toggle */}
                     {!isCollapsed && (
-                        <SidebarTrigger
-                            className="text-foreground hover:text-foreground transition-colors shrink-0"
+                        <button
+                            onClick={toggleSidebar}
+                            className="shrink-0 h-6 w-6 rounded-md flex items-center justify-center text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                             data-testid="button-sidebar-toggle"
-                        />
+                            title="Collapse sidebar"
+                        >
+                            <PanelLeftClose className="h-3.5 w-3.5" />
+                        </button>
                     )}
                 </div>
+
+                {/* Expand button when collapsed */}
                 {isCollapsed && (
-                    <SidebarTrigger
-                        className="text-foreground hover:text-foreground transition-colors mt-2"
+                    <button
+                        onClick={toggleSidebar}
+                        className="mt-1.5 h-7 w-full rounded-md flex items-center justify-center text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                         data-testid="button-sidebar-toggle-collapsed"
-                    />
+                        title="Expand sidebar"
+                    >
+                        <PanelLeftOpen className="h-3.5 w-3.5" />
+                    </button>
                 )}
             </SidebarHeader>
 
-            {/* Navigation */}
-            <SidebarContent className="py-3 px-0 gap-0">
+            {/* ── Navigation ──────────────────────────────── */}
+            <SidebarContent className="py-2 px-0 gap-0 overflow-x-hidden">
                 <DashboardNavigation sections={navSections} />
             </SidebarContent>
 
-            {/* Footer */}
-            <SidebarFooter className={cn(
-                "border-t border-sidebar-border gap-0 p-0",
-            )}>
-                {/* Quick links */}
-                {!isCollapsed ? (
-                    <div className="px-4 py-2 border-b border-sidebar-border space-y-0">
-                        <Link
-                            to="#"
-                            className="flex items-center gap-3 py-1.5 text-[11px] text-foreground/60 hover:text-foreground transition-colors"
-                        >
-                            <PaperPlaneTilt size={13} weight="regular" className="shrink-0" />
-                            Feedback
-                        </Link>
-                        <Link
-                            to="#"
-                            className="flex items-center gap-3 py-1.5 text-[11px] text-foreground/60 hover:text-foreground transition-colors"
-                            data-testid="link-help-center"
-                        >
-                            <Question size={13} weight="regular" className="shrink-0" />
-                            Help Center
-                        </Link>
-                        <Link
-                            to="#"
-                            className="flex items-center gap-3 py-1.5 text-[11px] text-foreground/60 hover:text-foreground transition-colors"
-                        >
-                            <Lightbulb size={13} weight="regular" className="shrink-0" />
-                            Request a Feature
-                        </Link>
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center gap-1 py-2 border-b border-sidebar-border">
-                        <a href="#" className="p-1.5 text-foreground/60 hover:text-foreground transition-colors" title="Feedback">
-                            <PaperPlaneTilt size={14} weight="regular" />
-                        </a>
-                        <a href="#" className="p-1.5 text-foreground/60 hover:text-foreground transition-colors" title="Help Center">
-                            <Question size={14} weight="regular" />
-                        </a>
-                        <a href="#" className="p-1.5 text-foreground/60 hover:text-foreground transition-colors" title="Request a Feature">
-                            <Lightbulb size={14} weight="regular" />
-                        </a>
+            {/* ── Footer ──────────────────────────────────── */}
+            <SidebarFooter className="border-t border-sidebar-border p-0">
+
+                {/* Quick links — hidden when collapsed */}
+                {!isCollapsed && (
+                    <div className="px-3 py-2 border-b border-sidebar-border">
+                        <p className="text-[9px] font-semibold tracking-widest text-sidebar-foreground/30 uppercase mb-1.5 px-1">
+                            Support
+                        </p>
+                        {[
+                            { icon: PaperPlaneTilt, label: "Feedback" },
+                            { icon: Question, label: "Help Center", testid: "link-help-center" },
+                            { icon: Lightbulb, label: "Request a Feature" },
+                        ].map(({ icon: Icon, label, testid }) => (
+                            <Link
+                                key={label}
+                                to="#"
+                                data-testid={testid}
+                                className="flex items-center gap-2.5 px-1 py-1.5 rounded-md text-[11px] text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                            >
+                                <Icon size={13} weight="regular" className="shrink-0" />
+                                {label}
+                            </Link>
+                        ))}
                     </div>
                 )}
 
-                {/* User row — opens Sign Out dropdown */}
-                <div className={cn(isCollapsed ? "flex justify-center py-2 border-b border-sidebar-border" : "px-3 py-2 border-b border-sidebar-border")}>
+                {/* Collapsed quick links */}
+                {isCollapsed && (
+                    <div className="flex flex-col items-center gap-0.5 py-2 border-b border-sidebar-border">
+                        {[
+                            { icon: PaperPlaneTilt, label: "Feedback" },
+                            { icon: Question, label: "Help Center" },
+                            { icon: Lightbulb, label: "Feature Request" },
+                        ].map(({ icon: Icon, label }) => (
+                            <Link
+                                key={label}
+                                to="#"
+                                title={label}
+                                className="h-7 w-7 rounded-md flex items-center justify-center text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                            >
+                                <Icon size={14} weight="regular" />
+                            </Link>
+                        ))}
+                    </div>
+                )}
+
+                {/* User row */}
+                <div className={cn("p-2", isCollapsed && "flex justify-center")}>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             {!isCollapsed ? (
-                                <button className="flex w-full items-center gap-2.5 rounded-sm px-1 py-1.5 hover:bg-sidebar-accent transition-colors outline-none group">
-                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground">
-                                        <UserCircle size={16} weight="fill" />
+                                <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-sidebar-accent transition-colors outline-none group">
+                                    <Avatar className="h-7 w-7 shrink-0 rounded-lg">
+                                        <AvatarFallback className="rounded-lg bg-sidebar-foreground/10 text-sidebar-foreground text-[10px] font-semibold">
+                                            {initials}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 min-w-0 text-left">
+                                        {orgLoading ? (
+                                            <div className="h-2.5 w-20 rounded bg-sidebar-foreground/10 animate-pulse" />
+                                        ) : (
+                                            <p className="text-[11px] font-medium text-sidebar-foreground truncate leading-tight">
+                                                {displayName}
+                                            </p>
+                                        )}
+                                        <p className="text-[9px] text-sidebar-foreground/40 truncate leading-tight mt-0.5">
+                                            {user?.email ?? ""}
+                                        </p>
                                     </div>
-                                    {orgLoading ? (
-                                        <div className="flex-1 h-2.5 w-24 bg-foreground/10 animate-pulse rounded-sm" />
-                                    ) : (
-                                        <span className="flex-1 text-left text-[11px] font-medium text-foreground truncate">
-                                            {orgName || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Account"}
-                                        </span>
-                                    )}
-                                    <CaretUpDown size={11} className="shrink-0 text-foreground/40 group-hover:text-foreground/70 transition-colors" />
+                                    <CaretUpDown size={12} className="shrink-0 text-sidebar-foreground/30 group-hover:text-sidebar-foreground/60 transition-colors" />
                                 </button>
                             ) : (
                                 <button
-                                    className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-sidebar-accent transition-colors outline-none text-foreground"
+                                    className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-sidebar-accent transition-colors outline-none"
                                     title="Account"
                                 >
-                                    <UserCircle size={16} weight="fill" />
+                                    <Avatar className="h-7 w-7 rounded-lg">
+                                        <AvatarFallback className="rounded-lg bg-sidebar-foreground/10 text-sidebar-foreground text-[10px] font-semibold">
+                                            {initials}
+                                        </AvatarFallback>
+                                    </Avatar>
                                 </button>
                             )}
                         </DropdownMenuTrigger>
@@ -272,20 +309,42 @@ export function AppSidebar() {
                             side="top"
                             align={isCollapsed ? "center" : "start"}
                             sideOffset={8}
-                            className="w-52"
+                            className="w-56"
                         >
-                            <DropdownMenuLabel className="pb-1">
-                                <p className="text-[10px] font-medium truncate text-foreground">{user?.email ?? "Account"}</p>
-                                <p className="text-[9px] text-muted-foreground font-normal tracking-wide">{orgName || "Arc Lab Technology"}</p>
+                            <DropdownMenuLabel className="pb-1.5">
+                                <div className="flex items-center gap-2.5">
+                                    <Avatar className="h-8 w-8 rounded-lg shrink-0">
+                                        <AvatarFallback className="rounded-lg bg-muted text-[11px] font-semibold">
+                                            {initials}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-semibold truncate">{displayName}</p>
+                                        <p className="text-[10px] text-muted-foreground font-normal truncate">{user?.email ?? ""}</p>
+                                    </div>
+                                </div>
                             </DropdownMenuLabel>
+
+                            {isAdmin && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem asChild>
+                                        <Link to="/settings" className="flex items-center gap-2 cursor-pointer text-[11px]">
+                                            <GearSix size={13} weight="regular" className="shrink-0" />
+                                            Settings
+                                        </Link>
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                                 onClick={() => signOut()}
-                                className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive text-[11px]"
                                 data-testid="button-sign-out"
                             >
                                 <SignOut size={13} weight="regular" className="shrink-0" />
-                                <span className="text-[11px] tracking-wide">Sign Out</span>
+                                Sign Out
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -293,7 +352,7 @@ export function AppSidebar() {
 
                 {/* Copyright */}
                 {!isCollapsed && (
-                    <p className="px-4 py-2 text-[8px] tracking-[0.12em] text-foreground/40 uppercase">
+                    <p className="px-4 pb-2 text-[9px] text-sidebar-foreground/25">
                         © 2026 Arc Lab Technology
                     </p>
                 )}
