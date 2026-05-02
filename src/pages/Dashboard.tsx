@@ -378,7 +378,7 @@ export default function Dashboard() {
       <div className="space-y-0">
         {isAdmin && (
           <div className="border-b border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+            <div className="flex items-center justify-between px-6 border-b border-border h-[41px]">
               <div className="h-3 w-24 rounded bg-muted animate-pulse" />
               <div className="h-7 w-36 rounded-lg bg-muted animate-pulse" />
             </div>
@@ -436,7 +436,7 @@ export default function Dashboard() {
           className="border-b border-border bg-card overflow-hidden"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+          <div className="flex items-center justify-between px-6 border-b border-border h-[41px]">
             <div className="flex items-center gap-2.5">
               <ChartBar size={13} weight="duotone" className="text-muted-foreground" />
               <span className="text-[11px] font-semibold tracking-wide text-foreground">P&L Overview</span>

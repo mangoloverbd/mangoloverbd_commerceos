@@ -160,7 +160,7 @@ export function AppSidebar() {
     return (
         <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
             {/* ── Brand header ────────────────────────────── */}
-            <SidebarHeader className="px-3 py-3 border-b border-sidebar-border">
+            <SidebarHeader className="px-3 border-b border-sidebar-border h-[41px] flex flex-col justify-center">
                 <div className="flex items-center justify-between min-w-0">
                     {/* Logo + name */}
                     <Link
