@@ -6,16 +6,11 @@ import { OrdersTable } from "@/components/OrdersTable";
 import { toast } from "sonner";
 import {
   RefreshCw, ShieldCheck, Search, AlertTriangle, Loader2,
-  Info, CalendarDays, ChevronDown, TrendingUp, TrendingDown,
-  DollarSign, Truck, ShoppingCart, BarChart3,
+  Info, CalendarDays, ChevronDown,
 } from "lucide-react";
+import { ShoppingBag, Package, Cube, TrendUp, ChartBar, TrendDown } from "@phosphor-icons/react";
 import { BarsSpinner } from "@/registry/spell-ui/bars-spinner";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { format, subDays, startOfMonth, startOfYear } from "date-fns";
@@ -83,23 +78,19 @@ function DateRangePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 gap-2 text-xs font-medium"
+        <button
+          className="flex items-center gap-2 h-8 px-3 text-[11px] font-medium text-foreground/70 hover:text-foreground border border-border hover:border-foreground/30 rounded-lg bg-background transition-all"
           data-testid="button-date-range-picker"
         >
           <CalendarDays className="h-3.5 w-3.5" />
           {fmtRange(value)}
           <ChevronDown className="h-3 w-3 opacity-50" />
-        </Button>
+        </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-auto p-0">
+      <PopoverContent align="end" className="w-auto p-0 rounded-xl border border-border shadow-xl">
         <div className="flex">
-          <div className="border-r py-3 w-36 flex flex-col">
-            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase px-4 pb-2">
-              Preset
-            </p>
+          <div className="border-r border-border py-3 w-36 flex flex-col">
+            <p className="text-[9px] font-semibold tracking-widest text-muted-foreground uppercase px-4 pb-2">Preset</p>
             {PRESETS.map((p) => {
               const isActive = p.label === (activePreset?.label ?? "All Time");
               return (
@@ -107,8 +98,10 @@ function DateRangePicker({
                   key={p.label}
                   onClick={() => apply(p.range)}
                   className={cn(
-                    "text-left px-4 py-1.5 text-xs transition-colors hover:bg-muted/50",
-                    isActive ? "text-foreground font-medium bg-muted/30" : "text-muted-foreground"
+                    "text-left px-4 py-1.5 text-xs transition-colors",
+                    isActive
+                      ? "text-foreground font-semibold bg-muted"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
                 >
                   {p.label}
@@ -117,9 +110,7 @@ function DateRangePicker({
             })}
           </div>
           <div className="p-3">
-            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase px-1 pb-2">
-              Custom Range
-            </p>
+            <p className="text-[9px] font-semibold tracking-widest text-muted-foreground uppercase px-1 pb-2">Custom Range</p>
             <Calendar
               mode="range"
               selected={pending}
@@ -131,9 +122,7 @@ function DateRangePicker({
               toDate={TODAY}
             />
             {pending?.from && !pending?.to && (
-              <p className="text-[10px] text-muted-foreground text-center pb-1">
-                Select an end date
-              </p>
+              <p className="text-[10px] text-muted-foreground text-center pb-1">Select an end date</p>
             )}
           </div>
         </div>
@@ -185,58 +174,49 @@ interface Order {
   fulfillment_status: string | null;
 }
 
-function fmt(n: number) {
+function fmtBDT(n: number) {
   return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 0 });
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
+// ── Stat card ─────────────────────────────────────────────────────────────────
 function StatCard({
-  title,
-  value,
-  icon: Icon,
+  label,
+  icon,
   loading,
-  accent,
-  sub,
+  children,
 }: {
-  title: string;
-  value: React.ReactNode;
-  icon: React.ElementType;
+  label: string;
+  icon: React.ReactNode;
   loading: boolean;
-  accent?: "green" | "red" | "default";
-  sub?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <Card className="relative overflow-hidden">
-      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className={cn(
-          "h-8 w-8 rounded-lg flex items-center justify-center",
-          accent === "green" ? "bg-emerald-100 text-emerald-600"
-          : accent === "red" ? "bg-red-100 text-red-500"
-          : "bg-muted text-muted-foreground"
-        )}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </CardHeader>
-      <CardContent>
+    <div className="flex-1 px-6 py-5 border-r border-border last:border-r-0 space-y-3 min-w-0">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">{label}</p>
+        <span className="text-muted-foreground/60">{icon}</span>
+      </div>
+      <AnimatePresence mode="wait">
         {loading ? (
-          <Skeleton className="h-8 w-28 mb-1" />
+          <motion.div
+            key="skeleton"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="h-8 w-28 rounded-md bg-muted animate-pulse"
+          />
         ) : (
-          <div className={cn(
-            "text-2xl font-bold tracking-tight",
-            accent === "green" ? "text-emerald-600"
-            : accent === "red" ? "text-red-500"
-            : "text-foreground"
-          )}>
-            {value}
-          </div>
+          <motion.div
+            key="value"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          >
+            {children}
+          </motion.div>
         )}
-        {sub && !loading && (
-          <p className="text-xs text-muted-foreground mt-1">{sub}</p>
-        )}
-        {loading && <Skeleton className="h-3 w-20 mt-1" />}
-      </CardContent>
-    </Card>
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -264,11 +244,8 @@ export default function Dashboard() {
       const res = await apiFetch(`/api/analytics?${params}`, { cache: "no-store" });
       const data = await res.json();
       if (res.ok) setAnalytics(data);
-    } catch {
-      // silently fail — analytics is non-critical
-    } finally {
-      setAnalyticsLoading(false);
-    }
+    } catch { /* non-critical */ }
+    finally { setAnalyticsLoading(false); }
   }, []);
 
   const handleDateRangeChange = useCallback((range: DateRange | null) => {
@@ -281,18 +258,15 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => {
-    fetchAnalytics(todayRange);
-  }, [fetchAnalytics]);
+  useEffect(() => { fetchAnalytics(todayRange); }, [fetchAnalytics]);
 
   useEffect(() => {
     const runAutoSync = async () => {
       setAutoSyncing(true);
       try {
         await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
-      } catch {
-        // silently ignore
-      } finally {
+      } catch { /* ignore */ }
+      finally {
         await fetchOrders();
         fetchAnalytics(todayRange);
         setAutoSyncing(false);
@@ -311,7 +285,7 @@ export default function Dashboard() {
       setOrders((data.orders as Order[]) || []);
     } catch {
       toast.custom(() => (
-        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
           <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
             <AlertTriangle className="w-4 h-4 text-destructive" />
           </div>
@@ -321,9 +295,7 @@ export default function Dashboard() {
           </div>
         </div>
       ));
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const syncOrders = async () => {
@@ -335,7 +307,7 @@ export default function Dashboard() {
       await fetchOrders();
       fetchAnalytics(dateRange);
       toast.custom(() => (
-        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
           <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
             <RefreshCw className="w-4 h-4 text-primary" />
           </div>
@@ -348,7 +320,7 @@ export default function Dashboard() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not sync Shopify";
       toast.custom(() => (
-        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
           <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
             <AlertTriangle className="w-4 h-4 text-destructive" />
           </div>
@@ -358,9 +330,7 @@ export default function Dashboard() {
           </div>
         </div>
       ));
-    } finally {
-      setSyncing(false);
-    }
+    } finally { setSyncing(false); }
   };
 
   const checkFraud = async () => {
@@ -371,9 +341,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data.error || "Fraud check failed");
       await fetchOrders();
       toast.custom(() => (
-        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
-          <div className="h-9 w-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
+        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+          <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4 text-blue-500" />
           </div>
           <div>
             <p className="text-sm font-semibold">{data?.successful ?? 0} verified</p>
@@ -381,20 +351,15 @@ export default function Dashboard() {
           </div>
         </div>
       ));
-    } catch {
-      toast.error("Fraud check failed");
-    } finally {
-      setCheckingFraud(false);
-    }
+    } catch { toast.error("Fraud check failed"); }
+    finally { setCheckingFraud(false); }
   };
 
-  const handleStatusUpdate = (orderId: string, newStatus: string) => {
+  const handleStatusUpdate = (orderId: string, newStatus: string) =>
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
-  };
 
-  const handleOrderUpdate = (updatedOrder: Order) => {
+  const handleOrderUpdate = (updatedOrder: Order) =>
     setOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o)));
-  };
 
   const filteredOrders = useMemo(() => {
     if (!debouncedSearch.trim()) return orders;
@@ -407,88 +372,80 @@ export default function Dashboard() {
     );
   }, [orders, debouncedSearch]);
 
-  // ── Loading skeleton ──────────────────────────────────────────────────────
+  // ── Loading state ─────────────────────────────────────────────────────────
   if (autoSyncing) {
     return (
-      <div className="flex flex-col gap-6 p-6">
+      <div className="p-6 space-y-5">
         {isAdmin && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Card key={i}>
-                <CardHeader className="pb-2">
-                  <Skeleton className="h-4 w-20" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-24 mb-1" />
-                  <Skeleton className="h-3 w-16" />
-                </CardContent>
-              </Card>
-            ))}
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+              <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+              <div className="h-7 w-36 rounded-lg bg-muted animate-pulse" />
+            </div>
+            <div className="flex">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex-1 px-6 py-5 border-r border-border last:border-r-0 space-y-3">
+                  <div className="h-2.5 w-16 rounded bg-muted animate-pulse" />
+                  <div className="h-8 w-24 rounded bg-muted animate-pulse" />
+                </div>
+              ))}
+            </div>
           </div>
         )}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-5 w-32" />
-              <div className="flex gap-2">
-                <Skeleton className="h-8 w-40" />
-                <Skeleton className="h-8 w-20" />
-                <Skeleton className="h-8 w-24" />
-              </div>
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+            <div className="h-3 w-28 rounded bg-muted animate-pulse" />
+            <div className="flex gap-2">
+              <div className="h-8 w-44 rounded-lg bg-muted animate-pulse" />
+              <div className="h-8 w-20 rounded-lg bg-muted animate-pulse" />
+              <div className="h-8 w-24 rounded-lg bg-muted animate-pulse" />
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-3.5 border-b last:border-0" style={{ opacity: 1 - i * 0.1 }}>
-                <Skeleton className="h-3.5 w-16" />
-                <Skeleton className="h-3.5 w-28" />
-                <Skeleton className="h-3.5 w-24" />
-                <Skeleton className="h-3.5 flex-1" />
-                <Skeleton className="h-3.5 w-16" />
-                <Skeleton className="h-6 w-16 rounded-full" />
-              </div>
-            ))}
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <BarsSpinner size={24} color="hsl(var(--muted-foreground))" />
-              <span className="text-xs text-muted-foreground font-medium">Syncing from Shopify…</span>
+          </div>
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 px-6 py-3.5 border-b border-border last:border-0" style={{ opacity: 1 - i * 0.09 }}>
+              <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+              <div className="h-3 w-28 rounded bg-muted animate-pulse" />
+              <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+              <div className="h-3 flex-1 rounded bg-muted animate-pulse" />
+              <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+              <div className="h-5 w-16 rounded-full bg-muted animate-pulse" />
             </div>
-          </CardContent>
-        </Card>
+          ))}
+          <div className="flex flex-col items-center justify-center py-10 gap-3">
+            <BarsSpinner size={24} color="hsl(var(--muted-foreground))" />
+            <span className="text-xs text-muted-foreground font-medium tracking-wide">Syncing from Shopify…</span>
+          </div>
+        </div>
       </div>
     );
   }
 
-  // ── Main render ───────────────────────────────────────────────────────────
   const profitMargin = analytics?.profit != null && analytics.revenue > 0
     ? (analytics.profit / analytics.revenue) * 100
     : null;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="p-6 space-y-5">
 
-      {/* ── P&L Stats (admin only) ─────────────────────────────────────── */}
+      {/* ── P&L Panel ───────────────────────────────────────────────────── */}
       {isAdmin && (
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
+          className="rounded-xl border border-border bg-card overflow-hidden shadow-sm"
         >
-          {/* Header row */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">P&L Overview</h2>
-              {!analyticsLoading && (
-                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                  {fmtRange(dateRange)}
-                </Badge>
-              )}
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+            <div className="flex items-center gap-2.5">
+              <ChartBar size={13} weight="duotone" className="text-muted-foreground" />
+              <span className="text-[11px] font-semibold tracking-wide text-foreground">P&L Overview</span>
             </div>
             <div className="flex items-center gap-2">
               {!analytics?.fbConfigured && !analyticsLoading && (
                 <a
                   href="/settings"
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                   data-testid="link-connect-facebook"
                 >
                   <Info className="h-3 w-3" />
@@ -496,147 +453,171 @@ export default function Dashboard() {
                 </a>
               )}
               {analytics?.fbError && (
-                <span className="text-xs text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
+                <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
               )}
+              <div className="w-px h-4 bg-border" />
               <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
+              <button
                 onClick={() => fetchAnalytics(dateRange)}
                 disabled={analyticsLoading}
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-30"
                 data-testid="button-refresh-analytics"
-                title="Refresh P&L"
+                title="Refresh"
               >
                 {analyticsLoading
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   : <RefreshCw className="h-3.5 w-3.5" />}
-              </Button>
+              </button>
             </div>
           </div>
 
-          {/* Stat cards grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {/* Stat cells */}
+          <div className="flex divide-x divide-border">
             <StatCard
-              title="Revenue"
-              icon={ShoppingCart}
+              label="Revenue"
+              icon={<ShoppingBag size={14} weight="duotone" />}
               loading={analyticsLoading}
-              value={fmt(analytics?.revenue ?? 0)}
-            />
+            >
+              <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
+                {fmtBDT(analytics?.revenue ?? 0)}
+              </p>
+            </StatCard>
+
             <StatCard
-              title="Ad Spend"
-              icon={DollarSign}
+              label="Ad Spend"
+              icon={<span className="text-sm font-light leading-none">৳</span>}
               loading={analyticsLoading}
-              value={analytics?.adSpend != null ? fmt(analytics.adSpend) : "—"}
-            />
+            >
+              {analytics?.adSpend != null ? (
+                <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
+                  {fmtBDT(analytics.adSpend)}
+                </p>
+              ) : (
+                <p className="text-2xl font-light text-muted-foreground">—</p>
+              )}
+            </StatCard>
+
             <StatCard
-              title="Shipping"
-              icon={Truck}
+              label="Shipping"
+              icon={<Package size={14} weight="duotone" />}
               loading={analyticsLoading}
-              value={fmt(analytics?.shipping ?? 0)}
-            />
+            >
+              <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
+                {fmtBDT(analytics?.shipping ?? 0)}
+              </p>
+            </StatCard>
+
             <StatCard
-              title="Cost of Goods"
-              icon={BarChart3}
+              label="Cost of Goods"
+              icon={<Cube size={14} weight="duotone" />}
               loading={analyticsLoading}
-              value={fmt(analytics?.totalCog ?? 0)}
-              sub={analytics?.cogCoverage
-                ? `${analytics.cogCoverage.set}/${analytics.cogCoverage.total} products priced`
-                : undefined}
-            />
+            >
+              <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
+                {fmtBDT(analytics?.totalCog ?? 0)}
+              </p>
+              {analytics?.cogCoverage && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {analytics.cogCoverage.set}/{analytics.cogCoverage.total} products priced
+                </p>
+              )}
+            </StatCard>
+
             <StatCard
-              title="Net Profit"
-              icon={analytics?.profit != null && analytics.profit >= 0 ? TrendingUp : TrendingDown}
+              label="Net Profit"
+              icon={analytics?.profit != null && analytics.profit >= 0
+                ? <TrendUp size={14} weight="duotone" className="text-emerald-500" />
+                : <TrendDown size={14} weight="duotone" className="text-red-500" />
+              }
               loading={analyticsLoading}
-              accent={analytics?.profit != null ? (analytics.profit >= 0 ? "green" : "red") : "default"}
-              value={analytics?.profit != null
-                ? `${analytics.profit < 0 ? "-" : ""}${fmt(Math.abs(analytics.profit))}`
-                : "—"}
-              sub={profitMargin != null
-                ? `${profitMargin >= 0 ? "+" : ""}${profitMargin.toFixed(1)}% margin`
-                : undefined}
-            />
+            >
+              {analytics?.profit != null ? (
+                <>
+                  <p className={cn(
+                    "text-2xl font-bold tracking-tight tabular-nums",
+                    analytics.profit >= 0 ? "text-emerald-600" : "text-red-500"
+                  )}>
+                    {analytics.profit < 0 ? "−" : ""}{fmtBDT(Math.abs(analytics.profit))}
+                  </p>
+                  {profitMargin != null && (
+                    <span className={cn(
+                      "inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold",
+                      analytics.profit >= 0
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-red-100 text-red-600"
+                    )}>
+                      {analytics.profit >= 0 ? "+" : "−"}
+                      {Math.abs(profitMargin).toFixed(1)}% margin
+                    </span>
+                  )}
+                </>
+              ) : (
+                <p className="text-2xl font-light text-muted-foreground">—</p>
+              )}
+            </StatCard>
           </div>
         </motion.div>
       )}
 
-      {/* ── Orders Table Card ──────────────────────────────────────────── */}
+      {/* ── Orders table card ────────────────────────────────────────────── */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
+        className="rounded-xl border border-border bg-card overflow-hidden shadow-sm"
       >
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-0 px-6 pt-4">
-            <div className="flex items-center justify-between">
-              {/* Left: title + count */}
-              <div className="flex items-center gap-3">
-                <CardTitle className="text-sm font-semibold">Order Registry</CardTitle>
-                <Separator orientation="vertical" className="h-4" />
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {loading ? (
-                    <Skeleton className="h-3.5 w-16 inline-block" />
-                  ) : (
-                    `${filteredOrders.length} orders`
-                  )}
-                </span>
-              </div>
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+          <div className="flex items-center gap-2.5">
+            <span className="text-[11px] font-semibold tracking-wide text-foreground">Order Registry</span>
+            <div className="w-px h-3.5 bg-border" />
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              {loading ? "—" : `${filteredOrders.length} orders`}
+            </span>
+          </div>
 
-              {/* Right: search + actions */}
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Search orders…"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-8 pl-8 w-48 text-xs"
-                    data-testid="input-search-orders"
-                  />
-                </div>
-
-                <Separator orientation="vertical" className="h-5" />
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={syncOrders}
-                  disabled={syncing || checkingFraud || autoSyncing}
-                  className="h-8 gap-1.5 text-xs"
-                  data-testid="button-sync-orders"
-                >
-                  {syncing
-                    ? <BarsSpinner size={12} />
-                    : <RefreshCw className="h-3.5 w-3.5" />}
-                  Sync
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={checkFraud}
-                  disabled={checkingFraud || syncing}
-                  className="h-8 gap-1.5 text-xs"
-                  data-testid="button-check-fraud"
-                >
-                  {checkingFraud
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <ShieldCheck className="h-3.5 w-3.5" />}
-                  Verify All
-                </Button>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search orders…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 pl-8 w-48 text-xs rounded-lg"
+                data-testid="input-search-orders"
+              />
             </div>
-          </CardHeader>
 
-          <CardContent className="p-0 mt-3">
-            <OrdersTable
-              orders={filteredOrders}
-              loading={loading}
-              onStatusUpdate={handleStatusUpdate}
-              onOrderUpdate={handleOrderUpdate}
-            />
-          </CardContent>
-        </Card>
+            <div className="w-px h-4 bg-border" />
+
+            <button
+              onClick={syncOrders}
+              disabled={syncing || checkingFraud || autoSyncing}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium text-foreground/70 hover:text-foreground border border-border hover:border-foreground/30 hover:bg-muted/50 transition-all disabled:opacity-30"
+              data-testid="button-sync-orders"
+            >
+              {syncing ? <BarsSpinner size={12} /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Sync
+            </button>
+
+            <button
+              onClick={checkFraud}
+              disabled={checkingFraud || syncing}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium text-foreground/70 hover:text-foreground border border-border hover:border-foreground/30 hover:bg-muted/50 transition-all disabled:opacity-30"
+              data-testid="button-check-fraud"
+            >
+              {checkingFraud ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              Verify All
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <OrdersTable
+          orders={filteredOrders}
+          loading={loading}
+          onStatusUpdate={handleStatusUpdate}
+          onOrderUpdate={handleOrderUpdate}
+        />
       </motion.div>
 
     </div>
