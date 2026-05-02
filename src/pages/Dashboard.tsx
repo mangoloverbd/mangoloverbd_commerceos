@@ -4,10 +4,18 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { OrdersTable } from "@/components/OrdersTable";
 import { toast } from "sonner";
-import { RefreshCw, ShieldCheck, Search, AlertTriangle, Loader2, Info, CalendarDays, ChevronDown } from "lucide-react";
-import { ShoppingBag, Package, Cube, TrendUp, ChartBar } from "@phosphor-icons/react";
+import {
+  RefreshCw, ShieldCheck, Search, AlertTriangle, Loader2,
+  Info, CalendarDays, ChevronDown, TrendingUp, TrendingDown,
+  DollarSign, Truck, ShoppingCart, BarChart3,
+} from "lucide-react";
 import { BarsSpinner } from "@/registry/spell-ui/bars-spinner";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { format, subDays, startOfMonth, startOfYear } from "date-fns";
@@ -29,12 +37,9 @@ function fmtRange(range: DateRange | null): string {
   return `${from} – ${to}`;
 }
 
-// Always derive "today" from pure UTC + 6 h offset, then read with .getUTC*()
-// so the result is independent of whatever timezone the browser is in.
 function dhakaToday(): Date {
-  const dhakaMs = Date.now() + 6 * 60 * 60 * 1000; // UTC + 6 h
+  const dhakaMs = Date.now() + 6 * 60 * 60 * 1000;
   const d = new Date(dhakaMs);
-  // getUTC* reads the shifted value as if it were UTC → gives the Dhaka calendar date
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
@@ -78,23 +83,23 @@ function DateRangePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          className="flex items-center gap-2 h-7 px-3 text-[9px] font-medium tracking-[0.15em] uppercase text-black hover:text-black border border-black/[0.08] hover:border-black/20 transition-all"
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-2 text-xs font-medium"
           data-testid="button-date-range-picker"
         >
-          <CalendarDays className="h-3 w-3" />
+          <CalendarDays className="h-3.5 w-3.5" />
           {fmtRange(value)}
-          <ChevronDown className="h-2.5 w-2.5 text-black" />
-        </button>
+          <ChevronDown className="h-3 w-3 opacity-50" />
+        </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className="w-auto p-0 border border-black/[0.08] shadow-[0_8px_40px_-8px_rgba(0,0,0,0.14)] rounded-none bg-white"
-      >
+      <PopoverContent align="end" className="w-auto p-0">
         <div className="flex">
-          {/* Presets */}
-          <div className="border-r border-black/[0.06] py-3 w-36 flex flex-col">
-            <p className="text-[7px] font-medium tracking-[0.3em] text-black uppercase px-4 pb-2">Preset</p>
+          <div className="border-r py-3 w-36 flex flex-col">
+            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase px-4 pb-2">
+              Preset
+            </p>
             {PRESETS.map((p) => {
               const isActive = p.label === (activePreset?.label ?? "All Time");
               return (
@@ -102,10 +107,8 @@ function DateRangePicker({
                   key={p.label}
                   onClick={() => apply(p.range)}
                   className={cn(
-                    "text-left px-4 py-1.5 text-[10px] tracking-wide transition-colors",
-                    isActive
-                      ? "text-black font-medium border-l-[1.5px] border-black"
-                      : "text-black hover:text-black border-l-[1.5px] border-transparent"
+                    "text-left px-4 py-1.5 text-xs transition-colors hover:bg-muted/50",
+                    isActive ? "text-foreground font-medium bg-muted/30" : "text-muted-foreground"
                   )}
                 >
                   {p.label}
@@ -113,10 +116,10 @@ function DateRangePicker({
               );
             })}
           </div>
-
-          {/* Calendar */}
           <div className="p-3">
-            <p className="text-[7px] font-medium tracking-[0.3em] text-black uppercase px-1 pb-2">Custom Range</p>
+            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase px-1 pb-2">
+              Custom Range
+            </p>
             <Calendar
               mode="range"
               selected={pending}
@@ -126,16 +129,11 @@ function DateRangePicker({
               }}
               numberOfMonths={2}
               toDate={TODAY}
-              classNames={{
-                day_selected: "bg-black text-white hover:bg-black hover:text-white focus:bg-black focus:text-white",
-                day_range_middle: "bg-black/10 text-black rounded-none",
-                day_range_start: "bg-black text-white rounded-none",
-                day_range_end: "bg-black text-white rounded-none",
-                day_today: "border border-black/20",
-              }}
             />
             {pending?.from && !pending?.to && (
-              <p className="text-[9px] text-black text-center pb-1 tracking-wide">Select an end date</p>
+              <p className="text-[10px] text-muted-foreground text-center pb-1">
+                Select an end date
+              </p>
             )}
           </div>
         </div>
@@ -185,6 +183,61 @@ interface Order {
   delivery_rate: number | null;
   notes: string | null;
   fulfillment_status: string | null;
+}
+
+function fmt(n: number) {
+  return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 0 });
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  loading,
+  accent,
+  sub,
+}: {
+  title: string;
+  value: React.ReactNode;
+  icon: React.ElementType;
+  loading: boolean;
+  accent?: "green" | "red" | "default";
+  sub?: React.ReactNode;
+}) {
+  return (
+    <Card className="relative overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <div className={cn(
+          "h-8 w-8 rounded-lg flex items-center justify-center",
+          accent === "green" ? "bg-emerald-100 text-emerald-600"
+          : accent === "red" ? "bg-red-100 text-red-500"
+          : "bg-muted text-muted-foreground"
+        )}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-8 w-28 mb-1" />
+        ) : (
+          <div className={cn(
+            "text-2xl font-bold tracking-tight",
+            accent === "green" ? "text-emerald-600"
+            : accent === "red" ? "text-red-500"
+            : "text-foreground"
+          )}>
+            {value}
+          </div>
+        )}
+        {sub && !loading && (
+          <p className="text-xs text-muted-foreground mt-1">{sub}</p>
+        )}
+        {loading && <Skeleton className="h-3 w-20 mt-1" />}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function Dashboard() {
@@ -238,7 +291,7 @@ export default function Dashboard() {
       try {
         await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
       } catch {
-        // silently ignore — we still load local orders below
+        // silently ignore
       } finally {
         await fetchOrders();
         fetchAnalytics(todayRange);
@@ -246,7 +299,6 @@ export default function Dashboard() {
       }
     };
     runAutoSync();
-    // Poll for order updates every 30s (real-time replaced with org-filtered API)
     const intervalId = setInterval(() => fetchOrders(), 30000);
     return () => clearInterval(intervalId);
   }, []);
@@ -259,13 +311,13 @@ export default function Dashboard() {
       setOrders((data.orders as Order[]) || []);
     } catch {
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+          <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-destructive" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">System Error</span>
-            <span className="text-sm font-bold text-black">Failed to load orders</span>
+          <div>
+            <p className="text-sm font-semibold">Failed to load orders</p>
+            <p className="text-xs text-muted-foreground">Check your connection</p>
           </div>
         </div>
       ));
@@ -283,29 +335,26 @@ export default function Dashboard() {
       await fetchOrders();
       fetchAnalytics(dateRange);
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
-            <RefreshCw className="w-4 h-4 text-white" />
+        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <RefreshCw className="w-4 h-4 text-primary" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Synchronization</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{data.synced} Orders</span>
-              <span className="text-xs text-black font-medium">from Shopify</span>
-            </div>
+          <div>
+            <p className="text-sm font-semibold">{data.synced} orders synced</p>
+            <p className="text-xs text-muted-foreground">from Shopify</p>
           </div>
         </div>
       ));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not sync Shopify";
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+          <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-destructive" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Sync Failed</span>
-            <span className="text-sm font-bold text-black">{msg}</span>
+          <div>
+            <p className="text-sm font-semibold">Sync failed</p>
+            <p className="text-xs text-muted-foreground">{msg}</p>
           </div>
         </div>
       ));
@@ -322,16 +371,13 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data.error || "Fraud check failed");
       await fetchOrders();
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-5 h-5 text-blue-500" />
+        <div className="bg-background border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
+          <div className="h-9 w-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Fraud Analysis</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{data?.successful ?? 0} Verified</span>
-              <span className="text-xs text-black font-medium">of {data?.checked ?? 0}</span>
-            </div>
+          <div>
+            <p className="text-sm font-semibold">{data?.successful ?? 0} verified</p>
+            <p className="text-xs text-muted-foreground">of {data?.checked ?? 0} checked</p>
           </div>
         </div>
       ));
@@ -361,295 +407,238 @@ export default function Dashboard() {
     );
   }, [orders, debouncedSearch]);
 
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (autoSyncing) {
     return (
-      <div className="min-h-screen bg-[#FAFAF8]">
-        <div className="max-w-[1800px] mx-auto px-6 py-8 space-y-4">
-
-          {/* P&L skeleton — admins only */}
-          {isAdmin && (
-            <div className="border border-black/[0.07] bg-white">
-              <div className="flex items-center justify-between px-8 py-3 border-b border-black/[0.05]">
-                <div className="h-2 w-24 bg-black/[0.05] animate-pulse" />
-                <div className="h-2 w-32 bg-black/[0.04] animate-pulse" />
-              </div>
-              <div className="flex">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex-1 px-8 py-5 border-r border-black/[0.05] last:border-r-0 space-y-3">
-                    <div className="h-2 w-12 bg-black/[0.05] animate-pulse" />
-                    <div className="h-7 w-24 bg-black/[0.05] animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Toolbar skeleton */}
-          <div className="border border-black/[0.07] border-b-0 bg-white flex items-center justify-between px-6 py-3">
-            <div className="h-2 w-28 bg-black/[0.04] animate-pulse" />
-            <div className="flex items-center gap-3">
-              <div className="h-7 w-40 bg-black/[0.04] animate-pulse" />
-              <div className="h-7 w-16 bg-black/[0.04] animate-pulse" />
-            </div>
+      <div className="flex flex-col gap-6 p-6">
+        {isAdmin && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2">
+                  <Skeleton className="h-4 w-20" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-24 mb-1" />
+                  <Skeleton className="h-3 w-16" />
+                </CardContent>
+              </Card>
+            ))}
           </div>
-
-          {/* Table skeleton */}
-          <div className="border border-black/[0.07] bg-white -mt-4">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-4 border-b border-black/[0.04]"
-                style={{ opacity: 1 - i * 0.07 }}>
-                <div className="h-2.5 w-16 bg-black/[0.05] animate-pulse" />
-                <div className="h-2.5 w-28 bg-black/[0.05] animate-pulse" />
-                <div className="h-2.5 w-24 bg-black/[0.04] animate-pulse" />
-                <div className="flex-1 h-2.5 bg-black/[0.03] animate-pulse" />
-                <div className="h-2.5 w-14 bg-black/[0.04] animate-pulse" />
-                <div className="h-5 w-16 bg-black/[0.04] animate-pulse" />
+        )}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-5 w-32" />
+              <div className="flex gap-2">
+                <Skeleton className="h-8 w-40" />
+                <Skeleton className="h-8 w-20" />
+                <Skeleton className="h-8 w-24" />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-6 py-3.5 border-b last:border-0" style={{ opacity: 1 - i * 0.1 }}>
+                <Skeleton className="h-3.5 w-16" />
+                <Skeleton className="h-3.5 w-28" />
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-3.5 flex-1" />
+                <Skeleton className="h-3.5 w-16" />
+                <Skeleton className="h-6 w-16 rounded-full" />
               </div>
             ))}
             <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <BarsSpinner size={28} color="rgba(0,0,0,0.2)" />
-              <span className="text-[8px] font-medium tracking-[0.35em] text-black uppercase">Syncing from Shopify</span>
+              <BarsSpinner size={24} color="hsl(var(--muted-foreground))" />
+              <span className="text-xs text-muted-foreground font-medium">Syncing from Shopify…</span>
             </div>
-          </div>
-
-        </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#FAFAF8]">
-      <div className="max-w-[1800px] mx-auto px-6 py-8 space-y-0">
+  // ── Main render ───────────────────────────────────────────────────────────
+  const profitMargin = analytics?.profit != null && analytics.revenue > 0
+    ? (analytics.profit / analytics.revenue) * 100
+    : null;
 
-        {/* ── P&L Panel — admins only ── */}
-        {isAdmin && <motion.div
+  return (
+    <div className="flex flex-col gap-6 p-6">
+
+      {/* ── P&L Stats (admin only) ─────────────────────────────────────── */}
+      {isAdmin && (
+        <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="border border-black/[0.07] bg-white"
+          transition={{ duration: 0.4 }}
         >
-          {/* P&L Header */}
-          <div className="flex items-center justify-between px-8 py-3 border-b border-black/[0.05]">
-            <div className="flex items-center gap-2.5">
-              <ChartBar size={12} weight="light" className="text-black" />
-              <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">P&L Overview</span>
+          {/* Header row */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">P&L Overview</h2>
+              {!analyticsLoading && (
+                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                  {fmtRange(dateRange)}
+                </Badge>
+              )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {!analytics?.fbConfigured && !analyticsLoading && (
                 <a
                   href="/settings"
-                  className="flex items-center gap-1.5 text-[8px] tracking-[0.15em] font-medium uppercase text-black hover:text-black transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   data-testid="link-connect-facebook"
                 >
-                  <Info className="h-2.5 w-2.5" />
-                  Connect Facebook Ads in Settings
+                  <Info className="h-3 w-3" />
+                  Connect Facebook Ads
                 </a>
               )}
               {analytics?.fbError && (
-                <span className="text-[8px] tracking-[0.1em] text-red-400/80 max-w-xs truncate">{analytics.fbError}</span>
+                <span className="text-xs text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
               )}
-
-              <div className="w-px h-4 bg-black/[0.06]" />
-
               <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
-
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
                 onClick={() => fetchAnalytics(dateRange)}
                 disabled={analyticsLoading}
-                className="flex items-center gap-1.5 h-7 px-2 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black transition-colors disabled:opacity-30"
                 data-testid="button-refresh-analytics"
-                title="Refresh P&L data"
+                title="Refresh P&L"
               >
                 {analyticsLoading
-                  ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                  : <RefreshCw className="h-2.5 w-2.5" />}
-              </button>
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <RefreshCw className="h-3.5 w-3.5" />}
+              </Button>
             </div>
           </div>
 
-          {/* P&L Cells */}
-          <div className="flex">
-            {[
-              {
-                label: "Revenue",
-                icon: <ShoppingBag size={13} weight="light" className="text-black mt-0.5" />,
-                border: true,
-                content: analyticsLoading ? null : (
-                  <p className="text-2xl font-light tracking-tight text-black tabular-nums">
-                    ৳{(analytics?.revenue ?? 0).toLocaleString("en-BD", { maximumFractionDigits: 0 })}
-                  </p>
-                ),
-              },
-              {
-                label: "Ad Spend",
-                icon: <span className="text-[11px] font-light text-black mt-0.5 leading-none">৳</span>,
-                border: true,
-                content: analyticsLoading ? null : analytics?.adSpend !== null && analytics?.adSpend !== undefined ? (
-                  <p className="text-2xl font-light tracking-tight text-black tabular-nums">
-                    ৳{(analytics.adSpend).toLocaleString("en-BD", { maximumFractionDigits: 0 })}
-                  </p>
-                ) : (
-                  <p className="text-2xl font-light tracking-tight text-black">—</p>
-                ),
-              },
-              {
-                label: "Shipping",
-                icon: <Package size={13} weight="light" className="text-black mt-0.5" />,
-                border: true,
-                content: analyticsLoading ? null : (
-                  <p className="text-2xl font-light tracking-tight text-black tabular-nums">
-                    ৳{(analytics?.shipping ?? 0).toLocaleString("en-BD", { maximumFractionDigits: 0 })}
-                  </p>
-                ),
-              },
-              {
-                label: "COG",
-                icon: <Cube size={13} weight="light" className="text-black mt-0.5" />,
-                border: true,
-                content: analyticsLoading ? null : (
-                  <p className="text-2xl font-light tracking-tight text-black tabular-nums">
-                    ৳{(analytics?.totalCog ?? 0).toLocaleString("en-BD", { maximumFractionDigits: 0 })}
-                  </p>
-                ),
-              },
-              {
-                label: "Net Profit",
-                icon: <TrendUp size={13} weight="light" className="text-black mt-0.5" />,
-                border: false,
-                content: analyticsLoading ? null : analytics?.profit !== null && analytics?.profit !== undefined ? (
-                  <>
-                    <p className={cn(
-                      "text-2xl font-light tracking-tight tabular-nums",
-                      analytics.profit >= 0 ? "text-emerald-600" : "text-red-500"
-                    )}>
-                      ৳{Math.abs(analytics.profit).toLocaleString("en-BD", { maximumFractionDigits: 0 })}
-                      {analytics.profit < 0 && <span className="text-base ml-1">loss</span>}
-                    </p>
-                    {analytics.revenue > 0 && (
-                      <span className={cn(
-                        "inline-block mt-1.5 px-2 py-0.5 text-[9px] font-medium tracking-widest",
-                        analytics.profit >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
-                      )}>
-                        {analytics.profit >= 0 ? "+" : "−"}
-                        {Math.abs((analytics.profit / analytics.revenue) * 100).toFixed(1)}% margin
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-2xl font-light tracking-tight text-black">—</p>
-                ),
-              },
-            ].map((cell, i) => (
-              <motion.div
-                key={cell.label}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, delay: i * 0.07, ease: "easeOut" }}
-                className={cn("flex-1 px-8 py-5", cell.border && "border-r border-black/[0.05]")}
-              >
-                <div className="flex items-start justify-between">
-                  <p className="text-[8px] font-medium tracking-[0.25em] text-black uppercase mb-2">{cell.label}</p>
-                  {cell.icon}
-                </div>
-                <AnimatePresence mode="wait">
-                  {analyticsLoading ? (
-                    <motion.div
-                      key="skeleton"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="h-7 w-20 bg-black/[0.04] animate-pulse"
-                    />
+          {/* Stat cards grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <StatCard
+              title="Revenue"
+              icon={ShoppingCart}
+              loading={analyticsLoading}
+              value={fmt(analytics?.revenue ?? 0)}
+            />
+            <StatCard
+              title="Ad Spend"
+              icon={DollarSign}
+              loading={analyticsLoading}
+              value={analytics?.adSpend != null ? fmt(analytics.adSpend) : "—"}
+            />
+            <StatCard
+              title="Shipping"
+              icon={Truck}
+              loading={analyticsLoading}
+              value={fmt(analytics?.shipping ?? 0)}
+            />
+            <StatCard
+              title="Cost of Goods"
+              icon={BarChart3}
+              loading={analyticsLoading}
+              value={fmt(analytics?.totalCog ?? 0)}
+              sub={analytics?.cogCoverage
+                ? `${analytics.cogCoverage.set}/${analytics.cogCoverage.total} products priced`
+                : undefined}
+            />
+            <StatCard
+              title="Net Profit"
+              icon={analytics?.profit != null && analytics.profit >= 0 ? TrendingUp : TrendingDown}
+              loading={analyticsLoading}
+              accent={analytics?.profit != null ? (analytics.profit >= 0 ? "green" : "red") : "default"}
+              value={analytics?.profit != null
+                ? `${analytics.profit < 0 ? "-" : ""}${fmt(Math.abs(analytics.profit))}`
+                : "—"}
+              sub={profitMargin != null
+                ? `${profitMargin >= 0 ? "+" : ""}${profitMargin.toFixed(1)}% margin`
+                : undefined}
+            />
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── Orders Table Card ──────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.4 }}
+      >
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-0 px-6 pt-4">
+            <div className="flex items-center justify-between">
+              {/* Left: title + count */}
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-sm font-semibold">Order Registry</CardTitle>
+                <Separator orientation="vertical" className="h-4" />
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {loading ? (
+                    <Skeleton className="h-3.5 w-16 inline-block" />
                   ) : (
-                    <motion.div
-                      key="value"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4, ease: "easeOut" }}
-                    >
-                      {cell.content}
-                    </motion.div>
+                    `${filteredOrders.length} orders`
                   )}
-                </AnimatePresence>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>}
+                </span>
+              </div>
 
-        {/* ── Toolbar ── */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.15, duration: 0.4 }}
-          className="flex items-center justify-between border-x border-b border-black/[0.07] bg-white px-6 h-12"
-        >
-          {/* Left: section label */}
-          <div className="flex items-center gap-3">
-            <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Order Registry</span>
-            <div className="w-px h-3 bg-black/10" />
-            <span className="text-[8px] tracking-[0.15em] text-black uppercase tabular-nums">
-              {loading ? "—" : `${filteredOrders.length} records`}
-            </span>
-          </div>
+              {/* Right: search + actions */}
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search orders…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-8 pl-8 w-48 text-xs"
+                    data-testid="input-search-orders"
+                  />
+                </div>
 
-          {/* Right: search + actions */}
-          <div className="flex items-center gap-2">
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-black transition-colors group-focus-within:text-black" />
-              <Input
-                placeholder="Search orders…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-7 pl-8 pr-3 bg-transparent border border-black/[0.08] rounded-none text-[11px] w-52 focus-visible:ring-0 focus-visible:border-black/20 placeholder:text-black"
-                data-testid="input-search-orders"
-              />
+                <Separator orientation="vertical" className="h-5" />
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={syncOrders}
+                  disabled={syncing || checkingFraud || autoSyncing}
+                  className="h-8 gap-1.5 text-xs"
+                  data-testid="button-sync-orders"
+                >
+                  {syncing
+                    ? <BarsSpinner size={12} />
+                    : <RefreshCw className="h-3.5 w-3.5" />}
+                  Sync
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={checkFraud}
+                  disabled={checkingFraud || syncing}
+                  className="h-8 gap-1.5 text-xs"
+                  data-testid="button-check-fraud"
+                >
+                  {checkingFraud
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Verify All
+                </Button>
+              </div>
             </div>
+          </CardHeader>
 
-            <div className="w-px h-4 bg-black/10" />
+          <CardContent className="p-0 mt-3">
+            <OrdersTable
+              orders={filteredOrders}
+              loading={loading}
+              onStatusUpdate={handleStatusUpdate}
+              onOrderUpdate={handleOrderUpdate}
+            />
+          </CardContent>
+        </Card>
+      </motion.div>
 
-            <button
-              onClick={syncOrders}
-              disabled={syncing || checkingFraud || autoSyncing}
-              className="flex items-center gap-1.5 h-7 px-3 text-[9px] font-medium tracking-[0.15em] uppercase text-black hover:text-black border border-transparent hover:border-black/10 transition-all disabled:opacity-30"
-              data-testid="button-sync-orders"
-            >
-              {syncing
-                ? <BarsSpinner size={12} />
-                : <RefreshCw className="h-3 w-3" />}
-              Sync
-            </button>
-
-            <button
-              onClick={checkFraud}
-              disabled={checkingFraud || syncing}
-              className="flex items-center gap-1.5 h-7 px-3 text-[9px] font-medium tracking-[0.15em] uppercase text-black hover:text-black border border-transparent hover:border-black/10 transition-all disabled:opacity-30"
-              data-testid="button-check-fraud"
-            >
-              {checkingFraud
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <ShieldCheck className="h-3 w-3" />}
-              Verify All
-            </button>
-          </div>
-        </motion.div>
-
-        {/* ── Table ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.5 }}
-          className="border-x border-b border-black/[0.07] bg-white overflow-hidden"
-        >
-          <OrdersTable
-            orders={filteredOrders}
-            loading={loading}
-            onStatusUpdate={handleStatusUpdate}
-            onOrderUpdate={handleOrderUpdate}
-          />
-        </motion.div>
-
-      </div>
     </div>
   );
 }
