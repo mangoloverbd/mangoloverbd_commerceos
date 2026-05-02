@@ -637,6 +637,132 @@ app.patch("/api/orders/:id", async (req, res) => {
   }
 });
 
+app.post("/api/send-to-courier", async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    if (!orderId) return res.status(400).json({ error: "Order ID is required" });
+
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const cfg = await getSettings(["steadfast_api_key", "steadfast_secret_key"]);
+    const apiKey = cfg["steadfast_api_key"];
+    const secretKey = cfg["steadfast_secret_key"];
+    if (!apiKey || !secretKey) return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
+
+    const supabase = getServiceSupabase();
+    const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
+    if (order.sent_to_courier) return res.status(400).json({ error: "Order already sent to courier", consignment_id: order.consignment_id });
+
+    const cleanPhone = cleanBdPhone(order.phone || "");
+    if (cleanPhone.length !== 11 || !cleanPhone.startsWith("01")) {
+      return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
+    }
+
+    const invoice = `ORD-${order.order_number || order.id.slice(-8).toUpperCase()}`;
+    const payload = {
+      invoice,
+      recipient_name: order.customer_name || "Customer",
+      recipient_phone: cleanPhone,
+      recipient_address: order.address || "No address provided",
+      cod_amount: order.price || 0,
+      note: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
+    };
+
+    const sfRes = await fetch("https://portal.packzy.com/api/v1/create_order", {
+      method: "POST",
+      headers: { "Api-Key": apiKey, "Secret-Key": secretKey, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const sfData = await sfRes.json();
+
+    if (sfData.status !== 200) {
+      await supabase.from("orders").update({ courier_message: sfData.message || "Failed" }).eq("id", orderId);
+      return res.status(400).json({ error: sfData.message || "Steadfast rejected the order", details: sfData });
+    }
+
+    const consignment = sfData.consignment;
+    await supabase.from("orders").update({
+      sent_to_courier: true,
+      consignment_id: String(consignment.consignment_id),
+      tracking_code: consignment.tracking_code,
+      courier_status: consignment.status,
+      courier_message: "Sent to Steadfast successfully",
+    }).eq("id", orderId);
+
+    const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    return res.json({ success: true, consignment, order: updated });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/send-to-pathao", async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    if (!orderId) return res.status(400).json({ error: "Order ID is required" });
+
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const cfg = await getSettings(["pathao_store_id"]);
+    const storeId = cfg["pathao_store_id"];
+    if (!storeId) return res.status(500).json({ error: "Pathao credentials not configured. Go to Settings → Integrations." });
+
+    const supabase = getServiceSupabase();
+    const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
+
+    const cleanPhone = cleanBdPhone(order.phone || "");
+    if (cleanPhone.length !== 11 || !cleanPhone.startsWith("01")) {
+      return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
+    }
+
+    const accessToken = await getPathaoToken();
+    const pathaoPayload = {
+      store_id: parseInt(storeId),
+      merchant_order_id: `ORD-${order.order_number || order.id.slice(-8).toUpperCase()}`,
+      recipient_name: order.customer_name || "Customer",
+      recipient_phone: cleanPhone,
+      recipient_address: order.address || "No address provided",
+      delivery_type: 48,
+      item_type: 2,
+      special_instruction: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
+      item_quantity: order.quantity || 1,
+      item_weight: 0.5,
+      amount_to_collect: order.price || 0,
+    };
+
+    const pathaoRes = await fetch("https://api-hermes.pathao.com/aladdin/api/v1/orders", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(pathaoPayload),
+    });
+    const pathaoData = await pathaoRes.json();
+
+    if (!pathaoRes.ok) {
+      await supabase.from("orders").update({ courier_message: pathaoData.message || "Failed" }).eq("id", orderId);
+      return res.status(400).json({ error: pathaoData.message || "Pathao rejected the order", details: pathaoData });
+    }
+
+    const consignment = pathaoData.data;
+    const consignmentId = consignment?.consignment_id ? String(consignment.consignment_id) : null;
+    await supabase.from("orders").update({
+      sent_to_courier: true,
+      consignment_id: consignmentId,
+      tracking_code: consignmentId,
+      courier_status: "pending",
+      courier_message: "Sent to Pathao successfully",
+    }).eq("id", orderId);
+
+    const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    return res.json({ success: true, consignment, order: updated });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/fetch-shopify-orders", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
