@@ -1,0 +1,227 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap');
+
+@font-face {
+  font-family: 'Geist Sans';
+  src: url('/fonts/GeistSans-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Noise grain overlay used by PrismaHero */
+.noise-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 128px 128px;
+}
+
+/* ──────────────────────────────────────────────
+   Swiss Luxury Design System
+   Inspired by Swiss International Style:
+   precision, clarity, restraint, elegance.
+   All colors MUST be HSL.
+   ────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    /* Cool off-white — pure Swiss neutrality */
+    --background: 220 14% 96%;
+    --foreground: 220 20% 10%;
+
+    /* Cards: crisp white */
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    /* Primary — deep charcoal */
+    --primary: 220 16% 12%;
+    --primary-foreground: 220 14% 96%;
+
+    /* Secondary — cool gray */
+    --secondary: 220 10% 92%;
+    --secondary-foreground: 220 20% 10%;
+
+    /* Muted — refined neutral */
+    --muted: 220 10% 93%;
+    --muted-foreground: 220 8% 46%;
+
+    /* Accent — cool steel blue hint */
+    --accent: 215 20% 90%;
+    --accent-foreground: 220 20% 10%;
+
+    /* Status colors — restrained, functional */
+    --destructive: 0 55% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 45% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 35 75% 50%;
+    --warning-foreground: 220 20% 10%;
+
+    /* Borders — hairline, precise */
+    --border: 220 10% 88%;
+    --input: 220 10% 88%;
+    --ring: 220 16% 12%;
+
+    /* Tight radius — geometric precision */
+    --radius: 6px;
+
+    /* Sidebar — luxury warm white */
+    --sidebar-background: 36 20% 99%;
+    --sidebar-foreground: 25 10% 12%;
+    --sidebar-primary: 25 10% 12%;
+    --sidebar-primary-foreground: 36 20% 99%;
+    --sidebar-accent: 36 20% 99%;
+    --sidebar-accent-foreground: 25 10% 12%;
+    --sidebar-border: 36 10% 90%;
+    --sidebar-ring: 25 10% 12%;
+  }
+
+  .dark {
+    --background: 220 18% 7%;
+    --foreground: 220 10% 92%;
+
+    --card: 220 16% 11%;
+    --card-foreground: 220 10% 92%;
+
+    --popover: 220 16% 11%;
+    --popover-foreground: 220 10% 92%;
+
+    --primary: 220 10% 92%;
+    --primary-foreground: 220 18% 7%;
+
+    --secondary: 220 14% 16%;
+    --secondary-foreground: 220 10% 92%;
+
+    --muted: 220 14% 16%;
+    --muted-foreground: 220 8% 52%;
+
+    --accent: 220 14% 16%;
+    --accent-foreground: 220 10% 92%;
+
+    --destructive: 0 55% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 45% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 35 75% 50%;
+    --warning-foreground: 220 20% 10%;
+
+    --border: 220 14% 18%;
+    --input: 220 14% 18%;
+    --ring: 220 10% 92%;
+
+    --sidebar-background: 220 16% 9%;
+    --sidebar-foreground: 220 10% 92%;
+    --sidebar-primary: 220 10% 92%;
+    --sidebar-primary-foreground: 220 18% 7%;
+    --sidebar-accent: 220 14% 16%;
+    --sidebar-accent-foreground: 220 10% 92%;
+    --sidebar-border: 220 14% 18%;
+    --sidebar-ring: 220 10% 92%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    @apply bg-background text-foreground;
+    letter-spacing: -0.011em;
+    margin: 0;
+  }
+
+  /* Swiss Typography — strict hierarchy */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold;
+    letter-spacing: -0.03em;
+  }
+
+  h1 {
+    font-family: "DM Serif Display", "Inter", serif;
+    @apply text-3xl md:text-4xl font-normal;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    @apply text-xl md:text-2xl;
+    letter-spacing: -0.025em;
+  }
+
+  h3 {
+    @apply text-lg md:text-xl;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  /* Swiss Grid Container — generous margins */
+  .swiss-container {
+    @apply max-w-[1440px] mx-auto px-6 md:px-10 lg:px-16;
+  }
+
+  /* Swiss Card — minimal, precise */
+  .swiss-card {
+    @apply bg-card rounded-md border border-border/60;
+    box-shadow: 0 1px 2px 0 hsl(220 20% 10% / 0.03);
+  }
+
+  .swiss-card-elevated {
+    @apply bg-card rounded-md border border-border/50;
+    box-shadow:
+      0 1px 3px 0 hsl(220 20% 10% / 0.04),
+      0 8px 24px -4px hsl(220 20% 10% / 0.06);
+  }
+
+  /* Swiss Divider */
+  .swiss-divider {
+    @apply h-px bg-border/50;
+  }
+
+  /* Swiss Stat — large number, tiny label */
+  .swiss-stat-value {
+    @apply text-4xl md:text-5xl font-light tracking-tight;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .swiss-stat-label {
+    @apply text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+  }
+
+  /* Button styling */
+  .button-squircle {
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.1);
+  }
+}
+
+@layer utilities {
+  .hover-lift {
+    @apply transition-all duration-300 ease-out;
+  }
+  .hover-lift:hover {
+    @apply -translate-y-px;
+    box-shadow:
+      0 2px 8px -2px hsl(220 20% 10% / 0.08),
+      0 4px 16px -4px hsl(220 20% 10% / 0.06);
+  }
+}

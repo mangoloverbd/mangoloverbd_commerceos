@@ -1,0 +1,1 @@
+ALTER TABLE public.orders ALTER COLUMN consignment_id TYPE text USING consignment_id::text;
