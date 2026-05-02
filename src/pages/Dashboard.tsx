@@ -375,9 +375,9 @@ export default function Dashboard() {
   // ── Loading state ─────────────────────────────────────────────────────────
   if (autoSyncing) {
     return (
-      <div className="p-6 space-y-5">
+      <div className="space-y-0">
         {isAdmin && (
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="border-b border-border bg-card overflow-hidden">
             <div className="flex items-center justify-between px-6 py-3 border-b border-border">
               <div className="h-3 w-24 rounded bg-muted animate-pulse" />
               <div className="h-7 w-36 rounded-lg bg-muted animate-pulse" />
@@ -392,7 +392,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="bg-card overflow-hidden">
           <div className="flex items-center justify-between px-6 py-3 border-b border-border">
             <div className="h-3 w-28 rounded bg-muted animate-pulse" />
             <div className="flex gap-2">
@@ -425,7 +425,7 @@ export default function Dashboard() {
     : null;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-0">
 
       {/* ── P&L Panel ───────────────────────────────────────────────────── */}
       {isAdmin && (
@@ -433,7 +433,7 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="rounded-xl border border-border bg-card overflow-hidden shadow-sm"
+          className="border-b border-border bg-card overflow-hidden"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-3 border-b border-border">
@@ -563,7 +563,7 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
-        className="rounded-xl border border-border bg-card overflow-hidden shadow-sm"
+        className="bg-card overflow-hidden"
       >
         {/* Toolbar */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-border">
