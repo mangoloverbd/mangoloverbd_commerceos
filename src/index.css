@@ -74,7 +74,7 @@
     --radius: 6px;
 
     /* Sidebar */
-    --sidebar-background: 220 14% 97%;
+    --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 220 20% 12%;
     --sidebar-primary: 220 16% 12%;
     --sidebar-primary-foreground: 0 0% 100%;
