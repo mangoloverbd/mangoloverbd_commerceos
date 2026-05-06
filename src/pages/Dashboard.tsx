@@ -230,7 +230,7 @@ export default function Dashboard() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
-  const todayRange: DateRange = { from: new Date(), to: new Date() };
+  const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
   const { user } = useAuth();
   const { isAdmin } = useUserRole();
