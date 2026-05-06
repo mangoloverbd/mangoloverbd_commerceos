@@ -223,7 +223,7 @@ export default function OrderExtraction() {
       const { error } = await supabase
         .from("orders")
         .insert([{
-          shopify_order_id: Date.now(),
+          shopify_order_id: -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000),
           order_number: `MAN-${Date.now()}`,
           customer_name: extractedOrder.customer_name,
           phone: extractedOrder.phone,
