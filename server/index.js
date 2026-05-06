@@ -1721,6 +1721,82 @@ app.post("/api/products/crawl", async (req, res) => {
   }
 });
 
+app.post("/api/extract-order-from-text", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const { orderText } = req.body;
+    if (!orderText || typeof orderText !== "string" || !orderText.trim()) {
+      return res.status(400).json({ error: "orderText is required" });
+    }
+
+    // Regex-based extractor — works without an external AI key.
+    // Patterns tuned for Bangladeshi social commerce messages (Bengali + English).
+    const text = orderText.trim();
+
+    // Phone: BD numbers starting with 01, optionally prefixed with +880 / 880
+    const phoneMatch = text.match(/(?:\+?880|0)?(1[3-9]\d{8})/);
+    const rawPhone = phoneMatch ? phoneMatch[1] : "";
+    const phone = rawPhone ? "0" + rawPhone : "";
+
+    // Customer name: look for "name:", "নাম:", or leading proper noun before phone
+    let customerName = "";
+    const nameMatch = text.match(/(?:name|নাম)\s*[:\-]\s*([^\n,।]+)/i);
+    if (nameMatch) {
+      customerName = nameMatch[1].trim();
+    }
+
+    // Address: look for "address:", "ঠিকানা:", "delivery:", etc.
+    let address = "";
+    const addrMatch = text.match(/(?:address|ঠিকানা|delivery\s*address|location)\s*[:\-]\s*([^\n।]+)/i);
+    if (addrMatch) {
+      address = addrMatch[1].trim();
+    }
+
+    // Product: look for "product:", "item:", "order:", or take the first noun phrase
+    let product = "";
+    const productMatch = text.match(/(?:product|item|order|পণ্য)\s*[:\-]\s*([^\n,।]+)/i);
+    if (productMatch) {
+      product = productMatch[1].trim();
+    }
+
+    // Quantity: look for digits followed by "pcs", "pieces", "টি", "টা", etc.
+    let quantity = 1;
+    const qtyMatch = text.match(/(\d+)\s*(?:pcs?|pieces?|টি|টা|nos?\.?)/i);
+    if (qtyMatch) quantity = parseInt(qtyMatch[1], 10);
+
+    // Price: look for ৳ / BDT / Tk patterns
+    let price = 0;
+    const priceMatch = text.match(/(?:৳|BDT|Tk\.?)\s*([\d,]+)/i);
+    if (priceMatch) price = parseFloat(priceMatch[1].replace(/,/g, ""));
+
+    // Delivery charge heuristic (same logic as frontend determineDeliveryCharge)
+    const lowerText = text.toLowerCase();
+    const dhakaKws = ["dhaka", "dhanmondi", "gulshan", "banani", "mirpur", "mohammadpur",
+      "uttara", "badda", "khilgaon", "motijheel", "paltan", "farmgate",
+      "shahbagh", "new market", "azampur", "kurmitola", "tejgaon"];
+    const isInsideDhaka = dhakaKws.some((k) => lowerText.includes(k));
+    const deliveryCharge = isInsideDhaka ? 80 : 120;
+    const locationType = isInsideDhaka ? "inside_dhaka" : "outside_dhaka";
+
+    const extractedOrder = {
+      customer_name: customerName || "Unknown",
+      phone,
+      address,
+      product,
+      quantity,
+      price,
+      delivery_charge: deliveryCharge,
+      location_type: locationType,
+    };
+
+    return res.json({ extractedOrder });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.patch("/api/products/:id", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -1862,6 +1938,34 @@ if (!process.env.VERCEL) {
     app.use((req, res) => {
       res.sendFile(join(distPath, "index.html"));
     });
+  }
+}
+
+async function getProductsFromSettings() {
+  try {
+    const supabase = getServiceSupabase();
+    const { data } = await supabase
+      .from("products")
+      .select("id, name, selling_price, cog")
+      .order("created_at", { ascending: false });
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function rebuildAiProductContext(products) {
+  if (!products.length) return;
+  try {
+    const supabase = getServiceSupabase();
+    const context = products
+      .map((p) => `${p.name} — ৳${p.selling_price ?? "?"}`)
+      .join("\n");
+    await supabase
+      .from("app_settings")
+      .upsert({ key: "ai_product_context", value: context, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  } catch (e) {
+    console.warn("[AI Training] rebuildAiProductContext failed:", e.message);
   }
 }
 
