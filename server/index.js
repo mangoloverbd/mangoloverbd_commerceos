@@ -1259,6 +1259,7 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
 app.get("/api/social/brand-doc", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
     const cfg = await getSettings(["brand_doc"]);
     res.json({ content: cfg["brand_doc"] || "" });
   } catch (e) { res.json({ content: "" }); }
@@ -1267,6 +1268,7 @@ app.get("/api/social/brand-doc", async (req, res) => {
 app.post("/api/social/brand-doc", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
     const { content } = req.body;
     await saveSettings({ brand_doc: content || "" });
     res.json({ success: true });
