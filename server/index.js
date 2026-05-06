@@ -69,8 +69,8 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function cleanPhone(phone) {
-  let clean = phone.replace(/\D/g, "");
+function normalizeBdPhone(phone) {
+  let clean = (phone || "").replace(/\D/g, "");
   if (clean.startsWith("880")) {
     const after = clean.slice(3);
     if (after.startsWith("01") && after.length === 11) clean = after;
@@ -101,7 +101,7 @@ function parseFraudShieldError(status, body) {
 }
 
 async function checkFraudStatus(phone, apiKey) {
-  const cleanedPhone = cleanPhone(phone);
+  const cleanedPhone = normalizeBdPhone(phone);
   if (!cleanedPhone) {
     return { fraudData: null, successRate: null, errorMessage: `Invalid phone format: "${phone}"` };
   }
@@ -656,8 +656,8 @@ app.post("/api/send-to-courier", async (req, res) => {
     if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
     if (order.sent_to_courier) return res.status(400).json({ error: "Order already sent to courier", consignment_id: order.consignment_id });
 
-    const cleanPhone = cleanBdPhone(order.phone || "");
-    if (cleanPhone.length !== 11 || !cleanPhone.startsWith("01")) {
+    const cleanedPhone = normalizeBdPhone(order.phone || "");
+    if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
@@ -665,7 +665,7 @@ app.post("/api/send-to-courier", async (req, res) => {
     const payload = {
       invoice,
       recipient_name: order.customer_name || "Customer",
-      recipient_phone: cleanPhone,
+      recipient_phone: cleanedPhone,
       recipient_address: order.address || "No address provided",
       cod_amount: order.price || 0,
       note: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
@@ -715,8 +715,8 @@ app.post("/api/send-to-pathao", async (req, res) => {
     const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
 
-    const cleanPhone = cleanBdPhone(order.phone || "");
-    if (cleanPhone.length !== 11 || !cleanPhone.startsWith("01")) {
+    const cleanedPhone = normalizeBdPhone(order.phone || "");
+    if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
@@ -725,7 +725,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
       store_id: parseInt(storeId),
       merchant_order_id: `ORD-${order.order_number || order.id.slice(-8).toUpperCase()}`,
       recipient_name: order.customer_name || "Customer",
-      recipient_phone: cleanPhone,
+      recipient_phone: cleanedPhone,
       recipient_address: order.address || "No address provided",
       delivery_type: 48,
       item_type: 2,
@@ -1008,15 +1008,6 @@ function parseInboxOrderNotes(notes) {
   return { phone, address };
 }
 
-// Helper to clean BD phone number
-function cleanBdPhone(raw) {
-  let p = raw.replace(/\D/g, "");
-  if (p.startsWith("880")) {
-    p = p.slice(3);
-    if (!p.startsWith("0")) p = "0" + p;
-  }
-  return p;
-}
 
 app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
   try {
@@ -1036,8 +1027,8 @@ app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
     if (order.sent_to_courier) return res.status(400).json({ error: "Order already sent to courier", consignment_id: order.consignment_id });
 
     const { phone: rawPhone, address } = parseInboxOrderNotes(order.notes);
-    const cleanPhone = cleanBdPhone(rawPhone);
-    if (cleanPhone.length !== 11 || !cleanPhone.startsWith("01")) {
+    const cleanedPhone = normalizeBdPhone(rawPhone);
+    if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
@@ -1048,7 +1039,7 @@ app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
     const payload = {
       invoice,
       recipient_name: order.contact_name || "Customer",
-      recipient_phone: cleanPhone,
+      recipient_phone: cleanedPhone,
       recipient_address: address || "No address provided",
       cod_amount: order.total_price || 0,
       note: productNote,
@@ -1097,8 +1088,8 @@ app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
     if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
 
     const { phone: rawPhone, address } = parseInboxOrderNotes(order.notes);
-    const cleanPhone = cleanBdPhone(rawPhone);
-    if (cleanPhone.length !== 11 || !cleanPhone.startsWith("01")) {
+    const cleanedPhone = normalizeBdPhone(rawPhone);
+    if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
@@ -1111,7 +1102,7 @@ app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
       store_id: parseInt(storeId),
       merchant_order_id: `IO-${order.id.slice(-8).toUpperCase()}`,
       recipient_name: order.contact_name || "Customer",
-      recipient_phone: cleanPhone,
+      recipient_phone: cleanedPhone,
       recipient_address: address || "No address provided",
       delivery_type: 48,
       item_type: 2,
