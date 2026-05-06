@@ -932,7 +932,7 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
       return res.status(500).json({ error: "Failed to save orders", details: upsertError.message });
     }
 
-    res.json({ conversations });
+    res.json({ synced: processedOrders.length, orders: processedOrders });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
