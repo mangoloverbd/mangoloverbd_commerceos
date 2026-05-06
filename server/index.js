@@ -1773,6 +1773,7 @@ app.post("/api/extract-order-from-text", async (req, res) => {
 
     // Delivery charge heuristic (same logic as frontend determineDeliveryCharge)
     const lowerText = text.toLowerCase();
+    // Keep in sync with determineDeliveryCharge() in src/pages/OrderExtraction.tsx
     const dhakaKws = ["dhaka", "dhanmondi", "gulshan", "banani", "mirpur", "mohammadpur",
       "uttara", "badda", "khilgaon", "motijheel", "paltan", "farmgate",
       "shahbagh", "new market", "azampur", "kurmitola", "tejgaon"];
@@ -1791,7 +1792,13 @@ app.post("/api/extract-order-from-text", async (req, res) => {
       location_type: locationType,
     };
 
-    return res.json({ extractedOrder });
+    // Warn caller when critical fields could not be extracted
+    const warnings = [];
+    if (!phone) warnings.push("Phone number not found in order text");
+    if (!product) warnings.push("Product not found in order text");
+    if (price === 0) warnings.push("Price not found in order text — defaulted to 0");
+
+    return res.json({ extractedOrder, warnings });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -1941,6 +1948,8 @@ if (!process.env.VERCEL) {
   }
 }
 
+// Fetches all products from the products table (despite the name, this is NOT app_settings).
+// Named for historical reasons — used by bootstrapAiProductContext.
 async function getProductsFromSettings() {
   try {
     const supabase = getServiceSupabase();
