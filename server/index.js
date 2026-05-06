@@ -1835,6 +1835,13 @@ app.delete("/api/products/:id", async (req, res) => {
 app.get("/api/db-setup-sql", async (req, res) => {
   const { user } = await getUser(getToken(req)).catch(() => ({ user: null }));
   if (!user) return res.status(401).send("Unauthorized");
+  const supabase = getServiceSupabase();
+  const { data: roleRow } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (roleRow?.role !== "admin") return res.status(403).send("Forbidden");
   res.type("text/plain").send(SETUP_SQL);
 });
 
