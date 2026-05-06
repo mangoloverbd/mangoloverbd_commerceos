@@ -1024,6 +1024,7 @@ app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
     if (!orderId) return res.status(400).json({ error: "Order ID is required" });
 
     const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
     const cfg = await getSettings(["steadfast_api_key", "steadfast_secret_key"]);
     const apiKey = cfg["steadfast_api_key"];
     const secretKey = cfg["steadfast_secret_key"];
