@@ -598,7 +598,8 @@ app.get("/api/orders", async (req, res) => {
   try {
     const token = getToken(req);
     const { user } = await getUser(token);
-    console.log(`[Orders] user=${user?.id || 'null'}`);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    console.log(`[Orders] user=${user.id}`);
 
     const supabase = getServiceSupabase();
     const { data: allData, error } = await supabase
