@@ -541,15 +541,12 @@ app.get("/api/analytics", async (req, res) => {
     // scale it to the period revenue.  We also return coverage metadata so
     // the frontend can show how complete the estimate is.
     let totalCog = 0;
-    let cogCoverage = { set: 0, total: 0 }; // products with cog set vs total
+    let cogCoverage = { set: 0, total: 0 };
     try {
-      const { data: cogRow } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "products_catalog")
-        .single();
-      if (cogRow?.value) {
-        const prods = JSON.parse(cogRow.value);
+      const { data: prods } = await supabase
+        .from("products")
+        .select("selling_price, cog");
+      if (prods && prods.length > 0) {
         let sumCog = 0;
         let sumSelling = 0;
         cogCoverage.total = prods.length;
