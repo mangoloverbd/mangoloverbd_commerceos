@@ -49,18 +49,18 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
             {sections.map((section) => (
                 <SidebarGroup
                     key={section.label || section.routes[0]?.id}
-                    className="py-1 px-2"
+                    className="px-2 py-1"
                 >
                     {/* Section label */}
                     {!isCollapsed && section.label && (
-                        <SidebarGroupLabel className="text-[9px] font-semibold tracking-widest text-sidebar-foreground/35 uppercase px-2 py-1 h-auto mb-0.5">
+                        <SidebarGroupLabel className="mb-1 h-auto px-2 py-1 text-[14px] font-medium tracking-normal text-[#9a9a9a]">
                             {section.label}
                         </SidebarGroupLabel>
                     )}
 
                     {isCollapsed && section.label && (
                         <div className="flex justify-center py-1 mb-0.5">
-                            <div className="h-px w-4 bg-sidebar-border rounded-full" />
+                            <div className="h-px w-4 rounded-full bg-black/10" />
                         </div>
                     )}
 
@@ -78,10 +78,10 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 asChild
                                                 tooltip={route.title}
                                                 className={cn(
-                                                    "h-8 w-8 rounded-lg flex items-center justify-center mx-auto transition-all",
+                                                    "mx-auto flex h-9 w-9 items-center justify-center rounded-xl transition-all",
                                                     isActive
-                                                        ? "bg-sidebar-accent text-sidebar-foreground shadow-sm"
-                                                        : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+                                                        ? "bg-black/8 text-[#222]"
+                                                        : "text-[#6f6f6f] hover:bg-black/5 hover:text-[#222]"
                                                 )}
                                             >
                                                 <Link to={route.link} className="flex items-center justify-center w-full h-full">
@@ -107,24 +107,24 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                         <SidebarMenuButton
                                                             tooltip={route.title}
                                                             className={cn(
-                                                                "h-8 rounded-lg px-2.5 gap-2.5 transition-all text-[12px]",
+                                                                "h-10 rounded-lg px-3 gap-3 text-[16px] transition-all",
                                                                 isActive
-                                                                    ? "bg-sidebar-accent text-sidebar-foreground font-medium shadow-sm"
-                                                                    : "text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+                                                                    ? "bg-black/7 text-[#222] font-semibold"
+                                                                    : "text-[#5f5f5f] hover:bg-black/5 hover:text-[#222]"
                                                             )}
                                                         >
                                                             <span className={cn(
                                                                 "shrink-0 transition-colors",
-                                                                isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/50"
+                                                                isActive ? "text-[#222]" : "text-[#777]"
                                                             )}>
                                                                 {route.icon}
                                                             </span>
                                                             <span className="font-medium">{route.title}</span>
-                                                            <ChevronRight className="ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                                            <ChevronRight className="ml-auto h-3.5 w-3.5 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                                         </SidebarMenuButton>
                                                     </CollapsibleTrigger>
                                                     <CollapsibleContent>
-                                                        <SidebarMenuSub className="ml-6 mt-0.5 border-l border-sidebar-border pl-2 gap-0.5">
+                                                        <SidebarMenuSub className="ml-7 mt-1 gap-0.5 border-l border-black/10 pl-2">
                                                             {route.subs?.map((sub) => {
                                                                 const subActive = location.pathname === sub.link;
                                                                 return (
@@ -132,10 +132,10 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                         <SidebarMenuSubButton
                                                                             asChild
                                                                             className={cn(
-                                                                                "h-7 rounded-md text-[11px] transition-all",
+                                                                                "h-8 rounded-md text-[13px] transition-all",
                                                                                 subActive
-                                                                                    ? "bg-sidebar-accent text-sidebar-foreground font-medium"
-                                                                                    : "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                                                                                    ? "bg-black/7 text-[#222] font-medium"
+                                                                                    : "text-[#666] hover:bg-black/5 hover:text-[#222]"
                                                                             )}
                                                                         >
                                                                             <Link to={sub.link} className="flex items-center gap-2">
@@ -156,16 +156,16 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     asChild
                                                     tooltip={route.title}
                                                     className={cn(
-                                                        "h-8 rounded-lg px-2.5 gap-2.5 transition-all text-[12px]",
+                                                        "h-10 rounded-lg px-3 gap-3 text-[16px] transition-all",
                                                         isActive
-                                                            ? "bg-sidebar-accent text-sidebar-foreground font-medium shadow-sm"
-                                                            : "text-sidebar-foreground/65 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+                                                            ? "bg-black/7 text-[#222] font-semibold"
+                                                            : "text-[#5f5f5f] hover:bg-black/5 hover:text-[#222]"
                                                     )}
                                                 >
                                                     <Link to={route.link} className="flex items-center gap-2.5">
                                                         <span className={cn(
                                                             "shrink-0 transition-colors",
-                                                            isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/50"
+                                                            isActive ? "text-[#222]" : "text-[#777]"
                                                         )}>
                                                             {route.icon}
                                                         </span>

@@ -375,10 +375,10 @@ export default function Dashboard() {
   // ── Loading state ─────────────────────────────────────────────────────────
   if (autoSyncing) {
     return (
-      <div className="space-y-0">
+      <div className="space-y-6 p-6 lg:p-8">
         {isAdmin && (
-          <div className="border-b border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-6 border-b border-border h-[41px]">
+          <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]">
+            <div className="flex h-[48px] items-center justify-between border-b border-black/10 px-6">
               <div className="h-3 w-24 rounded bg-muted animate-pulse" />
               <div className="h-7 w-36 rounded-lg bg-muted animate-pulse" />
             </div>
@@ -392,8 +392,8 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-        <div className="bg-card overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+        <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]">
+          <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
             <div className="h-3 w-28 rounded bg-muted animate-pulse" />
             <div className="flex gap-2">
               <div className="h-8 w-44 rounded-lg bg-muted animate-pulse" />
@@ -425,7 +425,7 @@ export default function Dashboard() {
     : null;
 
   return (
-    <div className="space-y-0">
+    <div className="space-y-6 p-6 lg:p-8">
 
       {/* ── P&L Panel ───────────────────────────────────────────────────── */}
       {isAdmin && (
@@ -433,13 +433,13 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="border-b border-border bg-card overflow-hidden"
+          className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 border-b border-border h-[41px]">
+          <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
             <div className="flex items-center gap-2.5">
               <ChartBar size={13} weight="duotone" className="text-muted-foreground" />
-              <span className="text-[11px] font-semibold tracking-wide text-foreground">P&L Overview</span>
+              <span className="text-[15px] font-semibold tracking-normal text-foreground">P&L Overview</span>
             </div>
             <div className="flex items-center gap-2">
               {!analytics?.fbConfigured && !analyticsLoading && (
@@ -455,7 +455,7 @@ export default function Dashboard() {
               {analytics?.fbError && (
                 <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
               )}
-              <div className="w-px h-4 bg-border" />
+              <div className="w-px h-4 bg-black/10" />
               <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
               <button
                 onClick={() => fetchAnalytics(dateRange)}
@@ -472,7 +472,7 @@ export default function Dashboard() {
           </div>
 
           {/* Stat cells */}
-          <div className="flex divide-x divide-border">
+          <div className="flex divide-x divide-black/10">
             <StatCard
               label="Revenue"
               icon={<ShoppingBag size={14} weight="duotone" />}
@@ -563,14 +563,14 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
-        className="bg-card overflow-hidden"
+        className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]"
       >
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-border">
+        <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
           <div className="flex items-center gap-2.5">
-            <span className="text-[11px] font-semibold tracking-wide text-foreground">Order Registry</span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="text-[11px] text-muted-foreground tabular-nums">
+            <span className="text-[15px] font-semibold tracking-normal text-foreground">Order Registry</span>
+            <div className="w-px h-3.5 bg-black/10" />
+            <span className="text-[13px] text-muted-foreground tabular-nums">
               {loading ? "—" : `${filteredOrders.length} orders`}
             </span>
           </div>
@@ -582,17 +582,17 @@ export default function Dashboard() {
                 placeholder="Search orders…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 pl-8 w-48 text-xs rounded-lg"
+                className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
                 data-testid="input-search-orders"
               />
             </div>
 
-            <div className="w-px h-4 bg-border" />
+            <div className="w-px h-4 bg-black/10" />
 
             <button
               onClick={syncOrders}
               disabled={syncing || checkingFraud || autoSyncing}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium text-foreground/70 hover:text-foreground border border-border hover:border-foreground/30 hover:bg-muted/50 transition-all disabled:opacity-30"
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-black/[0.035] px-3 text-sm font-medium text-foreground/70 transition-all hover:border-black/20 hover:bg-black/[0.06] hover:text-foreground disabled:opacity-30"
               data-testid="button-sync-orders"
             >
               {syncing ? <BarsSpinner size={12} /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -602,7 +602,7 @@ export default function Dashboard() {
             <button
               onClick={checkFraud}
               disabled={checkingFraud || syncing}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium text-foreground/70 hover:text-foreground border border-border hover:border-foreground/30 hover:bg-muted/50 transition-all disabled:opacity-30"
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-black/[0.035] px-3 text-sm font-medium text-foreground/70 transition-all hover:border-black/20 hover:bg-black/[0.06] hover:text-foreground disabled:opacity-30"
               data-testid="button-check-fraud"
             >
               {checkingFraud ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
