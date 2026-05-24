@@ -70,7 +70,7 @@ export function LiquidMetalButton({
           position: absolute !important;
           top: 0 !important;
           left: 0 !important;
-          border-radius: 100px !important;
+          border-radius: 6px !important;
         }
         @keyframes ripple-animation {
           0% {
@@ -255,7 +255,7 @@ export function LiquidMetalButton({
                 width: innerWidth,
                 height: `${dimensions.innerHeight}px`,
                 margin: "2px",
-                borderRadius: "100px",
+                borderRadius: "6px",
                 background: "linear-gradient(180deg, #202020 0%, #000000 100%)",
                 boxShadow: isPressed
                   ? "inset 0px 2px 4px rgba(0, 0, 0, 0.4), inset 0px 1px 2px rgba(0, 0, 0, 0.3)"
@@ -286,7 +286,7 @@ export function LiquidMetalButton({
               style={{
                 height: `${dimensions.height}px`,
                 width,
-                borderRadius: "100px",
+                borderRadius: "6px",
                 boxShadow: isPressed
                   ? "0px 0px 0px 1px rgba(0, 0, 0, 0.5), 0px 1px 2px 0px rgba(0, 0, 0, 0.3)"
                   : isHovered
@@ -301,7 +301,7 @@ export function LiquidMetalButton({
                 ref={shaderRef}
                 className="shader-container-exploded"
                 style={{
-                  borderRadius: "100px",
+                  borderRadius: "6px",
                   overflow: "hidden",
                   position: "relative",
                   width: shaderWidth,
@@ -338,7 +338,7 @@ export function LiquidMetalButton({
               transition:
                 "all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.4s ease, height 0.4s ease",
               overflow: "hidden",
-              borderRadius: "100px",
+              borderRadius: "6px",
             }}
             aria-label={label}
           >
