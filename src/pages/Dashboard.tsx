@@ -390,47 +390,8 @@ export default function Dashboard() {
     finally { setAnalyticsLoading(false); }
   }, []);
 
-  useEffect(() => {
-    setOrders([]);
-    setAnalytics(null);
-    setLoading(true);
-    setAnalyticsLoading(true);
-  }, [user?.id]);
-
-  const handleDateRangeChange = useCallback((range: DateRange | null) => {
-    setDateRange(range);
-    fetchAnalytics(range);
-  }, [fetchAnalytics]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 200);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    if (!user) return;
-    fetchAnalytics(todayRange);
-  }, [fetchAnalytics, todayRange, user]);
-
-  useEffect(() => {
-    if (!user) return;
-    const runAutoSync = async () => {
-      setAutoSyncing(true);
-      try {
-        await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
-      } catch { /* ignore */ }
-      finally {
-        await fetchOrders();
-        fetchAnalytics(todayRange);
-        setAutoSyncing(false);
-      }
-    };
-    runAutoSync();
-    const intervalId = setInterval(() => fetchOrders(), 30000);
-    return () => clearInterval(intervalId);
-  }, [user?.id]);
-
-  const fetchOrders = async () => {
+  // Hoisted to useCallback so effects can reference it without stale closures
+  const fetchOrders = useCallback(async () => {
     try {
       const res = await apiFetch("/api/orders");
       if (!res.ok) throw new Error("Failed to load orders");
@@ -449,7 +410,47 @@ export default function Dashboard() {
         </div>
       ));
     } finally { setLoading(false); }
-  };
+  }, []);
+
+  // Reset state when the logged-in user changes
+  useEffect(() => {
+    setOrders([]);
+    setAnalytics(null);
+    setLoading(true);
+    setAnalyticsLoading(true);
+  }, [user?.id]);
+
+  const handleDateRangeChange = useCallback((range: DateRange | null) => {
+    setDateRange(range);
+    fetchAnalytics(range);
+  }, [fetchAnalytics]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Auto-sync on mount, then poll orders every 30 s.
+  // fetchAnalytics is called once here after the initial sync — NOT on every
+  // token refresh. Depend on user?.id (primitive) not user (object) so this
+  // only re-runs when the actual user changes, not on every JWT renewal.
+  useEffect(() => {
+    if (!user?.id) return;
+    const runAutoSync = async () => {
+      setAutoSyncing(true);
+      try {
+        await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
+      } catch { /* ignore */ }
+      finally {
+        await fetchOrders();
+        fetchAnalytics(todayRange);
+        setAutoSyncing(false);
+      }
+    };
+    runAutoSync();
+    const intervalId = setInterval(() => fetchOrders(), 30000);
+    return () => clearInterval(intervalId);
+  }, [user?.id, fetchOrders, fetchAnalytics, todayRange]);
 
   const syncOrders = async () => {
     setSyncing(true);
