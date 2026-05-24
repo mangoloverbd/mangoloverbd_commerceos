@@ -44,6 +44,22 @@ function cleanAddress(text: string): string {
     .replace(/,$/, "");
 }
 
+/** jsPDF built-in fonts only support a narrow character set. Strip symbols that render as mojibake. */
+function cleanPdfText(text: string | null | undefined, fallback = ""): string {
+  const cleaned = (text || fallback)
+    .normalize("NFKC")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/[•·]/g, "-")
+    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "")
+    .replace(/[\u200D\uFE0E\uFE0F]/g, "")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || fallback;
+}
+
 /** Convert SVG data URI to PNG data URL via canvas */
 function svgToPngDataUrl(svgDataUri: string, width: number, height: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -269,7 +285,7 @@ const buildInvoicePdf = async (orders: Order[]) => {
     doc.setFont("helvetica", "normal");
     doc.text("\u00B7", margin, y); // bullet
     doc.setFont("helvetica", "normal");
-    doc.text(order.customer_name || "Customer", margin + 3, y);
+    doc.text(cleanPdfText(order.customer_name, "Customer"), margin + 3, y);
     y += 3.5;
 
     // Phone
@@ -282,7 +298,7 @@ const buildInvoicePdf = async (orders: Order[]) => {
     // Address
     if (order.address) {
       doc.text("\u00B7", margin, y);
-      const addressLines = doc.splitTextToSize(cleanAddress(order.address), contentWidth - 5);
+      const addressLines = doc.splitTextToSize(cleanPdfText(cleanAddress(order.address)), contentWidth - 5);
       doc.text(addressLines, margin + 3, y);
       y += addressLines.length * 3.5;
     }
@@ -322,17 +338,19 @@ const buildInvoicePdf = async (orders: Order[]) => {
 
     if (lines.length <= 1) {
       // Single product
-      const productName = order.product || "Item";
+      const parsed = parseInlineQty(order.product || "");
+      const productName = cleanPdfText(parsed ? parsed.name : order.product, "Item");
+      const itemQty = parsed ? parsed.qty : fallbackQty;
       const wrapped = doc.splitTextToSize(productName, 38);
       doc.text(wrapped, col1X, y);
-      doc.text(String(fallbackQty), col2X + 2, y);
+      doc.text(String(itemQty), col2X + 2, y);
       doc.text(subtotal.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), pageWidth - margin, y, { align: "right" });
       y += wrapped.length * 3.5 + 2;
     } else {
       // Multiple products – each on its own row
       lines.forEach((line) => {
         const parsed = parseInlineQty(line);
-        const itemName = parsed ? parsed.name : line;
+        const itemName = cleanPdfText(parsed ? parsed.name : line, "Item");
         const itemQty = parsed ? parsed.qty : 1;
 
         const wrapped = doc.splitTextToSize(itemName, 38);
