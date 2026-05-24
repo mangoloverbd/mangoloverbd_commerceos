@@ -189,11 +189,11 @@ const buildInvoicePdf = async (orders: Order[]) => {
       value.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const muted = () => doc.setTextColor(128, 128, 128);
     const ink = () => doc.setTextColor(28, 28, 30);
-    const drawLabel = (label: string, x: number, yy: number) => {
+    const drawLabel = (label: string, x: number, yy: number, align: "left" | "right" | "center" = "left") => {
       muted();
       doc.setFont("helvetica", "bold");
       doc.setFontSize(3.9);
-      doc.text(label.toUpperCase(), x, yy);
+      doc.text(label.toUpperCase(), x, yy, { align });
       ink();
     };
     const clampLines = (linesToClamp: string[], max: number) => {
@@ -313,11 +313,11 @@ const buildInvoicePdf = async (orders: Order[]) => {
           };
         });
 
-    const rowLineSets = productRows.map((row) => clampLines(doc.splitTextToSize(row.name, 43), 2));
+    const rowLineSets = productRows.map((row) => clampLines(doc.splitTextToSize(row.name, 40), 2));
 
     drawLabel("Product", margin, y);
-    drawLabel("Qty", margin + 47.5, y);
-    drawLabel("Price", pageWidth - margin, y);
+    drawLabel("Qty", margin + 48.5, y, "center");
+    drawLabel("Price", pageWidth - margin, y, "right");
     y += 4;
     doc.setDrawColor(232, 232, 232);
     doc.line(margin, y - 1.7, pageWidth - margin, y - 1.7);
@@ -331,7 +331,7 @@ const buildInvoicePdf = async (orders: Order[]) => {
       ink();
       doc.text(rowLines, margin, rowY);
       doc.setFont("helvetica", "bold");
-      doc.text(String(row.qty), margin + 49, rowY, { align: "center" });
+      doc.text(String(row.qty), margin + 48.5, rowY, { align: "center" });
       if (row.price) doc.text(row.price, pageWidth - margin, rowY, { align: "right" });
       rowY += Math.max(5.5, rowLines.length * 3.2 + 1.8);
     });
