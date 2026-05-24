@@ -1287,26 +1287,47 @@ app.post("/api/order-chat", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: rawOrders, error } = await applyOrgScope(
-      supabase
-        .from("orders")
-        .select("*"),
-      orgId
-    )
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) throw error;
+
+    // Fetch all data in parallel
+    const [
+      { data: rawOrders },
+      { data: rawProductsBase },
+      { data: rawInboxOrders },
+      orgSettings,
+    ] = await Promise.all([
+      applyOrgScope(supabase.from("orders").select("*"), orgId)
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabase.from("products").select("*").eq("org_id", orgId),
+      supabase.from("social_inbox_orders").select("*").eq("org_id", orgId)
+        .order("created_at", { ascending: false }).limit(200),
+      getOrgSettings(orgId, ["org_name", "shopify_store_url"]),
+    ]);
+
+    // Merge stock from app_settings into products
+    const baseProducts = rawProductsBase || [];
+    const stockMap = baseProducts.length > 0
+      ? await getProductStockMap(orgId, baseProducts.map((p) => p.id))
+      : {};
+    const rawProducts = baseProducts.map((p) => ({ ...p, stock_quantity: stockMap[p.id] ?? 0 }));
 
     const orders = rawOrders || [];
-    const pendingOrders = orders.filter((o) => o.status === "pending");
-    const confirmedOrders = orders.filter((o) => o.status === "confirmed");
-    const cancelledOrders = orders.filter((o) => o.status === "cancelled");
-    const sentToCourier = orders.filter((o) => o.sent_to_courier);
+    const products = rawProducts || [];
+    const inboxOrders = rawInboxOrders || [];
+
+    // Order stats
+    const pendingOrders    = orders.filter((o) => o.status === "pending");
+    const confirmedOrders  = orders.filter((o) => o.status === "confirmed");
+    const cancelledOrders  = orders.filter((o) => o.status === "cancelled");
+    const sentToCourier    = orders.filter((o) => o.sent_to_courier);
     const notSentToCourier = orders.filter((o) => !o.sent_to_courier);
-    const withNotes = orders.filter((o) => o.notes);
-    const fraudChecked = orders.filter((o) => o.fraud_checked);
-    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
+    const withNotes        = orders.filter((o) => o.notes);
+    const fraudChecked     = orders.filter((o) => o.fraud_checked);
+    const totalRevenue        = orders.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
     const totalDeliveryCharges = orders.reduce((sum, o) => sum + (parseFloat(o.delivery_rate || 0) || 0), 0);
+    const totalCOG = products.reduce((sum, p) => sum + (parseFloat(p.cog || 0) || 0), 0);
+    const totalProductValue = products.reduce((sum, p) => sum + (parseFloat(p.selling_price || 0) || 0), 0);
+
     const orderDetails = orders.map((o) => ({
       "#": o.order_number,
       c: o.customer_name,
@@ -1327,7 +1348,29 @@ app.post("/api/order-chat", async (req, res) => {
       dt: o.created_at?.slice(0, 10),
     }));
 
-    const systemPrompt = `You are an intelligent order management assistant for a Bangladeshi e-commerce business. Answer using this order context.
+    const productDetails = products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.selling_price,
+      cog: p.cog,
+      stock: p.stock_quantity ?? null,
+      url: p.url,
+    }));
+
+    const inboxOrderDetails = inboxOrders.map((o) => ({
+      "#": o.order_number,
+      c: o.customer_name,
+      ph: o.phone,
+      addr: o.address,
+      p: o.product,
+      qty: o.quantity,
+      price: o.price,
+      st: o.status,
+      src: o.source,
+      dt: o.created_at?.slice(0, 10),
+    }));
+
+    const systemPrompt = `You are an intelligent business assistant for a Bangladeshi e-commerce business called "${orgSettings.org_name || "this business"}". You have full access to all business data below. Answer any question about orders, products, stock, revenue, inbox orders, analytics, or operations.
 
 Rules:
 - Never use markdown tables.
@@ -1335,14 +1378,32 @@ Rules:
 - Use compact numbered lists for orders: "1. #OrderNum (Customer): detail"
 - Use bold for key numbers.
 - Use ৳ for currency.
+- If asked about stock, reference the products data.
+- If asked about social/inbox orders, reference the inbox orders data.
 
-Summary:
-Total: ${orders.length} | Pending: ${pendingOrders.length} | Confirmed: ${confirmedOrders.length} | Cancelled: ${cancelledOrders.length} | Sent to courier: ${sentToCourier.length} | Not sent: ${notSentToCourier.length} | With notes: ${withNotes.length} | Fraud checked: ${fraudChecked.length} | Revenue: ৳${totalRevenue} | Delivery: ৳${totalDeliveryCharges}
+=== BUSINESS SUMMARY ===
+Org: ${orgSettings.org_name || "N/A"} | Store: ${orgSettings.shopify_store_url || "N/A"}
 
-Field key: #=order_number, c=customer, ph=phone, addr=address, p=product, qty=quantity, price=price, dlv=delivery_rate, st=status, fs=fulfillment_status, sent=sent_to_courier(1/0), cid=consignment_id, trk=tracking_code, cs=courier_status, fc=fraud_checked(1/0), note=notes, dt=date
+=== ORDERS SUMMARY ===
+Total: ${orders.length} | Pending: ${pendingOrders.length} | Confirmed: ${confirmedOrders.length} | Cancelled: ${cancelledOrders.length} | Sent to courier: ${sentToCourier.length} | Not sent: ${notSentToCourier.length} | With notes: ${withNotes.length} | Fraud checked: ${fraudChecked.length}
+Revenue: ৳${totalRevenue.toFixed(2)} | Delivery charges: ৳${totalDeliveryCharges.toFixed(2)} | Net (excl. COG): ৳${(totalRevenue - totalDeliveryCharges).toFixed(2)}
 
-Orders:
-${JSON.stringify(orderDetails).slice(0, 60000)}`;
+Order field key: #=order_number, c=customer, ph=phone, addr=address, p=product, qty=quantity, price=price, dlv=delivery_rate, st=status, fs=fulfillment_status, sent=sent_to_courier(1/0), cid=consignment_id, trk=tracking_code, cs=courier_status, fc=fraud_checked(1/0), note=notes, dt=date
+
+=== ORDERS (last 500) ===
+${JSON.stringify(orderDetails).slice(0, 40000)}
+
+=== PRODUCTS & STOCK ===
+Total products: ${products.length} | Total catalog value: ৳${totalProductValue.toFixed(2)} | Total COG: ৳${totalCOG.toFixed(2)}
+Product field key: id, name, price=selling_price, cog=cost_of_goods, stock=stock_quantity(null=not tracked), url
+
+${JSON.stringify(productDetails).slice(0, 8000)}
+
+=== INBOX ORDERS (from social chats) ===
+Total: ${inboxOrders.length}
+Field key: #=order_number, c=customer, ph=phone, addr=address, p=product, qty=quantity, price=price, st=status, src=source(facebook/instagram/whatsapp), dt=date
+
+${JSON.stringify(inboxOrderDetails).slice(0, 8000)}`;
 
     const input = [
       { role: "system", content: systemPrompt },
@@ -1692,6 +1753,7 @@ app.post("/api/send-to-courier", async (req, res) => {
       tracking_code: consignment.tracking_code,
       courier_status: consignment.status,
       courier_message: "Sent to Steadfast successfully",
+      courier_name: "steadfast",
     }).eq("id", orderId).eq("org_id", orgId);
 
     const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
@@ -1756,8 +1818,9 @@ app.post("/api/send-to-pathao", async (req, res) => {
       sent_to_courier: true,
       consignment_id: consignmentId,
       tracking_code: consignmentId,
-      courier_status: "pending",
+      courier_status: "Pending",
       courier_message: "Sent to Pathao successfully",
+      courier_name: "pathao",
     }).eq("id", orderId).eq("org_id", orgId);
 
     const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
@@ -1767,414 +1830,147 @@ app.post("/api/send-to-pathao", async (req, res) => {
   }
 });
 
-app.post("/api/fetch-shopify-orders", async (req, res) => {
+// ── Pathao: refresh courier status for all active Pathao orders ───────────────
+app.post("/api/pathao/refresh-status", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
+
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const cfg = await getOrgSettings(orgId, ["shopify_admin_api_token", "shopify_store_url"]);
-    const shopifyToken = cfg["shopify_admin_api_token"];
-    const shopifyStoreUrl = cfg["shopify_store_url"];
 
-    if (!shopifyToken || !shopifyStoreUrl) {
-      return res.status(500).json({ error: "Shopify credentials not configured. Go to Settings → Integrations to add them." });
-    }
-
-    const cleanStoreUrl = shopifyStoreUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
-
-    const shopifyResponse = await fetch(
-      `https://${cleanStoreUrl}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc`,
-      {
-        headers: {
-          "X-Shopify-Access-Token": shopifyToken,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!shopifyResponse.ok) {
-      const errorText = await shopifyResponse.text();
-      return res.status(shopifyResponse.status).json({
-        error: "Failed to fetch orders from Shopify",
-        details: errorText,
-      });
-    }
-
-    const shopifyData = await shopifyResponse.json();
-    const orders = shopifyData.orders || [];
-
-    const { data: existingOrdersRaw } = await supabase
+    const finalStatuses = ["delivered", "returned", "cancelled", "rejected"];
+    const { data: pathaoOrders } = await supabase
       .from("orders")
-      .select("*")
-      .eq("org_id", orgId);
-    const existingOrders = existingOrdersRaw || [];
-
-    const existingOrdersMap = new Map(
-      existingOrders.map((o) => [o.shopify_order_id, o])
-    );
-
-    const processedOrders = [];
-
-    for (const order of orders) {
-      let phone = order.shipping_address?.phone || order.customer?.phone || "";
-
-      if (!phone && order.note_attributes) {
-        const phoneAttr = order.note_attributes.find(
-          (attr) =>
-            attr.name.toLowerCase().includes("phone") ||
-            attr.name.toLowerCase().includes("tel") ||
-            attr.name.toLowerCase().includes("mobile")
-        );
-        if (phoneAttr) phone = phoneAttr.value;
-      }
-
-      if (phone) {
-        let cleanPhoneNum = phone.replace(/\D/g, "");
-        if (cleanPhoneNum.startsWith("880")) cleanPhoneNum = cleanPhoneNum.slice(3);
-        if (cleanPhoneNum.length === 10 && cleanPhoneNum.startsWith("1"))
-          cleanPhoneNum = "0" + cleanPhoneNum;
-        phone = cleanPhoneNum;
-      }
-
-      const addr = order.shipping_address || order.customer?.default_address;
-      let addressParts = [addr?.address1, addr?.city, addr?.province, addr?.country, addr?.zip].filter(Boolean);
-
-      if (addressParts.length <= 1 && order.note_attributes) {
-        const noteAddressParts = [];
-        const addressFields = ["address", "shipping address", "delivery address", "street", "road", "house", "flat"];
-        const cityFields = ["city", "town", "district", "thana", "upazila", "area"];
-        const regionFields = ["region", "province", "state", "division"];
-        const zipFields = ["zip", "postal", "postcode", "post code"];
-
-        for (const attr of order.note_attributes) {
-          const attrNameLower = attr.name.toLowerCase();
-          const attrValue = attr.value?.trim();
-          if (!attrValue) continue;
-          if (
-            addressFields.some((f) => attrNameLower.includes(f)) ||
-            cityFields.some((f) => attrNameLower.includes(f)) ||
-            regionFields.some((f) => attrNameLower.includes(f)) ||
-            zipFields.some((f) => attrNameLower.includes(f))
-          ) {
-            noteAddressParts.push(attrValue);
-          }
-        }
-
-        if (noteAddressParts.length > 0) {
-          if (addr?.country) noteAddressParts.push(addr.country);
-          addressParts = noteAddressParts;
-        }
-      }
-
-      const address = addressParts.join(", ");
-
-      let customerName = "";
-      if (order.shipping_address?.name) customerName = order.shipping_address.name;
-      else if (order.shipping_address?.first_name || order.shipping_address?.last_name)
-        customerName = `${order.shipping_address.first_name || ""} ${order.shipping_address.last_name || ""}`.trim();
-      else if (order.billing_address?.name) customerName = order.billing_address.name;
-      else if (order.billing_address?.first_name || order.billing_address?.last_name)
-        customerName = `${order.billing_address.first_name || ""} ${order.billing_address.last_name || ""}`.trim();
-      else if (order.customer?.first_name || order.customer?.last_name)
-        customerName = `${order.customer.first_name || ""} ${order.customer.last_name || ""}`.trim();
-      else if (order.customer?.default_address?.name)
-        customerName = order.customer.default_address.name;
-
-      if (!customerName && order.note_attributes) {
-        const nameAttr = order.note_attributes.find(
-          (attr) => attr.name.toLowerCase().includes("name") && !attr.name.toLowerCase().includes("phone")
-        );
-        if (nameAttr) customerName = nameAttr.value;
-      }
-
-      const lineItems = order.line_items || [];
-      const product = lineItems.map((item) => `${item.quantity || 1}x ${item.name}`).join(", ");
-      const quantity = lineItems.reduce((acc, item) => acc + (item.quantity || 0), 0);
-
-      // total_price = what the customer actually pays (subtotal + shipping − discounts).
-      // This matches Shopify's "Total Sales" metric exactly.
-      const totalPrice = parseFloat(order.total_price) || 0;
-      const shippingPrice = parseFloat(order.total_shipping_price_set?.shop_money?.amount || "0");
-
-      const existingOrder = existingOrdersMap.get(order.id);
-
-      processedOrders.push({
-        shopify_order_id: order.id,
-        order_number: order.name || `#${order.order_number}`,
-        customer_name: customerName,
-        phone,
-        address,
-        product,
-        quantity,
-        // org_id is included directly — the column exists in the DB and PostgREST
-        // schema cache is up to date (seeded via Supabase SQL Editor migration).
-        org_id: orgId,
-        price: (order.cancelled_at || order.financial_status === 'refunded' || order.financial_status === 'voided') ? 0 : totalPrice,
-        delivery_rate: (order.cancelled_at || order.financial_status === 'refunded' || order.financial_status === 'voided') ? 0 : shippingPrice,
-        fulfillment_status: order.cancelled_at
-          ? 'cancelled'
-          : (order.financial_status === 'refunded' || order.financial_status === 'voided')
-            ? 'cancelled'
-            : (order.fulfillment_status || null),
-        fraud_checked: existingOrder?.fraud_checked || false,
-        fraud_data: existingOrder?.fraud_data || null,
-        created_at: order.created_at || new Date().toISOString(),
-      });
-
-      // Log orders that get zeroed so we can confirm the right ones are excluded
-      if (order.cancelled_at || order.financial_status === 'refunded' || order.financial_status === 'voided') {
-        console.log(`[Sync] ZEROED order ${order.name}: cancelled_at=${order.cancelled_at}, financial_status=${order.financial_status}, original total_price=${totalPrice}`);
-      }
-    }
-
-    console.log(`[Sync] processed ${processedOrders.length} orders (zeroed any cancelled/refunded ones)`);
-
-    const ordersToInsert = [];
-    for (const processedOrder of processedOrders) {
-      const existingOrder = existingOrdersMap.get(processedOrder.shopify_order_id);
-      if (existingOrder?.id) {
-        const { error: updateError } = await supabase
-          .from("orders")
-          .update(processedOrder)
-          .eq("id", existingOrder.id)
-          .eq("org_id", orgId);
-        if (updateError) {
-          console.error("[Sync] Update error:", JSON.stringify(updateError));
-          return res.status(500).json({ error: "Failed to update orders", details: updateError.message });
-        }
-      } else {
-        ordersToInsert.push(processedOrder);
-      }
-    }
-
-    if (ordersToInsert.length) {
-      const { error: insertError } = await supabase
-        .from("orders")
-        .insert(ordersToInsert);
-
-      if (insertError) {
-        console.error("[Sync] Insert error:", JSON.stringify(insertError));
-        return res.status(500).json({ error: "Failed to save orders", details: insertError.message });
-      }
-    }
-
-    res.json({ synced: processedOrders.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get("/api/social/messages/:conversationId", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: conversation, error: conversationError } = await supabase
-      .from("social_conversations")
-      .select("id")
-      .eq("id", req.params.conversationId)
+      .select("id, consignment_id, tracking_code, courier_status, status, courier_name, courier_message")
       .eq("org_id", orgId)
-      .single();
-    if (conversationError || !conversation) return res.status(404).json({ error: "Conversation not found" });
-    const { data, error } = await supabase
-      .from("social_messages")
-      .select("*")
-      .eq("conversation_id", req.params.conversationId)
-      .order("created_at", { ascending: true });
-    if (error) throw error;
-    await supabase.from("social_conversations").update({ unread_count: 0 }).eq("id", req.params.conversationId).eq("org_id", orgId);
-    res.json({ messages: data || [] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+      .eq("sent_to_courier", true);
 
-// Inbox orders
-app.get("/api/social/inbox-orders", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: allInboxOrders, error } = await supabase
-      .from("social_inbox_orders")
-      .select("*")
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("[GET inbox-orders] SELECT failed:", error.message);
-      return res.status(500).json({ error: error.message, orders: [] });
-    }
-    res.json({ orders: allInboxOrders || [] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
+    if (!pathaoOrders?.length) return res.json({ updated: 0 });
 
-app.patch("/api/social/inbox-orders/:id", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: existing, error: fetchErr } = await supabase.from("social_inbox_orders").select("id, org_id").eq("id", req.params.id).eq("org_id", orgId).single();
-    if (fetchErr || !existing) return res.status(404).json({ error: "Order not found" });
-    const allowed = ["status", "notes"];
-    const update = {};
-    for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
-    await supabase.from("social_inbox_orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
-    const { data } = await supabase.from("social_inbox_orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
-    res.json({ success: true, order: data });
-  } catch (e) { res.status(500).json({ error: "An internal error occurred" }); }
-});
-
-app.delete("/api/social/inbox-orders/:id", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: existing, error: fetchErr } = await supabase.from("social_inbox_orders").select("id, org_id").eq("id", req.params.id).eq("org_id", orgId).single();
-    if (fetchErr || !existing) return res.status(404).json({ error: "Order not found" });
-    await supabase.from("social_inbox_orders").delete().eq("id", req.params.id).eq("org_id", orgId);
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: "An internal error occurred" }); }
-});
-
-// Helper to parse phone and address from inbox order notes
-function parseInboxOrderNotes(notes) {
-  const phone = (notes || "").match(/Phone:\s*([^,\n]+)/i)?.[1]?.trim() || "";
-  const address = (notes || "").match(/Address:\s*(.+)/i)?.[1]?.trim() || "";
-  return { phone, address };
-}
-
-
-app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
-  try {
-    const { orderId } = req.body;
-    if (!orderId) return res.status(400).json({ error: "Order ID is required" });
-
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
-    const apiKey = cfg["steadfast_api_key"];
-    const secretKey = cfg["steadfast_secret_key"];
-    if (!apiKey || !secretKey) return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
-
-    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
-    if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
-    if (order.sent_to_courier) return res.status(400).json({ error: "Order already sent to courier", consignment_id: order.consignment_id });
-
-    const { phone: rawPhone, address } = parseInboxOrderNotes(order.notes);
-    const cleanedPhone = normalizeBdPhone(rawPhone);
-    if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
-      return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
-    }
-
-    const items = Array.isArray(order.items) ? order.items : [];
-    const productNote = items.map(i => `${i.quantity}x ${i.product}`).join(", ") || "N/A";
-    const invoice = `IO-${order.id.slice(-8).toUpperCase()}`;
-
-    const payload = {
-      invoice,
-      recipient_name: order.contact_name || "Customer",
-      recipient_phone: cleanedPhone,
-      recipient_address: address || "No address provided",
-      cod_amount: order.total_price || 0,
-      note: productNote,
-    };
-
-    const sfRes = await fetch("https://portal.packzy.com/api/v1/create_order", {
-      method: "POST",
-      headers: { "Api-Key": apiKey, "Secret-Key": secretKey, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // Filter to Pathao orders only (by courier_name or courier_message fallback)
+    const activeOrders = pathaoOrders.filter((o) => {
+      const isPathao = o.courier_name === "pathao" ||
+        (!o.courier_name && (o.courier_message || "").toLowerCase().includes("pathao"));
+      const hasId = o.consignment_id || o.tracking_code;
+      const notFinal = !finalStatuses.includes((o.courier_status || "").toLowerCase());
+      return isPathao && hasId && notFinal;
     });
-    const sfData = await sfRes.json();
 
-    if (sfData.status !== 200) {
-      await supabase.from("social_inbox_orders").update({ courier_message: sfData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
-      return res.status(400).json({ error: sfData.message || "Steadfast rejected the order", details: sfData });
+    if (!activeOrders.length) return res.json({ updated: 0 });
+
+    let accessToken;
+    try { accessToken = await getPathaoToken(orgId); }
+    catch { return res.json({ updated: 0, error: "Pathao not configured" }); }
+
+    let updated = 0;
+    for (const order of activeOrders) {
+      try {
+        const pollId = order.consignment_id || order.tracking_code;
+        const infoRes = await fetch(
+          `https://api-hermes.pathao.com/aladdin/api/v1/orders/${pollId}/info`,
+          { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }
+        );
+        if (!infoRes.ok) continue;
+        const info = await infoRes.json();
+        const newStatus = info?.data?.order_status || info?.data?.order_status_slug;
+        if (!newStatus) continue;
+
+        const normalizedStatus = newStatus.toLowerCase();
+        if (normalizedStatus === (order.courier_status || "").toLowerCase()) continue;
+
+        const patch = { courier_status: newStatus };
+        if (normalizedStatus === "delivered") {
+          patch.status = "confirmed";
+          patch.fulfillment_status = "delivered";
+        } else if (["returned", "return_requested", "return in transit"].some(s => normalizedStatus.includes(s))) {
+          patch.courier_status = "Returned";
+          patch.status = "cancelled";
+        }
+        await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
+        updated++;
+      } catch { /* skip */ }
     }
-
-    const consignment = sfData.consignment;
-    await supabase.from("social_inbox_orders").update({
-      sent_to_courier: true,
-      consignment_id: String(consignment.consignment_id),
-      tracking_code: consignment.tracking_code,
-      courier_status: consignment.status,
-      courier_message: "Sent to Steadfast successfully",
-    }).eq("id", orderId).eq("org_id", orgId);
-
-    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
-    return res.json({ success: true, consignment, order: updated });
+    return res.json({ updated, total: activeOrders.length });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });
 
-app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
+// ── Steadfast: refresh courier status for all active Steadfast orders ─────────
+app.post("/api/steadfast/refresh-status", async (req, res) => {
   try {
-    const { orderId } = req.body;
-    if (!orderId) return res.status(400).json({ error: "Order ID is required" });
-
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
+
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const cfg = await getOrgSettings(orgId, ["pathao_store_id"]);
-    const storeId = cfg["pathao_store_id"];
-    if (!storeId) return res.status(500).json({ error: "Pathao credentials not configured. Go to Settings → Integrations." });
 
-    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
-    if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
+    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
+    const apiKey = cfg["steadfast_api_key"];
+    const secretKey = cfg["steadfast_secret_key"];
+    if (!apiKey || !secretKey) return res.json({ updated: 0, error: "Steadfast not configured" });
 
-    const { phone: rawPhone, address } = parseInboxOrderNotes(order.notes);
-    const cleanedPhone = normalizeBdPhone(rawPhone);
-    if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
-      return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
-    }
+    const finalStatuses = ["delivered", "partial_delivered", "cancelled", "returned"];
+    const { data: sfOrders } = await supabase
+      .from("orders")
+      .select("id, consignment_id, tracking_code, courier_status, status, courier_name, courier_message")
+      .eq("org_id", orgId)
+      .eq("sent_to_courier", true);
 
-    const items = Array.isArray(order.items) ? order.items : [];
-    const productNote = items.map(i => `${i.quantity}x ${i.product}`).join(", ") || "N/A";
-    const totalQty = items.reduce((a, i) => a + (i.quantity || 1), 0) || 1;
-    const accessToken = await getPathaoToken(orgId);
+    if (!sfOrders?.length) return res.json({ updated: 0 });
 
-    const pathaoPayload = {
-      store_id: parseInt(storeId),
-      merchant_order_id: `IO-${order.id.slice(-8).toUpperCase()}`,
-      recipient_name: order.contact_name || "Customer",
-      recipient_phone: cleanedPhone,
-      recipient_address: address || "No address provided",
-      delivery_type: 48,
-      item_type: 2,
-      special_instruction: productNote,
-      item_quantity: totalQty,
-      item_weight: 0.5,
-      amount_to_collect: order.total_price || 0,
-    };
-
-    const pathaoRes = await fetch("https://api-hermes.pathao.com/aladdin/api/v1/orders", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(pathaoPayload),
+    // Filter to Steadfast orders only
+    const activeOrders = sfOrders.filter((o) => {
+      const isSteadfast = o.courier_name === "steadfast" ||
+        (!o.courier_name && (o.courier_message || "").toLowerCase().includes("steadfast"));
+      const hasId = o.consignment_id || o.tracking_code;
+      const notFinal = !finalStatuses.includes((o.courier_status || "").toLowerCase());
+      return isSteadfast && hasId && notFinal;
     });
-    const pathaoData = await pathaoRes.json();
 
-    if (!pathaoRes.ok) {
-      await supabase.from("social_inbox_orders").update({ courier_message: pathaoData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
-      return res.status(400).json({ error: pathaoData.message || "Pathao rejected the order", details: pathaoData });
+    if (!activeOrders.length) return res.json({ updated: 0 });
+
+    let updated = 0;
+    for (const order of activeOrders) {
+      try {
+        const sfPollId = order.consignment_id || order.tracking_code;
+        const statusRes = await fetch(
+          `https://portal.packzy.com/api/v1/status_by_cid/${sfPollId}`,
+          {
+            headers: {
+              "Api-Key": apiKey,
+              "Secret-Key": secretKey,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (!statusRes.ok) continue;
+        const statusData = await statusRes.json();
+        const newStatus = statusData?.delivery_status;
+        if (!newStatus) continue;
+
+        const normalizedStatus = newStatus.toLowerCase();
+        if (normalizedStatus === (order.courier_status || "").toLowerCase()) continue;
+
+        const patch = { courier_status: newStatus };
+
+        // Map Steadfast statuses to order status updates
+        if (normalizedStatus === "delivered" || normalizedStatus === "partial_delivered") {
+          patch.status = "confirmed";
+          patch.fulfillment_status = "delivered";
+        } else if (normalizedStatus === "cancelled") {
+          patch.status = "cancelled";
+        } else if (normalizedStatus.includes("return") || normalizedStatus === "partial_delivered_approval_pending") {
+          patch.courier_status = "returned";
+          patch.status = "cancelled";
+        }
+
+        await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
+        updated++;
+      } catch { /* skip */ }
     }
-
-    const consignment = pathaoData.data;
-    const consignmentId = consignment?.consignment_id ? String(consignment.consignment_id) : null;
-    await supabase.from("social_inbox_orders").update({
-      sent_to_courier: true,
-      consignment_id: consignmentId,
-      tracking_code: consignmentId,
-      courier_status: "pending",
-      courier_message: "Sent to Pathao successfully",
-    }).eq("id", orderId).eq("org_id", orgId);
-
-    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
-    return res.json({ success: true, consignment, order: updated });
+    return res.json({ updated, total: activeOrders.length });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -2679,91 +2475,105 @@ app.post("/api/products/crawl", async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: "url required" });
 
-    // Fetch the page
-    const pageRes = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Seraphine/1.0)" },
-      signal: AbortSignal.timeout(15000),
+    const firecrawlKey = process.env.FIRECRAWL_API_KEY;
+    if (!firecrawlKey) return res.status(500).json({ error: "FIRECRAWL_API_KEY not configured in .env" });
+
+    const { default: FirecrawlApp } = await import("@mendable/firecrawl-js");
+    const firecrawl = new FirecrawlApp({ apiKey: firecrawlKey });
+
+    // Step 1: scrape the page for clean markdown
+    const scrapeResult = await firecrawl.scrapeUrl(url, {
+      formats: ["markdown"],
     });
-    if (!pageRes.ok) return res.status(400).json({ error: `Could not fetch page: HTTP ${pageRes.status}` });
-    const html = await pageRes.text();
 
-    // Strip HTML tags to get plain text
-    const text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    // Extract product names and prices using common patterns
-    // Look for price patterns like ৳1,200 / BDT 1200 / Tk. 1200 / 1,200৳ / 1200.00
-    const pricePattern = /(?:৳|BDT|Tk\.?|TK\.?)\s*([\d,]+(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:৳|BDT|Tk\.?|TK)/g;
-    const prices = [];
-    let m;
-    while ((m = pricePattern.exec(text)) !== null) {
-      const raw = (m[1] || m[2]).replace(/,/g, "");
-      const val = parseFloat(raw);
-      if (val > 0 && val < 1000000) prices.push(val);
+    if (!scrapeResult.markdown) {
+      return res.status(500).json({ error: "Firecrawl could not retrieve page content. Check the URL is publicly accessible." });
     }
 
-    // Try to extract structured product data from JSON-LD schema
-    const jsonLdMatches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
-    const products = [];
+    let products = [];
 
-    for (const block of jsonLdMatches) {
-      try {
-        const json = JSON.parse(block.replace(/<script[^>]*>|<\/script>/gi, ""));
-        const items = Array.isArray(json) ? json : [json];
-        for (const item of items) {
-          if (item["@type"] === "Product" && item.name) {
-            const price = item.offers?.price || item.offers?.lowPrice || null;
-            const img = item.image?.[0] || item.image || null;
-            const productUrl = item.url || item.offers?.url || null;
-            products.push({
-              name: item.name,
-              url: productUrl,
-              image_url: typeof img === "string" ? img : null,
-              selling_price: price ? parseFloat(price) : null,
-              cog: 0,
-            });
+    // Use Firecrawl extract for structured product data
+    try {
+      const extractResult = await firecrawl.scrapeUrl(url, {
+        formats: [
+          "markdown",
+          {
+            type: "json",
+            prompt: "Extract all products being sold on this page. For each product include its name, selling price as a plain number (no currency symbols), image URL, and product URL. Only include real products for sale — ignore navigation links, blog posts, categories, and page titles.",
+            schema: {
+              type: "object",
+              properties: {
+                products: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name:          { type: "string" },
+                      selling_price: { type: "number" },
+                      image_url:     { type: "string" },
+                      url:           { type: "string" },
+                    },
+                    required: ["name"],
+                  },
+                },
+              },
+            },
           }
-          // ItemList
-          if (item["@type"] === "ItemList" && Array.isArray(item.itemListElement)) {
-            for (const el of item.itemListElement) {
-              const it = el.item || el;
-              if (it.name) {
-                products.push({
-                  name: it.name,
-                  url: it.url || null,
-                  image_url: it.image || null,
-                  selling_price: it.offers?.price ? parseFloat(it.offers.price) : null,
-                  cog: 0,
-                });
-              }
-            }
-          }
-        }
-      } catch { /* skip malformed JSON-LD */ }
-    }
+        ],
+      });
 
-    // If no structured data, fall back to Open Graph / meta tags for single-product pages
-    if (products.length === 0) {
-      const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)/i)?.[1]
-        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i)?.[1];
-      const ogImage = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)/i)?.[1]
-        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i)?.[1];
-      const ogPrice = html.match(/<meta[^>]*property=["']product:price:amount["'][^>]*content=["']([^"']+)/i)?.[1]
-        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']product:price:amount["']/i)?.[1];
-
-      if (ogTitle) {
-        products.push({
-          name: ogTitle.trim(),
-          url: url,
-          image_url: ogImage || null,
-          selling_price: ogPrice ? parseFloat(ogPrice) : (prices[0] || null),
-          cog: 0,
-        });
+      const extracted = extractResult?.json?.products;
+      if (Array.isArray(extracted) && extracted.length > 0) {
+        products = extracted
+          .filter((p) => p.name && typeof p.name === "string" && p.name.trim())
+          .map((p) => ({
+            name: p.name.trim(),
+            url: p.url || url,
+            image_url: p.image_url || null,
+            selling_price: p.selling_price ? parseFloat(p.selling_price) : null,
+            cog: 0,
+          }));
       }
+    } catch { /* extract failed, fall through to GPT */ }
+
+    // GPT fallback over the clean markdown if extract found nothing
+    if (products.length === 0 && scrapeResult.markdown) {
+      try {
+        const OpenAI = (await import("openai")).default;
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const snippet = scrapeResult.markdown.slice(0, 5000);
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          temperature: 0,
+          messages: [
+            {
+              role: "system",
+              content: `You extract product listings from e-commerce page content.
+Return a JSON array. Each item: { "name": string, "selling_price": number|null, "image_url": string|null }.
+Only include real products for sale. Ignore navigation, categories, blog posts, page titles.
+If no products found, return [].
+Respond with raw JSON only — no markdown fences.`,
+            },
+            {
+              role: "user",
+              content: `Extract products from this page:\n\n${snippet}`,
+            },
+          ],
+        });
+        const raw = completion.choices[0]?.message?.content?.trim() || "[]";
+        const parsed = JSON.parse(raw.replace(/^```json\n?|```$/g, "").trim());
+        if (Array.isArray(parsed)) {
+          products = parsed
+            .filter((p) => p.name && typeof p.name === "string")
+            .map((p) => ({
+              name: p.name.trim(),
+              url: url,
+              image_url: p.image_url || null,
+              selling_price: p.selling_price ? parseFloat(p.selling_price) : null,
+              cog: 0,
+            }));
+        }
+      } catch { /* GPT fallback failed */ }
     }
 
     // Deduplicate by name
@@ -2776,7 +2586,7 @@ app.post("/api/products/crawl", async (req, res) => {
     });
 
     if (unique.length === 0) {
-      return res.json({ products: [], message: "No structured product data found. Try a product listing or detail page." });
+      return res.json({ products: [], message: "No products found on this page. Try linking directly to a product listing or product detail page." });
     }
 
     return res.json({ products: unique });
@@ -3046,14 +2856,7 @@ async function ensureAppSettingsTable() {
 // ─── Start Server ────────────────────────────────────────────────────────────
 
 if (!process.env.VERCEL) {
-  if (isDev) {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
+  if (!isDev) {
     const distPath = join(__dirname, "../dist");
     app.use(express.static(distPath));
     app.use((req, res) => {
@@ -3166,7 +2969,7 @@ async function runSQLViaREST(sql) {
     const response = await fetch(`${supabaseUrl}/rest/v1/sql`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/sql",
+        "Content-Type": "text/plain",
         "Authorization": `Bearer ${serviceKey}`,
         "apikey": serviceKey,
       },
@@ -3219,12 +3022,29 @@ async function migrateMultiTenancy() {
 }
 
 if (!process.env.VERCEL) {
-  app.listen(PORT, "0.0.0.0", async () => {
-    console.log(`Server running on port ${PORT}`);
-    await ensureAppSettingsTable();
-    await migrateInboxOrdersTable();
-    await migrateMultiTenancy();
-    await bootstrapAiProductContext();
+  import("http").then(({ createServer }) => {
+    const httpServer = createServer(app);
+
+    const startServer = async () => {
+      if (isDev) {
+        const { createServer: createViteServer } = await import("vite");
+        const vite = await createViteServer({
+          server: { middlewareMode: true, hmr: { server: httpServer } },
+          appType: "spa",
+        });
+        app.use(vite.middlewares);
+      }
+
+      httpServer.listen(PORT, "0.0.0.0", async () => {
+        console.log(`Server running on port ${PORT}`);
+        await ensureAppSettingsTable();
+        await migrateInboxOrdersTable();
+        await migrateMultiTenancy();
+        await bootstrapAiProductContext();
+      });
+    };
+
+    startServer().catch(console.error);
   });
 } else {
   // Serverless cold-start: run DB init without a TCP listener.

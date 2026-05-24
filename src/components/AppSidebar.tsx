@@ -152,7 +152,12 @@ export function AppSidebar() {
         };
 
         const sections = [product];
-        if (workspace.routes.length > 0) sections.push(workspace);
+        // Filter Intelligence routes — order-analysis is admin only
+        const filteredWorkspace = {
+            ...workspace,
+            routes: workspace.routes.filter((r) => r.id !== "order-analysis" || isAdmin),
+        };
+        if (filteredWorkspace.routes.length > 0) sections.push(filteredWorkspace);
         sections.push(socialInbox);
         sections.push(administration);
         return sections;

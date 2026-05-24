@@ -867,37 +867,63 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
   };
 
   const getCourierStatusBadge = (order: Order) => {
-    if (!order.sent_to_courier) {
-      return null;
-    }
+    if (!order.sent_to_courier) return null;
 
-    const status = order.courier_status?.toLowerCase();
-    let variant: "default" | "secondary" | "destructive" | "outline" = "secondary";
-    let className = "";
+    const status = (order.courier_status || "").toLowerCase().trim();
 
-    switch (status) {
-      case "delivered":
-        variant = "default";
-        className = "bg-success text-success-foreground";
-        break;
-      case "cancelled":
-        variant = "destructive";
-        break;
-      case "pending":
-        variant = "secondary";
-        className = "bg-warning text-warning-foreground";
-        break;
-      default:
-        variant = "outline";
-    }
+    // Stage config — each status maps to a PopButton color + label
+    const stageConfig: Record<string, { label: string; color: React.ComponentProps<typeof PopButton>["color"] }> = {
+      // Initial
+      "":                                   { label: "Tracking ID",       color: "sky" },
+      "pending":                            { label: "Pending",           color: "amber" },
+      "in_review":                          { label: "In Review",         color: "amber" },
+      // Pickup stage
+      "pickup requested":                   { label: "Pickup Requested",  color: "blue" },
+      "pickup_requested":                   { label: "Pickup Requested",  color: "blue" },
+      "processing":                         { label: "Processing",        color: "blue" },
+      "picked up":                          { label: "Picked Up",         color: "blue" },
+      "picked_up":                          { label: "Picked Up",         color: "blue" },
+      // Transit
+      "in transit":                         { label: "In Transit",        color: "indigo" },
+      "in_transit":                         { label: "In Transit",        color: "indigo" },
+      // Out for delivery — Steadfast uses various names for this
+      "dispatched":                         { label: "Out for Delivery",  color: "violet" },
+      "on_the_way":                         { label: "Out for Delivery",  color: "violet" },
+      "on the way":                         { label: "Out for Delivery",  color: "violet" },
+      "assigned to rider":                  { label: "Out for Delivery",  color: "violet" },
+      "assigned_to_rider":                  { label: "Out for Delivery",  color: "violet" },
+      "out for delivery":                   { label: "Out for Delivery",  color: "violet" },
+      "out_for_delivery":                   { label: "Out for Delivery",  color: "violet" },
+      "ready for delivery":                 { label: "Out for Delivery",  color: "violet" },
+      "ready_for_delivery":                 { label: "Out for Delivery",  color: "violet" },
+      // Hold
+      "hold":                               { label: "On Hold",           color: "orange" },
+      // Final — success
+      "delivered":                          { label: "Delivered",         color: "green" },
+      "partial_delivered":                  { label: "Part. Delivered",   color: "teal" },
+      // Final — pending approval
+      "delivered_approval_pending":         { label: "Approval Pending",  color: "cyan" },
+      "partial_delivered_approval_pending": { label: "Partial Pending",   color: "cyan" },
+      "cancelled_approval_pending":         { label: "Cancel Pending",    color: "red" },
+      // Final — negative
+      "returned":                           { label: "Returned",          color: "red" },
+      "return_requested":                   { label: "Return Requested",  color: "red" },
+      "cancelled":                          { label: "Cancelled",         color: "slate" },
+      // Unknown
+      "unknown_approval_pending":           { label: "Unknown Pending",   color: "zinc" },
+      "unknown":                            { label: "Unknown",           color: "zinc" },
+    };
+
+    const cfg = stageConfig[status] ?? { label: order.courier_status || "Tracking ID", color: "sky" as const };
 
     return (
-      <Badge
-        variant={variant}
-        className={cn("h-7 px-3 text-[9px] font-bold uppercase tracking-widest whitespace-nowrap", className)}
+      <PopButton
+        color={cfg.color}
+        size="sm"
+        className="cursor-default text-[9px] font-bold tracking-widest uppercase whitespace-nowrap w-36 justify-center"
       >
-        {order.courier_status || "Sent"}
-      </Badge>
+        {cfg.label}
+      </PopButton>
     );
   };
 
@@ -1178,10 +1204,27 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                           </PopoverContent>
                         </Popover>
                       ) : (
-                        <PopButton color="sky" size="sm" className="gap-1.5 cursor-default text-[10px] font-bold tracking-widest uppercase">
-                          <span className="opacity-70">REF</span>
-                          <span className="font-mono tracking-tight normal-case text-[11px]">{order.consignment_id}</span>
-                        </PopButton>
+                        (() => {
+                          const rawStatus = (order.courier_status || "").toLowerCase().trim();
+                          const hasRealStatus = rawStatus !== "" 
+                            && rawStatus !== "pending" 
+                            && rawStatus !== "in_review"
+                            && rawStatus !== "pickup_requested"
+                            && rawStatus !== "pickup requested";
+                          const id = order.consignment_id || order.tracking_code;
+
+                          if (!hasRealStatus) {
+                            // No update from courier yet — show the tracking ID
+                            return (
+                              <PopButton color="sky" size="sm" className="cursor-default gap-1.5 text-[10px] font-bold tracking-widest uppercase w-36 justify-center">
+                                <span className="opacity-70">ID</span>
+                                <span className="font-mono tracking-tight normal-case text-[11px]">{id || "—"}</span>
+                              </PopButton>
+                            );
+                          }
+                          // Courier has updated — show the status button
+                          return getCourierStatusBadge(order);
+                        })()
                       )}
                     </div>
                   </TableCell>

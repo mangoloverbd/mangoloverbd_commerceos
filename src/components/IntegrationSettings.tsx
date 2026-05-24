@@ -4,16 +4,75 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye, EyeOff, CheckCircle2, XCircle,
-  Store, Truck, ShieldCheck, PackageCheck, ChartNoAxesCombined, ChevronDown,
-  MessagesSquare, Camera, PhoneCall, FileHeart, Search, ArrowLeftRight, X,
+  ShieldCheck, FileHeart, ChevronRight, ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { AnimatedText } from "@/components/ui/animated-text";
+import SteadfastLogo from "@/components/SteadfastLogo";
+import PathaoLogo from "@/components/PathaoLogo";
+
+// ── Brand icons ──────────────────────────────────────────────────────────────
+
+function ShopifyIcon({ className }: { className?: string }) {
+  return (
+    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className={className} fill="currentColor">
+      <path d="M15.337 23.979l7.216-1.561s-2.604-17.613-2.625-17.73c-.018-.116-.114-.192-.211-.192s-1.929-.136-1.929-.136-1.275-1.274-1.439-1.411c-.045-.037-.075-.057-.121-.074l-.914 21.104h.023zM11.71 11.305s-.81-.424-1.774-.424c-1.447 0-1.504.906-1.504 1.141 0 1.232 3.24 1.715 3.24 4.629 0 2.295-1.44 3.76-3.406 3.76-2.354 0-3.54-1.465-3.54-1.465l.646-2.086s1.245 1.066 2.28 1.066c.675 0 .975-.545.975-.932 0-1.619-2.654-1.694-2.654-4.359-.034-2.237 1.571-4.416 4.827-4.416 1.257 0 1.875.361 1.875.361l-.945 2.715-.02.01zM11.17.83c.136 0 .271.038.405.135-.984.465-2.064 1.639-2.508 3.992-.656.213-1.293.405-1.889.578C7.697 3.75 8.951.84 11.17.84V.83zm1.235 2.949v.135c-.754.232-1.583.484-2.394.736.466-1.777 1.333-2.645 2.085-2.971.193.501.309 1.176.309 2.1zm.539-2.234c.694.074 1.141.867 1.429 1.755-.349.114-.735.231-1.158.366v-.252c0-.752-.096-1.371-.271-1.871v.002zm2.992 1.289c-.02 0-.06.021-.078.021s-.289.075-.714.21c-.423-1.233-1.176-2.37-2.508-2.37h-.115C12.135.209 11.669 0 11.265 0 8.159 0 6.675 3.877 6.21 5.846c-1.194.365-2.063.636-2.16.674-.675.213-.694.232-.772.87-.075.462-1.83 14.063-1.83 14.063L15.009 24l.927-21.166z"/>
+    </svg>
+  );
+}
+
+function MetaIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+    </svg>
+  );
+}
+
+function MessengerIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 0C5.373 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.975 12-11.111C24 4.975 18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259 6.559-6.963 3.13 3.259 5.889-3.259-6.559 6.963z"/>
+    </svg>
+  );
+}
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
+    </svg>
+  );
+}
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
+    </svg>
+  );
+}
+
+function FraudShieldIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 14l-3-3 1.41-1.41L11 12.17l4.59-4.58L17 9l-6 6z"/>
+    </svg>
+  );
+}
+
+// Steadfast & Pathao use image logos rendered on coloured backgrounds
+function SteadfastIcon({ className }: { className?: string }) {
+  return <SteadfastLogo className={className} />;
+}
+
+function PathaoIcon({ className }: { className?: string }) {
+  return <PathaoLogo className={className} />;
+}
 
 function SaveIcon({ className }: { className?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} color="currentColor" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 17.9808V12.7075C3 9.07416 3 7.25748 4.09835 6.12874C5.1967 5 6.96447 5 10.5 5C14.0355 5 15.8033 5 16.9017 6.12874C18 7.25748 18 9.07416 18 12.7075V17.9808C18 20.2867 18 21.4396 17.2755 21.8523C15.8724 22.6514 13.2405 19.9852 11.9906 19.1824C11.2657 18.7168 10.9033 18.484 10.5 18.484C10.0967 18.484 9.73425 18.7168 9.00938 19.1824C7.7595 19.9852 5.12763 22.6514 3.72454 21.8523C3 21.4396 3 20.2867 3 17.9808Z" />
       <path d="M9 2H11C15.714 2 18.0711 2 19.5355 3.46447C21 4.92893 21 7.28595 21 12V18" />
     </svg>
@@ -33,6 +92,8 @@ type SectionDef = {
   label: string;
   icon: React.ElementType;
   description: string;
+  color: string;
+  logoMode?: "wordmark"; // renders icon on white bg, full size
   fields: FieldDef[];
   testKey?: string;
 };
@@ -41,8 +102,9 @@ const SECTIONS: SectionDef[] = [
   {
     id: "shopify",
     label: "Shopify",
-    icon: Store,
+    icon: ShopifyIcon,
     description: "Sync orders from your store",
+    color: "bg-[#96BF48]",
     fields: [
       { key: "shopify_store_url", label: "Store URL", placeholder: "yourstore.myshopify.com", hint: "Domain without https://" },
       { key: "shopify_admin_api_token", label: "Admin API Token", placeholder: "shpat_xxxxxxxxxxxxxxxxxxxxxxxx", secret: true, hint: "Shopify Admin → Apps → Develop apps → API credentials" },
@@ -51,8 +113,9 @@ const SECTIONS: SectionDef[] = [
   {
     id: "facebook",
     label: "Facebook Ads",
-    icon: ChartNoAxesCombined,
+    icon: MetaIcon,
     description: "Track ad spend in P&L dashboard",
+    color: "bg-[#0866FF]",
     fields: [
       { key: "facebook_access_token", label: "Access Token", placeholder: "EAAxxxxxxxxxxxxxxx", secret: true, hint: "Long-lived token from Meta Business Suite → System Users" },
       { key: "facebook_ad_account_id", label: "Ad Account ID", placeholder: "act_123456789", hint: "From Ads Manager URL or Business Settings → Ad Accounts" },
@@ -63,19 +126,23 @@ const SECTIONS: SectionDef[] = [
   {
     id: "steadfast",
     label: "Steadfast Courier",
-    icon: Truck,
+    icon: SteadfastIcon,
     description: "Packzy delivery integration",
+    color: "bg-transparent",
+    logoMode: "wordmark",
     fields: [
       { key: "steadfast_api_key", label: "API Key", placeholder: "Your Steadfast API key", secret: true },
       { key: "steadfast_secret_key", label: "Secret Key", placeholder: "Your Steadfast secret key", secret: true },
-      { key: "courier_webhook_secret", label: "Webhook Secret", placeholder: "any-secret-string-you-choose", secret: true, hint: "Set this same value in Steadfast dashboard → Webhook settings as the secret header value" },
+      { key: "courier_webhook_secret", label: "Webhook Secret", placeholder: "any-secret-string-you-choose", secret: true, hint: "Set this same value in Steadfast dashboard → Webhook settings" },
     ],
   },
   {
     id: "pathao",
     label: "Pathao Courier",
-    icon: PackageCheck,
+    icon: PathaoIcon,
     description: "Pathao delivery integration",
+    color: "bg-transparent",
+    logoMode: "wordmark",
     fields: [
       { key: "pathao_client_id", label: "Client ID", placeholder: "Your Pathao client ID" },
       { key: "pathao_client_secret", label: "Client Secret", placeholder: "Your Pathao client secret", secret: true },
@@ -87,8 +154,9 @@ const SECTIONS: SectionDef[] = [
   {
     id: "fraudshield",
     label: "FraudShield",
-    icon: ShieldCheck,
+    icon: FraudShieldIcon,
     description: "Customer fraud detection",
+    color: "bg-[#16A34A]",
     fields: [
       { key: "fraudshield_api_key", label: "API Key", placeholder: "Your FraudShield API key", secret: true, hint: "From fraudshield.bd dashboard" },
     ],
@@ -97,29 +165,32 @@ const SECTIONS: SectionDef[] = [
   {
     id: "facebook-messenger",
     label: "Facebook Messenger",
-    icon: MessagesSquare,
+    icon: MessengerIcon,
     description: "AI bot for Facebook Messenger DMs",
+    color: "bg-[#0866FF]",
     fields: [
-      { key: "fb_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Meta Business Suite → Your Page → Settings → Page Access Token (long-lived)" },
-      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Set this in Meta App Dashboard → Webhooks. Webhook URL: https://dashboard.arclabtechnology.com/api/webhooks/facebook` },
-      { key: "fb_app_secret", label: "App Secret", placeholder: "Your Meta App Secret", secret: true, hint: "Meta Developer Portal → Your App → Settings → Basic → App Secret. Used to verify incoming webhooks." },
+      { key: "fb_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Meta Business Suite → Your Page → Settings → Page Access Token" },
+      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://dashboard.arclabtechnology.com/api/webhooks/facebook` },
+      { key: "fb_app_secret", label: "App Secret", placeholder: "Your Meta App Secret", secret: true, hint: "Meta Developer Portal → Your App → Settings → Basic → App Secret" },
     ],
   },
   {
     id: "instagram-dm",
     label: "Instagram DM",
-    icon: Camera,
+    icon: InstagramIcon,
     description: "AI bot for Instagram Direct Messages",
+    color: "bg-gradient-to-br from-[#f9ce34] via-[#ee2a7b] to-[#6228d7]",
     fields: [
-      { key: "ig_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Same Facebook Page token — Instagram is connected via Facebook. Subscribe 'messages' webhook under Instagram in Meta App Dashboard." },
+      { key: "ig_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Same Facebook Page token — Instagram is connected via Facebook." },
       { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "same-as-facebook", hint: `Uses the same webhook as Facebook: https://dashboard.arclabtechnology.com/api/webhooks/facebook` },
     ],
   },
   {
     id: "whatsapp-business",
     label: "WhatsApp Business",
-    icon: PhoneCall,
+    icon: WhatsAppIcon,
     description: "AI bot for WhatsApp Business messages",
+    color: "bg-[#25D366]",
     fields: [
       { key: "wa_phone_number_id", label: "Phone Number ID", placeholder: "123456789012345", hint: "Meta Developer Console → WhatsApp → API Setup → Phone Number ID" },
       { key: "wa_access_token", label: "Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Permanent system user token from Meta Business Suite" },
@@ -130,269 +201,52 @@ const SECTIONS: SectionDef[] = [
 
 type Settings = Record<string, string>;
 
-const INTEGRATION_CATEGORIES = ["All integrations", "Commerce", "Courier", "Marketing", "Social"] as const;
-type IntegrationCategory = typeof INTEGRATION_CATEGORIES[number];
-
-function integrationCategory(id: string): Exclude<IntegrationCategory, "All integrations"> {
-  if (id === "shopify") return "Commerce";
-  if (id === "steadfast" || id === "pathao") return "Courier";
-  if (id === "facebook" || id === "fraudshield") return "Marketing";
-  return "Social";
-}
-
-function integrationIconTone(id: string, active: boolean) {
-  const tones: Record<string, string> = {
-    shopify: "bg-emerald-100 text-emerald-700",
-    facebook: "bg-blue-100 text-blue-700",
-    steadfast: "bg-cyan-100 text-cyan-700",
-    pathao: "bg-red-100 text-red-700",
-    fraudshield: "bg-lime-100 text-lime-700",
-    "facebook-messenger": "bg-indigo-100 text-indigo-700",
-    "instagram-dm": "bg-pink-100 text-pink-700",
-    "whatsapp-business": "bg-teal-100 text-teal-700",
-  };
-  return cn(tones[id] || "bg-slate-100 text-slate-700", !active && "opacity-70 saturate-50");
-}
+const GROUPS = [
+  { label: "Commerce", ids: ["shopify"] },
+  { label: "Marketing", ids: ["facebook"] },
+  { label: "Courier", ids: ["steadfast", "pathao"] },
+  { label: "Security", ids: ["fraudshield"] },
+  { label: "Social", ids: ["facebook-messenger", "instagram-dm", "whatsapp-business"] },
+];
 
 function FieldRow({ field, value, onChange }: { field: FieldDef; value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
   return (
     <div className="space-y-1.5">
-      <label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{field.label}</label>
+      <label className="block text-[11px] font-medium text-black/50">{field.label}</label>
       <div className="relative">
         <input
           type={field.secret && !show ? "password" : "text"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
-          className="h-10 w-full rounded-xl border-0 bg-black/[0.055] px-3 pr-9 font-mono text-sm text-foreground outline-none transition-colors placeholder:font-sans placeholder:text-muted-foreground focus:ring-1 focus:ring-black/20"
+          className="h-10 w-full rounded-[10px] border border-black/[0.08] bg-black/[0.03] px-3 pr-9 font-mono text-[13px] text-black outline-none transition-colors placeholder:font-sans placeholder:text-black/25 focus:border-black/20 focus:ring-1 focus:ring-black/10"
         />
         {field.secret && (
           <button
             type="button"
             onClick={() => setShow((v) => !v)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black/30 transition-colors hover:text-black/60"
           >
             {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </button>
         )}
       </div>
-      {field.hint && <p className="text-xs leading-relaxed text-muted-foreground">{field.hint}</p>}
+      {field.hint && <p className="text-[11px] leading-relaxed text-black/35">{field.hint}</p>}
     </div>
   );
 }
 
-function IntegrationRow({
+function DetailView({
   section,
   settings,
   onSave,
+  onBack,
 }: {
   section: SectionDef;
   settings: Settings;
   onSave: (patch: Settings) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [values, setValues] = useState<Settings>({});
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<"idle" | "success" | "error">("idle");
-  const Icon = section.icon;
-
-  useEffect(() => {
-    const init: Settings = {};
-    for (const f of section.fields) init[f.key] = settings[f.key] || "";
-    setValues(init);
-  }, [settings, section.fields]);
-
-  const isDirty = section.fields.some((f) => values[f.key] !== (settings[f.key] || ""));
-  const isConfigured = section.fields.every((f) => !!(settings[f.key] || "").trim());
-
-  const handleSave = async () => {
-    setSaving(true);
-    setTestStatus("idle");
-    try {
-      await onSave(values);
-      toast.success(`${section.label} saved`);
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleTest = async () => {
-    setTesting(true);
-    setTestStatus("idle");
-    try {
-      if (section.testKey === "fraudshield") {
-        const res = await apiFetch("/api/settings/test-fraudshield", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || data?.error) { setTestStatus("error"); toast.error("Failed to connect to FraudShield. Please check your API key."); }
-        else { setTestStatus("success"); toast.success("FraudShield connected"); }
-      } else if (section.testKey === "facebook") {
-        const res = await apiFetch("/api/settings/test-facebook", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || data?.error) { setTestStatus("error"); toast.error("Failed to connect to Facebook Ads. Please check your credentials."); }
-        else { setTestStatus("success"); toast.success("Facebook Ads connected"); }
-      }
-    } catch {
-      setTestStatus("error");
-      toast.error("Could not reach the API");
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className={cn(
-      "self-start overflow-hidden rounded-2xl border border-black/10 bg-white/55",
-      open && "md:col-span-2 xl:col-span-3 2xl:col-span-4"
-    )}>
-      {/* Row header — click to expand */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex min-h-[78px] w-full items-start justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-black/[0.025]"
-        data-testid={`button-expand-${section.id}`}
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
-            <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">{section.label}</p>
-            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{section.description}</p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className={cn(
-            "rounded-full px-2.5 py-1 text-[10px] font-semibold",
-            isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground"
-          )}>
-            {isConfigured ? "Configured" : "Not set"}
-          </span>
-          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
-        </div>
-      </button>
-
-      {/* Expanded fields */}
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="fields"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-black/10 bg-white px-4 pb-5 pt-1">
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {section.fields.map((f) => (
-                  <FieldRow
-                    key={f.key}
-                    field={f}
-                    value={values[f.key] || ""}
-                    onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-5 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={handleSave}
-                  disabled={saving || !isDirty}
-                  className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-black/85 disabled:opacity-30"
-                  data-testid={`button-save-${section.id}`}
-                >
-                  {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
-                  Save
-                </button>
-
-                {(section.testKey === "fraudshield" || section.testKey === "facebook") && (
-                  <>
-                    <button
-                      onClick={handleTest}
-                      disabled={testing || !isConfigured}
-                      className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-white px-4 text-sm font-medium text-foreground transition-all hover:bg-black/[0.035] disabled:opacity-30"
-                      data-testid={`button-test-${section.id}`}
-                    >
-                      {testing ? <Spinner size="sm" />
-                        : testStatus === "success" ? <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                        : testStatus === "error" ? <XCircle className="h-3 w-3 text-red-500" />
-                        : <ShieldCheck className="h-3 w-3 text-muted-foreground" />}
-                      Test
-                    </button>
-                    {testStatus !== "idle" && (
-                      <span className={cn("text-xs font-medium", testStatus === "success" ? "text-emerald-600" : "text-red-500")}>
-                        {testStatus === "success" ? "Connected" : "Failed"}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function IntegrationListButton({
-  section,
-  settings,
-  active,
-  onClick,
-}: {
-  section: SectionDef;
-  settings: Settings;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const Icon = section.icon;
-  const isConfigured = section.fields.every((f) => !!(settings[f.key] || "").trim());
-
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex min-h-[70px] w-full items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 text-left transition-all",
-        active
-          ? "border-black/15 bg-black/[0.045]"
-          : "border-black/10 bg-white/60 hover:border-black/15 hover:bg-black/[0.025]"
-      )}
-      data-testid={`button-select-${section.id}`}
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
-          <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{section.label}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{section.description}</p>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <span className={cn(
-          "rounded-full px-2.5 py-1 text-[10px] font-semibold",
-          isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground"
-        )}>
-          {isConfigured ? "Configured" : "Not set"}
-        </span>
-        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", active && "-rotate-90")} />
-      </div>
-    </button>
-  );
-}
-
-function IntegrationDetailCard({
-  section,
-  settings,
-  onSave,
-}: {
-  section: SectionDef;
-  settings: Settings;
-  onSave: (patch: Settings) => Promise<void>;
+  onBack: () => void;
 }) {
   const [values, setValues] = useState<Settings>({});
   const [saving, setSaving] = useState(false);
@@ -427,16 +281,17 @@ function IntegrationDetailCard({
     setTesting(true);
     setTestStatus("idle");
     try {
-      if (section.testKey === "fraudshield") {
-        const res = await apiFetch("/api/settings/test-fraudshield", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || data?.error) { setTestStatus("error"); toast.error("Failed to connect to FraudShield. Please check your API key."); }
-        else { setTestStatus("success"); toast.success("FraudShield connected"); }
-      } else if (section.testKey === "facebook") {
-        const res = await apiFetch("/api/settings/test-facebook", { method: "POST" });
-        const data = await res.json();
-        if (!res.ok || data?.error) { setTestStatus("error"); toast.error("Failed to connect to Facebook Ads. Please check your credentials."); }
-        else { setTestStatus("success"); toast.success("Facebook Ads connected"); }
+      const endpoint = section.testKey === "fraudshield"
+        ? "/api/settings/test-fraudshield"
+        : "/api/settings/test-facebook";
+      const res = await apiFetch(endpoint, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data?.error) {
+        setTestStatus("error");
+        toast.error(`Failed to connect to ${section.label}.`);
+      } else {
+        setTestStatus("success");
+        toast.success(`${section.label} connected`);
       }
     } catch {
       setTestStatus("error");
@@ -448,153 +303,99 @@ function IntegrationDetailCard({
 
   return (
     <motion.div
-      key={section.id}
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18 }}
-      className="overflow-hidden rounded-2xl border border-black/10 bg-white"
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.16 }}
+      className="space-y-6"
     >
-      <div className="flex min-h-[76px] items-start justify-between gap-3 border-b border-black/10 px-4 py-3.5 pr-14">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
-            <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">{section.label}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{section.description}</p>
-          </div>
+      {/* Back + header */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-[13px] font-medium text-black/40 hover:text-black transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Integrations
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className={cn(
+          "shrink-0 flex items-center justify-center rounded-[10px] overflow-hidden",
+          section.logoMode === "wordmark" ? "h-10 w-10 bg-white border border-black/[0.08] p-1.5" : "h-10 w-10",
+          section.color
+        )}>
+          {section.logoMode === "wordmark"
+            ? <Icon className="w-full h-full object-contain" />
+            : <Icon className="h-5 w-5 text-white" strokeWidth={1.8} />}
+        </div>
+        <div>
+          <h2 className="text-[17px] font-semibold text-black tracking-tight">{section.label}</h2>
+          <p className="text-[12px] text-black/40">{section.description}</p>
         </div>
         <span className={cn(
-          "rounded-full px-2.5 py-1 text-[10px] font-semibold",
-          isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground"
+          "ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium",
+          isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-black/40"
         )}>
-          {isConfigured ? "Configured" : "Not set"}
+          {isConfigured ? "Configured" : "Not configured"}
         </span>
       </div>
 
-      <div className="px-4 pb-5 pt-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {section.fields.map((f) => (
+      {/* Fields grouped in Apple list style */}
+      <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+        {section.fields.map((f) => (
+          <div key={f.key} className="px-5 py-4">
             <FieldRow
-              key={f.key}
               field={f}
               value={values[f.key] || ""}
               onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
             />
-          ))}
-        </div>
+          </div>
+        ))}
+      </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-3">
+      {/* Actions */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={saving || !isDirty}
+          className="flex h-9 items-center gap-1.5 rounded-[10px] bg-black px-4 text-[13px] font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
+          data-testid={`button-save-${section.id}`}
+        >
+          {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
+          Save
+        </button>
+
+        {section.testKey && (
           <button
-            onClick={handleSave}
-            disabled={saving || !isDirty}
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-black/85 disabled:opacity-30"
-            data-testid={`button-save-${section.id}`}
+            onClick={handleTest}
+            disabled={testing || !isConfigured}
+            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-black/[0.08] bg-white px-4 text-[13px] font-medium text-black transition-colors hover:bg-black/[0.04] disabled:opacity-30"
+            data-testid={`button-test-${section.id}`}
           >
-            {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
-            Save
+            {testing ? <Spinner size="sm" />
+              : testStatus === "success" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              : testStatus === "error"   ? <XCircle className="h-3.5 w-3.5 text-red-500" />
+              : <ShieldCheck className="h-3.5 w-3.5 text-black/40" />}
+            Test connection
           </button>
+        )}
 
-          {(section.testKey === "fraudshield" || section.testKey === "facebook") && (
-            <>
-              <button
-                onClick={handleTest}
-                disabled={testing || !isConfigured}
-                className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-white px-4 text-sm font-medium text-foreground transition-all hover:bg-black/[0.035] disabled:opacity-30"
-                data-testid={`button-test-${section.id}`}
-              >
-                {testing ? <Spinner size="sm" />
-                  : testStatus === "success" ? <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                  : testStatus === "error" ? <XCircle className="h-3 w-3 text-red-500" />
-                  : <ShieldCheck className="h-3 w-3 text-muted-foreground" />}
-                Test
-              </button>
-              {testStatus !== "idle" && (
-                <span className={cn("text-xs font-medium", testStatus === "success" ? "text-emerald-600" : "text-red-500")}>
-                  {testStatus === "success" ? "Connected" : "Failed"}
-                </span>
-              )}
-            </>
-          )}
-        </div>
+        {testStatus !== "idle" && (
+          <span className={cn("text-[12px] font-medium", testStatus === "success" ? "text-emerald-600" : "text-red-500")}>
+            {testStatus === "success" ? "Connected" : "Failed"}
+          </span>
+        )}
       </div>
     </motion.div>
   );
 }
 
-function IntegrationMarketplaceCard({
-  section,
-  settings,
-  onConfigure,
-}: {
-  section: SectionDef;
-  settings: Settings;
-  onConfigure: () => void;
-}) {
-  const Icon = section.icon;
-  const isConfigured = section.fields.every((f) => !!(settings[f.key] || "").trim());
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      transition={{ duration: 0.18 }}
-      className="group flex min-h-[178px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white transition-colors hover:border-black/20"
-    >
-      <div className="relative flex-1 px-4 pb-4 pt-4">
-        <button
-          type="button"
-          aria-label={`Configure ${section.label}`}
-          onClick={onConfigure}
-          className="absolute right-3 top-3 rounded-lg p-1 text-muted-foreground opacity-60 transition-all hover:bg-black/[0.04] hover:text-foreground group-hover:opacity-100"
-        >
-          <ArrowLeftRight className="h-3.5 w-3.5 rotate-45" strokeWidth={1.8} />
-        </button>
-        <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
-          <Icon className="h-5 w-5" strokeWidth={1.8} />
-        </div>
-        <div className="mt-4 pr-6">
-          <p className="font-sf-display text-[15px] font-semibold leading-tight text-foreground">{section.label}</p>
-          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{section.description}</p>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between border-t border-black/10 px-4 py-3">
-        <button
-          type="button"
-          onClick={onConfigure}
-          className="inline-flex h-8 items-center gap-2 rounded-lg border border-black/10 bg-white px-3 text-xs font-semibold text-foreground transition-all hover:bg-black/[0.035]"
-          data-testid={`button-configure-${section.id}`}
-        >
-          <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.8} />
-          Configure
-        </button>
-        <span
-          className={cn(
-            "relative h-5 w-9 rounded-full transition-colors",
-            isConfigured ? "bg-[#7c3aed]" : "bg-black/15"
-          )}
-          aria-label={isConfigured ? "Configured" : "Not set"}
-        >
-          <span
-            className={cn(
-              "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
-              isConfigured ? "translate-x-[18px]" : "translate-x-0.5"
-            )}
-          />
-        </span>
-      </div>
-    </motion.div>
-  );
-}
-
-function BrandDocSection() {
+function BrandDocPanel() {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -615,7 +416,7 @@ function BrandDocSection() {
         body: JSON.stringify({ content }),
       });
       setSaved(true);
-      toast.success("Brand document saved — AI bot updated");
+      toast.success("Brand document saved");
     } catch {
       toast.error("Failed to save brand document");
     } finally {
@@ -623,100 +424,106 @@ function BrandDocSection() {
     }
   };
 
-  const hasContent = content.trim().length > 0;
-
   return (
-    <div className="mt-5 overflow-hidden rounded-2xl border border-black/10 bg-white">
-      <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
-            <FileHeart className="h-4 w-4" strokeWidth={1.8} />
-          </span>
-          <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Brand Document</AnimatedText>
-        </div>
-        <span className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
-          AI Knowledge Base
-        </span>
-      </div>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition-colors hover:bg-black/[0.025]"
-        data-testid="button-expand-brand-doc"
-      >
-        <div className="flex items-center gap-4">
-          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700", !hasContent && "opacity-70 saturate-50")}>
-            <FileHeart className="h-3.5 w-3.5" strokeWidth={1.8} />
+          <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-rose-500">
+            <FileHeart className="h-4 w-4 text-white" strokeWidth={1.8} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Brand Knowledge Doc</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Paste your brand guide, FAQs, and policies for the AI support bot.</p>
+            <p className="text-[13px] font-semibold text-black">Brand Document</p>
+            <p className="text-[11px] text-black/40">AI knowledge base for social bot responses.</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-semibold", hasContent ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground")}>
-            {hasContent ? `${content.trim().split(/\s+/).length} words` : "Not set"}
-          </span>
-          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
-        </div>
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="brand-doc"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-black/10 bg-white/55 px-6 pb-6 pt-2">
-              {loading ? (
-                <div className="mt-4 h-36 animate-pulse rounded-xl bg-black/[0.055]" />
-              ) : (
-                <>
-                  <textarea
-                    value={content}
-                    onChange={(e) => { setContent(e.target.value); setSaved(false); }}
-                    placeholder="Paste your brand guide, FAQs, product descriptions, shipping policies, return policies, brand tone of voice…&#10;&#10;The AI will use this to answer customer questions on Facebook, Instagram, and WhatsApp."
-                    className="mt-4 h-48 w-full resize-y rounded-xl border-0 bg-black/[0.055] px-3 py-2.5 font-mono text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:ring-1 focus:ring-black/20"
-                    data-testid="textarea-brand-doc"
-                  />
-                  <div className="flex items-center gap-3 mt-3">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-black/85 disabled:opacity-30"
-                      data-testid="button-save-brand-doc"
-                    >
-                      {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
-                      Save
-                    </button>
-                    {saved && (
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Saved
-                      </span>
-                    )}
-                    {content.trim() && (
-                      <span className="ml-auto text-xs text-muted-foreground">{content.trim().split(/\s+/).length} words · {content.length} chars</span>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </motion.div>
+        {content.trim() && (
+          <span className="text-[11px] text-black/30">{content.trim().split(/\s+/).length} words</span>
         )}
-      </AnimatePresence>
+      </div>
+
+      {loading ? (
+        <div className="h-36 animate-pulse rounded-[10px] bg-black/[0.04]" />
+      ) : (
+        <textarea
+          value={content}
+          onChange={(e) => { setContent(e.target.value); setSaved(false); }}
+          placeholder={"Paste your brand guide, FAQs, product descriptions, shipping policies…\n\nThe AI uses this to answer customer questions on Facebook, Instagram, and WhatsApp."}
+          className="h-44 w-full resize-y rounded-[10px] border border-black/[0.08] bg-black/[0.03] px-4 py-3 font-mono text-[13px] leading-relaxed text-black outline-none transition-colors placeholder:font-sans placeholder:text-black/25 focus:border-black/20 focus:ring-1 focus:ring-black/10"
+          data-testid="textarea-brand-doc"
+        />
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={saving || loading}
+          className="flex h-9 items-center gap-1.5 rounded-[10px] bg-black px-4 text-[13px] font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
+          data-testid="button-save-brand-doc"
+        >
+          {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
+          Save
+        </button>
+        {saved && (
+          <span className="flex items-center gap-1.5 text-[12px] font-medium text-emerald-600">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Saved
+          </span>
+        )}
+      </div>
     </div>
+  );
+}
+
+function ListRow({
+  section,
+  settings,
+  isLast,
+  onClick,
+}: {
+  section: SectionDef;
+  settings: Settings;
+  isLast: boolean;
+  onClick: () => void;
+}) {
+  const Icon = section.icon;
+  const isConfigured = section.fields.every((f) => !!(settings[f.key] || "").trim());
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-black/[0.03]",
+        !isLast && "border-b border-black/[0.06]"
+      )}
+      data-testid={`button-select-${section.id}`}
+    >
+      <div className={cn(
+        "shrink-0 flex items-center justify-center rounded-[8px] overflow-hidden",
+        section.logoMode === "wordmark" ? "h-8 w-8 bg-white border border-black/[0.08] p-1" : "h-8 w-8",
+        section.color
+      )}>
+        {section.logoMode === "wordmark"
+          ? <Icon className="w-full h-full object-contain" />
+          : <Icon className="h-4 w-4 text-white" strokeWidth={1.8} />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-black truncate">{section.label}</p>
+        <p className="text-[11px] text-black/40 truncate">{section.description}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {isConfigured && (
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        )}
+        <ChevronRight className="h-3.5 w-3.5 text-black/25" strokeWidth={2} />
+      </div>
+    </button>
   );
 }
 
 export function IntegrationSettings() {
   const [settings, setSettings] = useState<Settings>({});
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState<IntegrationCategory>("All integrations");
-  const [query, setQuery] = useState("");
-  const [selectedSection, setSelectedSection] = useState<SectionDef | null>(null);
+  const [selected, setSelected] = useState<SectionDef | null>(null);
 
   useEffect(() => {
     apiFetch("/api/settings")
@@ -737,134 +544,76 @@ export function IntegrationSettings() {
     setSettings((prev) => ({ ...prev, ...patch }));
   };
 
-  const visibleSections = SECTIONS.filter((section) => {
-    const matchesCategory = activeCategory === "All integrations" || integrationCategory(section.id) === activeCategory;
-    const needle = `${section.label} ${section.description}`.toLowerCase();
-    return matchesCategory && needle.includes(query.trim().toLowerCase());
-  });
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Spinner className="h-5 w-5 text-black/30" />
+      </div>
+    );
+  }
 
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.05 }}
-        className="overflow-hidden rounded-2xl border border-black/10 bg-white"
-      >
-        {/* Panel header */}
-        <div className="flex min-h-[66px] flex-col justify-center gap-1.5 border-b border-black/10 px-6 py-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-              <ChartNoAxesCombined className="h-4 w-4" strokeWidth={1.8} />
-            </span>
-            <div>
-              <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Integrations</AnimatedText>
-              <p className="text-xs text-muted-foreground">Connect the tools that power your commerce workflow.</p>
-            </div>
+    <AnimatePresence mode="wait">
+      {selected ? (
+        <DetailView
+          key={selected.id}
+          section={selected}
+          settings={settings}
+          onSave={handleSave}
+          onBack={() => setSelected(null)}
+        />
+      ) : (
+        <motion.div
+          key="list"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.16 }}
+          className="space-y-8"
+        >
+          <div>
+            <h2 className="text-[17px] font-semibold text-black tracking-tight">Integrations</h2>
+            <p className="mt-0.5 text-[13px] text-black/45">
+              Connect the tools that power your commerce workflow.
+              {" "}
+              <span className="text-black/30">
+                {SECTIONS.filter((s) => s.fields.every((f) => !!(settings[f.key] || "").trim())).length}/{SECTIONS.length} configured
+              </span>
+            </p>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">
-            {SECTIONS.filter((s) => s.fields.every((f) => !!(settings[f.key] || "").trim())).length}/{SECTIONS.length} configured
-          </span>
-        </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Spinner className="h-5 w-5 text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="p-4">
-            <div className="flex flex-col gap-3 border-b border-black/10 pb-3 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex gap-2 overflow-x-auto">
-                {INTEGRATION_CATEGORIES.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => setActiveCategory(category)}
-                    className={cn(
-                      "relative h-8 shrink-0 px-1 text-xs font-semibold transition-colors",
-                      activeCategory === category ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {category}
-                    {activeCategory === category && (
-                      <motion.span
-                        layoutId="integration-tab-indicator"
-                        className="absolute inset-x-0 -bottom-[13px] h-0.5 rounded-full bg-[#7c3aed]"
+          {/* Grouped integration lists */}
+          <div className="space-y-6">
+            {GROUPS.map((group) => {
+              const sections = SECTIONS.filter((s) => group.ids.includes(s.id));
+              return (
+                <div key={group.label}>
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30 px-1">{group.label}</p>
+                  <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white">
+                    {sections.map((section, i) => (
+                      <ListRow
+                        key={section.id}
+                        section={section}
+                        settings={settings}
+                        isLast={i === sections.length - 1}
+                        onClick={() => setSelected(section)}
                       />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              <div className="relative w-full lg:w-[260px]">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" strokeWidth={1.8} />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search"
-                  className="h-9 w-full rounded-xl border border-black/10 bg-white pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-black/20"
-                />
-              </div>
-            </div>
-
-            <motion.div layout className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <AnimatePresence mode="popLayout">
-                {visibleSections.map((section) => (
-                  <IntegrationMarketplaceCard
-                    key={section.id}
-                    section={section}
-                    settings={settings}
-                    onConfigure={() => setSelectedSection(section)}
-                  />
-                ))}
-              </AnimatePresence>
-            </motion.div>
-
-            {visibleSections.length === 0 && (
-              <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-black/10 text-sm text-muted-foreground">
-                No integrations found.
-              </div>
-            )}
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
-      </motion.div>
 
-      <AnimatePresence>
-        {selectedSection && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSelectedSection(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 24, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 260, damping: 24 }}
-              className="relative max-h-[86vh] w-full max-w-3xl overflow-y-auto"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={() => setSelectedSection(null)}
-                className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.06] text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground"
-                aria-label="Close integration settings"
-              >
-                <X className="h-4 w-4" strokeWidth={1.8} />
-              </button>
-              <IntegrationDetailCard
-                section={selectedSection}
-                settings={settings}
-                onSave={handleSave}
-              />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <BrandDocSection />
-    </>
+          {/* Brand doc */}
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30 px-1">AI</p>
+            <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white px-4 py-4">
+              <BrandDocPanel />
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

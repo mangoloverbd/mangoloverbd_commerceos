@@ -28,7 +28,12 @@ export function DashboardLayout() {
     const location = useLocation();
 
     useEffect(() => {
-        if (!isLoading && orgName === "" && !sessionStorage.getItem("onboarding_skipped")) {
+        if (isLoading) return;
+        // Don't redirect if we just completed onboarding (flag set in Onboarding.tsx)
+        const justDone = sessionStorage.getItem("onboarding_done");
+        const skipped = sessionStorage.getItem("onboarding_skipped");
+        if (justDone || skipped) return;
+        if (orgName === "") {
             navigate("/onboarding", { replace: true });
         }
     }, [isLoading, orgName, navigate]);

@@ -305,7 +305,7 @@ function FinanceMetric({
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
 }) {
   return (
-    <div className="group min-w-[140px] flex-1 px-5 py-2.5 transition-colors hover:bg-black/[0.025]">
+    <div className="group min-w-[160px] flex-1 px-5 py-2.5 transition-colors hover:bg-black/[0.025]">
       <AnimatePresence mode="wait">
         {loading ? (
           <motion.div
@@ -339,7 +339,7 @@ function FinanceMetric({
                 as="p"
                 per="char"
                 delay={0.18}
-                className="mt-1.5 font-sf-display text-[21px] font-semibold leading-none tracking-tight text-foreground tabular-nums"
+                className="mt-1.5 font-sf-display text-[21px] font-semibold leading-none tracking-tight text-foreground tabular-nums whitespace-nowrap"
               >
                 {value}
               </DashboardTextEffect>
@@ -348,7 +348,7 @@ function FinanceMetric({
                   as="p"
                   per="word"
                   delay={0.28}
-                  className={cn("mt-0.5 truncate text-[11px] font-medium leading-tight text-muted-foreground", metaClassName)}
+                  className={cn("mt-0.5 whitespace-nowrap text-[11px] font-medium leading-tight text-muted-foreground", metaClassName)}
                 >
                   {meta}
                 </DashboardTextEffect>
@@ -365,7 +365,7 @@ function FinanceMetric({
 export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [autoSyncing, setAutoSyncing] = useState(true);
+  const [autoSyncing, setAutoSyncing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [checkingFraud, setCheckingFraud] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -375,7 +375,7 @@ export default function Dashboard() {
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
   const { user } = useAuth();
-  const { isAdmin } = useUserRole();
+  const { isAdmin, loading: roleLoading } = useUserRole();
 
   const fetchAnalytics = useCallback(async (range?: DateRange | null) => {
     setAnalyticsLoading(true);
@@ -434,29 +434,43 @@ export default function Dashboard() {
   // The Shopify sync is throttled to once per session per user via sessionStorage
   // so HMR hot-reloads and navigation back to the dashboard don't re-trigger it.
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || roleLoading) return;
 
     const syncKey = `autosync_done_${user.id}`;
     const alreadySynced = sessionStorage.getItem(syncKey);
 
     const runAutoSync = async () => {
-      setAutoSyncing(true);
-      try {
-        if (!alreadySynced) {
+      // Load orders from DB immediately — don't wait for Shopify sync
+      fetchOrders();
+      fetchAnalytics(todayRange);
+
+      // Refresh Pathao and Steadfast courier statuses in background
+      apiFetch("/api/pathao/refresh-status", { method: "POST" })
+        .then(() => fetchOrders())
+        .catch(() => {});
+      apiFetch("/api/steadfast/refresh-status", { method: "POST" })
+        .then(() => fetchOrders())
+        .catch(() => {});
+
+      // Sync Shopify in the background without blocking the UI
+      if (!alreadySynced) {
+        setAutoSyncing(true);
+        try {
           await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
           sessionStorage.setItem(syncKey, "1");
+          // Refresh orders after sync completes
+          fetchOrders();
+          fetchAnalytics(todayRange);
+        } catch { /* ignore */ }
+        finally {
+          setAutoSyncing(false);
         }
-      } catch { /* ignore */ }
-      finally {
-        await fetchOrders();
-        fetchAnalytics(todayRange);
-        setAutoSyncing(false);
       }
     };
     runAutoSync();
     const intervalId = setInterval(() => fetchOrders(), 30000);
     return () => clearInterval(intervalId);
-  }, [user?.id, fetchOrders, fetchAnalytics, todayRange]);
+  }, [user?.id, roleLoading, fetchOrders, fetchAnalytics, todayRange]);
 
   const syncOrders = async () => {
     setSyncing(true);
@@ -464,7 +478,8 @@ export default function Dashboard() {
       const res = await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.details ? `${data.error}: ${data.details}` : (data.error || "Sync failed"));
-      await fetchOrders();
+      // Refresh orders and analytics in parallel — don't await sequentially
+      fetchOrders();
       fetchAnalytics(dateRange);
       toast.custom(() => (
         <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
@@ -579,12 +594,11 @@ export default function Dashboard() {
   }, [analytics, orders, revenueSparkline, revenueTrend]);
 
   // ── Loading state ─────────────────────────────────────────────────────────
-  if (autoSyncing) {
+  if (autoSyncing || loading) {
     return (
       <div className="relative min-h-[calc(100vh-96px)] p-1 lg:p-2">
         <div className="pointer-events-none space-y-6 opacity-45 blur-[0.5px]">
-          {isAdmin && (
-            <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
+          <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
               <div className="flex h-[48px] items-center justify-between border-b border-black/10 px-6">
                 <div className="h-3 w-24 animate-pulse rounded bg-muted" />
                 <div className="h-7 w-36 animate-pulse rounded-lg bg-muted" />
@@ -598,7 +612,6 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-          )}
           <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
             <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
               <div className="h-3 w-28 animate-pulse rounded bg-muted" />
@@ -623,7 +636,7 @@ export default function Dashboard() {
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex flex-col items-center justify-center gap-3">
             <Spinner size="lg" className="text-foreground" />
-            <span className="text-sm font-medium tracking-wide text-foreground">Syncing Orders</span>
+            <span className="text-sm font-medium tracking-wide text-foreground">{autoSyncing ? "Syncing Orders" : "Loading"}</span>
           </div>
         </div>
       </div>
@@ -638,13 +651,21 @@ export default function Dashboard() {
     <div className="space-y-6 p-1 lg:p-2">
 
       {/* ── P&L Panel ───────────────────────────────────────────────────── */}
-      {isAdmin && (
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="overflow-hidden rounded-xl border border-black/10 bg-white"
-        >
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="relative overflow-hidden rounded-xl border border-black/10 bg-white"
+      >
+        {/* Blur overlay for non-admins */}
+        {!isAdmin && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 256 256" fill="currentColor" className="text-black/20">
+              <path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z"/>
+            </svg>
+          </div>
+        )}
+        <div className={!isAdmin ? "blur-[8px] pointer-events-none select-none" : ""}>
           <div className="flex flex-col divide-y divide-black/10 lg:flex-row lg:divide-x lg:divide-y-0">
             <FinanceMetric
               label="Revenue"
@@ -722,8 +743,8 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-        </motion.div>
-      )}
+        </div>
+      </motion.div>
 
       {/* ── Orders table card ────────────────────────────────────────────── */}
       <motion.div

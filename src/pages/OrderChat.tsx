@@ -230,8 +230,8 @@ export default function OrderChat() {
 
 
   const composer = (
-    <div className="mx-auto w-full max-w-xl">
-      <div className="rounded-[18px] bg-white">
+    <div className="mx-auto w-full max-w-xl rounded-[18px] bg-white border border-black/[0.08] shadow-sm">
+      <div>
         <div className="px-4 pt-3">
           <textarea
             value={input}
@@ -371,7 +371,7 @@ export default function OrderChat() {
               initial={{ opacity: 0, y: 25 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35 }}
-              className="mt-5 grid w-full max-w-xl gap-2 sm:grid-cols-2"
+              className="mt-5 mx-auto w-full max-w-xl grid gap-2 sm:grid-cols-2"
             >
               {quickQuestions.map((q, i) => (
                 <motion.button
@@ -392,7 +392,7 @@ export default function OrderChat() {
 
       {/* Messages — scrollable, fills remaining space */}
       {messages.length > 0 && (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto pl-6 pr-24 pt-16 pb-4">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pt-16 pb-4">
           <div className="flex flex-col gap-6">
             <AnimatePresence initial={false}>
               {messages.map((msg, i) => {
@@ -407,14 +407,14 @@ export default function OrderChat() {
                     transition={{ duration: 0.3 }}
                     className={cn(
                       "flex w-full gap-3",
-                      msg.role === "user" ? "justify-end" : "justify-start max-w-3xl"
+                      msg.role === "user" ? "justify-end" : "justify-start"
                     )}
                   >
                     {msg.role === "assistant" && <AiAvatar isStreaming={streaming} />}
                     <div className={cn(
                       "rounded-xl px-4 py-2 text-sm leading-relaxed",
                       msg.role === "user"
-                        ? "bg-white text-neutral-900 border-x-2 border-t-2 border-b-4 border-neutral-300 shadow-sm"
+                        ? "max-w-[75%] bg-white text-neutral-900 border-x-2 border-t-2 border-b-4 border-neutral-300 shadow-sm"
                         : "border border-black/10 bg-black/[0.025]"
                     )}>
                       {msg.role === "assistant" ? (
@@ -437,7 +437,7 @@ export default function OrderChat() {
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex gap-3 max-w-3xl"
+                className="flex gap-3"
               >
                 <AiAvatar isStreaming />
                 <div className="rounded-xl border border-black/10 bg-black/[0.025] px-4 py-2.5">
@@ -451,7 +451,8 @@ export default function OrderChat() {
 
       {/* Input — always pinned to bottom */}
       {messages.length > 0 && (
-        <div className="shrink-0 px-6 pb-6 pt-2 bg-transparent">
+        <div className="shrink-0 pb-4 px-4 relative">
+          <div className="absolute -top-8 left-0 right-0 h-8 bg-gradient-to-t from-[#f3f3f3] to-transparent pointer-events-none" />
           {composer}
         </div>
       )}

@@ -4,12 +4,22 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Link2, Trash2, Save, PackageSearch,
+  Link2, Trash2, PackageSearch,
   Package2, TrendingUp, Globe2, RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { AnimatedText } from "@/components/ui/animated-text";
+import { useUserRole } from "@/hooks/useUserRole";
+
+function SaveIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 17.9808V12.7075C3 9.07416 3 7.25748 4.09835 6.12874C5.1967 5 6.96447 5 10.5 5C14.0355 5 15.8033 5 16.9017 6.12874C18 7.25748 18 9.07416 18 12.7075V17.9808C18 20.2867 18 21.4396 17.2755 21.8523C15.8724 22.6514 13.2405 19.9852 11.9906 19.1824C11.2657 18.7168 10.9033 18.484 10.5 18.484C10.0967 18.484 9.73425 18.7168 9.00938 19.1824C7.7595 19.9852 5.12763 22.6514 3.72454 21.8523C3 21.4396 3 20.2867 3 17.9808Z" />
+      <path d="M9 2H11C15.714 2 18.0711 2 19.5355 3.46447C21 4.92893 21 7.28595 21 12V18" />
+    </svg>
+  );
+}
 
 type Product = {
   id: string;
@@ -35,6 +45,7 @@ function margin(selling: number | null, cog: number) {
 
 export default function Products() {
   const qc = useQueryClient();
+  const { isAdmin } = useUserRole();
   const [crawlUrl, setCrawlUrl] = useState("");
   const [crawlStatus, setCrawlStatus] = useState<"idle" | "crawling" | "done" | "error">("idle");
   const [crawlMsg, setCrawlMsg] = useState("");
@@ -318,8 +329,16 @@ export default function Products() {
             ) : (
               <>
                 {/* Column labels */}
-                <div className="grid grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px] gap-0 border-b border-black/10 bg-black/[0.025]">
-                  {["", "Product", "Selling Price", "COG", "Stock", "Margin", ""].map((h, i) => (
+                <div className={cn(
+                  "grid gap-0 border-b border-black/10 bg-black/[0.025]",
+                  isAdmin
+                    ? "grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px]"
+                    : "grid-cols-[56px_minmax(220px,1fr)_130px_130px_100px_52px]"
+                )}>
+                  {(isAdmin
+                    ? ["", "Product", "Selling Price", "COG", "Stock", "Margin", ""]
+                    : ["", "Product", "Selling Price", "Stock", "Margin", ""]
+                  ).map((h, i) => (
                     <div key={i} className={cn("px-4 py-3", i === 0 ? "pl-6" : i === 6 ? "pr-4" : "")}>
                       <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{h}</span>
                     </div>
@@ -343,7 +362,12 @@ export default function Products() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.15, delay: idx * 0.02 }}
-                        className="group grid grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px] gap-0 border-b border-black/[0.06] transition-colors last:border-0 hover:bg-black/[0.025]"
+                        className={cn(
+                          "group grid gap-0 border-b border-black/[0.06] transition-colors last:border-0 hover:bg-black/[0.025]",
+                          isAdmin
+                            ? "grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px]"
+                            : "grid-cols-[56px_minmax(220px,1fr)_130px_130px_100px_52px]"
+                        )}
                       >
                         {/* Image */}
                         <div className="flex items-center py-3.5 pl-6">
@@ -391,7 +415,8 @@ export default function Products() {
                           </span>
                         </div>
 
-                        {/* COG input */}
+                        {/* COG input — admin only */}
+                        {isAdmin && (
                         <div className="flex items-center gap-2 px-4 py-3.5">
                           <div className="relative flex-1">
                             <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">৳</span>
@@ -406,6 +431,7 @@ export default function Products() {
                             />
                           </div>
                         </div>
+                        )}
 
                         {/* Stock input */}
                         <div className="flex items-center gap-2 px-4 py-3.5">
@@ -425,7 +451,7 @@ export default function Products() {
                               disabled={isSaving}
                               className="h-8 shrink-0 rounded-lg bg-black px-2.5 text-xs font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-40"
                             >
-                              {isSaving ? <Spinner size="sm" /> : <Save className="h-3 w-3" />}
+                              {isSaving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
                             </button>
                           )}
                         </div>

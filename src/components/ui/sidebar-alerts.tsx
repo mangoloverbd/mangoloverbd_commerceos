@@ -80,7 +80,12 @@ function DetailPanel({
   const isPending = card.type === "stale_pending";
   const panelWidth = 288;
   const left = anchorRect.right + 8;
-  const top = anchorRect.top;
+
+  // Clamp top so the panel never overflows the viewport
+  const viewportH = window.innerHeight;
+  const estimatedPanelH = Math.min(520, 120 + card.orders.length * 56);
+  const rawTop = anchorRect.top;
+  const top = Math.min(rawTop, Math.max(8, viewportH - estimatedPanelH - 8));
 
   return createPortal(
     <>
@@ -92,12 +97,12 @@ function DetailPanel({
         animate={{ opacity: 1, x: 0, scale: 1 }}
         exit={{ opacity: 0, x: -8, scale: 0.97 }}
         transition={{ type: "spring", stiffness: 400, damping: 32 }}
-        className="fixed z-[9999] rounded-2xl border border-black/10 bg-white/95 backdrop-blur-xl shadow-2xl shadow-black/15 overflow-hidden"
-        style={{ width: panelWidth, left, top }}
+        className="fixed z-[9999] rounded-2xl border border-black/10 bg-white/95 backdrop-blur-xl shadow-2xl shadow-black/15 flex flex-col"
+        style={{ width: panelWidth, left, top, maxHeight: viewportH - top - 8 }}
       >
         {/* Header */}
         <div className={cn(
-          "flex items-center justify-between px-4 py-3 border-b",
+          "flex shrink-0 items-center justify-between px-4 py-3 border-b rounded-t-2xl",
           isPending ? "border-amber-100 bg-amber-50" : "border-blue-100 bg-blue-50"
         )}>
           <div className="flex items-center gap-2">
@@ -127,7 +132,7 @@ function DetailPanel({
         {/* AI Insight */}
         {aiInsight?.insight && (
           <div className={cn(
-            "flex gap-2 px-4 py-2.5 border-b",
+            "shrink-0 flex gap-2 px-4 py-2.5 border-b",
             isPending ? "bg-amber-50/50 border-amber-100" : "bg-blue-50/50 border-blue-100"
           )}>
             <img src={AI_CHAT_ICON_URL} alt="" className="mt-0.5 h-3.5 w-3.5 shrink-0 object-contain" />
@@ -140,8 +145,8 @@ function DetailPanel({
           </div>
         )}
 
-        {/* Order list */}
-        <div className="max-h-72 overflow-y-auto divide-y divide-black/5">
+        {/* Order list — scrollable, fills remaining height */}
+        <div className="flex-1 overflow-y-auto divide-y divide-black/5 overscroll-contain">
           {card.orders.map((order) => (
             <div key={order.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-black/[0.02] transition-colors">
               <div className={cn(
@@ -152,7 +157,7 @@ function DetailPanel({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-semibold text-black/80 truncate">
-                  #{order.order_number}
+                  {order.order_number}
                   {order.customer_name && (
                     <span className="font-normal text-black/40"> · {order.customer_name}</span>
                   )}
