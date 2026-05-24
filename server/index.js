@@ -47,6 +47,89 @@ function getToken(req) {
   return (req.headers.authorization || "").replace("Bearer ", "").trim();
 }
 
+function adminEmails() {
+  return (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isConfiguredAdmin(user) {
+  const email = (user?.email || "").toLowerCase();
+  return !!email && adminEmails().includes(email);
+}
+
+async function findFirstAdminOrg(supabase) {
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("user_id, org_id")
+    .eq("role", "admin")
+    .not("org_id", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.org_id || data?.user_id || null;
+}
+
+async function hasAnyAdmin(supabase) {
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("user_id")
+    .eq("role", "admin")
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+async function ensureUserRole(supabase, user) {
+  const { data: existingRole, error: roleError } = await supabase
+    .from("user_roles")
+    .select("org_id, role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (roleError) throw roleError;
+
+  const configuredAdmin = isConfiguredAdmin(user);
+  if (existingRole?.role && existingRole?.org_id && !configuredAdmin) {
+    return existingRole;
+  }
+
+  if (existingRole?.role === "admin" || configuredAdmin) {
+    const { data, error } = await supabase
+      .from("user_roles")
+      .upsert({ user_id: user.id, role: "admin", org_id: user.id }, { onConflict: "user_id" })
+      .select("org_id, role")
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  if (existingRole?.role === "team_member") {
+    const orgId = existingRole.org_id || await findFirstAdminOrg(supabase);
+    if (!orgId) return existingRole;
+    const { data, error } = await supabase
+      .from("user_roles")
+      .upsert({ user_id: user.id, role: "team_member", org_id: orgId }, { onConflict: "user_id" })
+      .select("org_id, role")
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  if (!await hasAnyAdmin(supabase)) {
+    const { data, error } = await supabase
+      .from("user_roles")
+      .upsert({ user_id: user.id, role: "admin", org_id: user.id }, { onConflict: "user_id" })
+      .select("org_id, role")
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  return existingRole;
+}
+
 async function getUser(token) {
   if (!token) return { user: null };
   try {
@@ -54,13 +137,7 @@ async function getUser(token) {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) return { user: null };
 
-    const { data: existingRole, error: roleError } = await supabase
-      .from("user_roles")
-      .select("org_id, role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (roleError) throw roleError;
+    const existingRole = await ensureUserRole(supabase, user);
     if (!existingRole?.org_id || !existingRole?.role) {
       console.warn(`[Auth] user ${user.id} has no organization role; denying API access`);
       return { user: null, missingRole: true };
@@ -376,6 +453,7 @@ app.post("/api/admin/assign-role", async (req, res) => {
     // Verify the requesting user's JWT
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return res.status(401).json({ error: "Invalid token" });
+    await ensureUserRole(supabase, user);
 
     const { targetUserId, role } = req.body;
     const roleToAssign = role || "admin";
@@ -2239,6 +2317,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS public.user_roles (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  org_id UUID,
   role public.app_role NOT NULL DEFAULT 'team_member',
   UNIQUE(user_id)
 );
@@ -2927,8 +3006,25 @@ async function bootstrapAiProductContext() {
 }
 
 // ── Direct Postgres client (bypasses PostgREST entirely) ─────────────────────
-// Uses SUPABASE_DB_PASSWORD + SUPABASE_URL to build the connection string.
+// Prefer a full connection string when Railway/Supabase provides one. Otherwise
+// build a Supabase direct connection from SUPABASE_DB_PASSWORD + SUPABASE_URL.
 function getPgPool() {
+  const connectionString =
+    process.env.SUPABASE_DB_URL ||
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL;
+  if (connectionString) {
+    return new Pool({
+      connectionString,
+      ssl: connectionString.includes("sslmode=disable") ? false : { rejectUnauthorized: false },
+      max: 3,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 8000,
+    });
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL || "";
   const dbPassword = process.env.SUPABASE_DB_PASSWORD || "";
   const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];

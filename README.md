@@ -40,7 +40,22 @@ Create a `.env` file in the root with the following:
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_DB_PASSWORD=your_supabase_database_password
+ADMIN_EMAILS=owner@example.com
 ```
+
+On Railway, also set the Vite public variables so the browser bundle can sign in:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+`SUPABASE_DB_PASSWORD` lets the server run startup migrations directly against
+Supabase Postgres. You can alternatively set a full connection string as
+`SUPABASE_DB_URL`, `SUPABASE_DATABASE_URL`, `DATABASE_URL`, or `POSTGRES_URL`.
+`ADMIN_EMAILS` is a comma-separated list of existing Supabase Auth users that
+should be repaired or promoted to admin on their next sign-in.
 
 ### Run the frontend
 
