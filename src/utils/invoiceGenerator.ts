@@ -191,217 +191,199 @@ const buildInvoicePdf = async (orders: Order[]) => {
       doc.addPage([pageWidth, pageHeight]);
     }
 
-    let y = margin + 2;
+    const money = (value: number) =>
+      value.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const muted = () => doc.setTextColor(118, 118, 118);
+    const ink = () => doc.setTextColor(18, 18, 18);
+    const drawLabel = (label: string, x: number, yy: number) => {
+      muted();
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(4.6);
+      doc.text(label.toUpperCase(), x, yy);
+      ink();
+    };
+    const clampLines = (linesToClamp: string[], max: number) => {
+      if (linesToClamp.length <= max) return linesToClamp;
+      const next = linesToClamp.slice(0, max);
+      next[max - 1] = `${next[max - 1].replace(/\.+$/, "")}...`;
+      return next;
+    };
 
-    // --- Brand Logo ---
+    let y = margin + 1.5;
+
+    // --- Premium Header ---
     if (logoPngData) {
-      const logoW = 52;
-      const logoH = 22;
-      doc.addImage(logoPngData, "PNG", margin, y - 4, logoW, logoH);
-      y += logoH - 2;
+      doc.addImage(logoPngData, "PNG", margin, y - 3, 33, 14);
     } else {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(9);
+      ink();
       doc.text("Angonaloy", margin, y);
-      y += 5;
     }
 
-    // --- Fragile Badge (top-right corner, portrait) ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    ink();
+    doc.text("INVOICE", pageWidth - margin, y + 1.5, { align: "right" });
+    muted();
+    doc.setFontSize(4.8);
+    doc.text("Premium fulfillment note", pageWidth - margin, y + 5, { align: "right" });
+
     if (fragileBadgePng) {
-      const badgeW = 15;
-      const badgeH = 22;
-      doc.addImage(fragileBadgePng, "PNG", pageWidth - margin - badgeW, margin - 2, badgeW, badgeH);
+      doc.addImage(fragileBadgePng, "PNG", pageWidth - margin - 10, y + 8, 10, 13.5);
     }
 
-    // --- Invoice Details ---
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-
+    y = 20;
     const invoiceNo = order.order_number.replace("#", "");
-
-    doc.text(`Invoice No.: `, margin, y);
-    doc.setFont("helvetica", "bold");
-    doc.text(`AN-${invoiceNo}`, margin + 16, y);
-    y += 3.5;
-
-    doc.setFont("helvetica", "normal");
-    doc.text(`Invoice Date: `, margin, y);
-    doc.setFont("helvetica", "bold");
-    doc.text(format(new Date(order.created_at), "MMM dd, yyyy"), margin + 16, y);
-    y += 3.5;
-
     const courierName = order.courier_message?.toLowerCase().includes("pathao") ? "Pathao" : "Steadfast";
-    doc.setFont("helvetica", "normal");
-    doc.text(`Courier: `, margin, y);
-    doc.setFont("helvetica", "bold");
-    doc.text(courierName, margin + 16, y);
-    y += 3.5;
-
     const consignmentId = order.consignment_id ?? (order as any).consignment_id;
+
+    doc.setDrawColor(232, 232, 232);
+    doc.setFillColor(250, 250, 250);
+    doc.roundedRect(margin, y, contentWidth, 13.5, 2.2, 2.2, "FD");
+
+    drawLabel("Invoice No.", margin + 3, y + 4);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.text(`AN-${invoiceNo}`, margin + 3, y + 8.2);
+
+    drawLabel("Date", margin + 25, y + 4);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.text(format(new Date(order.created_at), "MMM dd, yyyy"), margin + 25, y + 8.2);
+
+    drawLabel("Courier", margin + 49, y + 4);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.text(courierName, margin + 49, y + 8.2);
+    y += 17;
+
     if (consignmentId != null) {
-      y += 1;
-      const label = "Delivery ID:";
-      const idText = String(consignmentId);
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-
-      const labelWidth = doc.getTextWidth(label);
-      const idWidth = doc.getTextWidth(idText);
-      const boxPadX = 3;
-      const boxH = 7;
-      const gap = 2;
-
-      // Full box encompassing label + id
-      const totalBoxW = labelWidth + gap + idWidth + boxPadX * 2;
-      const boxX = margin;
-      const boxY = y - 4.2;
-
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.3);
-      doc.rect(boxX, boxY, totalBoxW, boxH);
-
+      doc.setDrawColor(18, 18, 18);
+      doc.setFillColor(18, 18, 18);
+      doc.roundedRect(margin, y - 1.5, contentWidth, 7, 1.8, 1.8, "FD");
+      doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "normal");
-      doc.text(label, boxX + boxPadX, y);
+      doc.setFontSize(5.4);
+      doc.text("Delivery ID", margin + 3, y + 2.7);
       doc.setFont("helvetica", "bold");
-      doc.text(idText, boxX + boxPadX + labelWidth + gap, y);
+      doc.setFontSize(7.2);
+      doc.text(String(consignmentId), pageWidth - margin - 3, y + 2.8, { align: "right" });
+      ink();
+      y += 9;
+    }
 
-      y += boxH + 1.5;
+    // --- Customer Card ---
+    const customerName = cleanPdfText(order.customer_name, "Customer");
+    const customerPhone = cleanPdfText(order.phone, "");
+    const addressLines = order.address
+      ? clampLines(doc.splitTextToSize(cleanPdfText(cleanAddress(order.address)), contentWidth - 6), 3)
+      : [];
+    const customerCardH = 9.5 + (customerPhone ? 4 : 0) + addressLines.length * 3.2;
+
+    doc.setDrawColor(232, 232, 232);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, y, contentWidth, customerCardH, 2.4, 2.4, "FD");
+    drawLabel("Invoice To", margin + 3, y + 4);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.4);
+    doc.text(customerName, margin + 3, y + 8);
+    let customerY = y + 11.5;
+    if (customerPhone) {
+      muted();
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(7);
+      doc.setFontSize(6.2);
+      doc.text(customerPhone, margin + 3, customerY);
+      customerY += 3.4;
     }
-
-    y += 2;
-
-    // --- Invoice To ---
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.text("Invoice To:", margin, y);
-    y += 4;
-
-    doc.setFontSize(7);
-    // Name with icon
-    doc.setFont("helvetica", "normal");
-    doc.text("\u00B7", margin, y); // bullet
-    doc.setFont("helvetica", "normal");
-    doc.text(cleanPdfText(order.customer_name, "Customer"), margin + 3, y);
-    y += 3.5;
-
-    // Phone
-    if (order.phone) {
-      doc.text("\u00B7", margin, y);
-      doc.text(order.phone, margin + 3, y);
-      y += 3.5;
+    if (addressLines.length) {
+      muted();
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(5.8);
+      doc.text(addressLines, margin + 3, customerY);
     }
+    ink();
+    y += customerCardH + 3;
 
-    // Address
-    if (order.address) {
-      doc.text("\u00B7", margin, y);
-      const addressLines = doc.splitTextToSize(cleanPdfText(cleanAddress(order.address)), contentWidth - 5);
-      doc.text(addressLines, margin + 3, y);
-      y += addressLines.length * 3.5;
-    }
-
-    y += 3;
-
-    // --- Divider line ---
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.2);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 3;
-
-    // --- Table Header ---
-    const col1X = margin;
-    const col2X = margin + 42;
-    const col3X = margin + 52;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.text("Product", col1X, y);
-    doc.text("Qty", col2X, y);
-    doc.text("Price", col3X, y, { align: "left" });
-    y += 1;
-
-    // Header underline
-    doc.setLineWidth(0.1);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 3;
-
-    // --- Product Rows ---
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-
+    // --- Product Card ---
     const subtotal = order.price || 0;
-    const lines = splitProductLines(order.product);
-    const fallbackQty = order.quantity || 1;
-
-    if (lines.length <= 1) {
-      // Single product
-      const parsed = parseInlineQty(order.product || "");
-      const productName = cleanPdfText(parsed ? parsed.name : order.product, "Item");
-      const itemQty = parsed ? parsed.qty : fallbackQty;
-      const wrapped = doc.splitTextToSize(productName, 38);
-      doc.text(wrapped, col1X, y);
-      doc.text(String(itemQty), col2X + 2, y);
-      doc.text(subtotal.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), pageWidth - margin, y, { align: "right" });
-      y += wrapped.length * 3.5 + 2;
-    } else {
-      // Multiple products – each on its own row
-      lines.forEach((line) => {
-        const parsed = parseInlineQty(line);
-        const itemName = cleanPdfText(parsed ? parsed.name : line, "Item");
-        const itemQty = parsed ? parsed.qty : 1;
-
-        const wrapped = doc.splitTextToSize(itemName, 38);
-        doc.text(wrapped, col1X, y);
-        doc.text(String(itemQty), col2X + 2, y);
-        // Individual line prices not available, leave blank
-        y += wrapped.length * 3.5 + 1;
-      });
-      // Show total price on a summary line
-      doc.setFont("helvetica", "normal");
-      doc.text("(all items)", col1X, y);
-      doc.text(subtotal.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), pageWidth - margin, y, { align: "right" });
-      y += 4;
-    }
-
-
-    // --- Divider ---
-    doc.setLineWidth(0.1);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 4;
-
-    // --- Totals ---
     const shipping = order.delivery_rate || 0;
     const total = subtotal + shipping;
+    const lines = splitProductLines(order.product);
+    const fallbackQty = order.quantity || 1;
+    const productRows = lines.length <= 1
+      ? [{
+          name: cleanPdfText(parseInlineQty(order.product || "")?.name || order.product, "Item"),
+          qty: parseInlineQty(order.product || "")?.qty || fallbackQty,
+          price: money(subtotal),
+        }]
+      : lines.map((line) => {
+          const parsed = parseInlineQty(line);
+          return {
+            name: cleanPdfText(parsed ? parsed.name : line, "Item"),
+            qty: parsed ? parsed.qty : 1,
+            price: "",
+          };
+        });
 
-    const labelX = margin + 28;
-    const valueX = pageWidth - margin;
+    const rowLineSets = productRows.map((row) => clampLines(doc.splitTextToSize(row.name, 39), 2));
+    const productCardH = Math.min(
+      31,
+      10 + rowLineSets.reduce((sum, rowLines) => sum + Math.max(5, rowLines.length * 3.1 + 1.5), 0) + (lines.length > 1 ? 5 : 0)
+    );
 
+    doc.setDrawColor(232, 232, 232);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, y, contentWidth, productCardH, 2.4, 2.4, "FD");
+    drawLabel("Product", margin + 3, y + 4.2);
+    drawLabel("Qty", margin + 47.5, y + 4.2);
+    drawLabel("Price", pageWidth - margin - 3, y + 4.2);
+
+    let rowY = y + 9;
+    productRows.forEach((row, rowIndex) => {
+      if (rowY > y + productCardH - 4) return;
+      const rowLines = rowLineSets[rowIndex];
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.6);
+      ink();
+      doc.text(rowLines, margin + 3, rowY);
+      doc.setFont("helvetica", "bold");
+      doc.text(String(row.qty), margin + 49, rowY, { align: "center" });
+      if (row.price) doc.text(row.price, pageWidth - margin - 3, rowY, { align: "right" });
+      rowY += Math.max(5, rowLines.length * 3.1 + 1.5);
+    });
+    if (lines.length > 1 && rowY <= y + productCardH - 3) {
+      muted();
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(5.8);
+      doc.text("All items", margin + 3, rowY);
+      ink();
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.8);
+      doc.text(money(subtotal), pageWidth - margin - 3, rowY, { align: "right" });
+    }
+    y += productCardH + 3;
+
+    // --- Totals Card ---
+    const totalsH = 20;
+    doc.setDrawColor(18, 18, 18);
+    doc.setFillColor(18, 18, 18);
+    doc.roundedRect(margin, y, contentWidth, totalsH, 2.6, 2.6, "FD");
+    doc.setTextColor(214, 214, 214);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5.8);
+    doc.text("Sub Total", margin + 4, y + 5);
+    doc.text(money(subtotal), pageWidth - margin - 4, y + 5, { align: "right" });
+    doc.text("Delivery Fee", margin + 4, y + 9);
+    doc.text(money(shipping), pageWidth - margin - 4, y + 9, { align: "right" });
+    doc.setDrawColor(80, 80, 80);
+    doc.line(margin + 4, y + 11.5, pageWidth - margin - 4, y + 11.5);
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-
-    doc.text("Sub Total", labelX, y);
-    doc.text(subtotal.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), valueX, y, { align: "right" });
-    y += 4;
-
-    doc.text("Delivery Fee", labelX, y);
-    doc.text(shipping.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), valueX, y, { align: "right" });
-    y += 4;
-
-    // Grand Total line
-    doc.setLineWidth(0.2);
-    doc.line(labelX, y - 1, pageWidth - margin, y - 1);
-    y += 2;
-
-    doc.setFontSize(8);
-    doc.text("Grand Total", labelX, y);
-    doc.text(total.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), valueX, y, { align: "right" });
-    y += 4;
-
-    doc.text("Due Amount", labelX, y);
-    doc.text(total.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), valueX, y, { align: "right" });
+    doc.setFontSize(7.8);
+    doc.text("Due Amount", margin + 4, y + 16.3);
+    doc.text(money(total), pageWidth - margin - 4, y + 16.3, { align: "right" });
+    ink();
   }
 
   return doc;
