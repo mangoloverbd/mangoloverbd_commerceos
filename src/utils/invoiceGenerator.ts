@@ -179,12 +179,6 @@ const buildInvoicePdf = async (orders: Order[]) => {
     logoPngData = await svgToPngDataUrl(LOGO_SVG_DATA_URI, 188, 80);
   } catch { /* fallback to text */ }
 
-  // Pre-render fragile badge once (portrait canvas)
-  let fragileBadgePng: string | null = null;
-  try {
-    fragileBadgePng = await renderFragileBadge(210, 285);
-  } catch { /* skip */ }
-
   for (let index = 0; index < orders.length; index++) {
     const order = orders[index];
     if (index > 0) {
@@ -193,12 +187,12 @@ const buildInvoicePdf = async (orders: Order[]) => {
 
     const money = (value: number) =>
       value.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const muted = () => doc.setTextColor(118, 118, 118);
-    const ink = () => doc.setTextColor(18, 18, 18);
+    const muted = () => doc.setTextColor(128, 128, 128);
+    const ink = () => doc.setTextColor(28, 28, 30);
     const drawLabel = (label: string, x: number, yy: number) => {
       muted();
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(4.6);
+      doc.setFontSize(4.4);
       doc.text(label.toUpperCase(), x, yy);
       ink();
     };
@@ -209,68 +203,65 @@ const buildInvoicePdf = async (orders: Order[]) => {
       return next;
     };
 
-    let y = margin + 1.5;
+    let y = margin + 3;
 
-    // --- Premium Header ---
+    // --- Minimal Header ---
     if (logoPngData) {
-      doc.addImage(logoPngData, "PNG", margin, y - 3, 33, 14);
+      doc.addImage(logoPngData, "PNG", margin, y - 3, 27, 11.5);
     } else {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
+      doc.setFontSize(8);
       ink();
       doc.text("Angonaloy", margin, y);
     }
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
+    doc.setFontSize(8);
     ink();
-    doc.text("INVOICE", pageWidth - margin, y + 1.5, { align: "right" });
+    doc.text("Invoice", pageWidth - margin, y + 1, { align: "right" });
     muted();
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(4.8);
-    doc.text("Premium fulfillment note", pageWidth - margin, y + 5, { align: "right" });
+    doc.text("Order receipt", pageWidth - margin, y + 4.7, { align: "right" });
 
-    if (fragileBadgePng) {
-      doc.addImage(fragileBadgePng, "PNG", pageWidth - margin - 10, y + 8, 10, 13.5);
-    }
-
-    y = 20;
+    y = 17;
     const invoiceNo = order.order_number.replace("#", "");
     const courierName = order.courier_message?.toLowerCase().includes("pathao") ? "Pathao" : "Steadfast";
     const consignmentId = order.consignment_id ?? (order as any).consignment_id;
 
-    doc.setDrawColor(232, 232, 232);
-    doc.setFillColor(250, 250, 250);
-    doc.roundedRect(margin, y, contentWidth, 13.5, 2.2, 2.2, "FD");
+    doc.setDrawColor(238, 238, 238);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, y, contentWidth, 12.5, 2, 2, "FD");
 
-    drawLabel("Invoice No.", margin + 3, y + 4);
+    drawLabel("Invoice No.", margin + 3, y + 3.8);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.text(`AN-${invoiceNo}`, margin + 3, y + 8.2);
+    doc.setFontSize(6.8);
+    doc.text(`AN-${invoiceNo}`, margin + 3, y + 7.8);
 
-    drawLabel("Date", margin + 25, y + 4);
+    drawLabel("Date", margin + 25, y + 3.8);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.text(format(new Date(order.created_at), "MMM dd, yyyy"), margin + 25, y + 8.2);
+    doc.setFontSize(6.8);
+    doc.text(format(new Date(order.created_at), "MMM dd, yyyy"), margin + 25, y + 7.8);
 
-    drawLabel("Courier", margin + 49, y + 4);
+    drawLabel("Courier", margin + 49, y + 3.8);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.text(courierName, margin + 49, y + 8.2);
-    y += 17;
+    doc.setFontSize(6.8);
+    doc.text(courierName, margin + 49, y + 7.8);
+    y += 15;
 
     if (consignmentId != null) {
-      doc.setDrawColor(18, 18, 18);
-      doc.setFillColor(18, 18, 18);
-      doc.roundedRect(margin, y - 1.5, contentWidth, 7, 1.8, 1.8, "FD");
-      doc.setTextColor(255, 255, 255);
+      doc.setDrawColor(238, 238, 238);
+      doc.setFillColor(250, 250, 250);
+      doc.roundedRect(margin, y - 1, contentWidth, 6.5, 1.8, 1.8, "FD");
+      muted();
       doc.setFont("helvetica", "normal");
       doc.setFontSize(5.4);
       doc.text("Delivery ID", margin + 3, y + 2.7);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7.2);
-      doc.text(String(consignmentId), pageWidth - margin - 3, y + 2.8, { align: "right" });
       ink();
-      y += 9;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.6);
+      doc.text(String(consignmentId), pageWidth - margin - 3, y + 2.8, { align: "right" });
+      y += 8;
     }
 
     // --- Customer Card ---
@@ -281,7 +272,7 @@ const buildInvoicePdf = async (orders: Order[]) => {
       : [];
     const customerCardH = 9.5 + (customerPhone ? 4 : 0) + addressLines.length * 3.2;
 
-    doc.setDrawColor(232, 232, 232);
+    doc.setDrawColor(238, 238, 238);
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(margin, y, contentWidth, customerCardH, 2.4, 2.4, "FD");
     drawLabel("Invoice To", margin + 3, y + 4);
@@ -332,7 +323,7 @@ const buildInvoicePdf = async (orders: Order[]) => {
       10 + rowLineSets.reduce((sum, rowLines) => sum + Math.max(5, rowLines.length * 3.1 + 1.5), 0) + (lines.length > 1 ? 5 : 0)
     );
 
-    doc.setDrawColor(232, 232, 232);
+    doc.setDrawColor(238, 238, 238);
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(margin, y, contentWidth, productCardH, 2.4, 2.4, "FD");
     drawLabel("Product", margin + 3, y + 4.2);
@@ -364,21 +355,21 @@ const buildInvoicePdf = async (orders: Order[]) => {
     }
     y += productCardH + 3;
 
-    // --- Totals Card ---
+    // --- Minimal Totals Card ---
     const totalsH = 20;
-    doc.setDrawColor(18, 18, 18);
-    doc.setFillColor(18, 18, 18);
-    doc.roundedRect(margin, y, contentWidth, totalsH, 2.6, 2.6, "FD");
-    doc.setTextColor(214, 214, 214);
+    doc.setDrawColor(238, 238, 238);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, y, contentWidth, totalsH, 2.4, 2.4, "FD");
+    muted();
     doc.setFont("helvetica", "normal");
     doc.setFontSize(5.8);
     doc.text("Sub Total", margin + 4, y + 5);
     doc.text(money(subtotal), pageWidth - margin - 4, y + 5, { align: "right" });
     doc.text("Delivery Fee", margin + 4, y + 9);
     doc.text(money(shipping), pageWidth - margin - 4, y + 9, { align: "right" });
-    doc.setDrawColor(80, 80, 80);
+    doc.setDrawColor(232, 232, 232);
     doc.line(margin + 4, y + 11.5, pageWidth - margin - 4, y + 11.5);
-    doc.setTextColor(255, 255, 255);
+    ink();
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7.8);
     doc.text("Due Amount", margin + 4, y + 16.3);
