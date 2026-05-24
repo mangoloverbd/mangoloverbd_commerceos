@@ -39,7 +39,7 @@ export function DashboardLayout() {
                 <AppSidebar />
                 <SidebarInset className="flex min-w-0 flex-col bg-transparent">
                     <header className="flex h-[58px] shrink-0 items-center justify-between px-5 text-[#202020]">
-                        <h1 className="font-sans text-[20px] font-semibold leading-none tracking-normal">
+                        <h1 className="font-sf-display text-[20px] font-semibold leading-none tracking-normal">
                             {getRouteTitle(location.pathname)}
                         </h1>
                         <div className="flex items-center gap-1.5 text-[#6f6f6f]">

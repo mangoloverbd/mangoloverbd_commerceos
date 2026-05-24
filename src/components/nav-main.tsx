@@ -18,9 +18,10 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronRight } from "lucide-react";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { TextScramble } from "@/components/ui/text-scramble";
 
 export interface Route {
     id: string;
@@ -39,21 +40,50 @@ export interface NavSection {
     routes: Route[];
 }
 
+function SidebarScrambleLabel({ text, active, animateSignal }: { text: string; active?: boolean; animateSignal?: number }) {
+    return (
+        <TextScramble
+            text={text}
+            passive
+            animateSignal={animateSignal}
+            underline={false}
+            glow={false}
+            className="min-w-0"
+            textClassName={cn(
+                "block truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal",
+                active && "font-medium"
+            )}
+            charClassName={active ? "text-[#222]" : "text-current"}
+            scrambledClassName="scale-105 text-[#222]"
+        />
+    );
+}
+
+const navIconFrame =
+    "flex h-[17px] w-[17px] shrink-0 items-center justify-center [&>img]:h-[17px] [&>img]:w-[17px] [&>img]:object-contain [&>svg]:h-[17px] [&>svg]:w-[17px]";
+
+const navIconMotion =
+    "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#0c6fff] group-hover/nav-button:-translate-y-0.5 group-hover/nav-button:-rotate-6 group-hover/nav-button:scale-125 group-hover/nav-button:text-[#0c6fff]";
+
 export default function DashboardNavigation({ sections }: { sections: NavSection[] }) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
     const location = useLocation();
+    const [scrambleSignals, setScrambleSignals] = useState<Record<string, number>>({});
+    const triggerScramble = (key: string) => {
+        setScrambleSignals((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+    };
 
     return (
         <>
             {sections.map((section) => (
                 <SidebarGroup
                     key={section.label || section.routes[0]?.id}
-                    className="px-2 py-1"
+                    className="px-1.5 py-0.5"
                 >
                     {/* Section label */}
                     {!isCollapsed && section.label && (
-                        <SidebarGroupLabel className="mb-1 h-auto px-2 py-1 text-[14px] font-medium tracking-normal text-[#9a9a9a]">
+                        <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 font-sf-text text-[11px] font-medium tracking-normal text-[#4a4a4a]">
                             {section.label}
                         </SidebarGroupLabel>
                     )}
@@ -78,14 +108,19 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 asChild
                                                 tooltip={route.title}
                                                 className={cn(
-                                                    "mx-auto flex h-9 w-9 items-center justify-center rounded-xl transition-all",
+                                                    "mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all",
                                                     isActive
-                                                        ? "bg-black/8 text-[#222]"
-                                                        : "text-[#6f6f6f] hover:bg-black/5 hover:text-[#222]"
+                                                        ? "bg-black/[0.07] text-blue-600"
+                                                        : "text-[#6f6f6f] hover:bg-black/5 hover:text-blue-600"
                                                 )}
                                             >
-                                                <Link to={route.link} className="flex items-center justify-center w-full h-full">
-                                                    {route.icon}
+                                                <Link to={route.link} className="group/nav-link flex h-full w-full items-center justify-center">
+                                                    <span className={cn(
+                                                        navIconFrame,
+                                                        "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#0c6fff]"
+                                                    )}>
+                                                        {route.icon}
+                                                    </span>
                                                 </Link>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
@@ -107,24 +142,25 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                         <SidebarMenuButton
                                                             tooltip={route.title}
                                                             className={cn(
-                                                                "h-10 rounded-lg px-3 gap-3 text-[16px] transition-all",
+                                                                "group/nav-button h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
                                                                 isActive
-                                                                    ? "bg-black/7 text-[#222] font-semibold"
-                                                                    : "text-[#5f5f5f] hover:bg-black/5 hover:text-[#222]"
+                                                                    ? "bg-black/[0.07] text-[#222]"
+                                                                    : "text-[#333] hover:bg-black/5 hover:text-[#111]"
                                                             )}
                                                         >
                                                             <span className={cn(
-                                                                "shrink-0 transition-colors",
-                                                                isActive ? "text-[#222]" : "text-[#777]"
+                                                                navIconFrame,
+                                                                navIconMotion,
+                                                                isActive ? "text-[#0c6fff]" : "text-[#333]"
                                                             )}>
                                                                 {route.icon}
                                                             </span>
-                                                            <span className="font-medium">{route.title}</span>
-                                                            <ChevronRight className="ml-auto h-3.5 w-3.5 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                                            <SidebarScrambleLabel text={route.title} active={isActive} animateSignal={scrambleSignals[route.id]} />
+                                                            <ChevronRight className="ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                                         </SidebarMenuButton>
                                                     </CollapsibleTrigger>
                                                     <CollapsibleContent>
-                                                        <SidebarMenuSub className="ml-7 mt-1 gap-0.5 border-l border-black/10 pl-2">
+                                                        <SidebarMenuSub className="ml-5 mt-0.5 gap-0.5 border-l border-black/10 pl-1.5">
                                                             {route.subs?.map((sub) => {
                                                                 const subActive = location.pathname === sub.link;
                                                                 return (
@@ -132,17 +168,35 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                         <SidebarMenuSubButton
                                                                             asChild
                                                                             className={cn(
-                                                                                "h-8 rounded-md text-[13px] transition-all",
+                                                                                "h-6 rounded-md font-sf-text text-[11.5px] font-medium tracking-normal transition-all",
                                                                                 subActive
-                                                                                    ? "bg-black/7 text-[#222] font-medium"
-                                                                                    : "text-[#666] hover:bg-black/5 hover:text-[#222]"
+                                                                                    ? "bg-black/[0.07] text-[#222]"
+                                                                                    : "text-[#333] hover:bg-black/5 hover:text-[#111]"
                                                                             )}
                                                                         >
-                                                                            <Link to={sub.link} className="flex items-center gap-2">
+                                                                            <Link
+                                                                                to={sub.link}
+                                                                                className="group/nav-link flex items-center gap-2"
+                                                                                onMouseEnter={() => triggerScramble(`${route.id}:${sub.link}`)}
+                                                                            >
                                                                                 {sub.icon && (
-                                                                                    <span className="shrink-0">{sub.icon}</span>
+                                                                                    <span className={cn(
+                                                                                        navIconFrame,
+                                                                                        navIconMotion,
+                                                                                        subActive ? "text-[#0c6fff]" : "text-current"
+                                                                                    )}>{sub.icon}</span>
                                                                                 )}
-                                                                                {sub.title}
+                                                                                <TextScramble
+                                                                                    text={sub.title}
+                                                                                    passive
+                                                                                    animateSignal={scrambleSignals[`${route.id}:${sub.link}`]}
+                                                                                    underline={false}
+                                                                                    glow={false}
+                                                                                    className="min-w-0"
+                                                                                    textClassName="block truncate font-sf-text text-[11.5px] font-medium normal-case tracking-normal"
+                                                                                    charClassName={subActive ? "text-[#222]" : "text-current"}
+                                                                                    scrambledClassName="scale-105 text-[#222]"
+                                                                                />
                                                                             </Link>
                                                                         </SidebarMenuSubButton>
                                                                     </SidebarMenuSubItem>
@@ -156,20 +210,25 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     asChild
                                                     tooltip={route.title}
                                                     className={cn(
-                                                        "h-10 rounded-lg px-3 gap-3 text-[16px] transition-all",
-                                                        isActive
-                                                            ? "bg-black/7 text-[#222] font-semibold"
-                                                            : "text-[#5f5f5f] hover:bg-black/5 hover:text-[#222]"
+                                                        "h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
+                                                       isActive
+                                                           ? "bg-black/[0.07] text-[#222]"
+                                                           : "text-[#333] hover:bg-black/5 hover:text-[#111]"
                                                     )}
                                                 >
-                                                    <Link to={route.link} className="flex items-center gap-2.5">
+                                                    <Link
+                                                        to={route.link}
+                                                        className="group/nav-link flex items-center gap-2"
+                                                        onMouseEnter={() => triggerScramble(route.id)}
+                                                    >
                                                         <span className={cn(
-                                                            "shrink-0 transition-colors",
-                                                            isActive ? "text-[#222]" : "text-[#777]"
+                                                            navIconFrame,
+                                                            navIconMotion,
+                                                            isActive ? "text-[#0c6fff]" : "text-[#333]"
                                                         )}>
                                                             {route.icon}
                                                         </span>
-                                                        <span className="font-medium">{route.title}</span>
+                                                        <SidebarScrambleLabel text={route.title} active={isActive} animateSignal={scrambleSignals[route.id]} />
                                                     </Link>
                                                 </SidebarMenuButton>
                                             )}

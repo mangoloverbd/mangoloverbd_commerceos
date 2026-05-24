@@ -17,6 +17,8 @@ import FacebookInbox from "./pages/FacebookInbox";
 import InstagramInbox from "./pages/InstagramInbox";
 import WhatsappInbox from "./pages/WhatsappInbox";
 import InboxOrders from "./pages/InboxOrders";
+import Studio from "./pages/Studio";
+import { Spinner } from "@/components/ui/ios-spinner";
 
 const queryClient = new QueryClient();
 
@@ -26,7 +28,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <Spinner size="lg" className="text-muted-foreground" />
       </div>
     );
   }
@@ -44,7 +46,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <Spinner size="lg" className="text-muted-foreground" />
       </div>
     );
   }
@@ -77,6 +79,7 @@ const AppRoutes = () => (
       <Route path="/inbox/instagram" element={<InstagramInbox />} />
       <Route path="/inbox/whatsapp" element={<WhatsappInbox />} />
       <Route path="/inbox/orders" element={<InboxOrders />} />
+      <Route path="/studio" element={<Studio />} />
     </Route>
     <Route
       path="/onboarding"

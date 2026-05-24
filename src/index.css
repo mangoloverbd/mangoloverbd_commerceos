@@ -12,6 +12,114 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .spinner-blade {
+    @apply absolute h-[20%] w-[8%] rounded-[1px] bg-current;
+    animation: spinner-blade 1s linear infinite;
+    will-change: opacity;
+    top: 37%;
+    left: 44%;
+  }
+
+  .spinner-blade:nth-child(1) {
+    transform: rotate(0deg) translateY(-130%);
+    animation-delay: -1.667s;
+  }
+
+  .spinner-blade:nth-child(2) {
+    transform: rotate(30deg) translateY(-130%);
+    animation-delay: -1.583s;
+  }
+
+  .spinner-blade:nth-child(3) {
+    transform: rotate(60deg) translateY(-130%);
+    animation-delay: -1.5s;
+  }
+
+  .spinner-blade:nth-child(4) {
+    transform: rotate(90deg) translateY(-130%);
+    animation-delay: -1.417s;
+  }
+
+  .spinner-blade:nth-child(5) {
+    transform: rotate(120deg) translateY(-130%);
+    animation-delay: -1.333s;
+  }
+
+  .spinner-blade:nth-child(6) {
+    transform: rotate(150deg) translateY(-130%);
+    animation-delay: -1.25s;
+  }
+
+  .spinner-blade:nth-child(7) {
+    transform: rotate(180deg) translateY(-130%);
+    animation-delay: -1.167s;
+  }
+
+  .spinner-blade:nth-child(8) {
+    transform: rotate(210deg) translateY(-130%);
+    animation-delay: -1.083s;
+  }
+
+  .spinner-blade:nth-child(9) {
+    transform: rotate(240deg) translateY(-130%);
+    animation-delay: -1s;
+  }
+
+  .spinner-blade:nth-child(10) {
+    transform: rotate(270deg) translateY(-130%);
+    animation-delay: -0.917s;
+  }
+
+  .spinner-blade:nth-child(11) {
+    transform: rotate(300deg) translateY(-130%);
+    animation-delay: -0.833s;
+  }
+
+  .spinner-blade:nth-child(12) {
+    transform: rotate(330deg) translateY(-130%);
+    animation-delay: -0.75s;
+  }
+}
+
+@keyframes spinner-blade {
+  0% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0.25;
+  }
+}
+
+/* Status pill fly animation */
+.status-pill:hover .status-pill-icon-wrapper {
+  animation: fly-1 0.6s ease-in-out infinite alternate;
+}
+.status-pill:hover .status-pill-icon {
+  transform: translateX(1.2em) rotate(45deg) scale(1.1);
+}
+.status-pill:hover .status-pill-label {
+  transform: translateX(5em);
+}
+
+/* Send courier button animation */
+@keyframes fly-1 {
+  from { transform: translateY(0.1em); }
+  to   { transform: translateY(-0.1em); }
+}
+.send-btn:hover .send-btn-svg-wrapper {
+  animation: fly-1 0.6s ease-in-out infinite alternate;
+}
+.send-btn:hover .send-btn-icon {
+  transform: translateX(1.2em) rotate(45deg) scale(1.1);
+}
+.send-btn:hover .send-btn-label {
+  transform: translateX(5em);
+}
+
 /* Noise grain overlay used by PrismaHero */
 .noise-overlay {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
@@ -149,6 +257,11 @@
     @apply bg-background text-foreground;
     letter-spacing: 0;
     margin: 0;
+    background-color: #dedede;
+  }
+
+  html {
+    background-color: #dedede;
   }
 
   /* Swiss Typography — strict hierarchy */
@@ -224,4 +337,9 @@
       0 2px 8px -2px hsl(220 20% 10% / 0.08),
       0 4px 16px -4px hsl(220 20% 10% / 0.06);
   }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }

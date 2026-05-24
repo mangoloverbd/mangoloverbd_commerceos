@@ -1,20 +1,31 @@
 import { useState, useRef, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
-import { User, MessageCircle, TrendingUp } from "lucide-react";
+import { Paperclip, ChevronDown, Mic, ArrowUp, X, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { AIChatInput } from "@/components/ui/ai-chat-input";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { LoadingBreadcrumb } from "@/components/ui/animated-loading-svg-text-shimmer";
 
 type Msg = { role: "user" | "assistant"; content: string };
+type UploadedFile = { name: string; type: string; content: string };
+
+const openAIModels = [
+  { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
+  { id: "gpt-5.4", label: "GPT-5.4" },
+  { id: "gpt-5.5", label: "GPT-5.5" },
+  { id: "gpt-5.4-nano", label: "GPT-5.4 nano" },
+];
 
 async function streamChat({
   messages,
+  model,
   onDelta,
   onDone,
   onError,
 }: {
   messages: Msg[];
+  model: string;
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
@@ -24,8 +35,13 @@ async function streamChat({
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, model }),
   });
+
+  if (resp.status === 404) {
+    onError("Chat backend is not active yet. Restart localhost so the new /api/order-chat route and .env are loaded.");
+    return;
+  }
 
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
@@ -78,16 +94,32 @@ const quickQuestions = [
   "Which orders have notes?",
 ];
 
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognition(): SpeechRecognitionConstructor | undefined {
+  const win = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return win.SpeechRecognition || win.webkitSpeechRecognition;
+}
+
 /** AI avatar: favicon with a spinning ring */
 function AiAvatar({ isStreaming }: { isStreaming?: boolean }) {
   return (
     <div className="relative size-8 shrink-0 mt-0.5">
-      {/* Spinning ring */}
-      <motion.div
-        className="absolute inset-0 rounded-full border-2 border-transparent border-t-black/40 border-r-black/10"
-        animate={isStreaming ? { rotate: 360 } : { rotate: 0 }}
-        transition={isStreaming ? { duration: 1.2, repeat: Infinity, ease: "linear" } : { duration: 0 }}
-      />
+      {isStreaming && <Spinner className="absolute inset-0 m-auto text-black/45" />}
       {/* Favicon */}
       <div className="absolute inset-[3px] rounded-full bg-black/5 flex items-center justify-center overflow-hidden">
         <img src="/favicon.svg" alt="AI" className="size-4 object-contain" />
@@ -99,20 +131,72 @@ function AiAvatar({ isStreaming }: { isStreaming?: boolean }) {
 export default function OrderChat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [input, setInput] = useState("");
+  const [model, setModel] = useState(openAIModels[0].id);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isLoading]);
+
+  const readFiles = async (list: FileList | null) => {
+    if (!list?.length) return;
+    const nextFiles = await Promise.all(
+      Array.from(list).map(async (file) => {
+        const canRead =
+          file.type.startsWith("text/") ||
+          /\.(csv|json|txt|md|tsv)$/i.test(file.name);
+        const content = canRead ? await file.text().catch(() => "") : "";
+        return { name: file.name, type: file.type || "file", content };
+      })
+    );
+    setFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const startVoiceInput = () => {
+    const Recognition = getSpeechRecognition();
+    if (!Recognition || isListening) return;
+    const recognition = new Recognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript;
+      if (transcript) setInput((prev) => `${prev}${prev ? " " : ""}${transcript}`);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    setIsListening(true);
+    recognition.start();
+  };
+
+  const buildPrompt = (text: string) => {
+    if (!files.length) return text;
+    const fileContext = files
+      .map((file) => {
+        const content = file.content.trim();
+        return content
+          ? `File: ${file.name}\n${content.slice(0, 6000)}`
+          : `File attached: ${file.name} (${file.type})`;
+      })
+      .join("\n\n");
+    return `${text}\n\nAttached files:\n${fileContext}`;
+  };
 
   const send = async (text: string) => {
     const msg = text.trim();
     if (!msg || isLoading) return;
 
-    const userMsg: Msg = { role: "user", content: msg };
+    const userMsg: Msg = { role: "user", content: buildPrompt(msg) };
     setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setFiles([]);
     setIsLoading(true);
 
     let assistantSoFar = "";
@@ -130,6 +214,7 @@ export default function OrderChat() {
     try {
       await streamChat({
         messages: [...messages, userMsg],
+        model,
         onDelta: upsert,
         onDone: () => setIsLoading(false),
         onError: (err) => {
@@ -144,113 +229,171 @@ export default function OrderChat() {
   };
 
 
+  const composer = (
+    <div className="mx-auto w-full max-w-xl">
+      <div className="rounded-[18px] bg-white">
+        <div className="px-4 pt-3">
+          <textarea
+            value={input}
+            disabled={isLoading}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                send(input);
+              }
+            }}
+            placeholder="Send a message..."
+            rows={1}
+            className="min-h-[40px] w-full resize-none border-0 bg-transparent p-0 text-[15px] font-medium leading-relaxed text-foreground outline-none placeholder:text-black/35 disabled:opacity-60"
+          />
 
-  /** Check if the last message is an assistant message still streaming */
-  const isAssistantStreaming = isLoading && messages.length > 0 && messages[messages.length - 1]?.role === "assistant";
+          {files.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {files.map((file, index) => (
+                <span
+                  key={`${file.name}-${index}`}
+                  className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full bg-black/[0.035] px-2.5 py-1 text-xs text-foreground/75"
+                >
+                  <FileText className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                    className="rounded-full p-0.5 text-black/35 hover:bg-black/10 hover:text-black"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-2 px-3 pb-2.5 pt-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => readFiles(event.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold text-foreground/75 transition-colors hover:bg-black/[0.055] hover:text-foreground"
+            >
+              <Paperclip className="h-3.5 w-3.5" />
+              Files
+            </button>
+
+            <div className="relative">
+              <select
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                className="h-7 appearance-none rounded-full border-0 bg-transparent py-0 pl-2 pr-6 text-[13px] font-semibold text-foreground/75 outline-none transition-colors hover:bg-black/[0.055] hover:text-foreground"
+              >
+                {openAIModels.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={startVoiceInput}
+              disabled={isLoading}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:opacity-50",
+                isListening
+                  ? "bg-red-100 text-red-600"
+                  : "bg-black/[0.045] text-foreground/65 hover:bg-black/[0.075] hover:text-foreground"
+              )}
+              title="Voice input"
+            >
+              <Mic className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => send(input)}
+              disabled={!input.trim() || isLoading}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.08] text-foreground/55 transition-all hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-black/[0.08] disabled:hover:text-foreground/55"
+              title="Send"
+            >
+              {isLoading ? <Spinner size="sm" /> : <ArrowUp className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-[#1A1A1A] flex flex-col">
-      {/* Sticky Header */}
-      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-black/5 bg-white/80 backdrop-blur-xl px-6 h-16 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-black flex items-center justify-center">
-            <MessageCircle className="h-4 w-4 text-white" />
-          </div>
-          <span className="text-xs font-bold uppercase tracking-widest text-black">Order Assistant</span>
-        </div>
-        {messages.length > 0 && (
-          <button
-            onClick={() => setMessages([])}
-            className="text-[10px] font-bold uppercase tracking-wider text-black hover:text-black transition-colors"
+    <div className="relative flex h-[calc(100vh-80px)] flex-col bg-transparent overflow-hidden">
+
+      {/* Clear button */}
+      {messages.length > 0 && (
+        <button
+          onClick={() => setMessages([])}
+          className="absolute right-8 top-4 z-10 rounded-full bg-black/[0.04] px-3 py-1.5 text-sm font-medium text-foreground/55 transition-colors hover:bg-black/[0.07] hover:text-foreground"
+        >
+          Clear
+        </button>
+      )}
+
+      {/* Empty State */}
+      <AnimatePresence mode="wait">
+        {messages.length === 0 && (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="flex flex-1 flex-col items-center justify-center px-6 pt-24 pb-12"
           >
-            Clear Chat
-          </button>
-        )}
-      </header>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col max-w-[1800px] w-full mx-auto">
-        {/* Empty State */}
-        <AnimatePresence mode="wait">
-          {messages.length === 0 && (
             <motion.div
-              key="empty"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="flex-1 flex flex-col items-center justify-center px-6 py-16"
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: 0.1, duration: 0.45, ease: "easeOut" }}
+              className="w-full"
             >
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/5 text-black text-[10px] font-bold uppercase tracking-wider mb-6"
-              >
-                <TrendingUp className="w-3 h-3" />
-                AI-Powered Insights
-              </motion.div>
-
-              {/* Animated favicon hero */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.05, type: "spring", stiffness: 200 }}
-                className="relative mb-8"
-              >
-                <motion.div
-                  className="absolute inset-0 rounded-full border-2 border-transparent border-t-black/20 border-r-black/5"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                  style={{ width: 72, height: 72 }}
-                />
-                <div className="size-[72px] rounded-full bg-black/5 flex items-center justify-center">
-                  <img src="/favicon.svg" alt="AI" className="size-8 object-contain" />
-                </div>
-              </motion.div>
-
-              <motion.h1
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-5xl lg:text-6xl font-normal leading-tight text-center"
-              >
-                Order <span className="italic text-black underline decoration-black/10 transition-colors hover:text-black">Assistant</span>
-              </motion.h1>
-
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="text-lg text-black max-w-xl font-light text-center mt-4"
-              >
-                Ask anything about your orders — pending, confirmed, courier status, notes, fraud checks, and revenue.
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0, y: 25 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
-                className="grid grid-cols-2 gap-3 mt-10 max-w-lg w-full"
-              >
-                {quickQuestions.map((q, i) => (
-                  <motion.button
-                    key={q}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 + i * 0.05 }}
-                    onClick={() => send(q)}
-                    className="text-left text-sm px-4 py-3 rounded-xl border border-black/5 bg-white hover:bg-black/[0.02] hover:border-black/10 transition-all text-black hover:text-black group"
-                  >
-                    <span className="group-hover:translate-x-0.5 inline-block transition-transform">{q}</span>
-                  </motion.button>
-                ))}
-              </motion.div>
+              {composer}
             </motion.div>
-          )}
-        </AnimatePresence>
 
-        {/* Messages */}
-        {messages.length > 0 && (
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-10 space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 25 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="mt-5 grid w-full max-w-xl gap-2 sm:grid-cols-2"
+            >
+              {quickQuestions.map((q, i) => (
+                <motion.button
+                  key={q}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 + i * 0.05 }}
+                  onClick={() => send(q)}
+                  className="group rounded-xl bg-white/55 px-3.5 py-2.5 text-left text-sm text-foreground/75 transition-all hover:bg-white"
+                >
+                  <span className="inline-block transition-transform group-hover:translate-x-0.5">{q}</span>
+                </motion.button>
+              ))}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Messages — scrollable, fills remaining space */}
+      {messages.length > 0 && (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto pl-6 pr-24 pt-16 pb-4">
+          <div className="flex flex-col gap-6">
             <AnimatePresence initial={false}>
               {messages.map((msg, i) => {
                 const isLastAssistant = msg.role === "assistant" && i === messages.length - 1;
@@ -263,30 +406,23 @@ export default function OrderChat() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
                     className={cn(
-                      "flex gap-3 max-w-3xl",
-                      msg.role === "user" ? "ml-auto flex-row-reverse" : ""
+                      "flex w-full gap-3",
+                      msg.role === "user" ? "justify-end" : "justify-start max-w-3xl"
                     )}
                   >
-                    {msg.role === "user" ? (
-                      <div className="size-8 rounded-full bg-black flex items-center justify-center shrink-0 mt-0.5">
-                        <User className="size-4 text-white" />
-                      </div>
-                    ) : (
-                      <AiAvatar isStreaming={streaming} />
-                    )}
+                    {msg.role === "assistant" && <AiAvatar isStreaming={streaming} />}
                     <div className={cn(
                       "rounded-xl px-4 py-2 text-sm leading-relaxed",
                       msg.role === "user"
-                        ? "bg-black text-white"
-                        : "bg-white border border-black/5 shadow-sm"
+                        ? "bg-white text-neutral-900 border-x-2 border-t-2 border-b-4 border-neutral-300 shadow-sm"
+                        : "border border-black/10 bg-black/[0.025]"
                     )}>
                       {msg.role === "assistant" ? (
-                        <div className={cn(
-                          "prose prose-sm max-w-none text-[#1A1A1A]/80 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-[#1A1A1A] [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_code]:bg-black/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs",
-                          streaming && "ai-typing"
-                        )}>
+                        <div className="prose prose-sm max-w-none text-foreground/80 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_code]:bg-black/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
-                          {streaming && <span className="inline-block w-[2px] h-4 bg-black/40 ml-0.5 align-text-bottom animate-pulse" />}
+                          {streaming && (
+                            <span className="inline-block w-[2px] h-[1em] bg-black/50 ml-0.5 align-text-bottom rounded-full animate-[blink_0.85s_step-end_infinite]" />
+                          )}
                         </div>
                       ) : (
                         msg.content
@@ -304,28 +440,21 @@ export default function OrderChat() {
                 className="flex gap-3 max-w-3xl"
               >
                 <AiAvatar isStreaming />
-                <div className="rounded-xl px-5 py-3 bg-white border border-black/5 shadow-sm">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-black/20 animate-pulse" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-black/20 animate-pulse [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-black/20 animate-pulse [animation-delay:300ms]" />
-                  </div>
+                <div className="rounded-xl border border-black/10 bg-black/[0.025] px-4 py-2.5">
+                  <LoadingBreadcrumb text="Thinking" />
                 </div>
               </motion.div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Input Area */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: messages.length === 0 ? 0.5 : 0 }}
-          className="bg-white/80 backdrop-blur-xl px-6 py-4 shrink-0"
-        >
-          <AIChatInput onSend={(msg) => send(msg)} disabled={isLoading} />
-        </motion.div>
-      </div>
+      {/* Input — always pinned to bottom */}
+      {messages.length > 0 && (
+        <div className="shrink-0 px-6 pb-6 pt-2 bg-transparent">
+          {composer}
+        </div>
+      )}
     </div>
   );
 }

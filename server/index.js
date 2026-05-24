@@ -1,9 +1,11 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { readFile } from "fs/promises";
 import pg from "pg";
 const { Pool } = pg;
 
@@ -44,18 +46,16 @@ async function getUser(token) {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) return { user: null };
 
-    // Auto-assign admin role on first login if no roles exist yet
-    const { data: existingRole } = await supabase
+    const { data: existingRole, error: roleError } = await supabase
       .from("user_roles")
-      .select("role")
+      .select("org_id, role")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!existingRole) {
-      await supabase
-        .from("user_roles")
-        .upsert({ user_id: user.id, role: "admin" }, { onConflict: "user_id" })
-        .catch((e) => console.warn("[Auth] role upsert failed:", e.message));
+    if (roleError) throw roleError;
+    if (!existingRole?.org_id || !existingRole?.role) {
+      console.warn(`[Auth] user ${user.id} has no organization role; denying API access`);
+      return { user: null, missingRole: true };
     }
 
     return { user };
@@ -63,6 +63,87 @@ async function getUser(token) {
     console.error("[Auth] getUser error:", err.message);
     return { user: null };
   }
+}
+
+async function getUserOrg(supabase, userId) {
+  const { data: roleRow, error } = await supabase
+    .from("user_roles")
+    .select("org_id, role")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  const orgId = roleRow?.org_id || null;
+  const role = roleRow?.role || null;
+  if (!orgId) {
+    const err = new Error("User has no organisation assigned. Please contact your administrator.");
+    err.statusCode = 403;
+    throw err;
+  }
+  return { orgId, role };
+}
+
+async function requireAdmin(req, res) {
+  const { user } = await getUser(getToken(req));
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+  const supabase = getServiceSupabase();
+  const { orgId, role } = await getUserOrg(supabase, user.id);
+  if (role !== "admin" || !orgId) {
+    res.status(403).json({ error: "Only admins can manage team members" });
+    return null;
+  }
+  return { supabase, user, orgId, role };
+}
+
+function applyOrgScope(query, orgId) {
+  return query.eq("org_id", orgId);
+}
+
+function errorMessage(err) {
+  if (err instanceof Error) return err.message;
+  if (err?.message) return err.message;
+  if (err?.error_description) return err.error_description;
+  if (err?.details) return err.details;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
+}
+
+function sendError(res, err) {
+  const msg = errorMessage(err);
+  const status = err?.statusCode || 500;
+  return res.status(status).json({ error: msg });
+}
+
+function parseOpenAIError(status, body) {
+  let message = body;
+  let code = "";
+  try {
+    const parsed = JSON.parse(body);
+    message = parsed?.error?.message || parsed?.message || body;
+    code = parsed?.error?.code || parsed?.error?.type || "";
+  } catch {
+    // OpenAI can return plain text for gateway-level issues.
+  }
+
+  const detail = String(message || "").slice(0, 220);
+  if (status === 401 || code === "invalid_api_key") {
+    return "OpenAI rejected the API key. Check that OPENAI_API_KEY is a valid project API key and restart localhost after editing .env.";
+  }
+  if (status === 403 || /model|project|organization|permission/i.test(detail)) {
+    return `OpenAI access error: ${detail}`;
+  }
+  if (status === 429 && /quota|credits|billing|balance/i.test(detail)) {
+    return `OpenAI billing/quota error: ${detail}`;
+  }
+  if (status === 429) {
+    return "OpenAI rate limit exceeded. Please try again shortly.";
+  }
+  return `OpenAI error ${status}: ${detail || "request failed"}`;
 }
 
 function delay(ms) {
@@ -198,8 +279,8 @@ async function checkFraudStatus(phone, apiKey) {
   }
 }
 
-async function getPathaoToken() {
-  const cfg = await getSettings(["pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password"]);
+async function getPathaoToken(orgId) {
+  const cfg = await getOrgSettings(orgId, ["pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password"]);
   const clientId = cfg["pathao_client_id"];
   const clientSecret = cfg["pathao_client_secret"];
   const username = cfg["pathao_username"];
@@ -262,14 +343,13 @@ app.post("/api/auth/register", async (req, res) => {
 
     const { error: roleError } = await supabase
       .from("user_roles")
-      .upsert({ user_id: newUser.user.id, role: "admin" }, { onConflict: "user_id" });
+      .upsert({ user_id: newUser.user.id, role: "admin", org_id: newUser.user.id }, { onConflict: "user_id" });
 
     if (roleError) throw roleError;
 
     return res.json({ success: true, userId: newUser.user.id });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return res.status(500).json({ error: msg });
+    return sendError(res, err);
   }
 });
 
@@ -305,50 +385,213 @@ app.post("/api/admin/assign-role", async (req, res) => {
       // Admins exist — only an existing admin can assign roles
       const { data: callerRole } = await supabase
         .from("user_roles")
-        .select("role")
+        .select("org_id, role")
         .eq("user_id", user.id)
         .maybeSingle();
       if (callerRole?.role !== "admin") {
         return res.status(403).json({ error: "Only admins can assign roles" });
       }
+      if (!callerRole.org_id) {
+        return res.status(403).json({ error: "Admin user is not assigned to an organization" });
+      }
+      const assignTo = targetUserId || user.id;
+      const { error: upsertError } = await supabase
+        .from("user_roles")
+        .upsert({ user_id: assignTo, role: roleToAssign, org_id: callerRole.org_id }, { onConflict: "user_id" });
+
+      if (upsertError) throw upsertError;
+
+      return res.json({ success: true, userId: assignTo, role: roleToAssign });
     }
 
     // Assign the role (upsert)
     const assignTo = targetUserId || user.id;
     const { error: upsertError } = await supabase
       .from("user_roles")
-      .upsert({ user_id: assignTo, role: roleToAssign }, { onConflict: "user_id" });
+      .upsert({ user_id: assignTo, role: roleToAssign, org_id: assignTo }, { onConflict: "user_id" });
 
     if (upsertError) throw upsertError;
 
     return res.json({ success: true, userId: assignTo, role: roleToAssign });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return res.status(500).json({ error: msg });
+    return sendError(res, err);
+  }
+});
+
+async function getCurrentUserContext(token) {
+  if (!token) return null;
+
+  // getUser validates the JWT and requires an existing organization role.
+  const { user } = await getUser(token);
+  if (!user) return null;
+
+  const supabase = getServiceSupabase();
+  const { data: roleRow, error } = await supabase
+    .from("user_roles")
+    .select("org_id, role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+
+  const orgId = roleRow?.org_id || null;
+  const orgSettings = orgId ? await getOrgSettings(orgId, ["org_name"]) : {};
+  const role = roleRow?.role || null;
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email || "",
+    },
+    role,
+    orgId,
+    orgName: orgSettings.org_name || "",
+    isAdmin: role === "admin",
+    isTeamMember: role === "team_member",
+    hasRole: !!roleRow,
+  };
+}
+
+app.get("/api/me", async (req, res) => {
+  try {
+    const context = await getCurrentUserContext(getToken(req));
+    if (!context) return res.status(401).json({ error: "Unauthorized" });
+    return res.json(context);
+  } catch (err) {
+    return sendError(res, err);
   }
 });
 
 // Check if the current user is admin
 app.get("/api/admin/check", async (req, res) => {
   try {
-    const token = getToken(req);
-    if (!token) return res.json({ isAdmin: false, hasAdmins: false });
+    const context = await getCurrentUserContext(getToken(req));
+    if (!context) return res.json({ isAdmin: false, hasAdmins: false });
 
-    // getUser validates the JWT and auto-assigns admin role on first login
-    // in user_roles so the role exists by the time we query it below.
-    const { user } = await getUser(token);
-    if (!user) return res.json({ isAdmin: false, hasAdmins: false });
-
-    const supabase = getServiceSupabase();
-    const { data: roleRow } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    return res.json({ isAdmin: roleRow?.role === "admin", hasAdmins: !!roleRow });
+    return res.json({
+      isAdmin: context.isAdmin,
+      hasAdmins: context.hasRole,
+      role: context.role,
+      orgId: context.orgId,
+    });
   } catch {
     return res.json({ isAdmin: false, hasAdmins: false });
+  }
+});
+
+function generateTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  return Array.from({ length: 14 }, () => alphabet[crypto.randomInt(alphabet.length)]).join("");
+}
+
+async function getAuthUserEmail(supabase, userId) {
+  try {
+    const { data, error } = await supabase.auth.admin.getUserById(userId);
+    if (error) return "";
+    return data?.user?.email || "";
+  } catch {
+    return "";
+  }
+}
+
+app.get("/api/team-members", async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const { supabase, orgId } = admin;
+
+    const { data: roles, error } = await supabase
+      .from("user_roles")
+      .select("id, user_id, role, org_id, created_at")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+
+    const members = await Promise.all((roles || []).map(async (member) => ({
+      ...member,
+      email: await getAuthUserEmail(supabase, member.user_id),
+    })));
+
+    return res.json({ members });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+async function createTeamMemberHandler(req, res) {
+  try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const { supabase, orgId } = admin;
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const password = req.body?.password ? String(req.body.password) : generateTemporaryPassword();
+
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+
+    const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+
+    if (createError) return res.status(400).json({ error: createError.message });
+
+    const { data: roleRow, error: roleError } = await supabase
+      .from("user_roles")
+      .upsert(
+        { user_id: newUser.user.id, role: "team_member", org_id: orgId },
+        { onConflict: "user_id" }
+      )
+      .select("id, user_id, role, org_id, created_at")
+      .single();
+
+    if (roleError) throw roleError;
+
+    return res.status(201).json({
+      success: true,
+      email,
+      password,
+      userId: newUser.user.id,
+      member: { ...roleRow, email },
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
+app.post("/api/team-members", createTeamMemberHandler);
+app.post("/api/create-team-member", createTeamMemberHandler);
+
+app.delete("/api/team-members/:id", async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const { supabase, user, orgId } = admin;
+
+    const { data: member, error: fetchError } = await supabase
+      .from("user_roles")
+      .select("id, user_id, role, org_id")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .single();
+
+    if (fetchError || !member) return res.status(404).json({ error: "Team member not found" });
+    if (member.user_id === user.id) return res.status(400).json({ error: "You cannot remove yourself" });
+    if (member.role === "admin") return res.status(400).json({ error: "Admin users cannot be removed from Team Management" });
+
+    const { error: deleteUserError } = await supabase.auth.admin.deleteUser(member.user_id);
+    if (deleteUserError) throw deleteUserError;
+
+    await supabase
+      .from("user_roles")
+      .delete()
+      .eq("id", member.id)
+      .eq("org_id", orgId);
+
+    return res.json({ success: true, id: member.id });
+  } catch (err) {
+    return sendError(res, err);
   }
 });
 
@@ -377,33 +620,78 @@ async function saveSettings(settings) {
   return supabase.from("app_settings").upsert(rows, { onConflict: "key" });
 }
 
+function orgSettingKey(orgId, key) {
+  return `${orgId}:${key}`;
+}
+
+async function getOrgSettings(orgId, keys) {
+  const scopedKeys = keys.map((key) => orgSettingKey(orgId, key));
+  const settings = await getSettings(scopedKeys);
+  const map = {};
+  for (const key of keys) {
+    map[key] = settings[orgSettingKey(orgId, key)];
+  }
+  return map;
+}
+
+async function saveOrgSettings(orgId, settings) {
+  const scopedSettings = {};
+  for (const [key, value] of Object.entries(settings)) {
+    scopedSettings[orgSettingKey(orgId, key)] = value;
+  }
+  return saveSettings(scopedSettings);
+}
+
+async function getProductStockMap(orgId, productIds) {
+  if (!productIds.length) return {};
+  const keys = productIds.map((id) => `${orgId}:product_stock:${id}`);
+  const settings = await getSettings(keys);
+  const map = {};
+  for (const id of productIds) {
+    map[id] = Math.max(0, parseInt(settings[`${orgId}:product_stock:${id}`] || "0", 10) || 0);
+  }
+  return map;
+}
+
+async function saveProductStock(orgId, productId, quantity) {
+  return saveSettings({ [`${orgId}:product_stock:${productId}`]: Math.max(0, parseInt(quantity, 10) || 0) });
+}
+
 app.get("/api/settings", async (req, res) => {
   try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const prefix = `${orgId}:`;
     const { data, error } = await supabase.from("app_settings").select("key, value").order("key");
     if (error) throw error;
     const settings = {};
     for (const row of data || []) {
-      settings[row.key] = row.value;
+      if (row.key.startsWith(prefix)) {
+        settings[row.key.slice(prefix.length)] = row.value;
+      }
     }
     return res.json({ settings });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return res.status(500).json({ error: msg });
+    return sendError(res, err);
   }
 });
 
 app.post("/api/settings", async (req, res) => {
   try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
     const { settings } = req.body;
     if (!settings || typeof settings !== "object") {
       return res.status(400).json({ error: "settings object required" });
     }
-    await saveSettings(settings);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    await saveOrgSettings(orgId, settings);
     return res.json({ success: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return res.status(500).json({ error: msg });
+    return sendError(res, err);
   }
 });
 
@@ -414,7 +702,9 @@ app.post("/api/settings/test-facebook", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const cfg = await getSettings(["facebook_access_token", "facebook_ad_account_id"]);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["facebook_access_token", "facebook_ad_account_id"]);
     const token = cfg["facebook_access_token"];
     const accountId = cfg["facebook_ad_account_id"];
     if (!token || !accountId) return res.status(400).json({ error: "Facebook credentials not configured" });
@@ -436,7 +726,9 @@ app.post("/api/settings/test-fraudshield", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const cfg = await getSettings(["fraudshield_api_key"]);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["fraudshield_api_key"]);
     const apiKey = cfg["fraudshield_api_key"];
     if (!apiKey) return res.status(400).json({ error: "FraudShield API key not configured" });
     return res.json({ success: true, message: "API key configured" });
@@ -452,6 +744,7 @@ app.get("/api/analytics", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
 
     // Optional date range from query params (YYYY-MM-DD)
     const since = req.query.since || null;
@@ -460,7 +753,7 @@ app.get("/api/analytics", async (req, res) => {
     // Use SELECT * so PostgREST doesn't validate individual column names against
     // its schema cache. If org_id isn't cached yet, named selects throw a 500;
     // with * PostgREST returns whatever Postgres gives and we filter in JS.
-    let ordersQuery = supabase.from("orders").select("*");
+    let ordersQuery = supabase.from("orders").select("*").eq("org_id", orgId);
     if (since) ordersQuery = ordersQuery.gte("created_at", `${since}T00:00:00+06:00`);
     if (until) ordersQuery = ordersQuery.lte("created_at", `${until}T23:59:59+06:00`);
 
@@ -484,7 +777,7 @@ app.get("/api/analytics", async (req, res) => {
     // Fetch Facebook ad spend
     let adSpend = null;
     let fbError = null;
-    const cfg = await getSettings(["facebook_access_token", "facebook_ad_account_id", "usd_to_bdt_rate"]);
+    const cfg = await getOrgSettings(orgId, ["facebook_access_token", "facebook_ad_account_id", "usd_to_bdt_rate"]);
     const fbToken = cfg["facebook_access_token"];
     const fbAccountId = cfg["facebook_ad_account_id"];
     const usdToBdt = parseFloat(cfg["usd_to_bdt_rate"] || "0") || 110; // default 110
@@ -545,7 +838,8 @@ app.get("/api/analytics", async (req, res) => {
     try {
       const { data: prods } = await supabase
         .from("products")
-        .select("selling_price, cog");
+        .select("selling_price, cog")
+        .eq("org_id", orgId);
       if (prods && prods.length > 0) {
         let sumCog = 0;
         let sumSelling = 0;
@@ -584,12 +878,628 @@ app.get("/api/analytics", async (req, res) => {
       fbError,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return res.status(500).json({ error: msg });
+    return sendError(res, err);
+  }
+});
+
+// ─── AI Business Forecast ───────────────────────────────────────────────────
+
+function normalizeProductName(value = "") {
+  return String(value).toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/gi, " ").trim();
+}
+
+function orderMentionsProduct(orderProduct, productName) {
+  const orderText = normalizeProductName(orderProduct);
+  const name = normalizeProductName(productName);
+  if (!orderText || !name) return false;
+  return orderText.includes(name) || name.includes(orderText);
+}
+
+function pctChange(current, previous) {
+  if (!previous && !current) return 0;
+  if (!previous) return 100;
+  return ((current - previous) / previous) * 100;
+}
+
+const OPENAI_SIDEBAR_ALERT_MODEL = "gpt-5.4-mini";
+
+function fallbackSidebarInsight(type, orders) {
+  if (!orders.length) return undefined;
+  const oldest = orders[0];
+  if (type === "stalePending") {
+    return {
+      headline: `${orders.length} pending order${orders.length === 1 ? "" : "s"} need follow-up`,
+      insight: `Oldest is #${oldest.order_number}, ${oldest.daysOld}d old. Follow up before courier confidence drops.`,
+    };
+  }
+  return {
+    headline: `${orders.length} confirmed order${orders.length === 1 ? "" : "s"} ready to dispatch`,
+    insight: `Start with #${oldest.order_number}. These are confirmed but not yet sent to courier.`,
+  };
+}
+
+function extractResponsesText(data) {
+  if (data?.output_text) return data.output_text;
+  const parts = [];
+  for (const item of data?.output || []) {
+    for (const content of item?.content || []) {
+      if (content?.text) parts.push(content.text);
+    }
+  }
+  return parts.join("\n");
+}
+
+function parseJsonObject(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+let viralHookCache = null;
+
+async function getViralHookTemplates() {
+  if (viralHookCache) return viralHookCache;
+  try {
+    const filePath = join(__dirname, "..", "data", "viral_hooks.md");
+    const markdown = await readFile(filePath, "utf8");
+    const blocks = markdown.split(/\n### Hook #/).slice(1);
+    viralHookCache = blocks
+      .map((block) => {
+        const id = block.match(/^(\d+)/)?.[1] || "";
+        const category = block.match(/\*\*Category:\*\*\s*([^\n]+)/)?.[1]?.trim() || "";
+        const hook = block.match(/\*\*Hook:\*\*\s*([\s\S]*?)(?:\n\n\*\*Reference Examples:\*\*|\n---|\n$)/)?.[1]?.replace(/\s+/g, " ").trim() || "";
+        const examples = [...block.matchAll(/-\s*(https?:\/\/[^\s]+)/g)].map((m) => m[1]);
+        return { id, category, hook, examples };
+      })
+      .filter((item) => item.hook && !/^h=/.test(item.hook));
+  } catch (err) {
+    console.warn("[Studio] viral hooks unavailable:", errorMessage(err));
+    viralHookCache = [];
+  }
+  return viralHookCache;
+}
+
+function scoreHookTemplate(template, query) {
+  const text = `${template.category} ${template.hook}`.toLowerCase();
+  const words = String(query || "")
+    .toLowerCase()
+    .split(/[^a-z0-9\u0980-\u09ff]+/i)
+    .filter((word) => word.length > 2);
+  let score = 0;
+  for (const word of words) {
+    if (text.includes(word)) score += 2;
+  }
+  if (/how|exactly|teach|learn|guide|tips|steps/i.test(template.hook)) score += 2;
+  if (/did you know|nobody|stop|mistake|do not|if you/i.test(template.hook)) score += 3;
+  if (/comparison|myth|storytelling|educational/i.test(template.category)) score += 1;
+  return score;
+}
+
+async function selectViralHooks(productDetails, target = "script") {
+  const templates = await getViralHookTemplates();
+  if (!templates.length) return [];
+  const ranked = templates
+    .map((template) => ({ template, score: scoreHookTemplate(template, productDetails) + Math.random() * (target === "hook" ? 4 : 1) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, target === "hook" ? 12 : 8)
+    .map(({ template }) => template);
+  return ranked;
+}
+
+async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
+  const fallback = {
+    stalePending: fallbackSidebarInsight("stalePending", stalePending),
+    unsentConfirmed: fallbackSidebarInsight("unsentConfirmed", unsentConfirmed),
+  };
+
+  if (!process.env.OPENAI_API_KEY || (!stalePending.length && !unsentConfirmed.length)) {
+    return fallback;
+  }
+
+  try {
+    const payload = {
+      stalePending: stalePending.slice(0, 10),
+      unsentConfirmed: unsentConfirmed.slice(0, 10),
+    };
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_SIDEBAR_ALERT_MODEL,
+        input: [
+          {
+            role: "system",
+            content:
+              "You write concise operational sidebar alerts for a Bangladeshi ecommerce order dashboard. Return JSON only. Use practical language, no markdown.",
+          },
+          {
+            role: "user",
+            content:
+              "Create short AI insights for these sidebar alert groups. Keep headline under 52 characters and insight under 120 characters. Return shape: {\"stalePending\":{\"headline\":\"\",\"insight\":\"\"},\"unsentConfirmed\":{\"headline\":\"\",\"insight\":\"\"}}. Omit a group by returning null when it has no orders.\n\n" +
+              JSON.stringify(payload),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn("[Sidebar Alerts] OpenAI failed:", response.status, body.slice(0, 240));
+      return fallback;
+    }
+
+    const json = parseJsonObject(extractResponsesText(await response.json()));
+    return {
+      stalePending: json?.stalePending || fallback.stalePending,
+      unsentConfirmed: json?.unsentConfirmed || fallback.unsentConfirmed,
+    };
+  } catch (err) {
+    console.warn("[Sidebar Alerts] AI fallback:", errorMessage(err));
+    return fallback;
+  }
+}
+
+async function buildForecastNarrative(payload) {
+  if (!process.env.OPENAI_API_KEY) return payload.executiveSummary;
+  try {
+    const prompt = `You are an operator for a Bangladeshi ecommerce business. Write a concise executive summary and practical action plan from this JSON. Use taka symbol. Focus on stock-outs, products to stop, restocking, and risk.\n\n${JSON.stringify(payload).slice(0, 12000)}`;
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Return markdown only. Be specific, concise, and operational." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.2,
+      }),
+    });
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || payload.executiveSummary;
+  } catch {
+    return payload.executiveSummary;
+  }
+}
+
+app.get("/api/business-forecast", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const now = new Date();
+    const lookbackDays = Math.max(7, Math.min(90, parseInt(req.query.days || "30", 10) || 30));
+    const currentStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+    const previousStart = new Date(now.getTime() - lookbackDays * 2 * 24 * 60 * 60 * 1000);
+
+    const { data: rawOrders, error: ordersError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("org_id", orgId)
+        .gte("created_at", previousStart.toISOString())
+        .order("created_at", { ascending: false });
+    if (ordersError) throw ordersError;
+
+    const { data: rawProducts, error: productsError } = await supabase
+        .from("products")
+        .select("*")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false });
+    if (productsError) throw productsError;
+
+    const orders = rawOrders || [];
+    const stockMap = await getProductStockMap(orgId, (rawProducts || []).map((p) => p.id));
+    const products = (rawProducts || []).map((p) => ({ ...p, stock_quantity: stockMap[p.id] || 0 }));
+    const currentOrders = orders.filter((o) => new Date(o.created_at) >= currentStart);
+    const previousOrders = orders.filter((o) => new Date(o.created_at) < currentStart && new Date(o.created_at) >= previousStart);
+
+    const currentRevenue = currentOrders.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
+    const previousRevenue = previousOrders.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
+    const projectedRevenue30d = (currentRevenue / lookbackDays) * 30;
+
+    const productForecasts = products.map((product) => {
+      const matchedCurrent = currentOrders.filter((o) => orderMentionsProduct(o.product, product.name));
+      const matchedPrevious = previousOrders.filter((o) => orderMentionsProduct(o.product, product.name));
+      const unitsSold = matchedCurrent.reduce((sum, o) => sum + (parseInt(o.quantity || 1, 10) || 1), 0);
+      const previousUnits = matchedPrevious.reduce((sum, o) => sum + (parseInt(o.quantity || 1, 10) || 1), 0);
+      const revenue = matchedCurrent.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
+      const canceledOrders = matchedCurrent.filter((o) => {
+        const status = `${o.status || ""} ${o.fulfillment_status || ""} ${o.courier_status || ""}`.toLowerCase();
+        return status.includes("cancel") || status.includes("fail") || status.includes("return") || status.includes("restock");
+      }).length;
+      const velocity = unitsSold / lookbackDays;
+      const stock = parseInt(product.stock_quantity || 0, 10) || 0;
+      const daysUntilStockout = velocity > 0 ? stock / velocity : null;
+      const margin = product.selling_price ? ((parseFloat(product.selling_price) - parseFloat(product.cog || 0)) / parseFloat(product.selling_price)) * 100 : null;
+      const cancellationRate = matchedCurrent.length ? (canceledOrders / matchedCurrent.length) * 100 : 0;
+      const growthRate = pctChange(unitsSold, previousUnits);
+
+      let recommendation = "Monitor";
+      let status = "stable";
+      let score = 50;
+      if (velocity > 0) score += Math.min(25, velocity * 10);
+      if (margin != null) score += Math.max(-20, Math.min(20, (margin - 20) / 2));
+      score -= Math.min(25, cancellationRate / 2);
+      if (daysUntilStockout != null && daysUntilStockout <= 7) {
+        status = "stockout";
+        recommendation = `Restock ${Math.max(10, Math.ceil(velocity * 14))} units soon`;
+        score += 10;
+      } else if (unitsSold === 0 && stock > 0) {
+        status = "dead_stock";
+        recommendation = "Pause restocking and test discount or bundle";
+        score -= 25;
+      } else if ((margin != null && margin < 15) || cancellationRate >= 35) {
+        status = "shutdown_candidate";
+        recommendation = "Review pricing, courier fit, or stop promotion";
+        score -= 20;
+      } else if (growthRate >= 30 && unitsSold > 0) {
+        status = "winner";
+        recommendation = "Protect stock and consider increasing promotion";
+        score += 15;
+      }
+
+      return {
+        id: product.id,
+        name: product.name,
+        stockQuantity: stock,
+        unitsSold,
+        revenue: Math.round(revenue),
+        salesVelocity: Number(velocity.toFixed(2)),
+        daysUntilStockout: daysUntilStockout == null ? null : Number(daysUntilStockout.toFixed(1)),
+        margin: margin == null ? null : Number(margin.toFixed(1)),
+        cancellationRate: Number(cancellationRate.toFixed(1)),
+        growthRate: Number(growthRate.toFixed(1)),
+        status,
+        recommendation,
+        score: Math.max(0, Math.min(100, Math.round(score))),
+      };
+    }).sort((a, b) => {
+      const riskRank = { stockout: 0, shutdown_candidate: 1, dead_stock: 2, winner: 3, stable: 4 };
+      return (riskRank[a.status] ?? 9) - (riskRank[b.status] ?? 9) || b.revenue - a.revenue;
+    });
+
+    const stockoutRisks = productForecasts.filter((p) => p.status === "stockout");
+    const shutdownCandidates = productForecasts.filter((p) => p.status === "shutdown_candidate" || p.status === "dead_stock");
+    const winners = productForecasts.filter((p) => p.status === "winner");
+    const topActions = [
+      ...stockoutRisks.slice(0, 3).map((p) => ({ priority: "critical", title: `Restock ${p.name}`, detail: `${p.daysUntilStockout} days until stock-out at current velocity.` })),
+      ...shutdownCandidates.slice(0, 3).map((p) => ({ priority: "warning", title: `Review ${p.name}`, detail: p.recommendation })),
+      ...winners.slice(0, 2).map((p) => ({ priority: "growth", title: `Scale ${p.name}`, detail: "Strong sales signal. Keep inventory protected before increasing promotion." })),
+    ].slice(0, 6);
+
+    const payload = {
+      generatedAt: now.toISOString(),
+      lookbackDays,
+      overview: {
+        currentOrders: currentOrders.length,
+        previousOrders: previousOrders.length,
+        currentRevenue: Math.round(currentRevenue),
+        previousRevenue: Math.round(previousRevenue),
+        revenueChange: Number(pctChange(currentRevenue, previousRevenue).toFixed(1)),
+        projectedRevenue30d: Math.round(projectedRevenue30d),
+        productsTracked: products.length,
+        stockoutCount: stockoutRisks.length,
+        shutdownCount: shutdownCandidates.length,
+      },
+      productForecasts,
+      stockoutRisks,
+      shutdownCandidates,
+      topActions,
+      executiveSummary: `## Business forecast\n\nYou have ${currentOrders.length} orders in the last ${lookbackDays} days with projected 30-day revenue of ৳${Math.round(projectedRevenue30d).toLocaleString("en-BD")}. ${stockoutRisks.length} products need restock attention and ${shutdownCandidates.length} products should be reviewed for discounting, bundling, or stopping promotion.`,
+    };
+
+    payload.aiSummary = await buildForecastNarrative(payload);
+    return res.json(payload);
+  } catch (err) {
+    console.error("[Business Forecast] error:", err);
+    return sendError(res, err);
   }
 });
 
 // ─── API Routes ─────────────────────────────────────────────────────────────
+
+app.get("/api/sidebar-alerts", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data, error } = await applyOrgScope(
+      supabase
+      .from("orders")
+      .select("id, order_number, customer_name, created_at, status, sent_to_courier, org_id")
+        .in("status", ["pending", "confirmed"]),
+      orgId
+    )
+      .order("created_at", { ascending: true })
+      .limit(200);
+    if (error) throw error;
+
+    const legacyCompatData = data || [];
+    const alertsSource = legacyCompatData.filter((order) => {
+      const status = String(order.status || "").toLowerCase();
+      if (status === "pending") {
+        return new Date(order.created_at) < new Date(twoDaysAgo);
+      }
+      if (status === "confirmed") {
+        return order.sent_to_courier !== true;
+      }
+      return false;
+    });
+
+    const now = Date.now();
+    const alerts = alertsSource.map((order) => ({
+      id: order.id,
+      type: String(order.status || "").toLowerCase() === "pending" ? "stale_pending" : "unsent_confirmed",
+      order_number: order.order_number,
+      customer_name: order.customer_name,
+      created_at: order.created_at,
+      daysOld: Math.floor((now - new Date(order.created_at).getTime()) / 86400000),
+    }));
+
+    const stalePending = alerts.filter((alert) => alert.type === "stale_pending");
+    const unsentConfirmed = alerts.filter((alert) => alert.type === "unsent_confirmed");
+    const aiInsights = await buildSidebarAlertInsights({ stalePending, unsentConfirmed });
+
+    return res.json({
+      alerts,
+      stalePending,
+      unsentConfirmed,
+      aiInsights,
+      model: OPENAI_SIDEBAR_ALERT_MODEL,
+    });
+  } catch (e) {
+    console.error("[Sidebar Alerts] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+const ORDER_CHAT_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
+
+app.post("/api/order-chat", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+
+    const model = ORDER_CHAT_MODELS.has(req.body?.model) ? req.body.model : "gpt-5.4-mini";
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: rawOrders, error } = await applyOrgScope(
+      supabase
+        .from("orders")
+        .select("*"),
+      orgId
+    )
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error) throw error;
+
+    const orders = rawOrders || [];
+    const pendingOrders = orders.filter((o) => o.status === "pending");
+    const confirmedOrders = orders.filter((o) => o.status === "confirmed");
+    const cancelledOrders = orders.filter((o) => o.status === "cancelled");
+    const sentToCourier = orders.filter((o) => o.sent_to_courier);
+    const notSentToCourier = orders.filter((o) => !o.sent_to_courier);
+    const withNotes = orders.filter((o) => o.notes);
+    const fraudChecked = orders.filter((o) => o.fraud_checked);
+    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
+    const totalDeliveryCharges = orders.reduce((sum, o) => sum + (parseFloat(o.delivery_rate || 0) || 0), 0);
+    const orderDetails = orders.map((o) => ({
+      "#": o.order_number,
+      c: o.customer_name,
+      ph: o.phone,
+      addr: o.address,
+      p: o.product,
+      qty: o.quantity,
+      price: o.price,
+      dlv: o.delivery_rate,
+      st: o.status,
+      fs: o.fulfillment_status,
+      sent: o.sent_to_courier ? 1 : 0,
+      cid: o.consignment_id,
+      trk: o.tracking_code,
+      cs: o.courier_status,
+      fc: o.fraud_checked ? 1 : 0,
+      note: o.notes,
+      dt: o.created_at?.slice(0, 10),
+    }));
+
+    const systemPrompt = `You are an intelligent order management assistant for a Bangladeshi e-commerce business. Answer using this order context.
+
+Rules:
+- Never use markdown tables.
+- Keep answers short, practical, and accurate.
+- Use compact numbered lists for orders: "1. #OrderNum (Customer): detail"
+- Use bold for key numbers.
+- Use ৳ for currency.
+
+Summary:
+Total: ${orders.length} | Pending: ${pendingOrders.length} | Confirmed: ${confirmedOrders.length} | Cancelled: ${cancelledOrders.length} | Sent to courier: ${sentToCourier.length} | Not sent: ${notSentToCourier.length} | With notes: ${withNotes.length} | Fraud checked: ${fraudChecked.length} | Revenue: ৳${totalRevenue} | Delivery: ৳${totalDeliveryCharges}
+
+Field key: #=order_number, c=customer, ph=phone, addr=address, p=product, qty=quantity, price=price, dlv=delivery_rate, st=status, fs=fulfillment_status, sent=sent_to_courier(1/0), cid=consignment_id, trk=tracking_code, cs=courier_status, fc=fraud_checked(1/0), note=notes, dt=date
+
+Orders:
+${JSON.stringify(orderDetails).slice(0, 60000)}`;
+
+    const input = [
+      { role: "system", content: systemPrompt },
+      ...messages.map((message) => ({
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: String(message.content || ""),
+      })),
+    ];
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model, input }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.error("[Order Chat] OpenAI error:", response.status, body.slice(0, 300));
+      const message = parseOpenAIError(response.status, body);
+      const statusCode = [401, 403, 429].includes(response.status) ? response.status : 502;
+      return res.status(statusCode).json({ error: message });
+    }
+
+    const data = await response.json();
+    const text = extractResponsesText(data) || "I couldn't generate a response.";
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (e) {
+    console.error("[Order Chat] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Studio: AI Copy Generation ────────────────────────────────────────────────
+app.post("/api/studio/generate", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+
+    const { productDetails, framework, frameworkName, frameworkLabel, language, regenerationTarget, existingScript } = req.body;
+    if (!productDetails || !framework) return res.status(400).json({ error: "Missing productDetails or framework" });
+
+    const isBangla = language === "bangla";
+
+    const frameworkPrompts = {
+      aida: "Structure the copy as: ATTENTION (hook that grabs attention), INTEREST (build curiosity and relevance), DESIRE (make them want it), ACTION (clear call to action).",
+      pas: "Structure the copy as: PROBLEM (identify the pain point), AGITATE (make the problem feel urgent and real), SOLUTION (present the product as the answer).",
+      bab: "Structure the copy as: BEFORE (describe their current situation/struggle), AFTER (paint the dream outcome), BRIDGE (explain how this product gets them there).",
+      "4ps": "Structure the copy as: PICTURE (vivid scene they can imagine), PROMISE (what the product delivers), PROVE (evidence, results, credibility), PUSH (strong call to action).",
+      fab: "Structure the copy as: FEATURES (what it has), ADVANTAGES (why those features matter), BENEFITS (how it improves the customer's life).",
+      quest: "Structure the copy as: QUALIFY (identify the right audience), UNDERSTAND (show you understand their needs), EDUCATE (inform them about the solution), STIMULATE (create desire), TRANSITION (move them to purchase).",
+      pastor: "Structure the copy as: PROBLEM (identify the core problem), AMPLIFY (show consequences of not solving it), STORY (share a relatable story or case), TRANSFORMATION (the change the product creates), OFFER (present the product clearly), RESPONSE (call to action).",
+      slap: "Structure the copy as: STOP (interrupt their scroll with a strong hook), LOOK (make them read more), ACT (tell them exactly what to do), PURCHASE (make buying easy and obvious).",
+      acca: "Structure the copy as: AWARENESS (introduce the problem), COMPREHENSION (help them understand it fully), CONVICTION (build belief that this solution works), ACTION (drive them to buy).",
+      "4us": "Structure the copy using the 4 U's: make it URGENT (time-sensitive reason to act now), UNIQUE (what makes this different from anything else), USEFUL (clear practical value), ULTRA-SPECIFIC (precise details, numbers, outcomes).",
+    };
+
+    const languageInstruction = isBangla
+      ? "Write the entire script in fluent, natural Bengali (বাংলা). Use everyday Bangladeshi Bengali that feels warm and conversational. All section headers, body copy, and calls to action must be in Bengali."
+      : "Write the entire script in English.";
+
+    const studioSchemaInstruction = `Return JSON only, no markdown fences. Shape:
+{
+  "hook": {
+    "time": "0:00-0:03",
+    "script": "",
+    "templateName": "Blackfile Template",
+    "templateLine": "",
+    "templateViews": "",
+    "tags": ["pattern_interrupt"],
+    "score": 94,
+    "whyItWorks": "",
+    "retentionMechanism": ""
+  },
+  "sceneAnalysis": [
+    {"time":"0:00-0:03","title":"Hook","line":"","psychology":"","retention":""}
+  ],
+  "scenes": [
+    {"number":1,"time":"0:04-0:12","title":"Problem Setup","dialogue":"","visual":"","textOverlay":"","transition":"","psychology":"","retention":""}
+  ],
+  "cameraLighting": {"mainShots":"","broll":"","lighting":"","colorGrade":""},
+  "editingPatterns": {"cutFrequency":"","transitions":"","textOverlays":"","music":""},
+  "cta": {"time":"0:26-0:30","dialogue":"","textOverlay":"","visual":""},
+  "viralProbability": 90,
+  "scoreBreakdown": {"hookStrength":95,"scriptStructure":90,"trendAlignment":88,"engagementPotential":92},
+  "productionSpecs": {"cutFrequency":"Every 2-3 sec","shotType":"Medium close-up","lighting":"Soft key 45°","textOverlay":"Bold yellow"}
+}`;
+
+    const systemPrompt = `You are an expert viral short-form video strategist and marketing copywriter. Write compelling, conversion-focused scripts using the ${frameworkName} framework (${frameworkLabel}). ${frameworkPrompts[framework] || ""}
+
+${languageInstruction}
+
+Create a 30-second vertical Reels/TikTok/Shorts script with hook psychology, retention mechanics, scene-by-scene production direction, camera notes, editing notes, CTA, and scoring. Use emojis only inside display titles when useful. Make it specific to the product details provided.
+
+${studioSchemaInstruction}`;
+
+    const hookOnly = regenerationTarget === "hook";
+    const viralHooks = await selectViralHooks(productDetails, hookOnly ? "hook" : "script");
+    const viralHookContext = viralHooks.map((item) => ({
+      id: item.id,
+      category: item.category,
+      hook: item.hook,
+      referenceExamples: item.examples.slice(0, 2),
+    }));
+    const userPrompt = hookOnly
+      ? `Regenerate ONLY the hook for this product and existing script. Use one of the provided viral hook templates as inspiration. Return the full JSON shape, but keep all existing non-hook sections unchanged when possible. Make the hook meaningfully different and stronger. Do not copy a template verbatim; adapt its pattern to the product.\n\nProduct:\n${productDetails}\n\nRelevant viral hook templates:\n${JSON.stringify(viralHookContext)}\n\nExisting script JSON:\n${JSON.stringify(existingScript || {}).slice(0, 12000)}`
+      : `Create a complete viral marketing script using the ${frameworkName} framework for this product. Use the provided viral hook templates as inspiration for the opening hook and scene psychology. Do not copy a template verbatim; adapt its pattern to the product.\n\nProduct:\n${productDetails}\n\nRelevant viral hook templates:\n${JSON.stringify(viralHookContext)}`;
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-5.4",
+        input: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_output_tokens: 3200,
+      }),
+    });
+
+    const bodyText = await response.text();
+
+    if (!response.ok) {
+      const errMsg = parseOpenAIError(response.status, bodyText);
+      return res.status(response.status).json({ error: errMsg });
+    }
+
+    let data;
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      return res.status(500).json({ error: "Invalid response from AI service" });
+    }
+
+    const outputText = extractResponsesText(data);
+    const script = parseJsonObject(outputText);
+    if (!script) return res.status(500).json({ error: "AI returned an invalid structured script. Please try again." });
+    return res.json({ script, text: outputText });
+  } catch (e) {
+    console.error("[Studio] generate error:", e);
+    return res.status(500).json({ error: e.message || "Generation failed" });
+  }
+});
 
 app.get("/api/orders", async (req, res) => {
   try {
@@ -599,9 +1509,11 @@ app.get("/api/orders", async (req, res) => {
     console.log(`[Orders] user=${user.id}`);
 
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
     const { data: allData, error } = await supabase
       .from("orders")
       .select("*")
+      .eq("org_id", orgId)
       .order("order_number", { ascending: false });
     if (error) throw error;
 
@@ -616,20 +1528,112 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
+app.get("/api/orders/recent-notifications", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (error) throw error;
+    return res.json({ orders: data || [] });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/orders", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const allowed = [
+      "shopify_order_id",
+      "order_number",
+      "customer_name",
+      "phone",
+      "address",
+      "product",
+      "quantity",
+      "price",
+      "delivery_rate",
+      "status",
+      "fraud_checked",
+      "fraud_data",
+      "fulfillment_status",
+      "notes",
+    ];
+    const row = { org_id: orgId };
+    for (const key of allowed) {
+      if (req.body?.[key] !== undefined) row[key] = req.body[key];
+    }
+    if (!row.shopify_order_id) {
+      row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
+    }
+    if (!row.order_number) row.order_number = `MAN-${Date.now()}`;
+    if (!row.status) row.status = "pending";
+
+    const { data, error } = await supabase
+      .from("orders")
+      .insert(row)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    return res.status(201).json({ success: true, order: data });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.patch("/api/orders/:id", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
     const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
     // Verify org ownership — tenant can only update their own orders.
-    const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).single();
+    const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
-    await supabase.from("orders").update(update).eq("id", req.params.id);
-    const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).single();
+    await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+    const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     return res.json({ success: true, order: data });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/orders", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ error: "ids array required" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("orders")
+      .delete()
+      .in("id", ids)
+      .eq("org_id", orgId)
+      .select("id");
+
+    if (error) throw error;
+    return res.json({ success: true, deleted: data?.length || 0, ids: (data || []).map((row) => row.id) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -643,13 +1647,14 @@ app.post("/api/send-to-courier", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-    const cfg = await getSettings(["steadfast_api_key", "steadfast_secret_key"]);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
     const apiKey = cfg["steadfast_api_key"];
     const secretKey = cfg["steadfast_secret_key"];
     if (!apiKey || !secretKey) return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
 
-    const supabase = getServiceSupabase();
-    const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
     if (order.sent_to_courier) return res.status(400).json({ error: "Order already sent to courier", consignment_id: order.consignment_id });
 
@@ -676,7 +1681,7 @@ app.post("/api/send-to-courier", async (req, res) => {
     const sfData = await sfRes.json();
 
     if (sfData.status !== 200) {
-      await supabase.from("orders").update({ courier_message: sfData.message || "Failed" }).eq("id", orderId);
+      await supabase.from("orders").update({ courier_message: sfData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
       return res.status(400).json({ error: sfData.message || "Steadfast rejected the order", details: sfData });
     }
 
@@ -687,9 +1692,9 @@ app.post("/api/send-to-courier", async (req, res) => {
       tracking_code: consignment.tracking_code,
       courier_status: consignment.status,
       courier_message: "Sent to Steadfast successfully",
-    }).eq("id", orderId);
+    }).eq("id", orderId).eq("org_id", orgId);
 
-    const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -704,12 +1709,13 @@ app.post("/api/send-to-pathao", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-    const cfg = await getSettings(["pathao_store_id"]);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["pathao_store_id"]);
     const storeId = cfg["pathao_store_id"];
     if (!storeId) return res.status(500).json({ error: "Pathao credentials not configured. Go to Settings → Integrations." });
 
-    const supabase = getServiceSupabase();
-    const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
 
     const cleanedPhone = normalizeBdPhone(order.phone || "");
@@ -717,7 +1723,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
-    const accessToken = await getPathaoToken();
+    const accessToken = await getPathaoToken(orgId);
     const pathaoPayload = {
       store_id: parseInt(storeId),
       merchant_order_id: `ORD-${order.order_number || order.id.slice(-8).toUpperCase()}`,
@@ -740,7 +1746,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
     const pathaoData = await pathaoRes.json();
 
     if (!pathaoRes.ok) {
-      await supabase.from("orders").update({ courier_message: pathaoData.message || "Failed" }).eq("id", orderId);
+      await supabase.from("orders").update({ courier_message: pathaoData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
       return res.status(400).json({ error: pathaoData.message || "Pathao rejected the order", details: pathaoData });
     }
 
@@ -752,9 +1758,9 @@ app.post("/api/send-to-pathao", async (req, res) => {
       tracking_code: consignmentId,
       courier_status: "pending",
       courier_message: "Sent to Pathao successfully",
-    }).eq("id", orderId);
+    }).eq("id", orderId).eq("org_id", orgId);
 
-    const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).single();
+    const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -764,7 +1770,10 @@ app.post("/api/send-to-pathao", async (req, res) => {
 app.post("/api/fetch-shopify-orders", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
-    const cfg = await getSettings(["shopify_admin_api_token", "shopify_store_url"]);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["shopify_admin_api_token", "shopify_store_url"]);
     const shopifyToken = cfg["shopify_admin_api_token"];
     const shopifyStoreUrl = cfg["shopify_store_url"];
 
@@ -795,11 +1804,10 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
     const shopifyData = await shopifyResponse.json();
     const orders = shopifyData.orders || [];
 
-    const supabase = getServiceSupabase();
-
     const { data: existingOrdersRaw } = await supabase
       .from("orders")
-      .select("*");
+      .select("*")
+      .eq("org_id", orgId);
     const existingOrders = existingOrdersRaw || [];
 
     const existingOrdersMap = new Map(
@@ -901,6 +1909,7 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
         quantity,
         // org_id is included directly — the column exists in the DB and PostgREST
         // schema cache is up to date (seeded via Supabase SQL Editor migration).
+        org_id: orgId,
         price: (order.cancelled_at || order.financial_status === 'refunded' || order.financial_status === 'voided') ? 0 : totalPrice,
         delivery_rate: (order.cancelled_at || order.financial_status === 'refunded' || order.financial_status === 'voided') ? 0 : shippingPrice,
         fulfillment_status: order.cancelled_at
@@ -921,13 +1930,33 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
 
     console.log(`[Sync] processed ${processedOrders.length} orders (zeroed any cancelled/refunded ones)`);
 
-    const { error: upsertError } = await supabase
-      .from("orders")
-      .upsert(processedOrders, { onConflict: "shopify_order_id", ignoreDuplicates: false });
+    const ordersToInsert = [];
+    for (const processedOrder of processedOrders) {
+      const existingOrder = existingOrdersMap.get(processedOrder.shopify_order_id);
+      if (existingOrder?.id) {
+        const { error: updateError } = await supabase
+          .from("orders")
+          .update(processedOrder)
+          .eq("id", existingOrder.id)
+          .eq("org_id", orgId);
+        if (updateError) {
+          console.error("[Sync] Update error:", JSON.stringify(updateError));
+          return res.status(500).json({ error: "Failed to update orders", details: updateError.message });
+        }
+      } else {
+        ordersToInsert.push(processedOrder);
+      }
+    }
 
-    if (upsertError) {
-      console.error("[Sync] Upsert error:", JSON.stringify(upsertError));
-      return res.status(500).json({ error: "Failed to save orders", details: upsertError.message });
+    if (ordersToInsert.length) {
+      const { error: insertError } = await supabase
+        .from("orders")
+        .insert(ordersToInsert);
+
+      if (insertError) {
+        console.error("[Sync] Insert error:", JSON.stringify(insertError));
+        return res.status(500).json({ error: "Failed to save orders", details: insertError.message });
+      }
     }
 
     res.json({ synced: processedOrders.length });
@@ -936,14 +1965,24 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
 
 app.get("/api/social/messages/:conversationId", async (req, res) => {
   try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: conversation, error: conversationError } = await supabase
+      .from("social_conversations")
+      .select("id")
+      .eq("id", req.params.conversationId)
+      .eq("org_id", orgId)
+      .single();
+    if (conversationError || !conversation) return res.status(404).json({ error: "Conversation not found" });
     const { data, error } = await supabase
       .from("social_messages")
       .select("*")
       .eq("conversation_id", req.params.conversationId)
       .order("created_at", { ascending: true });
     if (error) throw error;
-    await supabase.from("social_conversations").update({ unread_count: 0 }).eq("id", req.params.conversationId);
+    await supabase.from("social_conversations").update({ unread_count: 0 }).eq("id", req.params.conversationId).eq("org_id", orgId);
     res.json({ messages: data || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -954,19 +1993,17 @@ app.get("/api/social/inbox-orders", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
     const { data: allInboxOrders, error } = await supabase
       .from("social_inbox_orders")
       .select("*")
+      .eq("org_id", orgId)
       .order("created_at", { ascending: false });
     if (error) {
       console.error("[GET inbox-orders] SELECT failed:", error.message);
       return res.status(500).json({ error: error.message, orders: [] });
     }
-    const all = allInboxOrders || [];
-
-    const orders = all;
-
-    res.json({ orders });
+    res.json({ orders: allInboxOrders || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -975,13 +2012,14 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
-    const { data: existing, error: fetchErr } = await supabase.from("social_inbox_orders").select("id, org_id").eq("id", req.params.id).single();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: existing, error: fetchErr } = await supabase.from("social_inbox_orders").select("id, org_id").eq("id", req.params.id).eq("org_id", orgId).single();
     if (fetchErr || !existing) return res.status(404).json({ error: "Order not found" });
     const allowed = ["status", "notes"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
-    await supabase.from("social_inbox_orders").update(update).eq("id", req.params.id);
-    const { data } = await supabase.from("social_inbox_orders").select("*").eq("id", req.params.id).single();
+    await supabase.from("social_inbox_orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+    const { data } = await supabase.from("social_inbox_orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     res.json({ success: true, order: data });
   } catch (e) { res.status(500).json({ error: "An internal error occurred" }); }
 });
@@ -991,9 +2029,10 @@ app.delete("/api/social/inbox-orders/:id", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
-    const { data: existing, error: fetchErr } = await supabase.from("social_inbox_orders").select("id, org_id").eq("id", req.params.id).single();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: existing, error: fetchErr } = await supabase.from("social_inbox_orders").select("id, org_id").eq("id", req.params.id).eq("org_id", orgId).single();
     if (fetchErr || !existing) return res.status(404).json({ error: "Order not found" });
-    await supabase.from("social_inbox_orders").delete().eq("id", req.params.id);
+    await supabase.from("social_inbox_orders").delete().eq("id", req.params.id).eq("org_id", orgId);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "An internal error occurred" }); }
 });
@@ -1013,13 +2052,14 @@ app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
 
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const cfg = await getSettings(["steadfast_api_key", "steadfast_secret_key"]);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
     const apiKey = cfg["steadfast_api_key"];
     const secretKey = cfg["steadfast_secret_key"];
     if (!apiKey || !secretKey) return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
 
-    const supabase = getServiceSupabase();
-    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).single();
+    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
     if (order.sent_to_courier) return res.status(400).json({ error: "Order already sent to courier", consignment_id: order.consignment_id });
 
@@ -1050,7 +2090,7 @@ app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
     const sfData = await sfRes.json();
 
     if (sfData.status !== 200) {
-      await supabase.from("social_inbox_orders").update({ courier_message: sfData.message || "Failed" }).eq("id", orderId);
+      await supabase.from("social_inbox_orders").update({ courier_message: sfData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
       return res.status(400).json({ error: sfData.message || "Steadfast rejected the order", details: sfData });
     }
 
@@ -1061,9 +2101,9 @@ app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
       tracking_code: consignment.tracking_code,
       courier_status: consignment.status,
       courier_message: "Sent to Steadfast successfully",
-    }).eq("id", orderId);
+    }).eq("id", orderId).eq("org_id", orgId);
 
-    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).single();
+    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -1076,12 +2116,14 @@ app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
     if (!orderId) return res.status(400).json({ error: "Order ID is required" });
 
     const { user } = await getUser(getToken(req));
-    const cfg = await getSettings(["pathao_store_id"]);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["pathao_store_id"]);
     const storeId = cfg["pathao_store_id"];
     if (!storeId) return res.status(500).json({ error: "Pathao credentials not configured. Go to Settings → Integrations." });
 
-    const supabase = getServiceSupabase();
-    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).single();
+    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
 
     const { phone: rawPhone, address } = parseInboxOrderNotes(order.notes);
@@ -1093,7 +2135,7 @@ app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
     const items = Array.isArray(order.items) ? order.items : [];
     const productNote = items.map(i => `${i.quantity}x ${i.product}`).join(", ") || "N/A";
     const totalQty = items.reduce((a, i) => a + (i.quantity || 1), 0) || 1;
-    const accessToken = await getPathaoToken();
+    const accessToken = await getPathaoToken(orgId);
 
     const pathaoPayload = {
       store_id: parseInt(storeId),
@@ -1117,7 +2159,7 @@ app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
     const pathaoData = await pathaoRes.json();
 
     if (!pathaoRes.ok) {
-      await supabase.from("social_inbox_orders").update({ courier_message: pathaoData.message || "Failed" }).eq("id", orderId);
+      await supabase.from("social_inbox_orders").update({ courier_message: pathaoData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
       return res.status(400).json({ error: pathaoData.message || "Pathao rejected the order", details: pathaoData });
     }
 
@@ -1129,9 +2171,9 @@ app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
       tracking_code: consignmentId,
       courier_status: "pending",
       courier_message: "Sent to Pathao successfully",
-    }).eq("id", orderId);
+    }).eq("id", orderId).eq("org_id", orgId);
 
-    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).single();
+    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -1144,17 +2186,18 @@ app.post("/api/check-fraud", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-    const cfg = await getSettings(["fraudshield_api_key"]);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["fraudshield_api_key"]);
     const fraudShieldApiKey = cfg["fraudshield_api_key"];
     if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured" });
-
-    const supabase = getServiceSupabase();
 
     if (orderId) {
       const { data: order, error: fetchError } = await supabase
         .from("orders")
         .select("id, phone, fraud_checked, fraud_data")
         .eq("id", orderId)
+        .eq("org_id", orgId)
         .single();
 
       if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
@@ -1166,12 +2209,14 @@ app.post("/api/check-fraud", async (req, res) => {
       await supabase
         .from("orders")
         .update({ fraud_checked: true, fraud_data: dataToStore })
-        .eq("id", order.id);
+        .eq("id", order.id)
+        .eq("org_id", orgId);
 
       const { data: updatedOrder } = await supabase
         .from("orders")
         .select("*")
         .eq("id", orderId)
+        .eq("org_id", orgId)
         .single();
 
       return res.json({ success: true, order: updatedOrder, fraudError: errorMessage });
@@ -1180,6 +2225,7 @@ app.post("/api/check-fraud", async (req, res) => {
     const { data: orders, error: fetchError } = await supabase
       .from("orders")
       .select("id, shopify_order_id, phone, fraud_checked, fraud_data")
+      .eq("org_id", orgId)
       .order("shopify_order_id", { ascending: false })
       .limit(15);
 
@@ -1199,7 +2245,8 @@ app.post("/api/check-fraud", async (req, res) => {
       const { error: updateError } = await supabase
         .from("orders")
         .update({ fraud_checked: true, fraud_data: dataToStore })
-        .eq("id", order.id);
+        .eq("id", order.id)
+        .eq("org_id", orgId);
 
       if (!updateError && fraudData) successCount++;
     }
@@ -1207,6 +2254,7 @@ app.post("/api/check-fraud", async (req, res) => {
     const { data: allOrders } = await supabase
       .from("orders")
       .select("*")
+      .eq("org_id", orgId)
       .order("shopify_order_id", { ascending: false });
 
     return res.json({ success: true, checked: checkedCount, successful: successCount, orders: allOrders || [] });
@@ -1223,21 +2271,22 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
-    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).single();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
 
     const { phone: rawPhone } = parseInboxOrderNotes(order.notes);
     if (!rawPhone) return res.status(400).json({ error: "No phone number found in this order's notes" });
 
-    const cfg = await getSettings(["fraudshield_api_key"]);
+    const cfg = await getOrgSettings(orgId, ["fraudshield_api_key"]);
     const fraudShieldApiKey = cfg["fraudshield_api_key"];
     if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured" });
 
     const { fraudData, errorMessage } = await checkFraudStatus(rawPhone, fraudShieldApiKey);
     const dataToStore = fraudData ?? { _error: errorMessage ?? "Unknown error" };
 
-    await supabase.from("social_inbox_orders").update({ fraud_checked: true, fraud_data: dataToStore }).eq("id", orderId);
-    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).single();
+    await supabase.from("social_inbox_orders").update({ fraud_checked: true, fraud_data: dataToStore }).eq("id", orderId).eq("org_id", orgId);
+    const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     return res.json({ success: true, order: updated, fraudError: errorMessage });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -1249,7 +2298,9 @@ app.get("/api/social/brand-doc", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const cfg = await getSettings(["brand_doc"]);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["brand_doc"]);
     res.json({ content: cfg["brand_doc"] || "" });
   } catch (e) { res.json({ content: "" }); }
 });
@@ -1259,7 +2310,9 @@ app.post("/api/social/brand-doc", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const { content } = req.body;
-    await saveSettings({ brand_doc: content || "" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    await saveOrgSettings(orgId, { brand_doc: content || "" });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1354,6 +2407,16 @@ END $$;
 
 DO $$ BEGIN
   ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS org_id UUID;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.products ADD COLUMN IF NOT EXISTS org_id UUID;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 0;
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
@@ -1542,9 +2605,13 @@ CREATE TABLE IF NOT EXISTS public.products (
   image_url TEXT,
   selling_price NUMERIC,
   cog NUMERIC NOT NULL DEFAULT 0,
+  stock_quantity INTEGER NOT NULL DEFAULT 0,
   source_url TEXT,
+  org_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS org_id UUID;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   CREATE POLICY "service_role_all_products" ON public.products TO service_role USING (true) WITH CHECK (true);
@@ -1563,12 +2630,15 @@ app.get("/api/products", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
     const { data, error } = await supabase
       .from("products")
       .select("*")
+      .eq("org_id", orgId)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return res.json({ products: data || [] });
+    const stockMap = await getProductStockMap(orgId, (data || []).map((p) => p.id));
+    return res.json({ products: (data || []).map((p) => ({ ...p, stock_quantity: stockMap[p.id] || 0 })) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -1583,6 +2653,7 @@ app.post("/api/products/save", async (req, res) => {
       return res.status(400).json({ error: "products array required" });
     }
     const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
     const rows = products.map((p) => ({
       name: String(p.name || "").trim(),
       url: p.url || null,
@@ -1590,6 +2661,7 @@ app.post("/api/products/save", async (req, res) => {
       selling_price: p.selling_price != null ? parseFloat(p.selling_price) : null,
       cog: p.cog != null ? parseFloat(p.cog) : 0,
       source_url: sourceUrl || null,
+      org_id: orgId,
     })).filter((r) => r.name);
     if (!rows.length) return res.status(400).json({ error: "No valid products to save" });
     const { data, error } = await supabase.from("products").insert(rows).select();
@@ -1803,15 +2875,28 @@ app.patch("/api/products/:id", async (req, res) => {
     const allowed = ["name", "url", "image_url", "selling_price", "cog"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
-    if (!Object.keys(update).length) return res.status(400).json({ error: "Nothing to update" });
+    const hasStockUpdate = req.body.stock_quantity !== undefined;
+    if (!Object.keys(update).length && !hasStockUpdate) return res.status(400).json({ error: "Nothing to update" });
     const supabase = getServiceSupabase();
-    const { data, error } = await supabase
-      .from("products")
-      .update(update)
-      .eq("id", req.params.id)
-      .select()
-      .single();
-    if (error) throw error;
+    const { orgId } = await getUserOrg(supabase, user.id);
+    let data = null;
+    if (Object.keys(update).length) {
+      const result = await supabase
+        .from("products")
+        .update(update)
+        .eq("id", req.params.id)
+        .eq("org_id", orgId)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      data = result.data;
+    } else {
+      const result = await supabase.from("products").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
+      if (result.error) throw result.error;
+      data = result.data;
+    }
+    if (hasStockUpdate) await saveProductStock(orgId, req.params.id, req.body.stock_quantity);
+    data = { ...data, stock_quantity: hasStockUpdate ? Math.max(0, parseInt(req.body.stock_quantity, 10) || 0) : 0 };
     return res.json({ success: true, product: data });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -1823,7 +2908,8 @@ app.delete("/api/products/:id", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
-    const { error } = await supabase.from("products").delete().eq("id", req.params.id);
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { error } = await supabase.from("products").delete().eq("id", req.params.id).eq("org_id", orgId);
     if (error) throw error;
     return res.json({ success: true });
   } catch (e) {
@@ -1906,6 +2992,35 @@ ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS delivery_rate NU
     console.log("[Migrate] social_inbox_orders columns ensured.");
   } catch (e) {
     console.warn("[Migrate] Could not run inbox orders migration:", e.message);
+  }
+}
+
+async function migrateProductsForecastColumns() {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+    if (!projectRef || !serviceKey) return;
+
+    const migrationSql = `
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS org_id UUID;
+NOTIFY pgrst, 'reload schema';
+    `;
+
+    const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ query: migrationSql }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("[Migrate] products forecast columns failed:", text);
+      return;
+    }
+    console.log("[Migrate] products forecast columns ensured.");
+  } catch (e) {
+    console.warn("[Migrate] Could not run products forecast migration:", e.message);
   }
 }
 
@@ -2104,12 +3219,12 @@ async function migrateMultiTenancy() {
 }
 
 if (!process.env.VERCEL) {
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", async () => {
     console.log(`Server running on port ${PORT}`);
-    ensureAppSettingsTable();
-    migrateInboxOrdersTable();
-    migrateMultiTenancy();
-    bootstrapAiProductContext();
+    await ensureAppSettingsTable();
+    await migrateInboxOrdersTable();
+    await migrateMultiTenancy();
+    await bootstrapAiProductContext();
   });
 } else {
   // Serverless cold-start: run DB init without a TCP listener.

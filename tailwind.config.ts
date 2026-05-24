@@ -15,6 +15,8 @@ export default {
     extend: {
       fontFamily: {
         sans: ["Geist Sans", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+        "sf-text": ["SF Pro Text", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "system-ui", "sans-serif"],
+        "sf-display": ["SF Pro Display", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -80,6 +82,11 @@ export default {
         "swiss-lg": "0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05)",
       },
       keyframes: {
+        "spinner-blade": {
+          "0%": { opacity: "0.85" },
+          "50%": { opacity: "0.25" },
+          "100%": { opacity: "0.25" },
+        },
         "accordion-down": {
           from: {
             height: "0",
@@ -98,6 +105,7 @@ export default {
         },
       },
       animation: {
+        "spinner-blade": "spinner-blade 1s linear infinite",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },

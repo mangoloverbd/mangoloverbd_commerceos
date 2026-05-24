@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { apiFetch } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { Database } from "@/integrations/supabase/types";
+import { useAuth } from "@/hooks/useAuth";
 
 type Order = Database["public"]["Tables"]["orders"]["Row"];
 
@@ -19,6 +20,7 @@ export interface Notification {
 const STORAGE_KEY = "shopangonaloy_read_notifications";
 
 export function useNotifications() {
+    const { user } = useAuth();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -54,19 +56,23 @@ export function useNotifications() {
     };
 
     useEffect(() => {
+        setNotifications([]);
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+
         const fetchInitialNotifications = async () => {
             try {
-                const { data, error } = await supabase
-                    .from("orders")
-                    .select("*")
-                    .order("created_at", { ascending: false })
-                    .limit(10);
+                const res = await apiFetch("/api/orders/recent-notifications");
+                const data = await res.json();
 
-                if (error) throw error;
+                if (!res.ok) throw new Error(data.error || "Failed to fetch notifications");
 
-                if (data) {
+                if (data.orders) {
                     const readIds = getReadIds();
-                    const formatted = data.map((order) => formatOrderToNotification(order, readIds));
+                    const formatted = data.orders.map((order: Order) => formatOrderToNotification(order, readIds));
                     setNotifications(formatted);
                 }
             } catch (error) {
@@ -77,32 +83,7 @@ export function useNotifications() {
         };
 
         fetchInitialNotifications();
-
-        const channel = supabase
-            .channel("sidebar-notifications")
-            .on(
-                "postgres_changes",
-                {
-                    event: "INSERT",
-                    schema: "public",
-                    table: "orders",
-                },
-                (payload) => {
-                    const newOrder = payload.new as Order;
-                    const readIds = getReadIds();
-                    const notification = formatOrderToNotification(newOrder, readIds);
-                    setNotifications((prev) => {
-                        if (prev.some(n => n.id === notification.id)) return prev;
-                        return [notification, ...prev.slice(0, 9)];
-                    });
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, []);
+    }, [user?.id]);
 
     const hasUnread = notifications.some((n) => !n.isRead);
 

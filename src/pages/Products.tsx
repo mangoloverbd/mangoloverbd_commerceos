@@ -4,10 +4,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Link2, Trash2, Save, Loader2, PackageSearch,
+  Link2, Trash2, Save, PackageSearch,
   Package2, TrendingUp, Globe2, RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { AnimatedText } from "@/components/ui/animated-text";
 
 type Product = {
   id: string;
@@ -16,6 +18,7 @@ type Product = {
   image_url: string | null;
   selling_price: number | null;
   cog: number;
+  stock_quantity: number;
   source_url: string | null;
   created_at: string;
 };
@@ -36,6 +39,7 @@ export default function Products() {
   const [crawlStatus, setCrawlStatus] = useState<"idle" | "crawling" | "done" | "error">("idle");
   const [crawlMsg, setCrawlMsg] = useState("");
   const [cogEdits, setCogEdits] = useState<Record<string, string>>({});
+  const [stockEdits, setStockEdits] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
   const { data, isLoading, refetch } = useQuery<{ products: Product[] }>({
@@ -64,6 +68,7 @@ export default function Products() {
     return (sum / withBoth.length).toFixed(1);
   })();
   const totalCogValue = products.reduce((acc, p) => acc + (p.cog || 0), 0);
+  const totalStock = products.reduce((acc, p) => acc + (p.stock_quantity || 0), 0);
 
 
   async function saveProducts(prods: unknown[], sourceUrl: string) {
@@ -109,23 +114,27 @@ export default function Products() {
     }
   }
 
-  async function saveCog(product: Product) {
-    const raw = cogEdits[product.id];
-    if (raw === undefined) return;
-    const cog = parseFloat(raw) || 0;
+  async function saveProductMetrics(product: Product) {
+    const hasCog = cogEdits[product.id] !== undefined;
+    const hasStock = stockEdits[product.id] !== undefined;
+    if (!hasCog && !hasStock) return;
+    const update: { cog?: number; stock_quantity?: number } = {};
+    if (hasCog) update.cog = parseFloat(cogEdits[product.id]) || 0;
+    if (hasStock) update.stock_quantity = Math.max(0, parseInt(stockEdits[product.id], 10) || 0);
     setSavingIds((s) => new Set(s).add(product.id));
     try {
       const res = await apiFetch(`/api/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cog }),
+        body: JSON.stringify(update),
       });
       if (!res.ok) throw new Error("Save failed");
       await qc.invalidateQueries({ queryKey: ["/api/products"] });
       setCogEdits((e) => { const n = { ...e }; delete n[product.id]; return n; });
-      toast.success("COG updated");
+      setStockEdits((e) => { const n = { ...e }; delete n[product.id]; return n; });
+      toast.success("Product metrics updated");
     } catch {
-      toast.error("Failed to save COG");
+      toast.error("Failed to save product metrics");
     } finally {
       setSavingIds((s) => { const n = new Set(s); n.delete(product.id); return n; });
     }
@@ -146,76 +155,80 @@ export default function Products() {
   const isCrawling = crawlStatus === "crawling";
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8]">
-      <div className="max-w-[1800px] mx-auto px-6 py-8 space-y-4">
+    <div className="min-h-full">
+      <div className="mx-auto max-w-[1800px] space-y-6 p-1 lg:p-2">
 
         {/* ── Summary panel ── */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="border border-black/[0.07] bg-white"
+          className="overflow-hidden rounded-2xl border border-black/10 bg-white"
         >
           {/* Header row */}
-          <div className="flex items-center justify-between px-8 py-3 border-b border-black/[0.05]">
+          <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
             <div className="flex items-center gap-2.5">
-              <Package2 className="h-3 w-3 text-black" />
-              <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Product Catalogue</span>
+              <Package2 className="h-3.5 w-3.5 text-muted-foreground" />
+              <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Product Catalogue</AnimatedText>
             </div>
             <button
               onClick={() => refetch()}
               disabled={isLoading}
-              className="flex items-center gap-1.5 h-7 px-2 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black transition-colors disabled:opacity-30"
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-black/[0.035] px-3 text-sm font-medium text-foreground/70 transition-all hover:border-black/20 hover:bg-black/[0.06] hover:text-foreground disabled:opacity-30"
               data-testid="button-refresh-products"
               title="Refresh"
             >
               {isLoading
-                ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                : <RefreshCw className="h-2.5 w-2.5" />}
+                ? <Spinner size="sm" />
+                : <RefreshCw className="h-3.5 w-3.5" />}
+              Refresh
             </button>
           </div>
 
           {/* Stats cells */}
-          <div className="flex">
-            <div className="flex-1 px-8 py-5 border-r border-black/[0.05]">
+          <div className="grid divide-y divide-black/10 md:grid-cols-3 md:divide-x md:divide-y-0">
+            <div className="min-w-0 px-6 py-5">
               <div className="flex items-start justify-between">
-                <p className="text-[8px] font-medium tracking-[0.25em] text-black uppercase mb-2">Total Products</p>
-                <Package2 className="h-3 w-3 text-black mt-0.5" />
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total Products</p>
+                <Package2 className="mt-0.5 h-3.5 w-3.5 text-muted-foreground/70" />
               </div>
               {isLoading
-                ? <div className="h-7 w-12 bg-black/[0.04] animate-pulse" />
-                : <p className="text-2xl font-light tracking-tight text-black tabular-nums">{totalProducts}</p>}
-              <p className="text-[9px] text-black mt-1 tracking-wide">In catalogue</p>
+                ? <div className="h-8 w-12 animate-pulse rounded-lg bg-black/[0.06]" />
+                : <p className="font-sf-display text-2xl font-bold tracking-tight text-foreground tabular-nums">{totalProducts}</p>}
+              <p className="mt-1 text-[11px] text-muted-foreground">In catalogue</p>
             </div>
 
-            <div className="flex-1 px-8 py-5 border-r border-black/[0.05]">
+            <div className="min-w-0 px-6 py-5">
               <div className="flex items-start justify-between">
-                <p className="text-[8px] font-medium tracking-[0.25em] text-black uppercase mb-2">Avg. Margin</p>
-                <TrendingUp className="h-3 w-3 text-black mt-0.5" />
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Avg. Margin</p>
+                <TrendingUp className="mt-0.5 h-3.5 w-3.5 text-muted-foreground/70" />
               </div>
               {isLoading
-                ? <div className="h-7 w-16 bg-black/[0.04] animate-pulse" />
-                : <p className={cn("text-2xl font-light tracking-tight tabular-nums",
-                    avgMargin == null ? "text-black"
+                ? <div className="h-8 w-16 animate-pulse rounded-lg bg-black/[0.06]" />
+                : <p className={cn("font-sf-display text-2xl font-bold tracking-tight tabular-nums",
+                    avgMargin == null ? "text-foreground"
                     : parseFloat(avgMargin) > 40 ? "text-emerald-600"
-                    : parseFloat(avgMargin) > 20 ? "text-black"
+                    : parseFloat(avgMargin) > 20 ? "text-foreground"
                     : "text-red-500"
                   )}>
                     {avgMargin != null ? `${avgMargin}%` : "—"}
                   </p>}
-              <p className="text-[9px] text-black mt-1 tracking-wide">Selling price – COG</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">Selling price - COG</p>
             </div>
 
-            <div className="flex-1 px-8 py-5">
+            <div className="min-w-0 px-6 py-5">
               <div className="flex items-start justify-between">
-                <p className="text-[8px] font-medium tracking-[0.25em] text-black uppercase mb-2">Total COG Value</p>
-                <Package2 className="h-3 w-3 text-black mt-0.5" />
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total Stock</p>
+                <Package2 className="mt-0.5 h-3.5 w-3.5 text-muted-foreground/70" />
               </div>
               {isLoading
-                ? <div className="h-7 w-20 bg-black/[0.04] animate-pulse" />
-                : <p className="text-2xl font-light tracking-tight text-black tabular-nums">{fmt(totalCogValue)}</p>}
-              <p className="text-[9px] text-black mt-1 tracking-wide">Sum of all COG</p>
+                ? <div className="h-8 w-20 animate-pulse rounded-lg bg-black/[0.06]" />
+                : <p className="font-sf-display text-2xl font-bold tracking-tight text-foreground tabular-nums">{totalStock.toLocaleString("en-BD")}</p>}
+              <p className="mt-1 text-[11px] text-muted-foreground">Units available</p>
             </div>
+          </div>
+          <div className="border-t border-black/10 px-6 py-3 text-xs text-muted-foreground">
+            Total COG value: <span className="font-medium text-foreground">{fmt(totalCogValue)}</span>
           </div>
         </motion.div>
 
@@ -224,18 +237,18 @@ export default function Products() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.05 }}
-          className="border border-black/[0.07] bg-white"
+          className="overflow-hidden rounded-2xl border border-black/10 bg-white"
         >
-          <div className="flex items-center gap-2.5 px-8 py-3 border-b border-black/[0.05]">
-            <Globe2 className="h-3 w-3 text-black" />
-            <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Import from Website</span>
+          <div className="flex h-[50px] items-center gap-2.5 border-b border-black/10 px-6">
+            <Globe2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Import from Website</AnimatedText>
           </div>
 
-          <div className="px-8 py-5 space-y-3">
-            <p className="text-[10px] text-black tracking-wide">
+          <div className="space-y-3 px-6 py-5">
+            <p className="text-sm text-muted-foreground">
               Paste your store URL — AI will extract all products automatically.
             </p>
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 data-testid="input-crawl-url"
                 type="url"
@@ -243,16 +256,16 @@ export default function Products() {
                 value={crawlUrl}
                 onChange={(e) => setCrawlUrl(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !isCrawling && handleCrawl()}
-                className="flex-1 h-8 px-3 text-[11px] font-mono border border-black/[0.10] bg-transparent text-black placeholder:text-black outline-none focus:border-black/30 transition-colors"
+                className="h-10 flex-1 rounded-xl border-0 bg-black/[0.06] px-3 text-sm text-foreground shadow-none outline-none placeholder:text-black/35 transition-colors focus:ring-1 focus:ring-black/20"
               />
               <button
                 data-testid="button-crawl"
                 onClick={handleCrawl}
                 disabled={isCrawling || !crawlUrl.trim()}
-                className="flex items-center gap-2 h-8 px-5 bg-black text-white text-[9px] font-medium tracking-[0.2em] uppercase hover:bg-black/80 transition-colors disabled:opacity-30"
+                className="flex h-10 items-center justify-center gap-2 rounded-xl bg-black px-5 text-sm font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
               >
                 {isCrawling
-                  ? <><Loader2 className="h-3 w-3 animate-spin" />Extracting</>
+                  ? <><Spinner size="sm" />Extracting</>
                   : <><RefreshCw className="h-3 w-3" />Extract</>}
               </button>
             </div>
@@ -266,7 +279,7 @@ export default function Products() {
                   className={cn("text-[10px] tracking-wide",
                     crawlStatus === "error" ? "text-red-500"
                     : crawlStatus === "done" ? "text-emerald-600"
-                    : "text-black"
+                    : "text-foreground"
                   )}
                 >
                   {crawlMsg}
@@ -281,33 +294,34 @@ export default function Products() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="border border-black/[0.07] bg-white"
+            className="overflow-hidden rounded-2xl border border-black/10 bg-white"
           >
             {/* Table header */}
-            <div className="flex items-center justify-between px-8 py-3 border-b border-black/[0.05]">
-              <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">
-                Products · {products.length}
-              </span>
+            <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
+              <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">
+                Products
+              </AnimatedText>
+              <span className="text-[13px] text-muted-foreground tabular-nums">{products.length} items</span>
             </div>
 
             {isLoading ? (
-              <div className="flex items-center justify-center py-20 text-black">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                <span className="text-[10px] tracking-widest uppercase">Loading</span>
+              <div className="flex items-center justify-center py-20 text-muted-foreground">
+                <Spinner className="mr-2" />
+                <span className="text-sm font-medium">Loading products</span>
               </div>
             ) : products.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 space-y-2">
-                <PackageSearch className="h-8 w-8 text-black/[0.08]" />
-                <p className="text-[9px] tracking-[0.3em] uppercase text-black">No products yet</p>
-                <p className="text-[10px] text-black">Paste a store URL above to import products</p>
+              <div className="flex flex-col items-center justify-center space-y-2 py-24">
+                <PackageSearch className="h-9 w-9 text-black/15" />
+                <p className="text-sm font-semibold text-foreground">No products yet</p>
+                <p className="text-sm text-muted-foreground">Paste a store URL above to import products</p>
               </div>
             ) : (
               <>
                 {/* Column labels */}
-                <div className="grid grid-cols-[52px_1fr_130px_160px_100px_52px] gap-0 border-b border-black/[0.04]">
-                  {["", "Product", "Selling Price", "COG", "Margin", ""].map((h, i) => (
-                    <div key={i} className={cn("px-4 py-2.5", i === 0 ? "pl-8" : i === 5 ? "pr-4" : "")}>
-                      <span className="text-[7px] font-medium tracking-[0.3em] uppercase text-black">{h}</span>
+                <div className="grid grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px] gap-0 border-b border-black/10 bg-black/[0.025]">
+                  {["", "Product", "Selling Price", "COG", "Stock", "Margin", ""].map((h, i) => (
+                    <div key={i} className={cn("px-4 py-3", i === 0 ? "pl-6" : i === 6 ? "pr-4" : "")}>
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{h}</span>
                     </div>
                   ))}
                 </div>
@@ -315,9 +329,10 @@ export default function Products() {
                 <AnimatePresence>
                   {products.map((product, idx) => {
                     const cogVal = cogEdits[product.id] ?? String(product.cog ?? 0);
+                    const stockVal = stockEdits[product.id] ?? String(product.stock_quantity ?? 0);
                     const cogNum = parseFloat(cogVal) || 0;
                     const mgn = margin(product.selling_price, cogNum);
-                    const isDirty = cogEdits[product.id] !== undefined;
+                    const isDirty = cogEdits[product.id] !== undefined || stockEdits[product.id] !== undefined;
                     const isSaving = savingIds.has(product.id);
 
                     return (
@@ -328,11 +343,11 @@ export default function Products() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.15, delay: idx * 0.02 }}
-                        className="grid grid-cols-[52px_1fr_130px_160px_100px_52px] gap-0 border-b border-black/[0.04] last:border-0 group hover:bg-black/[0.01] transition-colors"
+                        className="group grid grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px] gap-0 border-b border-black/[0.06] transition-colors last:border-0 hover:bg-black/[0.025]"
                       >
                         {/* Image */}
-                        <div className="pl-8 py-3.5 flex items-center">
-                          <div className="size-8 overflow-hidden bg-black/[0.03] shrink-0">
+                        <div className="flex items-center py-3.5 pl-6">
+                          <div className="size-9 shrink-0 overflow-hidden rounded-lg bg-black/[0.05]">
                             {product.image_url ? (
                               <img
                                 src={product.image_url}
@@ -342,16 +357,16 @@ export default function Products() {
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center">
-                                <Package2 className="h-3.5 w-3.5 text-black" />
+                                <Package2 className="h-3.5 w-3.5 text-muted-foreground" />
                               </div>
                             )}
                           </div>
                         </div>
 
                         {/* Name + URL */}
-                        <div className="px-4 py-3.5 flex flex-col justify-center min-w-0">
+                        <div className="flex min-w-0 flex-col justify-center px-4 py-3.5">
                           <p data-testid={`text-product-name-${product.id}`}
-                            className="text-[11px] font-medium text-black truncate leading-none">
+                            className="truncate text-sm font-medium leading-none text-foreground">
                             {product.name}
                           </p>
                           {product.url && (
@@ -360,7 +375,7 @@ export default function Products() {
                               target="_blank"
                               rel="noopener noreferrer"
                               data-testid={`link-product-${product.id}`}
-                              className="flex items-center gap-1 text-[9px] text-black hover:text-black transition-colors mt-1 truncate"
+                              className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground transition-colors hover:text-foreground"
                             >
                               <Link2 className="h-2.5 w-2.5 shrink-0" />
                               <span className="truncate">{product.url.replace(/^https?:\/\//, "").substring(0, 45)}</span>
@@ -369,47 +384,60 @@ export default function Products() {
                         </div>
 
                         {/* Selling price */}
-                        <div className="px-4 py-3.5 flex items-center">
+                        <div className="flex items-center px-4 py-3.5">
                           <span data-testid={`text-selling-price-${product.id}`}
-                            className="text-[11px] text-black font-mono tabular-nums">
+                            className="font-mono text-sm text-foreground tabular-nums">
                             {fmt(product.selling_price)}
                           </span>
                         </div>
 
                         {/* COG input */}
-                        <div className="px-4 py-3.5 flex items-center gap-2">
+                        <div className="flex items-center gap-2 px-4 py-3.5">
                           <div className="relative flex-1">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-black pointer-events-none">৳</span>
+                            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">৳</span>
                             <input
                               data-testid={`input-cog-${product.id}`}
                               type="number"
                               min={0}
                               value={cogVal}
                               onChange={(e) => setCogEdits((prev) => ({ ...prev, [product.id]: e.target.value }))}
-                              onKeyDown={(e) => e.key === "Enter" && isDirty && saveCog(product)}
-                              className="w-full h-7 pl-6 pr-2 text-[11px] font-mono border border-black/[0.10] bg-transparent text-black outline-none focus:border-black/30 transition-colors tabular-nums"
+                              onKeyDown={(e) => e.key === "Enter" && isDirty && saveProductMetrics(product)}
+                              className="h-8 w-full rounded-lg border-0 bg-black/[0.06] pl-6 pr-2 font-mono text-sm text-foreground outline-none transition-colors tabular-nums focus:ring-1 focus:ring-black/20"
                             />
                           </div>
+                        </div>
+
+                        {/* Stock input */}
+                        <div className="flex items-center gap-2 px-4 py-3.5">
+                          <input
+                            data-testid={`input-stock-${product.id}`}
+                            type="number"
+                            min={0}
+                            value={stockVal}
+                            onChange={(e) => setStockEdits((prev) => ({ ...prev, [product.id]: e.target.value }))}
+                            onKeyDown={(e) => e.key === "Enter" && isDirty && saveProductMetrics(product)}
+                            className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 font-mono text-sm text-foreground outline-none transition-colors tabular-nums focus:ring-1 focus:ring-black/20"
+                          />
                           {isDirty && (
                             <button
-                              data-testid={`button-save-cog-${product.id}`}
-                              onClick={() => saveCog(product)}
+                              data-testid={`button-save-metrics-${product.id}`}
+                              onClick={() => saveProductMetrics(product)}
                               disabled={isSaving}
-                              className="h-7 px-2.5 bg-black text-white text-[9px] tracking-widest uppercase hover:bg-black/80 transition-colors disabled:opacity-40 shrink-0"
+                              className="h-8 shrink-0 rounded-lg bg-black px-2.5 text-xs font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-40"
                             >
-                              {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                              {isSaving ? <Spinner size="sm" /> : <Save className="h-3 w-3" />}
                             </button>
                           )}
                         </div>
 
                         {/* Margin */}
-                        <div className="px-4 py-3.5 flex items-center">
+                        <div className="flex items-center px-4 py-3.5">
                           <span
                             data-testid={`text-margin-${product.id}`}
-                            className={cn("text-[11px] font-mono tabular-nums",
-                              mgn == null ? "text-black"
+                            className={cn("font-mono text-sm tabular-nums",
+                              mgn == null ? "text-foreground"
                               : parseFloat(mgn) > 40 ? "text-emerald-600"
-                              : parseFloat(mgn) > 20 ? "text-black"
+                              : parseFloat(mgn) > 20 ? "text-foreground"
                               : "text-red-500"
                             )}
                           >
@@ -418,11 +446,11 @@ export default function Products() {
                         </div>
 
                         {/* Delete */}
-                        <div className="pr-4 py-3.5 flex items-center justify-end">
+                        <div className="flex items-center justify-end py-3.5 pr-4">
                           <button
                             data-testid={`button-delete-product-${product.id}`}
                             onClick={() => deleteMutation.mutate(product.id)}
-                            className="p-1 text-black hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                            className="rounded-lg p-1.5 text-muted-foreground opacity-0 transition-colors hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
                             title="Remove"
                           >
                             <Trash2 className="h-3.5 w-3.5" />

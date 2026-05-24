@@ -1,7 +1,8 @@
 'use client';
 import React, { useState } from 'react';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Liquid } from '@/components/ui/button-1';
+import { Spinner } from '@/components/ui/ios-spinner';
 
 const COLORS = {
     color1: '#FFFFFF',
@@ -69,7 +70,7 @@ const SyncOrderLiquidButton = ({ onClick, loading = false, disabled = false }: S
                     disabled={!interactive}>
                     <span className="flex items-center justify-center px-4 gap-2 rounded-lg group-hover:text-yellow-400 text-white text-sm font-semibold tracking-wide whitespace-nowrap h-full">
                         {loading ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-white/70" />
+                            <Spinner className="text-white/70" />
                         ) : (
                             <RefreshCw className={`w-4 h-4 flex-shrink-0 transition-colors ${isHovered ? 'fill-yellow-400 text-yellow-400' : 'fill-white text-white'}`} />
                         )}

@@ -3,11 +3,13 @@ import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Loader2, Eye, EyeOff, CheckCircle2, XCircle,
-  ShoppingBag, Truck, Shield, Package, BarChart2, ChevronDown,
-  MessageSquare, Camera, Phone, FileText,
+  Eye, EyeOff, CheckCircle2, XCircle,
+  Store, Truck, ShieldCheck, PackageCheck, ChartNoAxesCombined, ChevronDown,
+  MessagesSquare, Camera, PhoneCall, FileHeart, Search, ArrowLeftRight, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { AnimatedText } from "@/components/ui/animated-text";
 
 function SaveIcon({ className }: { className?: string }) {
   return (
@@ -39,7 +41,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "shopify",
     label: "Shopify",
-    icon: ShoppingBag,
+    icon: Store,
     description: "Sync orders from your store",
     fields: [
       { key: "shopify_store_url", label: "Store URL", placeholder: "yourstore.myshopify.com", hint: "Domain without https://" },
@@ -49,7 +51,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "facebook",
     label: "Facebook Ads",
-    icon: BarChart2,
+    icon: ChartNoAxesCombined,
     description: "Track ad spend in P&L dashboard",
     fields: [
       { key: "facebook_access_token", label: "Access Token", placeholder: "EAAxxxxxxxxxxxxxxx", secret: true, hint: "Long-lived token from Meta Business Suite → System Users" },
@@ -72,7 +74,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "pathao",
     label: "Pathao Courier",
-    icon: Package,
+    icon: PackageCheck,
     description: "Pathao delivery integration",
     fields: [
       { key: "pathao_client_id", label: "Client ID", placeholder: "Your Pathao client ID" },
@@ -85,7 +87,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "fraudshield",
     label: "FraudShield",
-    icon: Shield,
+    icon: ShieldCheck,
     description: "Customer fraud detection",
     fields: [
       { key: "fraudshield_api_key", label: "API Key", placeholder: "Your FraudShield API key", secret: true, hint: "From fraudshield.bd dashboard" },
@@ -95,7 +97,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "facebook-messenger",
     label: "Facebook Messenger",
-    icon: MessageSquare,
+    icon: MessagesSquare,
     description: "AI bot for Facebook Messenger DMs",
     fields: [
       { key: "fb_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Meta Business Suite → Your Page → Settings → Page Access Token (long-lived)" },
@@ -116,7 +118,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "whatsapp-business",
     label: "WhatsApp Business",
-    icon: Phone,
+    icon: PhoneCall,
     description: "AI bot for WhatsApp Business messages",
     fields: [
       { key: "wa_phone_number_id", label: "Phone Number ID", placeholder: "123456789012345", hint: "Meta Developer Console → WhatsApp → API Setup → Phone Number ID" },
@@ -128,30 +130,54 @@ const SECTIONS: SectionDef[] = [
 
 type Settings = Record<string, string>;
 
+const INTEGRATION_CATEGORIES = ["All integrations", "Commerce", "Courier", "Marketing", "Social"] as const;
+type IntegrationCategory = typeof INTEGRATION_CATEGORIES[number];
+
+function integrationCategory(id: string): Exclude<IntegrationCategory, "All integrations"> {
+  if (id === "shopify") return "Commerce";
+  if (id === "steadfast" || id === "pathao") return "Courier";
+  if (id === "facebook" || id === "fraudshield") return "Marketing";
+  return "Social";
+}
+
+function integrationIconTone(id: string, active: boolean) {
+  const tones: Record<string, string> = {
+    shopify: "bg-emerald-100 text-emerald-700",
+    facebook: "bg-blue-100 text-blue-700",
+    steadfast: "bg-cyan-100 text-cyan-700",
+    pathao: "bg-red-100 text-red-700",
+    fraudshield: "bg-lime-100 text-lime-700",
+    "facebook-messenger": "bg-indigo-100 text-indigo-700",
+    "instagram-dm": "bg-pink-100 text-pink-700",
+    "whatsapp-business": "bg-teal-100 text-teal-700",
+  };
+  return cn(tones[id] || "bg-slate-100 text-slate-700", !active && "opacity-70 saturate-50");
+}
+
 function FieldRow({ field, value, onChange }: { field: FieldDef; value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
   return (
     <div className="space-y-1.5">
-      <label className="text-[8px] font-medium uppercase tracking-[0.2em] text-black">{field.label}</label>
+      <label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{field.label}</label>
       <div className="relative">
         <input
           type={field.secret && !show ? "password" : "text"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
-          className="w-full h-9 px-3 bg-[#FAFAF8] border border-black/[0.08] text-sm font-mono text-black placeholder:text-black placeholder:font-sans outline-none focus:border-black/20 transition-colors pr-9"
+          className="h-10 w-full rounded-xl border-0 bg-black/[0.055] px-3 pr-9 font-mono text-sm text-foreground outline-none transition-colors placeholder:font-sans placeholder:text-muted-foreground focus:ring-1 focus:ring-black/20"
         />
         {field.secret && (
           <button
             type="button"
             onClick={() => setShow((v) => !v)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black hover:text-black transition-colors"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
           >
             {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </button>
         )}
       </div>
-      {field.hint && <p className="text-[9px] text-black leading-relaxed">{field.hint}</p>}
+      {field.hint && <p className="text-xs leading-relaxed text-muted-foreground">{field.hint}</p>}
     </div>
   );
 }
@@ -160,12 +186,10 @@ function IntegrationRow({
   section,
   settings,
   onSave,
-  isLast,
 }: {
   section: SectionDef;
   settings: Settings;
   onSave: (patch: Settings) => Promise<void>;
-  isLast: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Settings>({});
@@ -220,30 +244,33 @@ function IntegrationRow({
   };
 
   return (
-    <div className={cn(!isLast && "border-b border-black/[0.04]")}>
+    <div className={cn(
+      "self-start overflow-hidden rounded-2xl border border-black/10 bg-white/55",
+      open && "md:col-span-2 xl:col-span-3 2xl:col-span-4"
+    )}>
       {/* Row header — click to expand */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-8 py-4 hover:bg-black/[0.01] transition-colors text-left"
+        className="flex min-h-[78px] w-full items-start justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-black/[0.025]"
         data-testid={`button-expand-${section.id}`}
       >
-        <div className="flex items-center gap-4">
-          <div className={cn("h-6 w-6 flex items-center justify-center", isConfigured ? "bg-black" : "bg-black/[0.05]")}>
-            <Icon className={cn("h-3 w-3", isConfigured ? "text-white" : "text-black")} />
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
+            <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
           </div>
-          <div>
-            <p className="text-[8px] font-medium tracking-[0.25em] text-black uppercase">{section.label}</p>
-            <p className="text-[9px] text-black mt-0.5">{section.description}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{section.label}</p>
+            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{section.description}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2">
           <span className={cn(
-            "text-[7px] font-bold tracking-[0.15em] uppercase px-2 py-1",
-            isConfigured ? "bg-emerald-50 text-emerald-600" : "bg-black/[0.03] text-black"
+            "rounded-full px-2.5 py-1 text-[10px] font-semibold",
+            isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground"
           )}>
             {isConfigured ? "Configured" : "Not set"}
           </span>
-          <ChevronDown className={cn("h-3 w-3 text-black transition-transform duration-200", open && "rotate-180")} />
+          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
         </div>
       </button>
 
@@ -258,8 +285,8 @@ function IntegrationRow({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-8 pb-6 pt-2 bg-[#FAFAF8] border-t border-black/[0.04]">
-              <div className="grid gap-4 sm:grid-cols-2 mt-4">
+            <div className="border-t border-black/10 bg-white px-4 pb-5 pt-1">
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 {section.fields.map((f) => (
                   <FieldRow
                     key={f.key}
@@ -270,14 +297,14 @@ function IntegrationRow({
                 ))}
               </div>
 
-              <div className="flex items-center gap-3 mt-5">
+              <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button
                   onClick={handleSave}
                   disabled={saving || !isDirty}
-                  className="flex items-center gap-1.5 h-8 px-4 bg-black text-white text-[9px] font-medium tracking-[0.2em] uppercase disabled:opacity-30 transition-opacity"
+                  className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-black/85 disabled:opacity-30"
                   data-testid={`button-save-${section.id}`}
                 >
-                  {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <SaveIcon className="h-3 w-3" />}
+                  {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
                   Save
                 </button>
 
@@ -286,17 +313,17 @@ function IntegrationRow({
                     <button
                       onClick={handleTest}
                       disabled={testing || !isConfigured}
-                      className="flex items-center gap-1.5 h-8 px-4 border border-black/[0.1] bg-white text-[9px] font-medium tracking-[0.2em] uppercase hover:bg-black/[0.02] disabled:opacity-30 transition-all"
+                      className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-white px-4 text-sm font-medium text-foreground transition-all hover:bg-black/[0.035] disabled:opacity-30"
                       data-testid={`button-test-${section.id}`}
                     >
-                      {testing ? <Loader2 className="h-3 w-3 animate-spin" />
+                      {testing ? <Spinner size="sm" />
                         : testStatus === "success" ? <CheckCircle2 className="h-3 w-3 text-emerald-600" />
                         : testStatus === "error" ? <XCircle className="h-3 w-3 text-red-500" />
-                        : <Shield className="h-3 w-3 text-black" />}
+                        : <ShieldCheck className="h-3 w-3 text-muted-foreground" />}
                       Test
                     </button>
                     {testStatus !== "idle" && (
-                      <span className={cn("text-[9px] font-medium", testStatus === "success" ? "text-emerald-600" : "text-red-500")}>
+                      <span className={cn("text-xs font-medium", testStatus === "success" ? "text-emerald-600" : "text-red-500")}>
                         {testStatus === "success" ? "Connected" : "Failed"}
                       </span>
                     )}
@@ -308,6 +335,258 @@ function IntegrationRow({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function IntegrationListButton({
+  section,
+  settings,
+  active,
+  onClick,
+}: {
+  section: SectionDef;
+  settings: Settings;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const Icon = section.icon;
+  const isConfigured = section.fields.every((f) => !!(settings[f.key] || "").trim());
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex min-h-[70px] w-full items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 text-left transition-all",
+        active
+          ? "border-black/15 bg-black/[0.045]"
+          : "border-black/10 bg-white/60 hover:border-black/15 hover:bg-black/[0.025]"
+      )}
+      data-testid={`button-select-${section.id}`}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
+          <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">{section.label}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{section.description}</p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className={cn(
+          "rounded-full px-2.5 py-1 text-[10px] font-semibold",
+          isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground"
+        )}>
+          {isConfigured ? "Configured" : "Not set"}
+        </span>
+        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", active && "-rotate-90")} />
+      </div>
+    </button>
+  );
+}
+
+function IntegrationDetailCard({
+  section,
+  settings,
+  onSave,
+}: {
+  section: SectionDef;
+  settings: Settings;
+  onSave: (patch: Settings) => Promise<void>;
+}) {
+  const [values, setValues] = useState<Settings>({});
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<"idle" | "success" | "error">("idle");
+  const Icon = section.icon;
+
+  useEffect(() => {
+    const init: Settings = {};
+    for (const f of section.fields) init[f.key] = settings[f.key] || "";
+    setValues(init);
+    setTestStatus("idle");
+  }, [settings, section]);
+
+  const isDirty = section.fields.some((f) => values[f.key] !== (settings[f.key] || ""));
+  const isConfigured = section.fields.every((f) => !!(settings[f.key] || "").trim());
+
+  const handleSave = async () => {
+    setSaving(true);
+    setTestStatus("idle");
+    try {
+      await onSave(values);
+      toast.success(`${section.label} saved`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestStatus("idle");
+    try {
+      if (section.testKey === "fraudshield") {
+        const res = await apiFetch("/api/settings/test-fraudshield", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok || data?.error) { setTestStatus("error"); toast.error("Failed to connect to FraudShield. Please check your API key."); }
+        else { setTestStatus("success"); toast.success("FraudShield connected"); }
+      } else if (section.testKey === "facebook") {
+        const res = await apiFetch("/api/settings/test-facebook", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok || data?.error) { setTestStatus("error"); toast.error("Failed to connect to Facebook Ads. Please check your credentials."); }
+        else { setTestStatus("success"); toast.success("Facebook Ads connected"); }
+      }
+    } catch {
+      setTestStatus("error");
+      toast.error("Could not reach the API");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <motion.div
+      key={section.id}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className="overflow-hidden rounded-2xl border border-black/10 bg-white"
+    >
+      <div className="flex min-h-[76px] items-start justify-between gap-3 border-b border-black/10 px-4 py-3.5 pr-14">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
+            <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{section.label}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{section.description}</p>
+          </div>
+        </div>
+        <span className={cn(
+          "rounded-full px-2.5 py-1 text-[10px] font-semibold",
+          isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground"
+        )}>
+          {isConfigured ? "Configured" : "Not set"}
+        </span>
+      </div>
+
+      <div className="px-4 pb-5 pt-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {section.fields.map((f) => (
+            <FieldRow
+              key={f.key}
+              field={f}
+              value={values[f.key] || ""}
+              onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
+            />
+          ))}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleSave}
+            disabled={saving || !isDirty}
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-black/85 disabled:opacity-30"
+            data-testid={`button-save-${section.id}`}
+          >
+            {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
+            Save
+          </button>
+
+          {(section.testKey === "fraudshield" || section.testKey === "facebook") && (
+            <>
+              <button
+                onClick={handleTest}
+                disabled={testing || !isConfigured}
+                className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-white px-4 text-sm font-medium text-foreground transition-all hover:bg-black/[0.035] disabled:opacity-30"
+                data-testid={`button-test-${section.id}`}
+              >
+                {testing ? <Spinner size="sm" />
+                  : testStatus === "success" ? <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                  : testStatus === "error" ? <XCircle className="h-3 w-3 text-red-500" />
+                  : <ShieldCheck className="h-3 w-3 text-muted-foreground" />}
+                Test
+              </button>
+              {testStatus !== "idle" && (
+                <span className={cn("text-xs font-medium", testStatus === "success" ? "text-emerald-600" : "text-red-500")}>
+                  {testStatus === "success" ? "Connected" : "Failed"}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function IntegrationMarketplaceCard({
+  section,
+  settings,
+  onConfigure,
+}: {
+  section: SectionDef;
+  settings: Settings;
+  onConfigure: () => void;
+}) {
+  const Icon = section.icon;
+  const isConfigured = section.fields.every((f) => !!(settings[f.key] || "").trim());
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      transition={{ duration: 0.18 }}
+      className="group flex min-h-[178px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white transition-colors hover:border-black/20"
+    >
+      <div className="relative flex-1 px-4 pb-4 pt-4">
+        <button
+          type="button"
+          aria-label={`Configure ${section.label}`}
+          onClick={onConfigure}
+          className="absolute right-3 top-3 rounded-lg p-1 text-muted-foreground opacity-60 transition-all hover:bg-black/[0.04] hover:text-foreground group-hover:opacity-100"
+        >
+          <ArrowLeftRight className="h-3.5 w-3.5 rotate-45" strokeWidth={1.8} />
+        </button>
+        <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl", integrationIconTone(section.id, isConfigured))}>
+          <Icon className="h-5 w-5" strokeWidth={1.8} />
+        </div>
+        <div className="mt-4 pr-6">
+          <p className="font-sf-display text-[15px] font-semibold leading-tight text-foreground">{section.label}</p>
+          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{section.description}</p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between border-t border-black/10 px-4 py-3">
+        <button
+          type="button"
+          onClick={onConfigure}
+          className="inline-flex h-8 items-center gap-2 rounded-lg border border-black/10 bg-white px-3 text-xs font-semibold text-foreground transition-all hover:bg-black/[0.035]"
+          data-testid={`button-configure-${section.id}`}
+        >
+          <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+          Configure
+        </button>
+        <span
+          className={cn(
+            "relative h-5 w-9 rounded-full transition-colors",
+            isConfigured ? "bg-[#7c3aed]" : "bg-black/15"
+          )}
+          aria-label={isConfigured ? "Configured" : "Not set"}
+        >
+          <span
+            className={cn(
+              "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+              isConfigured ? "translate-x-[18px]" : "translate-x-0.5"
+            )}
+          />
+        </span>
+      </div>
+    </motion.div>
   );
 }
 
@@ -347,35 +626,37 @@ function BrandDocSection() {
   const hasContent = content.trim().length > 0;
 
   return (
-    <div className="border border-black/[0.07] bg-white mt-4">
-      <div className="flex items-center justify-between px-8 py-3 border-b border-black/[0.05]">
+    <div className="mt-5 overflow-hidden rounded-2xl border border-black/10 bg-white">
+      <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
         <div className="flex items-center gap-2.5">
-          <FileText className="h-3 w-3 text-black" />
-          <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Brand Document</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
+            <FileHeart className="h-4 w-4" strokeWidth={1.8} />
+          </span>
+          <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Brand Document</AnimatedText>
         </div>
-        <span className="text-[8px] font-medium tracking-[0.15em] uppercase px-2 py-1 bg-black/[0.03] text-black">
+        <span className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
           AI Knowledge Base
         </span>
       </div>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-8 py-4 hover:bg-black/[0.01] transition-colors text-left"
+        className="flex w-full items-center justify-between gap-4 px-6 py-4 text-left transition-colors hover:bg-black/[0.025]"
         data-testid="button-expand-brand-doc"
       >
         <div className="flex items-center gap-4">
-          <div className={cn("h-6 w-6 flex items-center justify-center", hasContent ? "bg-black" : "bg-black/[0.05]")}>
-            <FileText className={cn("h-3 w-3", hasContent ? "text-white" : "text-black")} />
+          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700", !hasContent && "opacity-70 saturate-50")}>
+            <FileHeart className="h-3.5 w-3.5" strokeWidth={1.8} />
           </div>
           <div>
-            <p className="text-[8px] font-medium tracking-[0.25em] text-black uppercase">Brand Knowledge Doc</p>
-            <p className="text-[9px] text-black mt-0.5">Paste your brand guide, FAQs, product policies — the AI will use this to answer customers</p>
+            <p className="text-sm font-semibold text-foreground">Brand Knowledge Doc</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Paste your brand guide, FAQs, and policies for the AI support bot.</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className={cn("text-[7px] font-bold tracking-[0.15em] uppercase px-2 py-1", hasContent ? "bg-emerald-50 text-emerald-600" : "bg-black/[0.03] text-black")}>
+          <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-semibold", hasContent ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-muted-foreground")}>
             {hasContent ? `${content.trim().split(/\s+/).length} words` : "Not set"}
           </span>
-          <ChevronDown className={cn("h-3 w-3 text-black transition-transform duration-200", open && "rotate-180")} />
+          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
         </div>
       </button>
       <AnimatePresence initial={false}>
@@ -388,36 +669,36 @@ function BrandDocSection() {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="px-8 pb-6 pt-2 bg-[#FAFAF8] border-t border-black/[0.04]">
+            <div className="border-t border-black/10 bg-white/55 px-6 pb-6 pt-2">
               {loading ? (
-                <div className="h-36 bg-black/[0.03] animate-pulse mt-4" />
+                <div className="mt-4 h-36 animate-pulse rounded-xl bg-black/[0.055]" />
               ) : (
                 <>
                   <textarea
                     value={content}
                     onChange={(e) => { setContent(e.target.value); setSaved(false); }}
                     placeholder="Paste your brand guide, FAQs, product descriptions, shipping policies, return policies, brand tone of voice…&#10;&#10;The AI will use this to answer customer questions on Facebook, Instagram, and WhatsApp."
-                    className="w-full h-48 mt-4 px-3 py-2.5 bg-white border border-black/[0.08] text-[11px] text-black placeholder:text-black outline-none focus:border-black/20 transition-colors resize-y leading-relaxed font-mono"
+                    className="mt-4 h-48 w-full resize-y rounded-xl border-0 bg-black/[0.055] px-3 py-2.5 font-mono text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:ring-1 focus:ring-black/20"
                     data-testid="textarea-brand-doc"
                   />
                   <div className="flex items-center gap-3 mt-3">
                     <button
                       onClick={handleSave}
                       disabled={saving}
-                      className="flex items-center gap-1.5 h-8 px-4 bg-black text-white text-[9px] font-medium tracking-[0.2em] uppercase disabled:opacity-30 transition-opacity"
+                      className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-black/85 disabled:opacity-30"
                       data-testid="button-save-brand-doc"
                     >
-                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <SaveIcon className="h-3 w-3" />}
+                      {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
                       Save
                     </button>
                     {saved && (
-                      <span className="flex items-center gap-1.5 text-[9px] text-emerald-600">
+                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
                         <CheckCircle2 className="h-3 w-3" />
                         Saved
                       </span>
                     )}
                     {content.trim() && (
-                      <span className="text-[9px] text-black ml-auto">{content.trim().split(/\s+/).length} words · {content.length} chars</span>
+                      <span className="ml-auto text-xs text-muted-foreground">{content.trim().split(/\s+/).length} words · {content.length} chars</span>
                     )}
                   </div>
                 </>
@@ -433,6 +714,9 @@ function BrandDocSection() {
 export function IntegrationSettings() {
   const [settings, setSettings] = useState<Settings>({});
   const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<IntegrationCategory>("All integrations");
+  const [query, setQuery] = useState("");
+  const [selectedSection, setSelectedSection] = useState<SectionDef | null>(null);
 
   useEffect(() => {
     apiFetch("/api/settings")
@@ -453,41 +737,133 @@ export function IntegrationSettings() {
     setSettings((prev) => ({ ...prev, ...patch }));
   };
 
+  const visibleSections = SECTIONS.filter((section) => {
+    const matchesCategory = activeCategory === "All integrations" || integrationCategory(section.id) === activeCategory;
+    const needle = `${section.label} ${section.description}`.toLowerCase();
+    return matchesCategory && needle.includes(query.trim().toLowerCase());
+  });
+
   return (
     <>
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.05 }}
-        className="border border-black/[0.07] bg-white"
+        className="overflow-hidden rounded-2xl border border-black/10 bg-white"
       >
         {/* Panel header */}
-        <div className="flex items-center justify-between px-8 py-3 border-b border-black/[0.05]">
+        <div className="flex min-h-[66px] flex-col justify-center gap-1.5 border-b border-black/10 px-6 py-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2.5">
-            <BarChart2 className="h-3 w-3 text-black" />
-            <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Integrations</span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+              <ChartNoAxesCombined className="h-4 w-4" strokeWidth={1.8} />
+            </span>
+            <div>
+              <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Integrations</AnimatedText>
+              <p className="text-xs text-muted-foreground">Connect the tools that power your commerce workflow.</p>
+            </div>
           </div>
-          <span className="text-[8px] font-medium tracking-[0.2em] text-black uppercase">
+          <span className="text-xs font-medium text-muted-foreground">
             {SECTIONS.filter((s) => s.fields.every((f) => !!(settings[f.key] || "").trim())).length}/{SECTIONS.length} configured
           </span>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-4 w-4 animate-spin text-black" />
+            <Spinner className="h-5 w-5 text-muted-foreground" />
           </div>
         ) : (
-          SECTIONS.map((section, i) => (
-            <IntegrationRow
-              key={section.id}
-              section={section}
-              settings={settings}
-              onSave={handleSave}
-              isLast={i === SECTIONS.length - 1}
-            />
-          ))
+          <div className="p-4">
+            <div className="flex flex-col gap-3 border-b border-black/10 pb-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex gap-2 overflow-x-auto">
+                {INTEGRATION_CATEGORIES.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setActiveCategory(category)}
+                    className={cn(
+                      "relative h-8 shrink-0 px-1 text-xs font-semibold transition-colors",
+                      activeCategory === category ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {category}
+                    {activeCategory === category && (
+                      <motion.span
+                        layoutId="integration-tab-indicator"
+                        className="absolute inset-x-0 -bottom-[13px] h-0.5 rounded-full bg-[#7c3aed]"
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full lg:w-[260px]">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" strokeWidth={1.8} />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search"
+                  className="h-9 w-full rounded-xl border border-black/10 bg-white pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-black/20"
+                />
+              </div>
+            </div>
+
+            <motion.div layout className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <AnimatePresence mode="popLayout">
+                {visibleSections.map((section) => (
+                  <IntegrationMarketplaceCard
+                    key={section.id}
+                    section={section}
+                    settings={settings}
+                    onConfigure={() => setSelectedSection(section)}
+                  />
+                ))}
+              </AnimatePresence>
+            </motion.div>
+
+            {visibleSections.length === 0 && (
+              <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-black/10 text-sm text-muted-foreground">
+                No integrations found.
+              </div>
+            )}
+          </div>
         )}
       </motion.div>
+
+      <AnimatePresence>
+        {selectedSection && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedSection(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 260, damping: 24 }}
+              className="relative max-h-[86vh] w-full max-w-3xl overflow-y-auto"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedSection(null)}
+                className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.06] text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground"
+                aria-label="Close integration settings"
+              >
+                <X className="h-4 w-4" strokeWidth={1.8} />
+              </button>
+              <IntegrationDetailCard
+                section={selectedSection}
+                settings={settings}
+                onSave={handleSave}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <BrandDocSection />
     </>
   );

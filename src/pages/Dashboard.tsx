@@ -5,11 +5,9 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { OrdersTable } from "@/components/OrdersTable";
 import { toast } from "sonner";
 import {
-  RefreshCw, ShieldCheck, Search, AlertTriangle, Loader2,
+  RefreshCw, ShieldCheck, Search, AlertTriangle,
   Info, CalendarDays, ChevronDown,
 } from "lucide-react";
-import { ShoppingBag, Package, Cube, TrendUp, ChartBar, TrendDown } from "@phosphor-icons/react";
-import { BarsSpinner } from "@/registry/spell-ui/bars-spinner";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -17,6 +15,9 @@ import { format, subDays, startOfMonth, startOfYear } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { TextEffect } from "@/components/ui/text-effect";
+import { PopButton } from "@/components/ui/pop-button";
 
 // ── Date range helpers ────────────────────────────────────────────────────────
 function toYMD(d: Date): string {
@@ -89,8 +90,8 @@ function DateRangePicker({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-auto p-0 rounded-xl border border-border shadow-xl">
         <div className="flex">
-          <div className="border-r border-border py-3 w-36 flex flex-col">
-            <p className="text-[9px] font-semibold tracking-widest text-muted-foreground uppercase px-4 pb-2">Preset</p>
+          <div className="border-r border-border py-2.5 w-32 flex flex-col">
+            <p className="text-[8px] font-semibold tracking-widest text-muted-foreground uppercase px-3 pb-1.5">Preset</p>
             {PRESETS.map((p) => {
               const isActive = p.label === (activePreset?.label ?? "All Time");
               return (
@@ -98,7 +99,7 @@ function DateRangePicker({
                   key={p.label}
                   onClick={() => apply(p.range)}
                   className={cn(
-                    "text-left px-4 py-1.5 text-xs transition-colors",
+                    "text-left px-3 py-1 text-[11px] transition-colors",
                     isActive
                       ? "text-foreground font-semibold bg-muted"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -109,8 +110,8 @@ function DateRangePicker({
               );
             })}
           </div>
-          <div className="p-3">
-            <p className="text-[9px] font-semibold tracking-widest text-muted-foreground uppercase px-1 pb-2">Custom Range</p>
+          <div className="p-2.5">
+            <p className="text-[8px] font-semibold tracking-widest text-muted-foreground uppercase px-1 pb-1.5">Custom Range</p>
             <Calendar
               mode="range"
               selected={pending}
@@ -118,11 +119,24 @@ function DateRangePicker({
                 setPending(r);
                 if (r?.from && r?.to) apply(r);
               }}
+              className="p-1.5"
+              classNames={{
+                months: "flex flex-col sm:flex-row space-y-3 sm:space-x-3 sm:space-y-0",
+                month: "space-y-2.5",
+                caption: "flex justify-center pt-0.5 relative items-center",
+                caption_label: "text-xs font-semibold",
+                nav_button: "h-6 w-6 bg-transparent p-0 opacity-50 hover:opacity-100",
+                table: "w-full border-collapse space-y-0",
+                head_cell: "text-muted-foreground rounded-md w-7 font-normal text-[10px]",
+                row: "flex w-full mt-1",
+                cell: "h-7 w-7 text-center text-xs p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                day: "h-7 w-7 p-0 text-xs font-normal aria-selected:opacity-100",
+              }}
               numberOfMonths={2}
               toDate={TODAY}
             />
             {pending?.from && !pending?.to && (
-              <p className="text-[10px] text-muted-foreground text-center pb-1">Select an end date</p>
+              <p className="text-[10px] text-muted-foreground text-center pb-0.5">Select an end date</p>
             )}
           </div>
         </div>
@@ -178,24 +192,120 @@ function fmtBDT(n: number) {
   return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 0 });
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({
-  label,
-  icon,
-  loading,
+function makeSparklinePath(values: number[], width = 94, height = 34) {
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(max - min, 1);
+
+  return values
+    .map((value, index) => {
+      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+      const y = height - ((value - min) / range) * (height - 6) - 3;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function MiniSparkline({ values, tone = "blue" }: { values: number[]; tone?: "blue" | "green" | "red" | "amber" | "neutral" }) {
+  const stroke = {
+    blue: "#0ea5e9",
+    green: "#059669",
+    red: "#ef4444",
+    amber: "#d97706",
+    neutral: "#737373",
+  }[tone];
+  const path = makeSparklinePath(values);
+
+  return (
+    <motion.svg
+      viewBox="0 0 94 34"
+      className="h-8 w-20 shrink-0 overflow-visible"
+      fill="none"
+      preserveAspectRatio="none"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.25 }}
+      aria-hidden="true"
+    >
+      <motion.path
+        d={path}
+        stroke={stroke}
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      />
+    </motion.svg>
+  );
+}
+
+const dashboardTextEffectVariants = {
+  container: {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.045 },
+    },
+  },
+  item: {
+    hidden: { opacity: 0, y: 8, filter: "blur(6px)" },
+    visible: {
+      opacity: 1,
+      y: 0,
+      filter: "blur(0px)",
+      transition: { duration: 0.35, ease: "easeOut" },
+    },
+  },
+};
+
+function DashboardTextEffect({
   children,
+  className,
+  as = "span",
+  per = "word",
+  delay = 0.08,
 }: {
-  label: string;
-  icon: React.ReactNode;
-  loading: boolean;
-  children: React.ReactNode;
+  children: string;
+  className?: string;
+  as?: "span" | "p";
+  per?: "word" | "char";
+  delay?: number;
 }) {
   return (
-    <div className="flex-1 px-6 py-5 border-r border-border last:border-r-0 space-y-3 min-w-0">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">{label}</p>
-        <span className="text-muted-foreground/60">{icon}</span>
-      </div>
+    <TextEffect
+      key={children}
+      as={as}
+      per={per}
+      delay={delay}
+      variants={dashboardTextEffectVariants}
+      className={className}
+    >
+      {children}
+    </TextEffect>
+  );
+}
+
+function FinanceMetric({
+  label,
+  loading,
+  value,
+  meta,
+  metaClassName,
+  values,
+  tone = "blue",
+}: {
+  label: string;
+  loading: boolean;
+  value: string;
+  meta?: string;
+  metaClassName?: string;
+  values: number[];
+  tone?: "blue" | "green" | "red" | "amber" | "neutral";
+}) {
+  return (
+    <div className="group min-w-[140px] flex-1 px-5 py-2.5 transition-colors hover:bg-black/[0.025]">
       <AnimatePresence mode="wait">
         {loading ? (
           <motion.div
@@ -203,16 +313,48 @@ function StatCard({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="h-8 w-28 rounded-md bg-muted animate-pulse"
-          />
+            className="space-y-2"
+          >
+            <div className="h-3 w-20 animate-pulse rounded bg-black/10" />
+            <div className="h-6 w-24 animate-pulse rounded bg-black/10" />
+            <div className="h-5 w-full animate-pulse rounded bg-black/10" />
+          </motion.div>
         ) : (
           <motion.div
             key="value"
-            initial={{ opacity: 0, y: 4 }}
+            initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="flex min-h-[58px] items-center justify-between gap-3"
           >
-            {children}
+            <div className="min-w-0">
+              <DashboardTextEffect
+                as="span"
+                per="word"
+                className="inline-block whitespace-nowrap border-b-2 border-dotted border-black/25 pb-0.5 font-sf-display text-[14px] font-semibold leading-none text-foreground"
+              >
+                {label}
+              </DashboardTextEffect>
+              <DashboardTextEffect
+                as="p"
+                per="char"
+                delay={0.18}
+                className="mt-1.5 font-sf-display text-[21px] font-semibold leading-none tracking-tight text-foreground tabular-nums"
+              >
+                {value}
+              </DashboardTextEffect>
+              {meta && (
+                <DashboardTextEffect
+                  as="p"
+                  per="word"
+                  delay={0.28}
+                  className={cn("mt-0.5 truncate text-[11px] font-medium leading-tight text-muted-foreground", metaClassName)}
+                >
+                  {meta}
+                </DashboardTextEffect>
+              )}
+            </div>
+            <MiniSparkline values={values} tone={tone} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -248,6 +390,13 @@ export default function Dashboard() {
     finally { setAnalyticsLoading(false); }
   }, []);
 
+  useEffect(() => {
+    setOrders([]);
+    setAnalytics(null);
+    setLoading(true);
+    setAnalyticsLoading(true);
+  }, [user?.id]);
+
   const handleDateRangeChange = useCallback((range: DateRange | null) => {
     setDateRange(range);
     fetchAnalytics(range);
@@ -258,9 +407,13 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => { fetchAnalytics(todayRange); }, [fetchAnalytics]);
+  useEffect(() => {
+    if (!user) return;
+    fetchAnalytics(todayRange);
+  }, [fetchAnalytics, todayRange, user]);
 
   useEffect(() => {
+    if (!user) return;
     const runAutoSync = async () => {
       setAutoSyncing(true);
       try {
@@ -275,7 +428,7 @@ export default function Dashboard() {
     runAutoSync();
     const intervalId = setInterval(() => fetchOrders(), 30000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [user?.id]);
 
   const fetchOrders = async () => {
     try {
@@ -372,48 +525,98 @@ export default function Dashboard() {
     );
   }, [orders, debouncedSearch]);
 
+  const revenueTrend = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = subDays(TODAY, 6 - index);
+      return {
+        key: toYMD(date),
+        label: format(date, "MMM d"),
+        Revenue: 0,
+        Orders: 0,
+      };
+    });
+    const byKey = new Map(days.map((day) => [day.key, day]));
+
+    orders.forEach((order) => {
+      const bucket = byKey.get(toYMD(new Date(order.created_at)));
+      if (!bucket) return;
+      bucket.Revenue += Number(order.price ?? 0);
+      bucket.Orders += 1;
+    });
+
+    return days;
+  }, [orders]);
+
+  const revenueSparkline = useMemo(() => {
+    return revenueTrend.map((day) => day.Revenue);
+  }, [revenueTrend]);
+
+  const metricSparklines = useMemo(() => {
+    const makeFlatSeries = (total: number | null | undefined) =>
+      Array.from({ length: 7 }, () => Math.max(Number(total ?? 0), 0));
+
+    const shippingByDay = new Map(revenueTrend.map((day) => [day.key, 0]));
+    orders.forEach((order) => {
+      const key = toYMD(new Date(order.created_at));
+      if (!shippingByDay.has(key)) return;
+      shippingByDay.set(key, (shippingByDay.get(key) ?? 0) + Number(order.delivery_rate ?? 0));
+    });
+
+    return {
+      revenue: revenueSparkline,
+      adSpend: makeFlatSeries(analytics?.adSpend),
+      shipping: revenueTrend.map((day) => shippingByDay.get(day.key) ?? 0),
+      cog: makeFlatSeries(analytics?.totalCog),
+      profit: makeFlatSeries(analytics?.profit),
+    };
+  }, [analytics, orders, revenueSparkline, revenueTrend]);
+
   // ── Loading state ─────────────────────────────────────────────────────────
   if (autoSyncing) {
     return (
-      <div className="space-y-6 p-6 lg:p-8">
-        {isAdmin && (
-          <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]">
-            <div className="flex h-[48px] items-center justify-between border-b border-black/10 px-6">
-              <div className="h-3 w-24 rounded bg-muted animate-pulse" />
-              <div className="h-7 w-36 rounded-lg bg-muted animate-pulse" />
+      <div className="relative min-h-[calc(100vh-96px)] p-1 lg:p-2">
+        <div className="pointer-events-none space-y-6 opacity-45 blur-[0.5px]">
+          {isAdmin && (
+            <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
+              <div className="flex h-[48px] items-center justify-between border-b border-black/10 px-6">
+                <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+                <div className="h-7 w-36 animate-pulse rounded-lg bg-muted" />
+              </div>
+              <div className="flex">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex-1 space-y-3 border-r border-border px-6 py-5 last:border-r-0">
+                    <div className="h-2.5 w-16 animate-pulse rounded bg-muted" />
+                    <div className="h-8 w-24 animate-pulse rounded bg-muted" />
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex-1 px-6 py-5 border-r border-border last:border-r-0 space-y-3">
-                  <div className="h-2.5 w-16 rounded bg-muted animate-pulse" />
-                  <div className="h-8 w-24 rounded bg-muted animate-pulse" />
-                </div>
-              ))}
+          )}
+          <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
+            <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
+              <div className="h-3 w-28 animate-pulse rounded bg-muted" />
+              <div className="flex gap-2">
+                <div className="h-8 w-44 animate-pulse rounded-lg bg-muted" />
+                <div className="h-8 w-20 animate-pulse rounded-lg bg-muted" />
+                <div className="h-8 w-24 animate-pulse rounded-lg bg-muted" />
+              </div>
             </div>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 border-b border-border px-6 py-3.5 last:border-0" style={{ opacity: 1 - i * 0.09 }}>
+                <div className="h-3 w-14 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-28 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+                <div className="h-3 flex-1 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-16 animate-pulse rounded bg-muted" />
+                <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />
+              </div>
+            ))}
           </div>
-        )}
-        <div className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]">
-          <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
-            <div className="h-3 w-28 rounded bg-muted animate-pulse" />
-            <div className="flex gap-2">
-              <div className="h-8 w-44 rounded-lg bg-muted animate-pulse" />
-              <div className="h-8 w-20 rounded-lg bg-muted animate-pulse" />
-              <div className="h-8 w-24 rounded-lg bg-muted animate-pulse" />
-            </div>
-          </div>
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 px-6 py-3.5 border-b border-border last:border-0" style={{ opacity: 1 - i * 0.09 }}>
-              <div className="h-3 w-14 rounded bg-muted animate-pulse" />
-              <div className="h-3 w-28 rounded bg-muted animate-pulse" />
-              <div className="h-3 w-24 rounded bg-muted animate-pulse" />
-              <div className="h-3 flex-1 rounded bg-muted animate-pulse" />
-              <div className="h-3 w-16 rounded bg-muted animate-pulse" />
-              <div className="h-5 w-16 rounded-full bg-muted animate-pulse" />
-            </div>
-          ))}
-          <div className="flex flex-col items-center justify-center py-10 gap-3">
-            <BarsSpinner size={24} color="hsl(var(--muted-foreground))" />
-            <span className="text-xs text-muted-foreground font-medium tracking-wide">Syncing from Shopify…</span>
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center gap-3">
+            <Spinner size="lg" className="text-foreground" />
+            <span className="text-sm font-medium tracking-wide text-foreground">Syncing Orders</span>
           </div>
         </div>
       </div>
@@ -425,7 +628,7 @@ export default function Dashboard() {
     : null;
 
   return (
-    <div className="space-y-6 p-6 lg:p-8">
+    <div className="space-y-6 p-1 lg:p-2">
 
       {/* ── P&L Panel ───────────────────────────────────────────────────── */}
       {isAdmin && (
@@ -433,127 +636,84 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]"
+          className="overflow-hidden rounded-xl border border-black/10 bg-white"
         >
-          {/* Header */}
-          <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
-            <div className="flex items-center gap-2.5">
-              <ChartBar size={13} weight="duotone" className="text-muted-foreground" />
-              <span className="text-[15px] font-semibold tracking-normal text-foreground">P&L Overview</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {!analytics?.fbConfigured && !analyticsLoading && (
-                <a
-                  href="/settings"
-                  className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid="link-connect-facebook"
-                >
-                  <Info className="h-3 w-3" />
-                  Connect Facebook Ads
-                </a>
-              )}
-              {analytics?.fbError && (
-                <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
-              )}
-              <div className="w-px h-4 bg-black/10" />
-              <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
-              <button
-                onClick={() => fetchAnalytics(dateRange)}
-                disabled={analyticsLoading}
-                className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-30"
-                data-testid="button-refresh-analytics"
-                title="Refresh"
-              >
-                {analyticsLoading
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <RefreshCw className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Stat cells */}
-          <div className="flex divide-x divide-black/10">
-            <StatCard
+          <div className="flex flex-col divide-y divide-black/10 lg:flex-row lg:divide-x lg:divide-y-0">
+            <FinanceMetric
               label="Revenue"
-              icon={<ShoppingBag size={14} weight="duotone" />}
               loading={analyticsLoading}
-            >
-              <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
-                {fmtBDT(analytics?.revenue ?? 0)}
-              </p>
-            </StatCard>
-
-            <StatCard
+              value={fmtBDT(analytics?.revenue ?? 0)}
+              meta="↗ Live sales"
+              metaClassName="text-emerald-600"
+              values={metricSparklines.revenue}
+              tone="blue"
+            />
+            <FinanceMetric
               label="Ad Spend"
-              icon={<span className="text-sm font-light leading-none">৳</span>}
               loading={analyticsLoading}
-            >
-              {analytics?.adSpend != null ? (
-                <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
-                  {fmtBDT(analytics.adSpend)}
-                </p>
-              ) : (
-                <p className="text-2xl font-light text-muted-foreground">—</p>
-              )}
-            </StatCard>
-
-            <StatCard
+              value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
+              meta={!analytics?.fbConfigured && !analyticsLoading ? "Ads not connected" : "Marketing spend"}
+              values={metricSparklines.adSpend}
+              tone="amber"
+            />
+            <FinanceMetric
               label="Shipping"
-              icon={<Package size={14} weight="duotone" />}
               loading={analyticsLoading}
-            >
-              <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
-                {fmtBDT(analytics?.shipping ?? 0)}
-              </p>
-            </StatCard>
-
-            <StatCard
+              value={fmtBDT(analytics?.shipping ?? 0)}
+              meta="Delivery cost"
+              values={metricSparklines.shipping}
+              tone="neutral"
+            />
+            <FinanceMetric
               label="Cost of Goods"
-              icon={<Cube size={14} weight="duotone" />}
               loading={analyticsLoading}
-            >
-              <p className="text-2xl font-bold tracking-tight tabular-nums text-foreground">
-                {fmtBDT(analytics?.totalCog ?? 0)}
-              </p>
-              {analytics?.cogCoverage && (
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  {analytics.cogCoverage.set}/{analytics.cogCoverage.total} products priced
-                </p>
-              )}
-            </StatCard>
-
-            <StatCard
+              value={fmtBDT(analytics?.totalCog ?? 0)}
+              meta={analytics?.cogCoverage ? `${analytics.cogCoverage.set}/${analytics.cogCoverage.total} priced` : "Product cost"}
+              values={metricSparklines.cog}
+              tone="neutral"
+            />
+            <FinanceMetric
               label="Net Profit"
-              icon={analytics?.profit != null && analytics.profit >= 0
-                ? <TrendUp size={14} weight="duotone" className="text-emerald-500" />
-                : <TrendDown size={14} weight="duotone" className="text-red-500" />
-              }
               loading={analyticsLoading}
-            >
-              {analytics?.profit != null ? (
-                <>
-                  <p className={cn(
-                    "text-2xl font-bold tracking-tight tabular-nums",
-                    analytics.profit >= 0 ? "text-emerald-600" : "text-red-500"
-                  )}>
-                    {analytics.profit < 0 ? "−" : ""}{fmtBDT(Math.abs(analytics.profit))}
-                  </p>
-                  {profitMargin != null && (
-                    <span className={cn(
-                      "inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold",
-                      analytics.profit >= 0
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-red-100 text-red-600"
-                    )}>
-                      {analytics.profit >= 0 ? "+" : "−"}
-                      {Math.abs(profitMargin).toFixed(1)}% margin
-                    </span>
-                  )}
-                </>
-              ) : (
-                <p className="text-2xl font-light text-muted-foreground">—</p>
-              )}
-            </StatCard>
+              value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
+              meta={profitMargin != null ? `${analytics?.profit != null && analytics.profit >= 0 ? "↗" : "↘"} ${Math.abs(profitMargin).toFixed(1)}% margin` : "Profit health"}
+              values={metricSparklines.profit}
+              tone={analytics?.profit != null && analytics.profit < 0 ? "red" : "green"}
+            />
+            <div className="flex min-w-[168px] flex-col justify-center gap-1.5 px-4 py-2.5">
+              <div className="flex items-center justify-end gap-2">
+                {!analytics?.fbConfigured && !analyticsLoading && (
+                  <a
+                    href="/settings"
+                    className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="link-connect-facebook"
+                  >
+                    <Info className="h-3 w-3" />
+                    Connect Facebook Ads
+                  </a>
+                )}
+                {analytics?.fbError && (
+                  <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
+                )}
+                <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
+                <button
+                  onClick={() => fetchAnalytics(dateRange)}
+                  disabled={analyticsLoading}
+                  className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-30"
+                  data-testid="button-refresh-analytics"
+                  title="Refresh"
+                >
+                  {analyticsLoading
+                    ? <Spinner size="sm" />
+                    : <RefreshCw className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            <p className="text-right text-[10px] font-medium text-muted-foreground">
+                <DashboardTextEffect as="span" per="char" delay={0.1}>
+                  {fmtRange(dateRange)}
+                </DashboardTextEffect>
+              </p>
+            </div>
           </div>
         </motion.div>
       )}
@@ -563,16 +723,69 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
-        className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8f8f8]"
+        className="overflow-hidden rounded-xl border border-black/10 bg-white"
       >
         {/* Toolbar */}
         <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
           <div className="flex items-center gap-2.5">
-            <span className="text-[15px] font-semibold tracking-normal text-foreground">Order Registry</span>
+            <TextEffect
+              as="span"
+              per="word"
+              delay={0.12}
+              variants={{
+                container: {
+                  hidden: { opacity: 0 },
+                  visible: {
+                    opacity: 1,
+                    transition: { staggerChildren: 0.16 },
+                  },
+                },
+                item: {
+                  hidden: { opacity: 0, y: 12, filter: "blur(8px)" },
+                  visible: {
+                    opacity: 1,
+                    y: 0,
+                    filter: "blur(0px)",
+                    transition: { duration: 0.55, ease: "easeOut" },
+                  },
+                },
+              }}
+              className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground"
+            >
+              Fulfillment Queue
+            </TextEffect>
             <div className="w-px h-3.5 bg-black/10" />
-            <span className="text-[13px] text-muted-foreground tabular-nums">
-              {loading ? "—" : `${filteredOrders.length} orders`}
-            </span>
+            {loading ? (
+              <span className="text-[13px] text-muted-foreground tabular-nums">—</span>
+            ) : (
+              <TextEffect
+                key={filteredOrders.length}
+                as="span"
+                per="char"
+                delay={0.45}
+                variants={{
+                  container: {
+                    hidden: { opacity: 0 },
+                    visible: {
+                      opacity: 1,
+                      transition: { staggerChildren: 0.045 },
+                    },
+                  },
+                  item: {
+                    hidden: { opacity: 0, y: 8, filter: "blur(6px)" },
+                    visible: {
+                      opacity: 1,
+                      y: 0,
+                      filter: "blur(0px)",
+                      transition: { duration: 0.35, ease: "easeOut" },
+                    },
+                  },
+                }}
+                className="text-[13px] text-muted-foreground tabular-nums"
+              >
+                {`${filteredOrders.length} orders`}
+              </TextEffect>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -589,25 +802,29 @@ export default function Dashboard() {
 
             <div className="w-px h-4 bg-black/10" />
 
-            <button
+            <PopButton
+              color="amber"
+              size="sm"
               onClick={syncOrders}
               disabled={syncing || checkingFraud || autoSyncing}
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-black/[0.035] px-3 text-sm font-medium text-foreground/70 transition-all hover:border-black/20 hover:bg-black/[0.06] hover:text-foreground disabled:opacity-30"
+              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
               data-testid="button-sync-orders"
             >
-              {syncing ? <BarsSpinner size={12} /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Sync
-            </button>
+            </PopButton>
 
-            <button
+            <PopButton
+              color="sky"
+              size="sm"
               onClick={checkFraud}
               disabled={checkingFraud || syncing}
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-black/[0.035] px-3 text-sm font-medium text-foreground/70 transition-all hover:border-black/20 hover:bg-black/[0.06] hover:text-foreground disabled:opacity-30"
+              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
               data-testid="button-check-fraud"
             >
-              {checkingFraud ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              {checkingFraud ? <Spinner size="sm" /> : <ShieldCheck className="h-3.5 w-3.5" />}
               Verify All
-            </button>
+            </PopButton>
           </div>
         </div>
 

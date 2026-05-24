@@ -5,8 +5,10 @@ import { TeamManagement } from "@/components/TeamManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
 import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { Store } from "lucide-react";
+import { AnimatedText } from "@/components/ui/animated-text";
 
 function BusinessNameCard() {
   const { orgName, isLoading, refresh } = useOrgName();
@@ -38,24 +40,32 @@ function BusinessNameCard() {
   };
 
   return (
-    <div className="border border-black/[0.07] bg-white p-6">
-      <p className="text-[8px] font-medium tracking-[0.35em] text-black uppercase mb-5">
-        Business Name
-      </p>
+    <div className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+      <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+            <Store className="h-4 w-4" strokeWidth={1.8} />
+          </span>
+          <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Business Name</AnimatedText>
+        </div>
+        <span className="text-xs font-medium text-muted-foreground">Workspace identity</span>
+      </div>
       {isLoading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-black" />
+        <div className="flex items-center px-6 py-5">
+          <Spinner className="h-5 w-5 text-muted-foreground" />
+        </div>
       ) : (
-        <div className="flex gap-3 items-center">
+        <div className="grid gap-3 px-6 py-5 lg:grid-cols-[1fr_auto] lg:items-center">
           <Input
             value={displayValue}
             onChange={(e) => setValue(e.target.value)}
             placeholder="e.g. Arc Lab Technology"
-            className="h-10 max-w-sm bg-white border-black/[0.1] focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-none text-sm placeholder:text-black/40"
+            className="h-10 rounded-xl border-0 bg-black/[0.055] text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-black/20"
           />
           <button
             onClick={handleSave}
             disabled={saving || !displayValue.trim() || displayValue.trim() === orgName}
-            className="h-10 px-6 bg-black text-white text-[9px] font-medium tracking-[0.3em] uppercase disabled:opacity-40 disabled:cursor-not-allowed hover:bg-black/85 transition-colors"
+            className="h-10 rounded-xl bg-black px-5 text-sm font-medium text-white transition-colors hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -70,15 +80,15 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8]">
-        <Loader2 className="h-4 w-4 animate-spin text-black" />
+      <div className="flex min-h-screen items-center justify-center bg-[#e9e9e9]">
+        <Spinner className="h-5 w-5 text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8]">
-      <div className="px-6 py-6 space-y-4">
+    <div className="min-h-full">
+      <div className="mx-auto max-w-[1800px] space-y-5 p-1 lg:p-2">
         <BusinessNameCard />
         <TeamManagement />
         <IntegrationSettings />

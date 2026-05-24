@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { AnimatedText } from "@/components/ui/animated-text";
 import {
   FacebookLogo,
   InstagramLogo,
@@ -35,10 +37,10 @@ interface Message {
   created_at: string;
 }
 
-const PLATFORM_CONFIG: Record<Platform, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  facebook: { label: "Facebook", icon: FacebookLogo, color: "text-[#1877F2]", bg: "bg-[#1877F2]/10" },
-  instagram: { label: "Instagram", icon: InstagramLogo, color: "text-[#E1306C]", bg: "bg-[#E1306C]/10" },
-  whatsapp: { label: "WhatsApp", icon: WhatsappLogo, color: "text-[#25D366]", bg: "bg-[#25D366]/10" },
+const PLATFORM_CONFIG: Record<Platform, { label: string; icon: React.ElementType; color: string; bg: string; chip: string }> = {
+  facebook: { label: "Facebook", icon: FacebookLogo, color: "text-[#1877F2]", bg: "bg-[#1877F2]/10", chip: "bg-[#1877F2]/10 text-[#1877F2]" },
+  instagram: { label: "Instagram", icon: InstagramLogo, color: "text-[#E1306C]", bg: "bg-[#E1306C]/10", chip: "bg-[#E1306C]/10 text-[#E1306C]" },
+  whatsapp: { label: "WhatsApp", icon: WhatsappLogo, color: "text-[#25D366]", bg: "bg-[#25D366]/10", chip: "bg-[#25D366]/10 text-[#128C4A]" },
 };
 
 function formatTime(iso: string) {
@@ -55,9 +57,9 @@ function Avatar({ name, platform }: { name: string; platform: Platform }) {
   const cfg = PLATFORM_CONFIG[platform];
   const Icon = cfg.icon;
   return (
-    <div className={cn("w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-semibold uppercase shrink-0 relative", cfg.bg)}>
+    <div className={cn("relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold uppercase ring-1 ring-black/[0.04]", cfg.bg)}>
       <span className={cfg.color}>{name.slice(0, 2)}</span>
-      <div className={cn("absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center bg-white shadow")}>
+      <div className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/[0.06]">
         <Icon size={8} weight="fill" className={cfg.color} />
       </div>
     </div>
@@ -118,25 +120,33 @@ export default function SocialInbox({ platform }: Props) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-0px)] bg-[#FAFAF8] overflow-hidden">
+    <div className="flex h-[calc(100vh-82px)] overflow-hidden bg-[#FAFAF8] p-1 lg:p-2">
       {/* Conversation list */}
       <div className={cn(
-        "w-full md:w-72 lg:w-80 border-r border-black/[0.06] flex flex-col bg-white shrink-0",
+        "flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-black/10 bg-white md:w-72 lg:w-80",
         mobileView === "chat" && "hidden md:flex"
       )}>
         {/* Header */}
-        <div className="px-5 pt-5 pb-3 border-b border-black/[0.05]">
-          <div className="flex items-center gap-2.5 mb-3">
-            <Icon size={16} weight="fill" className={cfg.color} />
-            <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">{cfg.label} Inbox</span>
+        <div className="border-b border-black/10 px-4 py-3">
+          <div className="mb-3 flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", cfg.bg)}>
+                <Icon size={15} weight="fill" className={cfg.color} />
+              </span>
+              <div>
+                <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">{cfg.label}</AnimatedText>
+                <p className="text-[11px] text-muted-foreground">{filtered.length} conversations</p>
+              </div>
+            </div>
+            <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold", cfg.chip)}>Live</span>
           </div>
           <div className="relative">
-            <MagnifyingGlass size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-black" />
+            <MagnifyingGlass size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search conversations…"
-              className="w-full h-8 pl-8 pr-3 bg-black/[0.03] border border-black/[0.06] text-[11px] text-black placeholder:text-black outline-none focus:border-black/15 transition-colors"
+              className="h-9 w-full rounded-xl border border-black/[0.08] bg-[#F8F8F6] pl-8 pr-3 text-[12px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-black/20"
               data-testid="input-search-conversations"
             />
           </div>
@@ -147,21 +157,23 @@ export default function SocialInbox({ platform }: Props) {
           {loading ? (
             <div className="space-y-0">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="px-5 py-3.5 border-b border-black/[0.04] animate-pulse">
+                <div key={i} className="animate-pulse border-b border-black/[0.06] px-4 py-3.5">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-black/[0.06]" />
+                    <div className="h-9 w-9 rounded-xl bg-black/[0.06]" />
                     <div className="flex-1 space-y-1.5">
-                      <div className="h-2.5 w-28 bg-black/[0.06] rounded" />
-                      <div className="h-2 w-40 bg-black/[0.04] rounded" />
+                      <div className="h-2.5 w-28 rounded bg-black/[0.06]" />
+                      <div className="h-2 w-40 rounded bg-black/[0.04]" />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-3">
-              <Icon size={28} weight="light" className="text-black" />
-              <p className="text-[10px] text-black tracking-[0.15em] uppercase">No conversations yet</p>
+            <div className="flex h-48 flex-col items-center justify-center gap-3">
+              <span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", cfg.bg)}>
+                <Icon size={22} weight="fill" className={cfg.color} />
+              </span>
+              <p className="text-[12px] font-medium text-muted-foreground">No conversations yet</p>
             </div>
           ) : (
             filtered.map((conv) => (
@@ -169,21 +181,21 @@ export default function SocialInbox({ platform }: Props) {
                 key={conv.id}
                 onClick={() => selectConversation(conv.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-5 py-3.5 border-b border-black/[0.04] text-left hover:bg-black/[0.015] transition-colors",
-                  selectedId === conv.id && "bg-black/[0.025]"
+                  "group flex w-full items-center gap-3 border-b border-black/[0.06] px-4 py-3.5 text-left transition-colors hover:bg-black/[0.025]",
+                  selectedId === conv.id && "bg-black/[0.045]"
                 )}
                 data-testid={`button-conversation-${conv.id}`}
               >
                 <Avatar name={conv.contact_name || "?"} platform={platform} />
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[11px] font-medium text-black truncate">{conv.contact_name || "Unknown"}</span>
-                    <span className="text-[9px] text-black shrink-0">{formatTime(conv.last_message_at)}</span>
+                    <span className="truncate text-[12px] font-semibold text-foreground">{conv.contact_name || "Unknown"}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{formatTime(conv.last_message_at)}</span>
                   </div>
-                  <p className="text-[10px] text-black truncate mt-0.5">{conv.last_message || "—"}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{conv.last_message || "—"}</p>
                 </div>
                 {conv.unread_count > 0 && (
-                  <span className={cn("shrink-0 text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center text-white", platform === "facebook" ? "bg-[#1877F2]" : platform === "instagram" ? "bg-[#E1306C]" : "bg-[#25D366]")}>
+                  <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white", platform === "facebook" ? "bg-[#1877F2]" : platform === "instagram" ? "bg-[#E1306C]" : "bg-[#25D366]")}>
                     {conv.unread_count > 9 ? "9+" : conv.unread_count}
                   </span>
                 )}
@@ -195,31 +207,33 @@ export default function SocialInbox({ platform }: Props) {
 
       {/* Chat panel */}
       <div className={cn(
-        "flex-1 flex flex-col min-w-0",
+        "ml-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/10 bg-white",
         mobileView === "list" && "hidden md:flex"
       )}>
         {!selectedId ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <Icon size={48} weight="light" className="text-black" />
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 text-center">
+            <span className={cn("flex h-16 w-16 items-center justify-center rounded-2xl", cfg.bg)}>
+              <Icon size={32} weight="fill" className={cfg.color} />
+            </span>
             <div className="text-center">
-              <p className="text-[10px] font-medium tracking-[0.25em] text-black uppercase">Select a conversation</p>
-              <p className="text-[9px] text-black mt-1">Messages will appear here</p>
+              <p className="text-sm font-semibold text-foreground">Select a conversation</p>
+              <p className="mt-1 text-[12px] text-muted-foreground">Messages will appear here</p>
             </div>
           </div>
         ) : (
           <>
             {/* Chat header */}
-            <div className="flex items-center gap-3 px-5 py-3.5 border-b border-black/[0.06] bg-white">
+            <div className="flex h-[58px] shrink-0 items-center gap-3 border-b border-black/10 bg-white px-4">
               <button
                 onClick={() => setMobileView("list")}
-                className="md:hidden p-1 text-black hover:text-black transition-colors"
+                className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground md:hidden"
               >
                 <ArrowLeft size={14} />
               </button>
               {selected && <Avatar name={selected.contact_name || "?"} platform={platform} />}
               <div>
-                <p className="text-[11px] font-medium text-black">{selected?.contact_name || "Unknown"}</p>
-                <p className={cn("text-[9px] flex items-center gap-1", cfg.color)}>
+                <p className="text-[13px] font-semibold text-foreground">{selected?.contact_name || "Unknown"}</p>
+                <p className={cn("flex items-center gap-1 text-[10px] font-medium", cfg.color)}>
                   <Robot size={9} />
                   AI bot active
                 </p>
@@ -227,14 +241,14 @@ export default function SocialInbox({ platform }: Props) {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <div className="flex-1 space-y-3 overflow-y-auto bg-[#FAFAF8] px-4 py-4">
               {msgLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="w-4 h-4 border-2 border-black/20 border-t-black/60 rounded-full animate-spin" />
+                <div className="flex h-full items-center justify-center">
+                  <Spinner className="text-muted-foreground" />
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-[10px] text-black tracking-[0.15em] uppercase">No messages</p>
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-[12px] font-medium text-muted-foreground">No messages</p>
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
@@ -243,21 +257,21 @@ export default function SocialInbox({ platform }: Props) {
                       key={msg.id}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={cn("flex gap-2.5 max-w-[75%]", msg.sender === "bot" ? "flex-row-reverse ml-auto" : "flex-row")}
+                      className={cn("flex max-w-[78%] gap-2.5", msg.sender === "bot" ? "ml-auto flex-row-reverse" : "flex-row")}
                     >
                       <div className={cn(
-                        "w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+                        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl",
                         msg.sender === "bot" ? "bg-black" : cfg.bg
                       )}>
                         {msg.sender === "bot"
-                          ? <Robot size={10} weight="fill" className="text-white" />
-                          : <User size={10} weight="fill" className={cfg.color} />}
+                          ? <Robot size={11} weight="fill" className="text-white" />
+                          : <User size={11} weight="fill" className={cfg.color} />}
                       </div>
                       <div className={cn(
-                        "rounded-sm px-3 py-2 text-[11px] leading-relaxed",
+                        "rounded-2xl px-3.5 py-2.5 text-[12px] leading-relaxed",
                         msg.sender === "bot"
                           ? "bg-black text-white"
-                          : "bg-white border border-black/[0.07] text-black"
+                          : "border border-black/[0.08] bg-white text-foreground"
                       )}>
                         {msg.image_url && (
                           <div className="mb-1.5">
@@ -265,7 +279,7 @@ export default function SocialInbox({ platform }: Props) {
                           </div>
                         )}
                         {!msg.image_url && msg.message_type === "image" && (
-                          <span className="flex items-center gap-1 text-black"><PhImage size={11} /> Image</span>
+                          <span className="flex items-center gap-1 text-foreground"><PhImage size={11} /> Image</span>
                         )}
                         {msg.content}
                       </div>
@@ -277,8 +291,8 @@ export default function SocialInbox({ platform }: Props) {
             </div>
 
             {/* Bot notice */}
-            <div className="px-5 py-3 border-t border-black/[0.05] bg-white">
-              <p className="text-[9px] text-black tracking-[0.1em] text-center">
+            <div className="shrink-0 border-t border-black/10 bg-white px-4 py-3">
+              <p className="text-center text-[10px] font-medium text-muted-foreground">
                 AI bot responds automatically · Replies sent via {cfg.label} API
               </p>
             </div>

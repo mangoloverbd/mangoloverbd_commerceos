@@ -27,7 +27,7 @@ export default function Onboarding() {
       });
       if (!res.ok) throw new Error("Failed to save");
       sessionStorage.removeItem("onboarding_skipped");
-      await queryClient.invalidateQueries({ queryKey: ["/api/settings/org_name"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
       navigate("/");
     } catch {
       toast.error("Could not save organisation name. Please try again.");

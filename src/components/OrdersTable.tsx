@@ -26,13 +26,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, HelpCircle, ShieldAlert, ShieldCheck, Truck, Loader2, Search, NotebookPen, Package, Check, FileText, Trash2, Printer } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldCheck, Truck, Search, StickyNote, Package, Check, FileText, Trash2, Printer, ChevronDown, Copy, MapPin, ShoppingBag } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { PopButton } from "@/components/ui/pop-button";
 
 function splitProductLines(product: string | null): string[] {
   if (!product) return [];
@@ -45,6 +46,28 @@ function splitProductLines(product: string | null): string[] {
 function hasInlineQty(line: string): boolean {
   // Matches "3x Item" or "3× Item" (case-insensitive)
   return /^\d+\s*(x|×)\s+/i.test(line);
+}
+
+function OrderStatusIcon({ status }: { status: "pending" | "confirmed" }) {
+  return status === "confirmed" ? (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21.897 6.63c.32.898-.13 1.513-.998 2.118c-.702.488-1.595 1.017-2.542 1.922c-.928.887-1.834 1.955-2.639 3.006a39 39 0 0 0-2.71 3.99a1.65 1.65 0 0 1-1.446.834a1.66 1.66 0 0 1-1.426-.873c-.748-1.363-1.326-1.901-1.592-2.094c-.737-.537-1.544-.63-1.544-1.8C7 12.776 7.746 12 8.667 12c.658.027 1.262.309 1.789.693c.342.249.705.578 1.082 1.012c.442-.654.975-1.408 1.573-2.189c.868-1.133 1.892-2.35 2.99-3.399c1.08-1.032 2.33-1.998 3.653-2.508c.863-.333 1.822.124 2.143 1.022M4.44 12.076a2.7 2.7 0 0 0-.6-.125l-.141-.006c-.938 0-1.699.783-1.699 1.748c0 .874.623 1.598 1.437 1.728q.042.02.137.087c.27.195.86.737 1.623 2.111c.298.538.851.873 1.453.88a1.67 1.67 0 0 0 1.112-.407M15 5.5c-1.35.515-2.622 1.489-3.723 2.53c-.384.363-.76.746-1.123 1.139" color="currentColor"/>
+    </svg>
+  ) : (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><g fill="currentColor"><path d="M18.75 11a7 7 0 1 1-14 0a7 7 0 0 1 14 0Z" opacity=".2"/><path fillRule="evenodd" d="M10 16a6 6 0 1 0 0-12a6 6 0 0 0 0 12Zm0 1a7 7 0 1 0 0-14a7 7 0 0 0 0 14Z" clipRule="evenodd"/><path fillRule="evenodd" d="M10 6.5a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0V7a.5.5 0 0 1 .5-.5Z" clipRule="evenodd"/><path fillRule="evenodd" d="M13.5 10a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 1 .5.5Z" clipRule="evenodd"/></g></svg>
+  );
+}
+
+function orderStatusClasses(status: "pending" | "confirmed", selected = false) {
+  if (status === "confirmed") {
+    return selected
+      ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+      : "border-emerald-200/80 bg-emerald-50 text-emerald-700 shadow-emerald-950/5 hover:border-emerald-300 hover:bg-emerald-100";
+  }
+
+  return selected
+    ? "border-amber-200 bg-amber-100 text-amber-700"
+    : "border-amber-200/80 bg-amber-50 text-amber-700 shadow-amber-950/5 hover:border-amber-300 hover:bg-amber-100";
 }
 
 function formatProductLine(line: string, fallbackQty: number | null | undefined): string {
@@ -180,7 +203,7 @@ function FraudCell({ order, isChecking, onCheck }: {
         data-testid={`button-fraud-check-${order.id}`}
       >
         {isChecking ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
+          <Spinner className="text-muted-foreground/40" />
         ) : hasError ? (
           <AlertTriangle className="h-3.5 w-3.5 text-destructive/60" />
         ) : order.fraud_checked ? (
@@ -293,15 +316,17 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("orders")
-        .update({ notes })
-        .eq("id", order.id);
+      const res = await apiFetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      const data = await res.json();
 
-      if (error) throw error;
+      if (!res.ok) throw new Error(data.error || "Failed to save notes");
 
       if (onOrderUpdate) {
-        onOrderUpdate({ ...order, notes });
+        onOrderUpdate(data.order || { ...order, notes });
       }
       setOpen(false);
       toast.success("Notes saved");
@@ -321,14 +346,19 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <button
-              className={`relative p-1.5 rounded-lg transition-all duration-200 ${hasNotes
-                ? "bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-sm ring-1 ring-primary/20 hover:ring-primary/40 hover:shadow-md"
-                : "text-muted-foreground/30 hover:bg-muted/50 hover:text-muted-foreground"
-                }`}
+              aria-label="Order notes"
+              className={cn(
+                "group relative flex h-8 w-8 items-center justify-center rounded-xl border transition-all duration-200",
+                hasNotes
+                  ? "border-violet-200 bg-violet-50 text-violet-700 shadow-sm shadow-violet-950/5 hover:border-violet-300 hover:bg-violet-100"
+                  : "border-black/5 bg-black/[0.035] text-muted-foreground/55 hover:border-black/10 hover:bg-black/[0.06] hover:text-foreground"
+              )}
             >
-              <NotebookPen className="h-3.5 w-3.5" />
+              <StickyNote className="h-3.5 w-3.5 transition-transform duration-200 group-hover:-rotate-3 group-hover:scale-110" strokeWidth={1.8} />
               {hasNotes && (
-                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary animate-pulse" />
+                <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-violet-500 ring-2 ring-[#ffffff]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                </span>
               )}
             </button>
           </PopoverTrigger>
@@ -339,22 +369,38 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
           </TooltipContent>
         )}
       </Tooltip>
-      <PopoverContent className="w-64 p-3" align="end">
-        <div className="space-y-3">
-          <p className="text-xs font-medium text-muted-foreground">Order Notes</p>
+      <PopoverContent className="w-80 rounded-2xl border border-black/10 bg-white/95 p-0 shadow-2xl shadow-black/10 backdrop-blur-xl" align="end">
+        <div className="border-b border-black/10 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+              <StickyNote className="h-4 w-4" strokeWidth={1.8} />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Order Notes</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Private context for this order</p>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3 p-4">
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Add notes..."
-            className="min-h-[80px] text-sm resize-none"
+            placeholder="Add a follow-up, customer preference, delivery detail..."
+            className="min-h-[128px] resize-none rounded-xl border-0 bg-black/[0.055] text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-violet-300"
           />
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <img src="https://img.icons8.com/material-rounded/24/bard--v2.png" alt="" className="h-3 w-3 object-contain" />
+              {notes.trim().length} chars
+            </div>
+            <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} className="rounded-xl">
               Cancel
             </Button>
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+            <Button size="sm" onClick={handleSave} disabled={saving} className="rounded-xl bg-black px-4 text-white hover:bg-black/85">
+              {saving ? <Spinner size="sm" /> : "Save"}
             </Button>
+            </div>
           </div>
         </div>
       </PopoverContent>
@@ -387,15 +433,21 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     onStatusUpdate(order.id, newStatus);
 
     try {
-      const { error } = await supabase
-        .from("orders")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq("id", order.id);
+      const res = await apiFetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
 
-      if (error) {
+      if (!res.ok) {
         // Revert on failure
         onStatusUpdate(order.id, order.status);
-        throw error;
+        throw new Error(data.error || "Failed to update status");
+      }
+
+      if (data?.order && onOrderUpdate) {
+        onOrderUpdate(data.order);
       }
     } catch (error) {
       console.error("Error updating order status:", error);
@@ -691,7 +743,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     const toastId = toast.custom((t) => (
       <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
         <div className="h-10 w-10 rounded-xl bg-black/[0.03] flex items-center justify-center shrink-0">
-          <Loader2 className="w-5 h-5 text-black animate-spin" />
+          <Spinner size="lg" className="text-black" />
         </div>
         <div className="flex flex-col">
           <span className="text-[10px] font-bold uppercase tracking-widest text-black">Processing</span>
@@ -756,24 +808,14 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     const idsToDelete = Array.from(selectedIds);
 
     try {
-      const { error } = await supabase
-        .from("orders")
-        .delete()
-        .in("id", idsToDelete);
+      const res = await apiFetch("/api/orders", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: idsToDelete }),
+      });
+      const data = await res.json();
 
-      if (error) throw error;
-
-      // Update parent component by removing deleted orders
-      if (onOrderUpdate) {
-        // Remove each deleted order from the list
-        idsToDelete.forEach(id => {
-          const order = orders.find(o => o.id === id);
-          if (order) {
-            // We'll trigger a refetch by updating with null or similar
-            // But since we can't directly remove from parent, we'll rely on the parent to refetch
-          }
-        });
-      }
+      if (!res.ok) throw new Error(data.error || "Failed to delete orders");
 
       toast.custom((t) => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
@@ -784,6 +826,9 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
             <span className="text-[10px] font-bold uppercase tracking-widest text-black">Deleted</span>
             <div className="flex items-baseline gap-1">
               <span className="text-sm font-bold text-black">{idsToDelete.length} Orders</span>
+              {data.deleted !== idsToDelete.length && (
+                <span className="text-xs text-black font-medium">{data.deleted} deleted</span>
+              )}
               <span className="text-xs text-black font-medium">Removed from Dashboard</span>
             </div>
           </div>
@@ -893,14 +938,14 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                 {selectedIds.size === orders.length && orders.length > 0 && <Check className="w-3 h-3 text-white" />}
               </div>
             </TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Ref</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Customer</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Trust</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Destination</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Merchandise</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-right">Value</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Status</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center pr-4">Courier</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Order ID</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Buyer</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Risk</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Ship To</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Items</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-right">Order Total</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Order State</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center pr-4">Fulfillment</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -951,12 +996,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                         {order.phone && (phoneOrderCount.get(order.phone.trim()) || 0) > 1 && (
                           <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold uppercase tracking-wider cursor-default">
-                                ×{phoneOrderCount.get(order.phone.trim())}
+                              <span className="inline-flex items-center gap-[3px] px-1.5 py-[3px] rounded-md bg-gradient-to-r from-orange-500/10 to-rose-500/10 border border-orange-300/60 text-orange-600 cursor-default shrink-0">
+                                <Copy className="h-[9px] w-[9px]" strokeWidth={2.5} />
+                                <span className="text-[9px] font-bold tabular-nums">{phoneOrderCount.get(order.phone.trim())}</span>
                               </span>
                             </TooltipTrigger>
-                            <TooltipContent side="top" className="text-xs">
-                              This number has {phoneOrderCount.get(order.phone.trim())} orders
+                            <TooltipContent side="top" className="text-xs font-medium">
+                              <span className="flex items-center gap-1.5">
+                                <Copy className="h-3 w-3 text-orange-500" />
+                                {phoneOrderCount.get(order.phone.trim())} orders from this number
+                              </span>
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -974,34 +1023,72 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                     </div>
                   </TableCell>
                   <TableCell className="max-w-[150px] py-3">
-                    <p className="text-xs text-black font-light truncate" title={order.address || ""}>
-                      {order.address || "Digital Delivery"}
-                    </p>
+                    <Tooltip delayDuration={0}>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1 group/addr cursor-default min-w-0">
+                          <MapPin className="h-3 w-3 shrink-0 text-blue-400 group-hover/addr:text-blue-500 transition-colors" />
+                          <p className="text-xs text-black font-light truncate">
+                            {order.address || "Digital Delivery"}
+                          </p>
+                        </div>
+                      </TooltipTrigger>
+                      {order.address && (
+                        <TooltipContent side="top" className="max-w-[260px] p-0 overflow-hidden rounded-2xl border border-black/10 bg-white/95 shadow-2xl shadow-black/10 backdrop-blur-xl">
+                          <div className="border-b border-black/[0.06] px-3.5 py-2.5 flex items-center gap-2.5">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-50 text-blue-600 shrink-0">
+                              <MapPin className="h-3.5 w-3.5" strokeWidth={1.8} />
+                            </span>
+                            <div>
+                              <p className="text-xs font-semibold text-foreground">Delivery Address</p>
+                              <p className="text-[10px] text-muted-foreground">Ship to</p>
+                            </div>
+                          </div>
+                          <div className="px-3.5 py-2.5">
+                            <p className="text-xs text-foreground leading-relaxed">{order.address}</p>
+                          </div>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
                   </TableCell>
                   <TableCell className="max-w-[160px] py-3">
                     <Tooltip delayDuration={0}>
                       <TooltipTrigger asChild>
-                        <div className="text-xs tracking-tight text-black truncate cursor-default">
-                          <span className="font-medium">{primary}</span>
-                          {moreCount > 0 && (
-                            <span className="ml-1.5 px-1 py-0.5 bg-black/5 rounded text-[9px] font-bold">+{moreCount}</span>
-                          )}
+                        <div className="flex items-center gap-1 group/prod cursor-default min-w-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-blue-400 group-hover/prod:text-blue-500 transition-colors"><g fill="none" stroke="currentColor" strokeWidth="1.2"><rect width="14" height="17" x="5" y="4" fill="currentColor" fillOpacity=".25" rx="2"/><path strokeLinecap="round" d="M9 9h6m-6 4h6m-6 4h4"/></g></svg>
+                          <div className="text-xs tracking-tight text-black truncate">
+                            <span className="font-medium">{primary}</span>
+                            {moreCount > 0 && (
+                              <span className="ml-1.5 px-1 py-0.5 bg-black/5 rounded text-[9px] font-bold">+{moreCount}</span>
+                            )}
+                          </div>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[360px] bg-black text-white border-none p-4 rounded-2xl shadow-2xl">
-                        {lines.length === 0 ? (
-                          <p className="text-xs">—</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {lines.map((line, index) => (
-                              <p key={index} className="text-xs font-light">
-                                {lines.length === 1
-                                  ? formatProductLine(line, order.quantity)
-                                  : line}
-                              </p>
-                            ))}
+                      <TooltipContent side="top" className="max-w-[300px] p-0 overflow-hidden rounded-2xl border border-black/10 bg-white/95 shadow-2xl shadow-black/10 backdrop-blur-xl">
+                        <div className="border-b border-black/[0.06] px-3.5 py-2.5 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-violet-50 text-violet-600 shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><g fill="none" stroke="currentColor" strokeWidth="1.2"><rect width="14" height="17" x="5" y="4" fill="currentColor" fillOpacity=".25" rx="2"/><path strokeLinecap="round" d="M9 9h6m-6 4h6m-6 4h4"/></g></svg>
+                            </span>
+                            <div>
+                              <p className="text-xs font-semibold text-foreground">Order Items</p>
+                              <p className="text-[10px] text-muted-foreground">{lines.length} item{lines.length !== 1 ? "s" : ""}</p>
+                            </div>
                           </div>
-                        )}
+                        </div>
+                        <div className="divide-y divide-black/[0.04]">
+                          {lines.length === 0 ? (
+                            <p className="px-3.5 py-2.5 text-xs text-muted-foreground">No items</p>
+                          ) : (
+                            lines.map((line, index) => (
+                              <div key={index} className="px-3.5 py-2 flex items-start gap-2.5">
+                                <span className="mt-0.5 h-4 w-4 rounded-lg bg-black/[0.05] text-black/40 text-[9px] font-bold flex items-center justify-center shrink-0">{index + 1}</span>
+                                <p className="text-xs text-foreground leading-relaxed">
+                                  {lines.length === 1 ? formatProductLine(line, order.quantity) : line}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </TooltipContent>
                     </Tooltip>
                   </TableCell>
@@ -1014,16 +1101,19 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                         <PopoverTrigger asChild>
                           <button
                             className={cn(
-                              "h-7 w-20 text-[9px] font-bold uppercase tracking-widest rounded-full transition-all border shadow-sm",
-                              order.status === "confirmed"
-                                ? "bg-blue-50 border-blue-100 text-blue-600 shadow-blue-900/5"
-                                : "bg-amber-50 border-amber-100 text-amber-600 shadow-amber-900/5"
+                              "group/status status-pill relative inline-flex h-8 w-[112px] items-center overflow-hidden rounded-full border px-3 font-extrabold text-xs capitalize transition-all duration-200 active:scale-95",
+                              orderStatusClasses(order.status)
                             )}
                           >
-                            {order.status}
+                            <span className="status-pill-icon absolute left-3 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center transition-all duration-500 ease-out group-hover/status:left-1/2 group-hover/status:-translate-x-1/2 group-hover/status:-translate-y-1/2 group-hover/status:scale-125">
+                                <OrderStatusIcon status={order.status} />
+                            </span>
+                            <span className="status-pill-label ml-6 whitespace-nowrap transition-all duration-500 ease-out group-hover/status:translate-x-[155%] group-hover/status:opacity-0">
+                              {order.status}
+                            </span>
                           </button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[130px] p-2 bg-white/95 backdrop-blur-xl border border-black/5 rounded-2xl shadow-2xl" align="center">
+                        <PopoverContent className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="center">
                           <div className="flex flex-col gap-1">
                             {["pending", "confirmed"].map((st) => (
                               <button
@@ -1032,13 +1122,17 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                                   if (order.status !== st) handleStatusToggle(order);
                                 }}
                                 className={cn(
-                                  "h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all text-left px-3",
+                                  "flex h-9 w-full items-center justify-between rounded-xl border px-3 text-left text-xs font-medium capitalize transition-all",
                                   order.status === st
-                                    ? "bg-black text-white"
-                                    : "hover:bg-black/5 text-black"
+                                    ? orderStatusClasses(st as "pending" | "confirmed", true)
+                                    : "border-transparent text-foreground hover:border-black/10 hover:bg-black/[0.04]"
                                 )}
                               >
-                                {st}
+                                <span className="flex items-center gap-2">
+                                  <OrderStatusIcon status={st as "pending" | "confirmed"} />
+                                  {st}
+                                </span>
+                                {order.status === st && <Check className="h-3.5 w-3.5" />}
                               </button>
                             ))}
                           </div>
@@ -1052,9 +1146,14 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                       {!order.sent_to_courier ? (
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/[0.03] border border-black/5 hover:border-black/20 text-[9px] font-bold uppercase tracking-widest text-black hover:text-black transition-all">
-                              <Truck className="h-3 w-3" />
-                              Send
+                            <button className="send-btn flex items-center rounded-xl bg-white border border-amber-500 text-amber-500 text-[11px] font-medium px-3 py-1.5 overflow-hidden transition-all duration-200 cursor-pointer active:scale-95 hover:bg-amber-50">
+                              <div className="send-btn-svg-wrapper flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={13} height={13} className="send-btn-icon transition-transform duration-300 origin-center">
+                                  <path fill="none" d="M0 0h24v24H0z"/>
+                                  <path fill="currentColor" d="M1.946 9.315c-.522-.174-.527-.455.01-.634l19.087-6.362c.529-.176.832.12.684.638l-5.454 19.086c-.15.529-.455.547-.679.045L12 14l6-8-8 6-8.054-2.685z"/>
+                                </svg>
+                              </div>
+                              <span className="send-btn-label ml-1.5 transition-transform duration-300">Send</span>
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-[150px] p-2 bg-white border border-black/5 rounded-xl shadow-xl" align="center">
@@ -1064,7 +1163,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                                 disabled={sendingIds.has(order.id)}
                                 className="flex items-center justify-center gap-2 h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all hover:bg-blue-50 text-blue-600 disabled:opacity-50"
                               >
-                                {sendingIds.has(order.id) && <Loader2 className="h-3 w-3 animate-spin" />}
+                                {sendingIds.has(order.id) && <Spinner size="sm" />}
                                 <SteadfastLogo className="h-4 w-auto" />
                               </button>
                               <button
@@ -1072,17 +1171,17 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                                 disabled={sendingPathaoIds.has(order.id)}
                                 className="flex items-center justify-center gap-2 h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all hover:bg-red-50 text-[#D82128] disabled:opacity-50"
                               >
-                                {sendingPathaoIds.has(order.id) && <Loader2 className="h-3 w-3 animate-spin" />}
+                                {sendingPathaoIds.has(order.id) && <Spinner size="sm" />}
                                 <PathaoLogo className="h-5 w-auto" />
                               </button>
                             </div>
                           </PopoverContent>
                         </Popover>
                       ) : (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-black/[0.03] border border-black/5 group-hover:border-black/10 transition-all">
-                          <span className="text-[7px] font-bold uppercase tracking-[0.2em] text-black">REF</span>
-                          <span className="text-[13px] font-mono font-bold text-black tracking-tight">{order.consignment_id}</span>
-                        </div>
+                        <PopButton color="sky" size="sm" className="gap-1.5 cursor-default text-[10px] font-bold tracking-widest uppercase">
+                          <span className="opacity-70">REF</span>
+                          <span className="font-mono tracking-tight normal-case text-[11px]">{order.consignment_id}</span>
+                        </PopButton>
                       )}
                     </div>
                   </TableCell>
@@ -1124,7 +1223,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                   data-testid="button-bulk-fraud-check"
                 >
                   {isBulkChecking
-                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    ? <Spinner size="sm" />
                     : <ShieldCheck className="h-3 w-3" />}
                   Fraud Check
                 </button>
@@ -1159,7 +1258,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                   data-testid="button-delete-orders"
                 >
                   {isDeletingOrders
-                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    ? <Spinner size="sm" />
                     : <Trash2 className="h-3 w-3" />}
                   Delete
                 </button>

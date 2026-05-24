@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/ios-spinner";
 
 interface PlasticButtonProps {
     text: string;
@@ -27,7 +27,7 @@ export function PlasticButton({ text, onClick, disabled, loading, loadingText, c
                 boxShadow: `0 2px 8px 0 rgba(0, 0, 0, 0.2), 0 1.5px 0 0 rgba(255,255,255,0.25) inset, 0 -2px 8px 0 rgba(0, 0, 0, 0.15) inset`,
             }}
         >
-            {loading && <Loader2 className="h-4 w-4 animate-spin relative z-10" />}
+            {loading && <Spinner className="relative z-10" />}
             {!loading && Icon && <Icon className="h-4 w-4 relative z-10" />}
             <span className="relative z-10">{loading ? (loadingText || "Analyzing…") : text}</span>
             <span

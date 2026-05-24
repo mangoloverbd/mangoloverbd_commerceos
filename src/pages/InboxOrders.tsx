@@ -17,12 +17,14 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   AlertTriangle, CheckCircle2, HelpCircle, ShieldAlert, ShieldCheck,
-  Truck, Loader2, Search, NotebookPen, Package, Check, FileText, Trash2, Printer,
+  Truck, Search, NotebookPen, Package, Check, FileText, Trash2, Printer,
 } from "lucide-react";
 import {
   FacebookLogo, InstagramLogo, WhatsappLogo, ShoppingBag,
 } from "@phosphor-icons/react";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { AnimatedText } from "@/components/ui/animated-text";
 
 interface InboxOrder {
   id: string;
@@ -155,7 +157,7 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
         data-testid={`button-fraud-check-inbox-${order.id}`}
       >
         {isChecking ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
+          <Spinner className="text-muted-foreground/40" />
         ) : hasError ? (
           <AlertTriangle className="h-3.5 w-3.5 text-destructive/60" />
         ) : order.fraud_checked ? (
@@ -296,7 +298,7 @@ function InboxNotesPopover({ order, onOrderUpdate }: {
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
             <Button size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+              {saving ? <Spinner size="sm" /> : "Save"}
             </Button>
           </div>
         </div>
@@ -513,7 +515,7 @@ export default function InboxOrders() {
     const toastId = toast.custom(() => (
       <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
         <div className="h-10 w-10 rounded-xl bg-black/[0.03] flex items-center justify-center shrink-0">
-          <Loader2 className="w-5 h-5 text-black animate-spin" />
+          <Spinner size="lg" className="text-black" />
         </div>
         <div className="flex flex-col">
           <span className="text-[10px] font-bold uppercase tracking-widest text-black">Processing</span>
@@ -601,38 +603,49 @@ export default function InboxOrders() {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#FAFAF8] px-6 py-6">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
-        <div className="flex items-center gap-2.5 mb-1">
-          <ShoppingBag size={14} weight="light" className="text-black" />
-          <span className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Inbox Orders</span>
+    <div className="min-h-screen bg-[#FAFAF8] p-1 lg:p-2">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="overflow-hidden rounded-2xl border border-black/10 bg-white"
+      >
+        <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-4 lg:px-6">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-black/[0.045] text-foreground">
+              <ShoppingBag size={15} weight="light" />
+            </span>
+            <div>
+              <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Inbox Orders</AnimatedText>
+              <p className="text-[11px] text-muted-foreground">Orders captured by AI from social conversations</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-black/[0.045] px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+            {filtered.length} shown
+          </span>
         </div>
-        <p className="text-[10px] text-black">Orders captured by the AI from social media conversations</p>
-      </motion.div>
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex items-center gap-2 flex-1 max-w-xs px-3 h-8 bg-white border border-black/[0.07]">
-          <Search className="h-3 w-3 text-black shrink-0" />
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 border-b border-black/10 px-4 py-3 lg:flex-row lg:items-center lg:px-6">
+        <div className="flex h-9 max-w-xs flex-1 items-center gap-2 rounded-xl border border-black/[0.08] bg-[#F8F8F6] px-3">
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search customer, product..."
-            className="flex-1 text-[11px] bg-transparent outline-none text-black placeholder:text-black"
+            className="flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
             data-testid="input-inbox-search"
           />
         </div>
 
         {/* Status filter tabs */}
-        <div className="flex items-center border border-black/[0.06] bg-white">
+        <div className="flex w-fit items-center rounded-xl border border-black/[0.08] bg-[#F8F8F6] p-1">
           {(["all", "pending", "confirmed", "cancelled"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setStatusFilter(f)}
               className={cn(
-                "px-3.5 py-2 text-[8px] font-medium tracking-[0.2em] uppercase transition-colors",
-                statusFilter === f ? "bg-black text-white" : "text-black hover:text-black"
+                "rounded-lg px-3 py-1.5 text-[10px] font-semibold capitalize transition-colors",
+                statusFilter === f ? "bg-black text-white" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
               )}
               data-testid={`button-filter-${f}`}
             >
@@ -645,12 +658,7 @@ export default function InboxOrders() {
       </div>
 
       {/* Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="bg-white border border-black/[0.07] overflow-hidden"
-      >
+      <div className="overflow-hidden">
         {isLoading ? (
           <div className="space-y-4 p-8">
             {[...Array(5)].map((_, i) => (
@@ -661,13 +669,16 @@ export default function InboxOrders() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
-            <Package className="w-12 h-12 text-black mx-auto mb-4" />
-            <p className="text-[10px] text-black tracking-[0.2em] font-bold uppercase">No orders found</p>
+            <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-black/[0.045]">
+              <Package className="h-7 w-7 text-muted-foreground" />
+            </span>
+            <p className="text-sm font-semibold text-foreground">No orders found</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">Try a different search or status filter.</p>
           </div>
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="border-b border-black/[0.03] hover:bg-transparent">
+              <TableRow className="border-b border-black/10 bg-[#F8F8F6] hover:bg-[#F8F8F6]">
                 <TableHead className="w-10 py-3 pl-4 h-auto">
                   <div
                     onClick={toggleSelectAll}
@@ -842,7 +853,7 @@ export default function InboxOrders() {
                                   className="flex items-center justify-center gap-2 h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all hover:bg-blue-50 text-blue-600 disabled:opacity-50"
                                   data-testid={`button-steadfast-${order.id}`}
                                 >
-                                  {sendingIds.has(order.id) && <Loader2 className="h-3 w-3 animate-spin" />}
+                                  {sendingIds.has(order.id) && <Spinner size="sm" />}
                                   <SteadfastLogo className="h-4 w-auto" />
                                 </button>
                                 <button
@@ -851,7 +862,7 @@ export default function InboxOrders() {
                                   className="flex items-center justify-center gap-2 h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all hover:bg-red-50 text-[#D82128] disabled:opacity-50"
                                   data-testid={`button-pathao-${order.id}`}
                                 >
-                                  {sendingPathaoIds.has(order.id) && <Loader2 className="h-3 w-3 animate-spin" />}
+                                  {sendingPathaoIds.has(order.id) && <Spinner size="sm" />}
                                   <PathaoLogo className="h-5 w-auto" />
                                 </button>
                               </div>
@@ -871,6 +882,7 @@ export default function InboxOrders() {
             </TableBody>
           </Table>
         )}
+      </div>
       </motion.div>
 
       {/* Bulk action bar */}
@@ -898,7 +910,7 @@ export default function InboxOrders() {
                   className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all disabled:opacity-30"
                   data-testid="button-bulk-fraud-check-inbox"
                 >
-                  {isBulkChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
+                  {isBulkChecking ? <Spinner size="sm" /> : <ShieldCheck className="h-3 w-3" />}
                   Fraud Check
                 </button>
                 <button
@@ -924,7 +936,7 @@ export default function InboxOrders() {
                   className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-red-400 hover:text-red-600 hover:bg-red-50 transition-all disabled:opacity-30"
                   data-testid="button-delete-inbox-orders"
                 >
-                  {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                  {isDeleting ? <Spinner size="sm" /> : <Trash2 className="h-3 w-3" />}
                   Delete
                 </button>
                 <div className="w-px h-4 bg-black/[0.07] mx-1" />
