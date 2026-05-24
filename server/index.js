@@ -9,12 +9,15 @@ import { readFile } from "fs/promises";
 import pg from "pg";
 const { Pool } = pg;
 
-// Prevent unhandled rejections from crashing the server
+// Let Railway restart the process after truly unexpected failures. Continuing
+// after these can leave auth or DB state half-broken.
 process.on("unhandledRejection", (reason, promise) => {
   console.error("[Server] Unhandled rejection at:", promise, "reason:", reason);
+  setImmediate(() => process.exit(1));
 });
 process.on("uncaughtException", (err) => {
   console.error("[Server] Uncaught exception:", err);
+  setImmediate(() => process.exit(1));
 });
 
 const __filename = fileURLToPath(import.meta.url);
