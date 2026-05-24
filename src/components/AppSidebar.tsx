@@ -161,7 +161,7 @@ export function AppSidebar() {
         sections.push(socialInbox);
         sections.push(administration);
         return sections;
-    }, []);
+    }, [isAdmin]);
 
     // Derive initials for avatar
     const displayName = orgName || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Account";
