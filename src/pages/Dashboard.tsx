@@ -431,15 +431,21 @@ export default function Dashboard() {
   }, [searchQuery]);
 
   // Auto-sync on mount, then poll orders every 30 s.
-  // fetchAnalytics is called once here after the initial sync — NOT on every
-  // token refresh. Depend on user?.id (primitive) not user (object) so this
-  // only re-runs when the actual user changes, not on every JWT renewal.
+  // The Shopify sync is throttled to once per session per user via sessionStorage
+  // so HMR hot-reloads and navigation back to the dashboard don't re-trigger it.
   useEffect(() => {
     if (!user?.id) return;
+
+    const syncKey = `autosync_done_${user.id}`;
+    const alreadySynced = sessionStorage.getItem(syncKey);
+
     const runAutoSync = async () => {
       setAutoSyncing(true);
       try {
-        await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
+        if (!alreadySynced) {
+          await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
+          sessionStorage.setItem(syncKey, "1");
+        }
       } catch { /* ignore */ }
       finally {
         await fetchOrders();
