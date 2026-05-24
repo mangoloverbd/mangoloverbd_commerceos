@@ -853,14 +853,80 @@ app.get("/api/analytics", async (req, res) => {
 
     console.log(`[Analytics] date filter: since=${since} until=${until}, matched ${orders.length} orders`);
 
+    const dhakaParts = (value) => {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Dhaka",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(new Date(value));
+      const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      return {
+        ymd: `${map.year}-${map.month}-${map.day}`,
+        hour: map.hour || "00",
+      };
+    };
+    const todayDhaka = () => dhakaParts(new Date()).ymd;
+    const addDaysYmd = (ymd, days) => {
+      const date = new Date(`${ymd}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + days);
+      return date.toISOString().slice(0, 10);
+    };
+    const compareYmd = (a, b) => a.localeCompare(b);
+    const orderDays = orders
+      .map((order) => dhakaParts(order.created_at).ymd)
+      .sort();
+    const seriesStart = since || orderDays[0] || todayDhaka();
+    const seriesEnd = until || orderDays[orderDays.length - 1] || seriesStart;
+    const singleDaySeries = seriesStart === seriesEnd;
+    const seriesBuckets = [];
+
+    if (singleDaySeries) {
+      for (let hour = 0; hour < 24; hour++) {
+        const hh = String(hour).padStart(2, "0");
+        seriesBuckets.push({
+          key: `${seriesStart}-${hh}`,
+          label: `${hour}:00`,
+          revenue: 0,
+          shipping: 0,
+          adSpend: 0,
+          totalCog: 0,
+          profit: null,
+        });
+      }
+    } else {
+      for (let ymd = seriesStart; compareYmd(ymd, seriesEnd) <= 0; ymd = addDaysYmd(ymd, 1)) {
+        seriesBuckets.push({
+          key: ymd,
+          label: ymd,
+          revenue: 0,
+          shipping: 0,
+          adSpend: 0,
+          totalCog: 0,
+          profit: null,
+        });
+      }
+    }
+    const seriesByKey = new Map(seriesBuckets.map((bucket) => [bucket.key, bucket]));
+
     // price = total_price from Shopify (subtotal + shipping − discounts) = what the customer pays.
     // delivery_rate = shipping component (kept separately for the Shipping card display).
     // Revenue matches Shopify "Total Sales" exactly.
     let revenue = 0;
     let shipping = 0;
     for (const o of orders || []) {
-      revenue += parseFloat(o.price || 0);
-      shipping += parseFloat(o.delivery_rate || 0);
+      const orderRevenue = parseFloat(o.price || 0);
+      const orderShipping = parseFloat(o.delivery_rate || 0);
+      revenue += orderRevenue;
+      shipping += orderShipping;
+      const parts = dhakaParts(o.created_at);
+      const bucket = seriesByKey.get(singleDaySeries ? `${parts.ymd}-${parts.hour}` : parts.ymd);
+      if (bucket) {
+        bucket.revenue += orderRevenue;
+        bucket.shipping += orderShipping;
+      }
     }
 
     // Fetch Facebook ad spend
@@ -886,7 +952,8 @@ app.get("/api/analytics", async (req, res) => {
         }
 
         let totalSpendUsd = 0;
-        let nextUrl = `https://graph.facebook.com/v20.0/${accountId}/insights?fields=spend&level=account&${dateParam}&time_increment=all_days&access_token=${encodeURIComponent(fbToken)}`;
+        const spendByDayUsd = new Map();
+        let nextUrl = `https://graph.facebook.com/v20.0/${accountId}/insights?fields=spend,date_start&level=account&${dateParam}&time_increment=1&access_token=${encodeURIComponent(fbToken)}`;
         let pages = 0;
         const MAX_PAGES = 10;
 
@@ -902,7 +969,11 @@ app.get("/api/analytics", async (req, res) => {
 
           if (fbData.data && fbData.data.length > 0) {
             for (const row of fbData.data) {
-              totalSpendUsd += parseFloat(row.spend || 0);
+              const spendUsd = parseFloat(row.spend || 0);
+              totalSpendUsd += spendUsd;
+              if (row.date_start) {
+                spendByDayUsd.set(row.date_start, (spendByDayUsd.get(row.date_start) || 0) + spendUsd);
+              }
             }
           }
 
@@ -911,6 +982,14 @@ app.get("/api/analytics", async (req, res) => {
         }
 
         adSpend = parseFloat((totalSpendUsd * usdToBdt).toFixed(2));
+        if (singleDaySeries) {
+          const dailySpend = parseFloat(((spendByDayUsd.get(seriesStart) || totalSpendUsd) * usdToBdt).toFixed(2));
+          for (const bucket of seriesBuckets) bucket.adSpend = dailySpend;
+        } else {
+          for (const bucket of seriesBuckets) {
+            bucket.adSpend = parseFloat(((spendByDayUsd.get(bucket.key) || 0) * usdToBdt).toFixed(2));
+          }
+        }
         console.log(`[FB Analytics] total USD spend: ${totalSpendUsd}, rate: ${usdToBdt}, BDT: ${adSpend}`);
       } catch (e) {
         fbError = e.message || "Failed to reach Facebook API";
@@ -954,6 +1033,15 @@ app.get("/api/analytics", async (req, res) => {
     const profit = adSpend !== null
       ? revenue - adSpend - shippingCost - totalCog
       : null;
+    const cogRatioForSeries = revenue > 0 ? totalCog / revenue : 0;
+    for (const bucket of seriesBuckets) {
+      bucket.revenue = parseFloat(bucket.revenue.toFixed(2));
+      bucket.shipping = parseFloat(bucket.shipping.toFixed(2));
+      bucket.totalCog = parseFloat((bucket.revenue * cogRatioForSeries).toFixed(2));
+      bucket.profit = adSpend !== null
+        ? parseFloat((bucket.revenue - bucket.shipping - bucket.totalCog - bucket.adSpend).toFixed(2))
+        : null;
+    }
 
     return res.json({
       revenue: parseFloat(revenue.toFixed(2)),
@@ -965,6 +1053,14 @@ app.get("/api/analytics", async (req, res) => {
       fbConfigured: !!(fbToken && fbAccountId),
       usdToBdt,
       fbError,
+      series: {
+        buckets: seriesBuckets,
+        revenue: seriesBuckets.map((bucket) => bucket.revenue),
+        shipping: seriesBuckets.map((bucket) => bucket.shipping),
+        adSpend: seriesBuckets.map((bucket) => bucket.adSpend),
+        totalCog: seriesBuckets.map((bucket) => bucket.totalCog),
+        profit: seriesBuckets.map((bucket) => bucket.profit ?? 0),
+      },
     });
   } catch (err) {
     return sendError(res, err);

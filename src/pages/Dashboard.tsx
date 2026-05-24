@@ -11,7 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { addDays, format, subDays, startOfMonth, startOfYear } from "date-fns";
+import { format, subDays, startOfMonth, startOfYear } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,10 +22,6 @@ import { PopButton } from "@/components/ui/pop-button";
 // ── Date range helpers ────────────────────────────────────────────────────────
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
-}
-
-function toHourKey(d: Date): string {
-  return format(d, "yyyy-MM-dd-HH");
 }
 
 function fmtRange(range: DateRange | null): string {
@@ -159,6 +155,13 @@ interface Analytics {
   fbConfigured: boolean;
   usdToBdt: number;
   fbError: string | null;
+  series?: {
+    revenue: number[];
+    shipping: number[];
+    adSpend: number[];
+    totalCog: number[];
+    profit: number[];
+  };
 }
 
 interface FraudData {
@@ -552,78 +555,18 @@ export default function Dashboard() {
     );
   }, [orders, debouncedSearch]);
 
-  const revenueTrend = useMemo(() => {
-    const start = dateRange?.from ?? subDays(TODAY, 6);
-    const end = dateRange?.to ?? dateRange?.from ?? TODAY;
-    const isSingleDay = toYMD(start) === toYMD(end);
-    const buckets: { key: string; label: string; Revenue: number; Shipping: number; Orders: number }[] = [];
-
-    if (isSingleDay) {
-      for (let hour = 0; hour < 24; hour++) {
-        const date = new Date(start);
-        date.setHours(hour, 0, 0, 0);
-        buckets.push({
-          key: toHourKey(date),
-          label: format(date, "ha"),
-          Revenue: 0,
-          Shipping: 0,
-          Orders: 0,
-        });
-      }
-    } else {
-      for (let date = start; date <= end; date = addDays(date, 1)) {
-        buckets.push({
-          key: toYMD(date),
-          label: format(date, "MMM d"),
-          Revenue: 0,
-          Shipping: 0,
-          Orders: 0,
-        });
-      }
-    }
-
-    const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
-
-    orders.forEach((order) => {
-      const orderDate = new Date(order.created_at);
-      const bucket = byKey.get(isSingleDay ? toHourKey(orderDate) : toYMD(orderDate));
-      if (!bucket) return;
-      bucket.Revenue += Number(order.price ?? 0);
-      bucket.Shipping += Number(order.delivery_rate ?? 0);
-      bucket.Orders += 1;
-    });
-
-    return buckets;
-  }, [dateRange, orders]);
-
-  const revenueSparkline = useMemo(() => {
-    return revenueTrend.map((bucket) => bucket.Revenue);
-  }, [revenueTrend]);
-
   const metricSparklines = useMemo(() => {
-    const makeFlatSeries = (total: number | null | undefined) =>
-      Array.from({ length: revenueTrend.length || 2 }, () => Math.max(Number(total ?? 0), 0));
-
-    const revenueTotal = revenueTrend.reduce((sum, bucket) => sum + bucket.Revenue, 0);
-    const cogByBucket = revenueTrend.map((bucket) => {
-      if (!analytics?.totalCog || revenueTotal <= 0) return 0;
-      return (bucket.Revenue / revenueTotal) * analytics.totalCog;
-    });
-    const shippingByBucket = revenueTrend.map((bucket) => bucket.Shipping);
-    const profitByBucket = revenueTrend.map((bucket, index) => {
-      if (analytics?.profit == null) return 0;
-      const adShare = analytics.adSpend != null ? analytics.adSpend / Math.max(revenueTrend.length, 1) : 0;
-      return bucket.Revenue - shippingByBucket[index] - cogByBucket[index] - adShare;
-    });
+    const series = analytics?.series;
+    const empty = [0, 0];
 
     return {
-      revenue: revenueSparkline,
-      adSpend: makeFlatSeries(analytics?.adSpend),
-      shipping: shippingByBucket,
-      cog: cogByBucket,
-      profit: analytics?.profit != null ? profitByBucket : makeFlatSeries(null),
+      revenue: series?.revenue?.length ? series.revenue : empty,
+      adSpend: series?.adSpend?.length ? series.adSpend : empty,
+      shipping: series?.shipping?.length ? series.shipping : empty,
+      cog: series?.totalCog?.length ? series.totalCog : empty,
+      profit: series?.profit?.length ? series.profit : empty,
     };
-  }, [analytics, revenueSparkline, revenueTrend]);
+  }, [analytics]);
 
   // ── Loading state ─────────────────────────────────────────────────────────
   if (autoSyncing || loading) {
