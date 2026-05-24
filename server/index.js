@@ -3006,11 +3006,14 @@ async function bootstrapAiProductContext() {
 }
 
 // ── Direct Postgres client (bypasses PostgREST entirely) ─────────────────────
-// Prefer a full connection string when Railway/Supabase provides one. Otherwise
-// build a Supabase direct connection from SUPABASE_DB_PASSWORD + SUPABASE_URL.
+// Prefer a Supabase pooler/full connection string in hosted environments. The
+// direct db.<project>.supabase.co host can resolve to IPv6, which Railway may
+// not be able to reach.
 function getPgPool() {
   const connectionString =
     process.env.SUPABASE_DB_URL ||
+    process.env.SUPABASE_POOLER_URL ||
+    process.env.SUPABASE_DB_POOLER_URL ||
     process.env.SUPABASE_DATABASE_URL ||
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL ||
@@ -3029,6 +3032,21 @@ function getPgPool() {
   const dbPassword = process.env.SUPABASE_DB_PASSWORD || "";
   const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
   if (!projectRef || !dbPassword) return null;
+  const poolerHost = process.env.SUPABASE_POOLER_HOST || process.env.SUPABASE_DB_POOLER_HOST;
+  if (poolerHost) {
+    return new Pool({
+      host: poolerHost,
+      port: Number(process.env.SUPABASE_POOLER_PORT || process.env.SUPABASE_DB_POOLER_PORT || 6543),
+      database: process.env.SUPABASE_DB_NAME || "postgres",
+      user: process.env.SUPABASE_DB_USER || `postgres.${projectRef}`,
+      password: dbPassword,
+      ssl: { rejectUnauthorized: false },
+      max: 3,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 8000,
+    });
+  }
+
   return new Pool({
     host: `db.${projectRef}.supabase.co`,
     port: 5432,
@@ -3060,9 +3078,8 @@ async function runSQL(sql, values) {
   }
 }
 
-// Run SQL via the PostgREST /rest/v1/sql endpoint (PostgREST 12+, Supabase standard).
-// This works on Vercel without SUPABASE_DB_PASSWORD — all it needs is the service role key.
-// Returns { success: true } or { success: false, error: string }.
+// Raw SQL is not available through normal Supabase PostgREST projects. Keep this
+// fallback only for deployments that have explicitly exposed a compatible SQL RPC.
 async function runSQLViaREST(sql) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -3092,8 +3109,9 @@ async function runSQLViaREST(sql) {
 async function migrateMultiTenancy() {
   const pool = getPgPool();
   if (!pool) {
-    // No direct DB connection — fall back to the PostgREST /rest/v1/sql endpoint.
-    console.warn("[Migrate] No DB credentials — trying REST SQL fallback.");
+    console.warn(
+      "[Migrate] No Postgres connection configured. Set SUPABASE_DB_URL to the Supabase pooler connection string in Railway."
+    );
     const result = await runSQLViaREST(MULTI_TENANCY_SQL);
     if (result.success) {
       console.log("[Migrate] Multi-tenancy migration via REST SQL succeeded.");
@@ -3111,7 +3129,11 @@ async function migrateMultiTenancy() {
     console.log("[Migrate] Multi-tenancy org_id columns ensured + schema reloaded.");
     return;
   } catch (e) {
-    console.warn("[Migrate] Direct Postgres failed:", e.message, "— trying REST SQL fallback.");
+    console.warn(
+      "[Migrate] Postgres migration failed:",
+      e.message,
+      "— if this mentions ENETUNREACH/IPv6, set SUPABASE_DB_URL to the Supabase pooler connection string."
+    );
   } finally {
     if (client) client.release();
     await pool.end().catch(() => {});

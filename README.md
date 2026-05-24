@@ -40,7 +40,7 @@ Create a `.env` file in the root with the following:
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-SUPABASE_DB_PASSWORD=your_supabase_database_password
+SUPABASE_DB_URL=your_supabase_pooler_connection_string
 ADMIN_EMAILS=owner@example.com
 ```
 
@@ -51,9 +51,12 @@ VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-`SUPABASE_DB_PASSWORD` lets the server run startup migrations directly against
-Supabase Postgres. You can alternatively set a full connection string as
-`SUPABASE_DB_URL`, `SUPABASE_DATABASE_URL`, `DATABASE_URL`, or `POSTGRES_URL`.
+`SUPABASE_DB_URL` should be the Supabase pooler connection string from
+Supabase Dashboard → Project Settings → Database → Connection string → Pooler.
+Railway often cannot reach Supabase's direct IPv6 database host, so the pooler
+string is preferred for startup migrations. You can alternatively set
+`SUPABASE_POOLER_URL`, `SUPABASE_DB_POOLER_URL`, `SUPABASE_DATABASE_URL`,
+`DATABASE_URL`, or `POSTGRES_URL`.
 `ADMIN_EMAILS` is a comma-separated list of existing Supabase Auth users that
 should be repaired or promoted to admin on their next sign-in.
 
