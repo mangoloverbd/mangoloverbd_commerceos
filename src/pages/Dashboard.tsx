@@ -24,6 +24,10 @@ function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
+function toHourKey(d: Date): string {
+  return format(d, "yyyy-MM-dd-HH");
+}
+
 function fmtRange(range: DateRange | null): string {
   if (!range?.from) return "All Time";
   const from = format(range.from, "MMM d");
@@ -551,52 +555,75 @@ export default function Dashboard() {
   const revenueTrend = useMemo(() => {
     const start = dateRange?.from ?? subDays(TODAY, 6);
     const end = dateRange?.to ?? dateRange?.from ?? TODAY;
-    const days = [];
+    const isSingleDay = toYMD(start) === toYMD(end);
+    const buckets: { key: string; label: string; Revenue: number; Shipping: number; Orders: number }[] = [];
 
-    for (let date = start; date <= end; date = addDays(date, 1)) {
-      days.push({
-        key: toYMD(date),
-        label: format(date, "MMM d"),
-        Revenue: 0,
-        Orders: 0,
-      });
+    if (isSingleDay) {
+      for (let hour = 0; hour < 24; hour++) {
+        const date = new Date(start);
+        date.setHours(hour, 0, 0, 0);
+        buckets.push({
+          key: toHourKey(date),
+          label: format(date, "ha"),
+          Revenue: 0,
+          Shipping: 0,
+          Orders: 0,
+        });
+      }
+    } else {
+      for (let date = start; date <= end; date = addDays(date, 1)) {
+        buckets.push({
+          key: toYMD(date),
+          label: format(date, "MMM d"),
+          Revenue: 0,
+          Shipping: 0,
+          Orders: 0,
+        });
+      }
     }
 
-    const byKey = new Map(days.map((day) => [day.key, day]));
+    const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
 
     orders.forEach((order) => {
-      const bucket = byKey.get(toYMD(new Date(order.created_at)));
+      const orderDate = new Date(order.created_at);
+      const bucket = byKey.get(isSingleDay ? toHourKey(orderDate) : toYMD(orderDate));
       if (!bucket) return;
       bucket.Revenue += Number(order.price ?? 0);
+      bucket.Shipping += Number(order.delivery_rate ?? 0);
       bucket.Orders += 1;
     });
 
-    return days;
+    return buckets;
   }, [dateRange, orders]);
 
   const revenueSparkline = useMemo(() => {
-    return revenueTrend.map((day) => day.Revenue);
+    return revenueTrend.map((bucket) => bucket.Revenue);
   }, [revenueTrend]);
 
   const metricSparklines = useMemo(() => {
     const makeFlatSeries = (total: number | null | undefined) =>
-      Array.from({ length: 7 }, () => Math.max(Number(total ?? 0), 0));
+      Array.from({ length: revenueTrend.length || 2 }, () => Math.max(Number(total ?? 0), 0));
 
-    const shippingByDay = new Map(revenueTrend.map((day) => [day.key, 0]));
-    orders.forEach((order) => {
-      const key = toYMD(new Date(order.created_at));
-      if (!shippingByDay.has(key)) return;
-      shippingByDay.set(key, (shippingByDay.get(key) ?? 0) + Number(order.delivery_rate ?? 0));
+    const revenueTotal = revenueTrend.reduce((sum, bucket) => sum + bucket.Revenue, 0);
+    const cogByBucket = revenueTrend.map((bucket) => {
+      if (!analytics?.totalCog || revenueTotal <= 0) return 0;
+      return (bucket.Revenue / revenueTotal) * analytics.totalCog;
+    });
+    const shippingByBucket = revenueTrend.map((bucket) => bucket.Shipping);
+    const profitByBucket = revenueTrend.map((bucket, index) => {
+      if (analytics?.profit == null) return 0;
+      const adShare = analytics.adSpend != null ? analytics.adSpend / Math.max(revenueTrend.length, 1) : 0;
+      return bucket.Revenue - shippingByBucket[index] - cogByBucket[index] - adShare;
     });
 
     return {
       revenue: revenueSparkline,
       adSpend: makeFlatSeries(analytics?.adSpend),
-      shipping: revenueTrend.map((day) => shippingByDay.get(day.key) ?? 0),
-      cog: makeFlatSeries(analytics?.totalCog),
-      profit: makeFlatSeries(analytics?.profit),
+      shipping: shippingByBucket,
+      cog: cogByBucket,
+      profit: analytics?.profit != null ? profitByBucket : makeFlatSeries(null),
     };
-  }, [analytics, orders, revenueSparkline, revenueTrend]);
+  }, [analytics, revenueSparkline, revenueTrend]);
 
   // ── Loading state ─────────────────────────────────────────────────────────
   if (autoSyncing || loading) {
