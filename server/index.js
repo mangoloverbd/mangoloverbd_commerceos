@@ -9,6 +9,14 @@ import { readFile } from "fs/promises";
 import pg from "pg";
 const { Pool } = pg;
 
+// Prevent unhandled rejections from crashing the server
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Server] Unhandled rejection at:", promise, "reason:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[Server] Uncaught exception:", err);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
