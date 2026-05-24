@@ -11,7 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { format, subDays, startOfMonth, startOfYear } from "date-fns";
+import { addDays, format, subDays, startOfMonth, startOfYear } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -193,13 +193,14 @@ function fmtBDT(n: number) {
 }
 
 function makeSparklinePath(values: number[], width = 94, height = 34) {
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
+  const series = values.length === 0 ? [0, 0] : values.length === 1 ? [values[0], values[0]] : values;
+  const max = Math.max(...series, 1);
+  const min = Math.min(...series, 0);
   const range = Math.max(max - min, 1);
 
-  return values
+  return series
     .map((value, index) => {
-      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+      const x = (index / (series.length - 1)) * width;
       const y = height - ((value - min) / range) * (height - 6) - 3;
       return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
     })
@@ -548,15 +549,19 @@ export default function Dashboard() {
   }, [orders, debouncedSearch]);
 
   const revenueTrend = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, index) => {
-      const date = subDays(TODAY, 6 - index);
-      return {
+    const start = dateRange?.from ?? subDays(TODAY, 6);
+    const end = dateRange?.to ?? dateRange?.from ?? TODAY;
+    const days = [];
+
+    for (let date = start; date <= end; date = addDays(date, 1)) {
+      days.push({
         key: toYMD(date),
         label: format(date, "MMM d"),
         Revenue: 0,
         Orders: 0,
-      };
-    });
+      });
+    }
+
     const byKey = new Map(days.map((day) => [day.key, day]));
 
     orders.forEach((order) => {
@@ -567,7 +572,7 @@ export default function Dashboard() {
     });
 
     return days;
-  }, [orders]);
+  }, [dateRange, orders]);
 
   const revenueSparkline = useMemo(() => {
     return revenueTrend.map((day) => day.Revenue);
