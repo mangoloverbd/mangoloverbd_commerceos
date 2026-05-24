@@ -17,7 +17,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ export interface Route {
     title: string;
     icon: ReactNode;
     link: string;
+    disabled?: boolean;
     subs?: {
         title: string;
         link: string;
@@ -102,6 +103,21 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
 
                                 // ── Collapsed view ───────────────────────
                                 if (isCollapsed) {
+                                    if (route.disabled) {
+                                        return (
+                                            <SidebarMenuItem key={route.id}>
+                                                <SidebarMenuButton
+                                                    tooltip={`${route.title} (Admin only)`}
+                                                    className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all text-[#bbb] cursor-not-allowed opacity-50 pointer-events-none"
+                                                    disabled
+                                                >
+                                                    <span className={cn(navIconFrame)}>
+                                                        {route.icon}
+                                                    </span>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        );
+                                    }
                                     return (
                                         <SidebarMenuItem key={route.id}>
                                             <SidebarMenuButton
@@ -128,6 +144,26 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                 }
 
                                 // ── Expanded view ────────────────────────
+                                if (route.disabled) {
+                                    return (
+                                        <SidebarMenuItem key={route.id}>
+                                            <div
+                                                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[#bbb] cursor-not-allowed select-none opacity-50"
+                                                title="Admin only"
+                                            >
+                                                <span className={cn(navIconFrame)}>
+                                                    {route.icon}
+                                                </span>
+                                                <span className="flex-1 truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal">
+                                                    {route.title}
+                                                </span>
+                                                <Lock size={11} className="shrink-0 ml-auto opacity-60" />
+                                            </div>
+                                        </SidebarMenuItem>
+                                    );
+                                }
+
+                                // ── Expandable / plain link ──────────────
                                 return (
                                     <Collapsible
                                         key={route.id}
