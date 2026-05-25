@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import ASMRStaticBackground from "@/components/ui/asmr-background";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
+import { Button7 } from "@/components/ui/button-7";
 import { toast } from "sonner";
 import { Eye, EyeOff, ShieldCheck, MailCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -93,7 +92,7 @@ export default function Auth() {
 
           toast.custom(() => (
             <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-              <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
+              <div className="h-10 w-10 rounded-xl bg-red-700 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-5 h-5 text-white" />
               </div>
               <div className="flex flex-col">
@@ -160,7 +159,7 @@ export default function Auth() {
 
         toast.custom(() => (
           <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-            <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
+            <div className="h-10 w-10 rounded-xl bg-red-700 flex items-center justify-center shrink-0">
               <ShieldCheck className="w-5 h-5 text-white" />
             </div>
             <div className="flex flex-col">
@@ -182,22 +181,40 @@ export default function Auth() {
   const smooth = { ease: [0.22, 1, 0.36, 1] as const };
 
   return (
-    <div className="min-h-screen w-full lg:grid lg:grid-cols-2 bg-white">
+    /* Full-screen background image */
+    <div
+      className="min-h-screen w-full relative flex items-center justify-center"
+      style={{ backgroundImage: "url('/auth-bg.jpeg')", backgroundSize: "cover", backgroundPosition: "center" }}
+    >
+      {/* Dark red overlay to deepen the background */}
+      <div className="absolute inset-0 bg-red-950/40" />
 
-      {/* ── Left — interactive canvas background ── */}
-      <div className="relative hidden lg:block overflow-hidden">
-        <ASMRStaticBackground />
-      </div>
+      {/* Glass card + right shadow panel wrapper */}
+      <div className="relative z-10 flex items-center mx-4">
 
-      {/* ── Right — original auth form ── */}
+        {/* Glass card */}
       <motion.div
-        className="flex min-h-screen items-center justify-center px-8 py-16 lg:px-20 bg-white"
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.9, ...smooth, delay: 0.1 }}
+        className="relative w-[480px] rounded-md px-10 py-7"
+        layout
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          background: "rgba(180, 20, 20, 0.18)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid rgba(255, 100, 100, 0.25)",
+          boxShadow: "0 8px 64px rgba(180, 0, 0, 0.35), inset 0 1px 0 rgba(255,180,180,0.15)",
+        }}
+        initial={{ opacity: 0, y: 32, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.8, ...smooth }}
       >
-        <div className="w-full max-w-sm flex flex-col items-center">
+        {/* Subtle inner shine line at top */}
+        <div
+          className="absolute top-0 left-8 right-8 h-px rounded-full"
+          style={{ background: "linear-gradient(90deg, transparent, rgba(255,180,180,0.5), transparent)" }}
+        />
 
+        <div className="w-full flex flex-col">
           <AnimatePresence mode="wait">
             {/* ── Email confirmation screen ── */}
             {emailSent ? (
@@ -209,26 +226,28 @@ export default function Auth() {
                 transition={{ duration: 0.45, ...smooth }}
                 className="w-full flex flex-col items-center text-center space-y-6"
               >
-                <div className="h-16 w-16 bg-black rounded-2xl flex items-center justify-center">
+                <div className="h-16 w-16 rounded-2xl flex items-center justify-center"
+                  style={{ background: "rgba(255,80,80,0.25)", border: "1px solid rgba(255,120,120,0.3)" }}>
                   <MailCheck className="w-7 h-7 text-white" />
                 </div>
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-bold tracking-tight text-black">Check your email</h2>
-                  <p className="text-sm text-black/60 font-light leading-relaxed">
+                  <h2 className="text-2xl font-bold tracking-tight text-white">Check your email</h2>
+                  <p className="text-sm text-white/70 font-light leading-relaxed">
                     We sent a confirmation link to<br />
-                    <span className="font-semibold text-black">{email}</span>
+                    <span className="font-semibold text-white">{email}</span>
                   </p>
                 </div>
-                <div className="w-full border border-black/[0.08] bg-[#F8F8F6] rounded-xl p-4 text-left space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-black">Next steps</p>
-                  <p className="text-xs text-black/60 leading-relaxed">
-                    Open the email and click <span className="font-semibold text-black">Confirm your mail</span>. You'll be signed in automatically and redirected to set up your workspace.
+                <div className="w-full rounded-xl p-4 text-left space-y-1"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,120,120,0.2)" }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-red-200">Next steps</p>
+                  <p className="text-xs text-white/60 leading-relaxed">
+                    Open the email and click <span className="font-semibold text-white">Confirm your mail</span>. You'll be signed in automatically and redirected to set up your workspace.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => switchMode("signin")}
-                  className="text-[10px] font-bold uppercase tracking-[0.2em] text-black/40 hover:text-black transition-colors"
+                  className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors"
                 >
                   Back to sign in
                 </button>
@@ -241,7 +260,7 @@ export default function Auth() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
-                className="w-full flex flex-col items-center"
+                className="w-full flex flex-col"
               >
                 {/* Headline */}
                 <AnimatePresence mode="wait">
@@ -251,12 +270,12 @@ export default function Auth() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.35, ...smooth }}
-                    className="mb-8 space-y-2 text-center w-full"
+                    className="mb-6 space-y-1 text-center w-full"
                   >
-                    <h1 className="text-3xl font-bold tracking-tight text-black">
+                    <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-sm">
                       {mode === "signin" ? "Sign In or Join Now!" : "Create your account"}
                     </h1>
-                    <p className="text-sm text-black font-light">
+                    <p className="text-sm text-white/65 font-light">
                       {mode === "signin"
                         ? "Login or create your Arc Lab account."
                         : "Sign up to get started with Arc Lab Technology."}
@@ -265,7 +284,8 @@ export default function Auth() {
                 </AnimatePresence>
 
                 {/* Mode tabs */}
-                <div className="mb-8 grid w-full grid-cols-2 gap-2 border-y border-black/[0.08] py-2">
+                <div className="mb-6 grid w-full grid-cols-2 gap-2 py-2"
+                  style={{ borderTop: "1px solid rgba(255,120,120,0.2)", borderBottom: "1px solid rgba(255,120,120,0.2)" }}>
                   {(["signin", "signup"] as Mode[]).map((m) => (
                     <button
                       key={m}
@@ -273,9 +293,16 @@ export default function Auth() {
                       onClick={() => switchMode(m)}
                       className={`h-9 rounded-lg text-[8px] font-medium uppercase tracking-[0.3em] transition-all duration-200 ${
                         mode === m
-                          ? "border border-black/[0.08] bg-black/[0.06] text-black"
-                          : "border border-transparent text-black/35 hover:bg-black/[0.03] hover:text-black"
+                          ? "text-white"
+                          : "text-white/40 hover:text-white/70"
                       }`}
+                      style={mode === m ? {
+                        background: "rgba(255,80,80,0.25)",
+                        border: "1px solid rgba(255,120,120,0.35)",
+                      } : {
+                        background: "transparent",
+                        border: "1px solid transparent",
+                      }}
                     >
                       {m === "signin" ? "Sign In" : "Sign Up"}
                     </button>
@@ -283,10 +310,10 @@ export default function Auth() {
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="space-y-5 w-full">
+                <form onSubmit={handleSubmit} className="space-y-4 w-full">
                   {/* Email */}
                   <div className="space-y-2">
-                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-black">
+                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-red-200">
                       Email Address
                     </label>
                     <Input
@@ -294,14 +321,18 @@ export default function Auth() {
                       placeholder="name@company.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="h-12 bg-[#F8F8F6] border-black/[0.08] focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl text-sm placeholder:text-black transition-all"
+                      className="h-12 rounded-xl text-sm text-white placeholder:text-white/35 border-0 focus-visible:ring-1 focus-visible:ring-red-400/60 focus-visible:outline-none transition-all"
+                      style={{
+                        background: "rgba(255,255,255,0.08)",
+                        border: "1px solid rgba(255,120,120,0.25)",
+                      }}
                       required
                     />
                   </div>
 
                   {/* Password */}
                   <div className="space-y-2">
-                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-black">
+                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-red-200">
                       Password
                     </label>
                     <div className="relative">
@@ -310,46 +341,61 @@ export default function Auth() {
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="h-12 bg-[#F8F8F6] border-black/[0.08] focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl pr-12 text-sm placeholder:text-black transition-all"
+                        className="h-12 rounded-xl pr-12 text-sm text-white placeholder:text-white/35 border-0 focus-visible:ring-1 focus-visible:ring-red-400/60 focus-visible:outline-none transition-all"
+                        style={{
+                          background: "rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(255,120,120,0.25)",
+                        }}
                         required
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-black hover:text-black transition-colors"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
 
-                  {mode === "signin" && (
-                    <div className="-mt-1 flex items-center justify-between">
-                      <label className="flex cursor-pointer select-none items-center gap-2 text-[9px] font-medium uppercase tracking-[0.2em] text-black/45 transition-colors hover:text-black">
-                        <Checkbox
-                          checked={rememberMe}
-                          onCheckedChange={(checked) => setRememberMe(checked === true)}
-                          className="h-3.5 w-3.5 rounded border-black/20 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3"
-                        />
-                        Remember me
-                      </label>
-                      <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-black/25">
-                        Secure
-                      </span>
-                    </div>
-                  )}
+                  {/* Remember me — signin only */}
+                  <AnimatePresence initial={false}>
+                    {mode === "signin" && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between pt-3">
+                          <label className="flex cursor-pointer select-none items-center gap-2 text-[9px] font-medium uppercase tracking-[0.2em] text-white/45 transition-colors hover:text-white">
+                            <Checkbox
+                              checked={rememberMe}
+                              onCheckedChange={(checked) => setRememberMe(checked === true)}
+                              className="h-3.5 w-3.5 rounded border-white/20 data-[state=checked]:border-red-400 data-[state=checked]:bg-red-500 data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3"
+                            />
+                            Remember me
+                          </label>
+                          <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-white/25">
+                            Secure
+                          </span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Confirm password — signup only */}
-                  <AnimatePresence>
+                  <AnimatePresence initial={false}>
                     {mode === "signup" && (
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                         className="overflow-hidden space-y-2"
                       >
-                        <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-black">
+                        <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-red-200">
                           Confirm Password
                         </label>
                         <div className="relative">
@@ -358,13 +404,17 @@ export default function Auth() {
                             placeholder="••••••••"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="h-12 bg-[#F8F8F6] border-black/[0.08] focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl pr-12 text-sm placeholder:text-black transition-all"
+                            className="h-12 rounded-xl pr-12 text-sm text-white placeholder:text-white/35 border-0 focus-visible:ring-1 focus-visible:ring-red-400/60 focus-visible:outline-none transition-all"
+                            style={{
+                              background: "rgba(255,255,255,0.08)",
+                              border: "1px solid rgba(255,120,120,0.25)",
+                            }}
                             required={mode === "signup"}
                           />
                           <button
                             type="button"
                             onClick={() => setShowConfirm(!showConfirm)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-black hover:text-black transition-colors"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
                           >
                             {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
@@ -375,7 +425,7 @@ export default function Auth() {
 
                   {/* Submit */}
                   <div className="pt-2">
-                    <LiquidMetalButton
+                    <Button7
                       type="submit"
                       disabled={loading}
                       fullWidth
@@ -393,15 +443,15 @@ export default function Auth() {
                 </form>
 
                 {/* Footer */}
-                <div className="mt-8 text-center space-y-3 w-full">
-                  <p className="text-xs text-black">
+                <div className="mt-6 text-center space-y-2 w-full">
+                  <p className="text-xs text-white/60">
                     {mode === "signin" ? (
                       <>
                         Don&apos;t have an account?{" "}
                         <button
                           type="button"
                           onClick={() => switchMode("signup")}
-                          className="font-semibold text-black underline underline-offset-2 hover:text-black transition-colors"
+                          className="font-semibold text-white hover:text-red-200 underline underline-offset-2 transition-colors"
                         >
                           Sign up
                         </button>
@@ -412,23 +462,24 @@ export default function Auth() {
                         <button
                           type="button"
                           onClick={() => switchMode("signin")}
-                          className="font-semibold text-black underline underline-offset-2 hover:text-black transition-colors"
+                          className="font-semibold text-white hover:text-red-200 underline underline-offset-2 transition-colors"
                         >
                           Sign in
                         </button>
                       </>
                     )}
                   </p>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-black">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-white/30">
                     Secure Authentication
                   </p>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-
         </div>
       </motion.div>
+
+      </div>
     </div>
   );
 }
