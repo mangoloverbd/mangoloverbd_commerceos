@@ -3246,8 +3246,29 @@ async function extractInboxOrderFromConversation({ products, conversationHistory
   return parseMetaJsonObject(data.choices?.[0]?.message?.content);
 }
 
+// Returns true when the conversation history (multi-line string of past messages)
+// contains a prior order intent — used to detect cases where the customer
+// already said "place the order" but is now just providing a missing field
+// (e.g., replying "1" for quantity or providing their address on a new line).
+function conversationHistoryHasOrderIntent(history = "") {
+  if (!history) return false;
+  // Look at the CUSTOMER lines only (lines preceded by CUSTOMER: prefix or unprefixed lines
+  // that are interleaved as plain text).
+  const customerLines = history
+    .split("\n")
+    .filter((l) => /^(CUSTOMER|USER|user):/i.test(l) || !/^(BOT|ASSISTANT):/i.test(l))
+    .map((l) => l.replace(/^(CUSTOMER|USER|user):\s*/i, "").trim())
+    .filter(Boolean);
+  return customerLines.some((line) => isOrderIntentMessage(line));
+}
+
 async function maybeCreateMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, latestCustomerMessage, products, conversationHistory }) {
-  if (!isOrderIntentMessage(latestCustomerMessage)) return null;
+  // Trigger order capture when EITHER the latest message is an order intent
+  // OR the conversation history already established intent (customer filling in
+  // missing fields like quantity "1", address, phone across multiple turns).
+  const hasCurrentIntent = isOrderIntentMessage(latestCustomerMessage);
+  const hasHistoryIntent = !hasCurrentIntent && conversationHistoryHasOrderIntent(conversationHistory);
+  if (!hasCurrentIntent && !hasHistoryIntent) return null;
 
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const { data: existing } = await supabase
@@ -3448,7 +3469,11 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   const contextImageUrl = imageUrl || (shouldUseRecentImage ? await getRecentConversationImage(supabase, conversation.id) : null);
   const needsProductContext = !!contextImageUrl || isProductContextIntent(text);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
-  const products = needsProductContext ? await getMetaReplyProductContext(channel.org_id) : [];
+  // Also fetch products when the conversation history contains an order intent so
+  // maybeCreateMetaInboxOrder can match products even when the latest message is
+  // just a quantity reply like "1".
+  const needsOrderContext = !needsProductContext && (isOrderIntentMessage(text) || conversationHistoryHasOrderIntent(conversationHistory));
+  const products = (needsProductContext || needsOrderContext) ? await getMetaReplyProductContext(channel.org_id) : [];
   const capturedOrder = await maybeCreateMetaInboxOrder({
     supabase,
     orgId: channel.org_id,
@@ -3554,7 +3579,8 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   const contextImageUrl = imageUrl || (shouldUseRecentImage ? await getRecentConversationImage(supabase, conversation.id) : null);
   const needsProductContext = !!contextImageUrl || isProductContextIntent(text);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
-  const products = needsProductContext ? await getMetaReplyProductContext(channel.org_id) : [];
+  const needsOrderContext = !needsProductContext && (isOrderIntentMessage(text) || conversationHistoryHasOrderIntent(conversationHistory));
+  const products = (needsProductContext || needsOrderContext) ? await getMetaReplyProductContext(channel.org_id) : [];
   const capturedOrder = await maybeCreateMetaInboxOrder({
     supabase,
     orgId: channel.org_id,
