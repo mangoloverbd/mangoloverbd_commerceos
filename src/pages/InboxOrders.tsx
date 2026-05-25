@@ -11,16 +11,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { PopButton } from "@/components/ui/pop-button";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
-  AlertTriangle, CheckCircle2, HelpCircle, ShieldAlert, ShieldCheck,
-  Truck, Search, NotebookPen, Package, Check, FileText, Trash2, Printer,
-} from "lucide-react";
+  MagnifyingGlass, ShoppingBag, Package, NotePencil, Truck,
+  ShieldCheck, ShieldWarning, Warning, Question, FileText, Printer,
+  Trash, Check, X,
+} from "@phosphor-icons/react";
 import {
-  FacebookLogo, InstagramLogo, WhatsappLogo, ShoppingBag,
+  FacebookLogo, InstagramLogo, WhatsappLogo,
 } from "@phosphor-icons/react";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -101,7 +103,7 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
   const rawFraudData = order.fraud_data as (Record<string, unknown> & { _error?: string }) | null;
   const hasError = order.fraud_checked && (!rawFraudData || rawFraudData._error);
 
-  let RiskIcon: typeof ShieldCheck = Search as typeof ShieldCheck;
+  let RiskIcon: React.ElementType = MagnifyingGlass;
   let riskColor = "text-muted-foreground/30";
   let riskBgColor = "";
   let riskLabel = "";
@@ -116,7 +118,7 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
     deliveryRate = total_parcels > 0 ? (total_delivered / total_parcels) * 100 : 0;
 
     if (total_parcels === 0) {
-      RiskIcon = HelpCircle as typeof ShieldCheck;
+      RiskIcon = Question;
       riskColor = "text-muted-foreground";
       riskBgColor = "bg-muted/50";
       riskLabel = "New Customer";
@@ -126,12 +128,12 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
       riskBgColor = "bg-emerald-50";
       riskLabel = "Safe";
     } else if (deliveryRate >= 50) {
-      RiskIcon = AlertTriangle as typeof ShieldCheck;
+      RiskIcon = Warning;
       riskColor = "text-amber-600";
       riskBgColor = "bg-amber-50";
       riskLabel = "Caution";
     } else {
-      RiskIcon = ShieldAlert as typeof ShieldCheck;
+      RiskIcon = ShieldWarning;
       riskColor = "text-red-600";
       riskBgColor = "bg-red-50";
       riskLabel = "High Risk";
@@ -159,16 +161,16 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
         {isChecking ? (
           <Spinner className="text-muted-foreground/40" />
         ) : hasError ? (
-          <AlertTriangle className="h-3.5 w-3.5 text-destructive/60" />
+          <Warning size={14} weight="light" className="text-destructive/60" />
         ) : order.fraud_checked ? (
           <>
-            <RiskIcon className={cn("h-3.5 w-3.5", riskColor)} />
+            <RiskIcon size={14} weight="light" className={cn("h-3.5 w-3.5", riskColor)} />
             <span className={cn("text-[10px] font-semibold tabular-nums", riskColor)}>
               {total_parcels > 0 ? `${deliveryRate.toFixed(0)}%` : "N/A"}
             </span>
           </>
         ) : (
-          <Search className="h-3.5 w-3.5 text-muted-foreground/25" />
+          <MagnifyingGlass size={14} weight="light" className="text-muted-foreground/25" />
         )}
       </button>
 
@@ -187,7 +189,7 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
             <>
               <div className={cn("px-4 py-3 border-b border-border/50", riskBgColor)}>
                 <div className="flex items-center gap-2">
-                  <RiskIcon className={cn("h-5 w-5", riskColor)} />
+                  <RiskIcon size={20} weight="light" className={cn(riskColor)} />
                   <span className={cn("font-semibold", riskColor)}>{riskLabel}</span>
                 </div>
                 {total_parcels > 0 && (
@@ -275,7 +277,7 @@ function InboxNotesPopover({ order, onOrderUpdate }: {
                 : "text-muted-foreground/30 hover:bg-muted/50 hover:text-muted-foreground"
               }`}
             >
-              <NotebookPen className="h-3.5 w-3.5" />
+              <NotePencil size={14} weight="light" />
               {hasNotes && (
                 <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary animate-pulse" />
               )}
@@ -396,7 +398,7 @@ export default function InboxOrders() {
       toast.custom(() => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
           <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
-            <Truck className="w-5 h-5 text-white" />
+            <Truck size={20} weight="light" className="text-white" />
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Dispatched</span>
@@ -428,7 +430,7 @@ export default function InboxOrders() {
       toast.custom(() => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
           <div className="h-10 w-10 rounded-xl bg-[#D82128] flex items-center justify-center shrink-0">
-            <Truck className="w-5 h-5 text-white" />
+            <Truck size={20} weight="light" className="text-white" />
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Dispatched</span>
@@ -489,9 +491,9 @@ export default function InboxOrders() {
       if (successCount > 0) {
         toast.custom(() => (
           <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-            <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5 text-blue-500" />
-            </div>
+          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+            <ShieldCheck size={20} weight="light" className="text-blue-500" />
+          </div>
             <div className="flex flex-col">
               <span className="text-[10px] font-bold uppercase tracking-widest text-black">Bulk Analysis</span>
               <div className="flex items-baseline gap-1">
@@ -530,7 +532,7 @@ export default function InboxOrders() {
       toast.custom(() => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
           <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
-            <FileText className="w-5 h-5 text-white" />
+            <FileText size={20} weight="light" className="text-white" />
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-black">Complete</span>
@@ -567,7 +569,7 @@ export default function InboxOrders() {
       toast.custom(() => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
           <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <Trash2 className="w-5 h-5 text-red-500" />
+            <Trash size={20} weight="light" className="text-red-500" />
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-black">Deleted</span>
@@ -627,7 +629,7 @@ export default function InboxOrders() {
         {/* Toolbar */}
         <div className="flex flex-col gap-3 border-b border-black/10 px-4 py-3 lg:flex-row lg:items-center lg:px-6">
         <div className="flex h-9 max-w-xs flex-1 items-center gap-2 rounded-xl border border-black/[0.08] bg-[#F8F8F6] px-3">
-          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <MagnifyingGlass size={14} weight="light" className="shrink-0 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -670,7 +672,7 @@ export default function InboxOrders() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
             <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-black/[0.045]">
-              <Package className="h-7 w-7 text-muted-foreground" />
+              <Package size={28} weight="light" className="text-muted-foreground" />
             </span>
             <p className="text-sm font-semibold text-foreground">No orders found</p>
             <p className="mt-1 text-[12px] text-muted-foreground">Try a different search or status filter.</p>
@@ -687,7 +689,7 @@ export default function InboxOrders() {
                       selectedIds.size === filtered.length && filtered.length > 0 ? "bg-black border-black" : "bg-white hover:border-black/30"
                     )}
                   >
-                    {selectedIds.size === filtered.length && filtered.length > 0 && <Check className="w-3 h-3 text-white" />}
+                    {selectedIds.size === filtered.length && filtered.length > 0 && <Check size={10} weight="bold" className="text-white" />}
                   </div>
                 </TableHead>
                 <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Source</TableHead>
@@ -727,7 +729,7 @@ export default function InboxOrders() {
                           selectedIds.has(order.id) ? "bg-black border-black shadow-sm" : "bg-white group-hover:border-black/30"
                         )}
                       >
-                        {selectedIds.has(order.id) && <Check className="w-3 h-3 text-white" />}
+                        {selectedIds.has(order.id) && <Check size={10} weight="bold" className="text-white" />}
                       </div>
                     </TableCell>
 
@@ -840,10 +842,10 @@ export default function InboxOrders() {
                         {!order.sent_to_courier ? (
                           <Popover>
                             <PopoverTrigger asChild>
-                              <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/[0.03] border border-black/5 hover:border-black/20 text-[9px] font-bold uppercase tracking-widest text-black hover:text-black transition-all">
-                                <Truck className="h-3 w-3" />
+                              <PopButton color="default" size="sm" className="gap-1.5 px-2.5 text-[10px] font-bold tracking-normal h-8">
+                                <Truck size={13} weight="light" />
                                 Send
-                              </button>
+                              </PopButton>
                             </PopoverTrigger>
                             <PopoverContent className="w-[150px] p-2 bg-white border border-black/5 rounded-xl shadow-xl" align="center">
                               <div className="flex flex-col gap-1">
@@ -903,50 +905,61 @@ export default function InboxOrders() {
                   <span className="text-xs text-black font-normal ml-1">orders</span>
                 </span>
               </div>
-              <div className="flex items-center px-3 gap-0.5">
-                <button
+              <div className="flex items-center px-3 gap-1.5">
+                <PopButton
+                  color="sky"
+                  size="sm"
                   onClick={handleBulkFraudCheck}
                   disabled={isBulkChecking}
-                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all disabled:opacity-30"
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
                   data-testid="button-bulk-fraud-check-inbox"
                 >
-                  {isBulkChecking ? <Spinner size="sm" /> : <ShieldCheck className="h-3 w-3" />}
+                  {isBulkChecking ? <Spinner size="sm" /> : <ShieldCheck size={14} weight="light" />}
                   Fraud Check
-                </button>
-                <button
+                </PopButton>
+                <PopButton
+                  color="neutral"
+                  size="sm"
                   onClick={handleGenerateInvoice}
-                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all"
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
                   data-testid="button-generate-invoice-inbox"
                 >
-                  <FileText className="h-3 w-3" />
+                  <FileText size={14} weight="light" />
                   Invoice
-                </button>
-                <button
+                </PopButton>
+                <PopButton
+                  color="slate"
+                  size="sm"
                   onClick={handlePrintInvoice}
-                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all"
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
                   data-testid="button-print-invoice-inbox"
                 >
-                  <Printer className="h-3 w-3" />
+                  <Printer size={14} weight="light" />
                   Print
-                </button>
-                <div className="w-px h-4 bg-black/[0.07] mx-1" />
-                <button
+                </PopButton>
+                <div className="w-px h-4 bg-black/[0.07] mx-0.5" />
+                <PopButton
+                  color="red"
+                  size="sm"
                   onClick={handleDeleteOrders}
                   disabled={isDeleting}
-                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-red-400 hover:text-red-600 hover:bg-red-50 transition-all disabled:opacity-30"
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
                   data-testid="button-delete-inbox-orders"
                 >
-                  {isDeleting ? <Spinner size="sm" /> : <Trash2 className="h-3 w-3" />}
+                  {isDeleting ? <Spinner size="sm" /> : <Trash size={14} weight="light" />}
                   Delete
-                </button>
-                <div className="w-px h-4 bg-black/[0.07] mx-1" />
-                <button
+                </PopButton>
+                <div className="w-px h-4 bg-black/[0.07] mx-0.5" />
+                <PopButton
+                  color="default"
+                  size="sm"
                   onClick={() => setSelectedIds(new Set())}
-                  className="h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black transition-colors"
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
                   data-testid="button-clear-selection-inbox"
                 >
+                  <X size={14} weight="light" />
                   Clear
-                </button>
+                </PopButton>
               </div>
             </div>
           </motion.div>
