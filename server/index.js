@@ -2916,7 +2916,7 @@ async function getMetaReplyProductContext(orgId) {
   }
 }
 
-function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl }) {
+function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "" }) {
   const catalogForText = products.map((p) => ({
     name: p.name,
     price: p.price,
@@ -2930,8 +2930,9 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
       text:
         `Brand knowledge:\n${brandDoc || "(none)"}\n\n` +
         `PRODUCT CATALOG JSON:\n${JSON.stringify(catalogForText).slice(0, 18000)}\n\n` +
+        `RECENT CONVERSATION, oldest to newest:\n${conversationHistory || "(none)"}\n\n` +
         `Customer message:\n${customerMessage || "(customer sent an image only)"}\n\n` +
-        "If an image is included, visually match it against the catalog names/images and answer with the matching product price and whether it is available.",
+        "If an image is included, visually match it against the catalog names/images and answer with the matching product price and whether it is available. Use the recent conversation as memory: honor customer corrections like 'not glass cup', keep the currently selected product across follow-ups, and do not switch products unless the customer clearly sends/selects a different product.",
     },
   ];
 
@@ -2952,16 +2953,16 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
   return content;
 }
 
-async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl }) {
+async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory }) {
   const messages = [
     {
       role: "system",
       content:
-        "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price, availability, URLs, and product images. If the customer sends an image and asks price, pp, price?, koto, দাম, or availability in a follow-up, identify the product from the most recent image by comparing it with catalog product names/images, then answer the price and availability immediately. Use ৳ for prices. Never tell customers exact stock counts; only say available or currently unavailable. Do not ask for the customer's name before answering product price/availability questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for another photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
+        "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price, availability, URLs, and product images. Treat RECENT CONVERSATION as memory. If the customer corrects a product match, accept the correction and do not repeat the rejected product. Keep the same selected product across follow-up messages like price, stock, available, order, address, and place order unless the customer clearly changes it. If the customer sends an image and asks price, pp, price?, koto, দাম, or availability in a follow-up, identify the product from the most recent image by comparing it with catalog product names/images, then answer the price and availability immediately. Use ৳ for prices. Never tell customers exact stock counts; only say available or currently unavailable. Do not ask for the customer's name before answering product price/availability questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for another photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
     },
     {
       role: "user",
-      content: buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl }),
+      content: buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory }),
     },
   ];
 
@@ -2991,6 +2992,12 @@ function isPriceIntentMessage(text = "") {
   return /(^|\b)(price|pp|৳|tk|taka|dam|দাম|কত|koto|available|availability|stock|ache|আছে)(\b|[?:.!।]|$)/i.test(value);
 }
 
+function isOrderIntentMessage(text = "") {
+  const value = String(text).trim().toLowerCase();
+  if (!value) return false;
+  return /(place\s+the\s+order|place\s+order|confirm\s+(the\s+)?order|order\s+(now|confirm|koren|করেন|করুন)|i\s*(would|want|wanna|like).*order|নিতে\s*চাই|অর্ডার|order ta|order kore|order koren)/i.test(value);
+}
+
 async function getRecentConversationImage(supabase, conversationId) {
   if (!conversationId) return null;
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -3011,7 +3018,222 @@ async function getRecentConversationImage(supabase, conversationId) {
   return data?.image_url || null;
 }
 
-async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl }) {
+async function getRecentConversationHistory(supabase, conversationId, limit = 14) {
+  if (!conversationId) return "";
+  const { data, error } = await supabase
+    .from("social_messages")
+    .select("sender, content, image_url, message_type, created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.warn("[Meta Auto Reply] conversation history lookup failed:", errorMessage(error));
+    return "";
+  }
+  return (data || [])
+    .reverse()
+    .map((m) => {
+      const who = m.sender === "bot" ? "assistant" : "customer";
+      const image = m.image_url ? " [image attached]" : "";
+      const body = String(m.content || "").trim() || `[${m.message_type || "message"}]`;
+      return `${who}${image}: ${body}`.slice(0, 900);
+    })
+    .join("\n");
+}
+
+function inferDeliveryCharge(address = "") {
+  const lowerAddress = String(address || "").toLowerCase();
+  const dhakaKeywords = [
+    "dhaka", "dhanmondi", "gulshan", "banani", "mirpur", "mohammadpur",
+    "uttara", "badda", "khilgaon", "motijheel", "paltan", "farmgate",
+    "shahbagh", "new market", "azampur", "kurmitola", "tejgaon",
+  ];
+  return dhakaKeywords.some((k) => lowerAddress.includes(k)) ? 80 : 120;
+}
+
+function parseInboxOrderNotes(notes = "") {
+  return {
+    phone: String(notes).match(/Phone:\s*([^,\n]+)/i)?.[1]?.trim() || "",
+    address: String(notes).match(/Address:\s*([^\n]+)/i)?.[1]?.trim() || "",
+  };
+}
+
+function parseMetaJsonObject(text = "") {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function findCatalogProduct(products, productName = "") {
+  const wanted = String(productName || "").trim().toLowerCase();
+  if (!wanted) return null;
+  return products.find((p) => String(p.name || "").trim().toLowerCase() === wanted)
+    || products.find((p) => String(p.name || "").toLowerCase().includes(wanted) || wanted.includes(String(p.name || "").toLowerCase()))
+    || null;
+}
+
+function extractInboxOrderHeuristic({ products, conversationHistory }) {
+  const history = String(conversationHistory || "");
+  const lowerHistory = history.toLowerCase();
+  const phoneMatch = history.match(/(?:\+?880|0)?(1[3-9]\d{8})/);
+  const phone = phoneMatch ? `0${phoneMatch[1]}` : "";
+  if (!phone) return null;
+
+  const phoneLine = history.split("\n").find((line) => line.includes(phoneMatch[0])) || "";
+  const beforePhone = phoneLine.split(phoneMatch[0])[0]?.replace(/^customer:\s*/i, "").trim();
+  const afterPhone = phoneLine.split(phoneMatch[0])[1]?.replace(/^[\s,;:-]+/, "").trim();
+  const customerName = beforePhone?.split(/\s+/).slice(-3).join(" ").trim() || "";
+  const address = afterPhone || "";
+  if (!customerName || !address) return null;
+
+  const rejected = [];
+  for (const match of lowerHistory.matchAll(/(?:not|না|নয়|নয়)\s+([a-z0-9\u0980-\u09ff ]{2,40})/gi)) {
+    rejected.push(match[1].trim());
+  }
+
+  let bestProduct = null;
+  let bestIndex = -1;
+  for (const product of products) {
+    const name = String(product.name || "");
+    const lowerName = name.toLowerCase();
+    if (rejected.some((term) => term && (lowerName.includes(term) || term.includes(lowerName)))) continue;
+    const productIndex = lowerHistory.lastIndexOf(lowerName);
+    if (productIndex > bestIndex) {
+      bestProduct = product;
+      bestIndex = productIndex;
+    }
+  }
+  if (!bestProduct) return null;
+  return {
+    ready: true,
+    customer_name: customerName,
+    phone,
+    address,
+    product_name: bestProduct.name,
+    quantity: 1,
+    price: bestProduct.price,
+    reason: "heuristic",
+  };
+}
+
+async function extractInboxOrderFromConversation({ products, conversationHistory, latestCustomerMessage }) {
+  if (!process.env.OPENAI_API_KEY) return null;
+  const catalog = products.map((p) => ({
+    name: p.name,
+    price: p.price,
+    available: Number(p.stock || 0) > 0,
+    url: p.url || null,
+  }));
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-5.4-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Extract a social commerce order from the conversation. Return JSON only. Only set ready=true when the customer has clearly asked to place/confirm the order and the conversation contains customer_name, phone, address, product_name, quantity, and price or a product match in the catalog. Honor the latest customer correction; if they rejected a product, do not use it. Never invent missing fields.",
+        },
+        {
+          role: "user",
+          content:
+            `PRODUCT CATALOG JSON:\n${JSON.stringify(catalog).slice(0, 16000)}\n\n` +
+            `RECENT CONVERSATION, oldest to newest:\n${conversationHistory || "(none)"}\n\n` +
+            `LATEST CUSTOMER MESSAGE:\n${latestCustomerMessage || ""}\n\n` +
+            "Return exactly this shape: {\"ready\":boolean,\"customer_name\":\"\",\"phone\":\"\",\"address\":\"\",\"product_name\":\"\",\"quantity\":1,\"price\":0,\"reason\":\"\"}",
+        },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OpenAI ${response.status}: ${body.slice(0, 240)}`);
+  }
+  const data = await response.json();
+  return parseMetaJsonObject(data.choices?.[0]?.message?.content);
+}
+
+async function maybeCreateMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, latestCustomerMessage, products, conversationHistory }) {
+  if (!isOrderIntentMessage(latestCustomerMessage)) return null;
+
+  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: existing } = await supabase
+    .from("social_inbox_orders")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("conversation_id", conversation.id)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing) return { order: existing, duplicate: true };
+
+  let extracted = null;
+  try {
+    extracted = await extractInboxOrderFromConversation({ products, conversationHistory, latestCustomerMessage });
+  } catch (err) {
+    console.warn("[Meta Inbox Order] extraction failed:", errorMessage(err));
+  }
+  if (!extracted?.ready) {
+    extracted = extractInboxOrderHeuristic({ products, conversationHistory });
+  }
+  if (!extracted?.ready) return null;
+
+  const product = findCatalogProduct(products, extracted.product_name);
+  const productName = product?.name || String(extracted.product_name || "").trim();
+  const quantity = Math.max(1, Number.parseInt(extracted.quantity, 10) || 1);
+  const unitPrice = Number(product?.price ?? extracted.price ?? 0) || 0;
+  const phone = normalizeBdPhone(extracted.phone || "");
+  const address = String(extracted.address || "").trim();
+  const customerName = String(extracted.customer_name || "").trim();
+  if (!productName || !phone || !address || !customerName || unitPrice <= 0) return null;
+  if (product && Number(product.stock || 0) <= 0) return null;
+
+  const deliveryRate = inferDeliveryCharge(address);
+  const totalPrice = unitPrice * quantity + deliveryRate;
+  const notes = [
+    `Phone: ${phone}`,
+    `Address: ${address}`,
+    `Source: ${platform} AI auto-capture`,
+  ].join("\n");
+
+  const { data, error } = await supabase
+    .from("social_inbox_orders")
+    .insert({
+      org_id: orgId,
+      conversation_id: conversation.id,
+      platform,
+      contact_name: customerName,
+      contact_id: contactId,
+      items: [{ product: productName, quantity, unit_price: unitPrice }],
+      notes,
+      total_price: totalPrice,
+      delivery_rate: deliveryRate,
+      status: "pending",
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return { order: data, duplicate: false };
+}
+
+async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, conversationHistory }) {
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
   if (settings.ai_auto_reply_enabled !== "true") return null;
   let channels = [];
@@ -3026,12 +3248,12 @@ async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl }
   const brandDoc = settings.brand_doc || "";
   const products = await getMetaReplyProductContext(orgId);
   try {
-    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl });
+    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory });
   } catch (err) {
     console.warn("[Meta Auto Reply] OpenAI vision failed:", errorMessage(err));
     if (!imageUrl) return null;
     try {
-      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null });
+      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null, conversationHistory });
     } catch (fallbackErr) {
       console.warn("[Meta Auto Reply] OpenAI text fallback failed:", errorMessage(fallbackErr));
       return null;
@@ -3142,8 +3364,22 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   });
 
   if (!text) return;
-  const contextImageUrl = imageUrl || (isPriceIntentMessage(text) ? await getRecentConversationImage(supabase, conversation.id) : null);
-  const reply = await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text, imageUrl: contextImageUrl });
+  const contextImageUrl = imageUrl || await getRecentConversationImage(supabase, conversation.id);
+  const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
+  const products = await getMetaReplyProductContext(channel.org_id);
+  const capturedOrder = await maybeCreateMetaInboxOrder({
+    supabase,
+    orgId: channel.org_id,
+    platform,
+    conversation,
+    contactId: senderId,
+    latestCustomerMessage: text,
+    products,
+    conversationHistory,
+  });
+  const reply = capturedOrder
+    ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
+    : await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text, imageUrl: contextImageUrl, conversationHistory });
   if (!reply) return;
 
   const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
@@ -3224,13 +3460,28 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   });
 
   if (!text) return;
-  const contextImageUrl = imageUrl || (isPriceIntentMessage(text) ? await getRecentConversationImage(supabase, conversation.id) : null);
-  const reply = await buildMetaAutoReply({
+  const contextImageUrl = imageUrl || await getRecentConversationImage(supabase, conversation.id);
+  const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
+  const products = await getMetaReplyProductContext(channel.org_id);
+  const capturedOrder = await maybeCreateMetaInboxOrder({
+    supabase,
     orgId: channel.org_id,
     platform: "whatsapp",
-    customerMessage: text,
-    imageUrl: contextImageUrl,
+    conversation,
+    contactId: senderId,
+    latestCustomerMessage: text,
+    products,
+    conversationHistory,
   });
+  const reply = capturedOrder
+    ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
+    : await buildMetaAutoReply({
+      orgId: channel.org_id,
+      platform: "whatsapp",
+      customerMessage: text,
+      imageUrl: contextImageUrl,
+      conversationHistory,
+    });
   if (!reply) return;
 
   try {
@@ -3374,6 +3625,72 @@ app.get("/api/social/messages/:conversationId", async (req, res) => {
       .order("created_at", { ascending: true });
     if (error) throw error;
     return res.json({ messages: data || [] });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/social/inbox-orders", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("social_inbox_orders")
+      .select("*")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return res.json({ orders: data || [] });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.patch("/api/social/inbox-orders/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const allowed = ["status", "notes", "sent_to_courier", "consignment_id", "tracking_code", "courier_status", "courier_message", "fraud_checked", "fraud_data", "delivery_rate"];
+    const update = {};
+    for (const key of allowed) {
+      if (req.body?.[key] !== undefined) update[key] = req.body[key];
+    }
+    if (!Object.keys(update).length) return res.status(400).json({ error: "Nothing to update" });
+    const { data, error } = await supabase
+      .from("social_inbox_orders")
+      .update(update)
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Inbox order not found" });
+    return res.json({ success: true, order: data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.delete("/api/social/inbox-orders/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("social_inbox_orders")
+      .delete()
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Inbox order not found" });
+    return res.json({ success: true, id: data.id });
   } catch (err) {
     return sendError(res, err);
   }
