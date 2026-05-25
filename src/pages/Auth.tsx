@@ -196,7 +196,6 @@ export default function Auth() {
       <motion.div
         className="relative w-[480px] rounded-md px-10 py-7"
         layout
-        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
         style={{
           background: "rgba(180, 20, 20, 0.18)",
           backdropFilter: "blur(24px)",
@@ -272,10 +271,16 @@ export default function Auth() {
                     transition={{ duration: 0.35, ...smooth }}
                     className="mb-6 space-y-1 text-center w-full"
                   >
-                    <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-sm">
+                    <h1
+                      className="text-[32px] font-semibold leading-[1.08] tracking-normal text-white drop-shadow-sm"
+                      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif" }}
+                    >
                       {mode === "signin" ? "Sign In or Join Now!" : "Create your account"}
                     </h1>
-                    <p className="text-sm text-white/65 font-light">
+                    <p
+                      className="text-[15px] font-normal leading-6 tracking-normal text-white/70"
+                      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif" }}
+                    >
                       {mode === "signin"
                         ? "Login or create your Arc Lab account."
                         : "Sign up to get started with Arc Lab Technology."}
