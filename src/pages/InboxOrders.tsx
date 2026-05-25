@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import {
   MagnifyingGlass, ShoppingBag, Package, NotePencil, Truck,
   ShieldCheck, ShieldWarning, Warning, Question, FileText, Printer,
-  Trash, Check, X,
+  Trash, Check, X, MapPin,
 } from "@phosphor-icons/react";
 import {
   FacebookLogo, InstagramLogo, WhatsappLogo,
@@ -91,6 +91,110 @@ const PLATFORM_COLORS: Record<string, string> = {
   instagram: "text-[#E1306C]",
   whatsapp: "text-[#25D366]",
 };
+
+// ─── Status helpers (matches Dashboard OrdersTable) ────────────────────────
+
+function InboxOrderStatusIcon({ status }: { status: string }) {
+  if (status === "confirmed") {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
+        <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21.897 6.63c.32.898-.13 1.513-.998 2.118c-.702.488-1.595 1.017-2.542 1.922c-.928.887-1.834 1.955-2.639 3.006a39 39 0 0 0-2.71 3.99a1.65 1.65 0 0 1-1.446.834a1.66 1.66 0 0 1-1.426-.873c-.748-1.363-1.326-1.901-1.592-2.094c-.737-.537-1.544-.63-1.544-1.8C7 12.776 7.746 12 8.667 12c.658.027 1.262.309 1.789.693c.342.249.705.578 1.082 1.012c.442-.654.975-1.408 1.573-2.189c.868-1.133 1.892-2.35 2.99-3.399c1.08-1.032 2.33-1.998 3.653-2.508c.863-.333 1.822.124 2.143 1.022M4.44 12.076a2.7 2.7 0 0 0-.6-.125l-.141-.006c-.938 0-1.699.783-1.699 1.748c0 .874.623 1.598 1.437 1.728q.042.02.137.087c.27.195.86.737 1.623 2.111c.298.538.851.873 1.453.88a1.67 1.67 0 0 0 1.112-.407M15 5.5c-1.35.515-2.622 1.489-3.723 2.53c-.384.363-.76.746-1.123 1.139" color="currentColor"/>
+      </svg>
+    );
+  }
+  if (status === "cancelled") {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" opacity=".2" fill="currentColor" stroke="none"/>
+        <path d="M15 9l-6 6M9 9l6 6"/>
+      </svg>
+    );
+  }
+  // pending
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+      <g fill="currentColor">
+        <path d="M18.75 11a7 7 0 1 1-14 0a7 7 0 0 1 14 0Z" opacity=".2"/>
+        <path fillRule="evenodd" d="M10 16a6 6 0 1 0 0-12a6 6 0 0 0 0 12Zm0 1a7 7 0 1 0 0-14a7 7 0 0 0 0 14Z" clipRule="evenodd"/>
+        <path fillRule="evenodd" d="M10 6.5a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0V7a.5.5 0 0 1 .5-.5Z" clipRule="evenodd"/>
+        <path fillRule="evenodd" d="M13.5 10a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 1 .5.5Z" clipRule="evenodd"/>
+      </g>
+    </svg>
+  );
+}
+
+function inboxStatusClasses(status: string, selected = false) {
+  if (status === "confirmed") {
+    return selected
+      ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+      : "border-emerald-200/80 bg-emerald-50 text-emerald-700 shadow-emerald-950/5 hover:border-emerald-300 hover:bg-emerald-100";
+  }
+  if (status === "cancelled") {
+    return selected
+      ? "border-red-200 bg-red-100 text-red-600"
+      : "border-red-200/80 bg-red-50 text-red-600 shadow-red-950/5 hover:border-red-300 hover:bg-red-100";
+  }
+  return selected
+    ? "border-amber-200 bg-amber-100 text-amber-700"
+    : "border-amber-200/80 bg-amber-50 text-amber-700 shadow-amber-950/5 hover:border-amber-300 hover:bg-amber-100";
+}
+
+// ─── Courier status badge (matches Dashboard getCourierStatusBadge) ─────────
+
+function getInboxCourierBadge(order: InboxOrder) {
+  if (!order.sent_to_courier) return null;
+  const status = (order.courier_status || "").toLowerCase().trim();
+  const stageConfig: Record<string, { label: string; color: React.ComponentProps<typeof PopButton>["color"] }> = {
+    "":                                   { label: "Tracking ID",       color: "sky" },
+    "pending":                            { label: "Pending",           color: "amber" },
+    "in_review":                          { label: "In Review",         color: "amber" },
+    "pickup requested":                   { label: "Pickup Requested",  color: "blue" },
+    "pickup_requested":                   { label: "Pickup Requested",  color: "blue" },
+    "processing":                         { label: "Processing",        color: "blue" },
+    "picked up":                          { label: "Picked Up",         color: "blue" },
+    "picked_up":                          { label: "Picked Up",         color: "blue" },
+    "in transit":                         { label: "In Transit",        color: "indigo" },
+    "in_transit":                         { label: "In Transit",        color: "indigo" },
+    "dispatched":                         { label: "Out for Delivery",  color: "violet" },
+    "on_the_way":                         { label: "Out for Delivery",  color: "violet" },
+    "on the way":                         { label: "Out for Delivery",  color: "violet" },
+    "assigned to rider":                  { label: "Out for Delivery",  color: "violet" },
+    "assigned_to_rider":                  { label: "Out for Delivery",  color: "violet" },
+    "out for delivery":                   { label: "Out for Delivery",  color: "violet" },
+    "out_for_delivery":                   { label: "Out for Delivery",  color: "violet" },
+    "ready for delivery":                 { label: "Out for Delivery",  color: "violet" },
+    "ready_for_delivery":                 { label: "Out for Delivery",  color: "violet" },
+    "hold":                               { label: "On Hold",           color: "orange" },
+    "delivered":                          { label: "Delivered",         color: "green" },
+    "partial_delivered":                  { label: "Part. Delivered",   color: "teal" },
+    "delivered_approval_pending":         { label: "Approval Pending",  color: "cyan" },
+    "partial_delivered_approval_pending": { label: "Partial Pending",   color: "cyan" },
+    "cancelled_approval_pending":         { label: "Cancel Pending",    color: "red" },
+    "returned":                           { label: "Returned",          color: "red" },
+    "return_requested":                   { label: "Return Requested",  color: "red" },
+    "cancelled":                          { label: "Cancelled",         color: "slate" },
+    "unknown_approval_pending":           { label: "Unknown Pending",   color: "zinc" },
+    "unknown":                            { label: "Unknown",           color: "zinc" },
+  };
+  const cfg = stageConfig[status] ?? { label: order.courier_status || "Tracking ID", color: "sky" as const };
+  const hasRealStatus = status !== "" && status !== "pending" && status !== "in_review"
+    && status !== "pickup_requested" && status !== "pickup requested";
+  const id = order.consignment_id || order.tracking_code;
+
+  if (!hasRealStatus) {
+    return (
+      <PopButton color="sky" size="sm" className="cursor-default gap-1.5 text-[10px] font-bold tracking-widest uppercase w-36 justify-center">
+        <span className="opacity-70">ID</span>
+        <span className="font-mono tracking-tight normal-case text-[11px]">{id || "—"}</span>
+      </PopButton>
+    );
+  }
+  return (
+    <PopButton color={cfg.color} size="sm" className="cursor-default text-[9px] font-bold tracking-widest uppercase whitespace-nowrap w-36 justify-center">
+      {cfg.label}
+    </PopButton>
+  );
+}
 
 // ─── FraudCell ────────────────────────────────────────────────────────────────
 
@@ -765,27 +869,79 @@ export default function InboxOrders() {
 
                     {/* Address */}
                     <TableCell className="max-w-[150px] py-3">
-                      <p className="text-xs text-black font-light truncate" title={address || ""}>
-                        {address || "No address"}
-                      </p>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1 group/addr cursor-default min-w-0">
+                            <MapPin size={12} weight="light" className="shrink-0 text-blue-400 group-hover/addr:text-blue-500 transition-colors" />
+                            <p className="text-xs text-black font-light truncate">
+                              {address || "No address"}
+                            </p>
+                          </div>
+                        </TooltipTrigger>
+                        {address && (
+                          <TooltipContent side="top" className="max-w-[260px] p-0 overflow-hidden rounded-2xl border border-black/10 bg-white/95 shadow-2xl shadow-black/10 backdrop-blur-xl">
+                            <div className="border-b border-black/[0.06] px-3.5 py-2.5 flex items-center gap-2.5">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-50 text-blue-600 shrink-0">
+                                <MapPin size={14} weight="light" />
+                              </span>
+                              <div>
+                                <p className="text-xs font-semibold text-foreground">Delivery Address</p>
+                                <p className="text-[10px] text-muted-foreground">Ship to</p>
+                              </div>
+                            </div>
+                            <div className="px-3.5 py-2.5">
+                              <p className="text-xs text-foreground leading-relaxed">{address}</p>
+                            </div>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
                     </TableCell>
 
                     {/* Merchandise */}
                     <TableCell className="max-w-[160px] py-3">
                       <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
-                          <div className="text-xs tracking-tight text-black truncate cursor-default">
-                            <span className="font-medium">{primaryItem}</span>
-                            {moreCount > 0 && (
-                              <span className="ml-1.5 px-1 py-0.5 bg-black/5 rounded text-[9px] font-bold">+{moreCount}</span>
-                            )}
+                          <div className="flex items-center gap-1 group/prod cursor-default min-w-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-blue-400 group-hover/prod:text-blue-500 transition-colors">
+                              <g fill="none" stroke="currentColor" strokeWidth="1.2">
+                                <rect width="14" height="17" x="5" y="4" fill="currentColor" fillOpacity=".25" rx="2"/>
+                                <path strokeLinecap="round" d="M9 9h6m-6 4h6m-6 4h4"/>
+                              </g>
+                            </svg>
+                            <div className="text-xs tracking-tight text-black truncate">
+                              <span className="font-medium">{primaryItem}</span>
+                              {moreCount > 0 && (
+                                <span className="ml-1.5 px-1 py-0.5 bg-black/5 rounded text-[9px] font-bold">+{moreCount}</span>
+                              )}
+                            </div>
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[360px] bg-black text-white border-none p-4 rounded-2xl shadow-2xl">
-                          <div className="space-y-2">
-                            {items.map((item, idx) => (
-                              <p key={idx} className="text-xs font-light">{item.quantity}× {item.product}</p>
-                            ))}
+                        <TooltipContent side="top" className="max-w-[300px] p-0 overflow-hidden rounded-2xl border border-black/10 bg-white/95 shadow-2xl shadow-black/10 backdrop-blur-xl">
+                          <div className="border-b border-black/[0.06] px-3.5 py-2.5 flex items-center gap-2.5">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-violet-50 text-violet-600 shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <g fill="none" stroke="currentColor" strokeWidth="1.2">
+                                  <rect width="14" height="17" x="5" y="4" fill="currentColor" fillOpacity=".25" rx="2"/>
+                                  <path strokeLinecap="round" d="M9 9h6m-6 4h6m-6 4h4"/>
+                                </g>
+                              </svg>
+                            </span>
+                            <div>
+                              <p className="text-xs font-semibold text-foreground">Order Items</p>
+                              <p className="text-[10px] text-muted-foreground">{items.length} item{items.length !== 1 ? "s" : ""}</p>
+                            </div>
+                          </div>
+                          <div className="divide-y divide-black/[0.04]">
+                            {items.length === 0 ? (
+                              <p className="px-3.5 py-2.5 text-xs text-muted-foreground">No items</p>
+                            ) : (
+                              items.map((item, idx) => (
+                                <div key={idx} className="px-3.5 py-2 flex items-start gap-2.5">
+                                  <span className="mt-0.5 h-4 w-4 rounded-lg bg-black/[0.05] text-black/40 text-[9px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
+                                  <p className="text-xs text-foreground leading-relaxed">{item.quantity}× {item.product}</p>
+                                </div>
+                              ))
+                            )}
                           </div>
                         </TooltipContent>
                       </Tooltip>
@@ -803,30 +959,37 @@ export default function InboxOrders() {
                           <PopoverTrigger asChild>
                             <button
                               className={cn(
-                                "h-7 w-24 text-[9px] font-bold uppercase tracking-widest rounded-full transition-all border shadow-sm",
-                                order.status === "confirmed"
-                                  ? "bg-blue-50 border-blue-100 text-blue-600 shadow-blue-900/5"
-                                  : order.status === "cancelled"
-                                  ? "bg-red-50 border-red-100 text-red-500 shadow-red-900/5"
-                                  : "bg-amber-50 border-amber-100 text-amber-600 shadow-amber-900/5"
+                                "group/status status-pill relative inline-flex h-8 w-[112px] items-center overflow-hidden rounded-full border px-3 font-extrabold text-xs capitalize transition-all duration-200 active:scale-95",
+                                inboxStatusClasses(order.status)
                               )}
                               data-testid={`button-status-${order.id}`}
                             >
-                              {order.status}
+                              <span className="status-pill-icon absolute left-3 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center transition-all duration-500 ease-out group-hover/status:left-1/2 group-hover/status:-translate-x-1/2 group-hover/status:-translate-y-1/2 group-hover/status:scale-125">
+                                <InboxOrderStatusIcon status={order.status} />
+                              </span>
+                              <span className="status-pill-label ml-6 whitespace-nowrap transition-all duration-500 ease-out group-hover/status:translate-x-[155%] group-hover/status:opacity-0">
+                                {order.status}
+                              </span>
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-[140px] p-2 bg-white/95 backdrop-blur-xl border border-black/5 rounded-2xl shadow-2xl" align="center">
+                          <PopoverContent className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="center">
                             <div className="flex flex-col gap-1">
-                              {["pending", "confirmed", "cancelled"].map((st) => (
+                              {(["pending", "confirmed", "cancelled"] as const).map((st) => (
                                 <button
                                   key={st}
                                   onClick={() => { if (order.status !== st) handleStatusUpdate(order, st); }}
                                   className={cn(
-                                    "h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all text-left px-3",
-                                    order.status === st ? "bg-black text-white" : "hover:bg-black/5 text-black"
+                                    "flex h-9 w-full items-center justify-between rounded-xl border px-3 text-left text-xs font-medium capitalize transition-all",
+                                    order.status === st
+                                      ? inboxStatusClasses(st, true)
+                                      : "border-transparent text-foreground hover:border-black/10 hover:bg-black/[0.04]"
                                   )}
                                 >
-                                  {st}
+                                  <span className="flex items-center gap-2">
+                                    <InboxOrderStatusIcon status={st} />
+                                    {st}
+                                  </span>
+                                  {order.status === st && <Check size={14} weight="bold" />}
                                 </button>
                               ))}
                             </div>
@@ -842,10 +1005,15 @@ export default function InboxOrders() {
                         {!order.sent_to_courier ? (
                           <Popover>
                             <PopoverTrigger asChild>
-                              <PopButton color="default" size="sm" className="gap-1.5 px-2.5 text-[10px] font-bold tracking-normal h-8">
-                                <Truck size={13} weight="light" />
-                                Send
-                              </PopButton>
+                              <button className="send-btn flex items-center rounded-xl bg-white border border-amber-500 text-amber-500 text-[11px] font-medium px-3 py-1.5 overflow-hidden transition-all duration-200 cursor-pointer active:scale-95 hover:bg-amber-50">
+                                <div className="send-btn-svg-wrapper flex items-center">
+                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={13} height={13} className="send-btn-icon transition-transform duration-300 origin-center">
+                                    <path fill="none" d="M0 0h24v24H0z"/>
+                                    <path fill="currentColor" d="M1.946 9.315c-.522-.174-.527-.455.01-.634l19.087-6.362c.529-.176.832.12.684.638l-5.454 19.086c-.15.529-.455.547-.679.045L12 14l6-8-8 6-8.054-2.685z"/>
+                                  </svg>
+                                </div>
+                                <span className="send-btn-label ml-1.5 transition-transform duration-300">Send</span>
+                              </button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[150px] p-2 bg-white border border-black/5 rounded-xl shadow-xl" align="center">
                               <div className="flex flex-col gap-1">
@@ -871,10 +1039,7 @@ export default function InboxOrders() {
                             </PopoverContent>
                           </Popover>
                         ) : (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-black/[0.03] border border-black/5 group-hover:border-black/10 transition-all">
-                            <span className="text-[7px] font-bold uppercase tracking-[0.2em] text-black">REF</span>
-                            <span className="text-[13px] font-mono font-bold text-black tracking-tight">{order.consignment_id}</span>
-                          </div>
+                          getInboxCourierBadge(order)
                         )}
                       </div>
                     </TableCell>
