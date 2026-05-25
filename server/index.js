@@ -3294,6 +3294,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   // 5. Save order if GPT confirmed it has all fields
   if (orderData) {
     try {
+      await syncOrderFieldsFromAIResult({ supabase, orgId, conversation, order: orderData });
       const saved = await saveMetaInboxOrder({
         supabase, orgId, platform,
         conversation,
@@ -3303,7 +3304,6 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
       });
       if (saved && !saved.duplicate) {
         const shortId = saved.order.id.slice(-6).toUpperCase();
-        // Override reply with order confirmation that includes the ID
         reply = `Your order has been placed! Order ID: IO-${shortId}. Total: ৳${Number(saved.order.total_price || 0).toLocaleString("en-US")}. We'll be in touch soon.`;
       }
     } catch (err) {
@@ -3343,76 +3343,134 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   });
 }
 
-// ─── Order detection for any message (AI or human mode) ──────────────────────
-// Runs a focused extraction-only GPT call on the full conversation history.
-// If a complete order is found and not already saved, inserts it to social_inbox_orders.
-// Used in AI mode by sendAndStoreMetaAIReply; also available for human-mode messages.
+// ─── Order capture: pre-filter + stateful field tracking ─────────────────────
 
-async function detectAndSaveInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName }) {
-  if (!process.env.OPENAI_API_KEY) return;
+const ORDER_SIGNAL_RE = /\d{10,}|ঠিকানা|address|deliver|অর্ডার|\border\b|quantity|পিস|pcs|টাকা|taka|৳|\d+\s*[x×]\s*\w|\bname\b|নাম/i;
+
+function hasOrderSignal(text) {
+  if (!text || text.trim().length < 3) return false;
+  return ORDER_SIGNAL_RE.test(text);
+}
+
+function isOrderComplete(fields) {
+  return !!(
+    fields?.customer_name?.trim() &&
+    fields?.phone?.trim() &&
+    fields?.address?.trim() &&
+    fields?.product_name?.trim() &&
+    Number(fields?.quantity) >= 1 &&
+    Number(fields?.unit_price) > 0
+  );
+}
+
+function mergeFields(existing = {}, incoming = {}) {
+  const merged = { ...existing };
+  for (const key of ["customer_name", "phone", "address", "product_name", "quantity", "unit_price"]) {
+    const v = incoming[key];
+    if (v !== null && v !== undefined && v !== "" && !merged[key]) {
+      merged[key] = v;
+    }
+  }
+  return merged;
+}
+
+async function extractNewFields({ text, existingFields = {}, products = [] }) {
+  if (!process.env.OPENAI_API_KEY) return null;
+  const missing = ["customer_name", "phone", "address", "product_name", "quantity", "unit_price"]
+    .filter((k) => !existingFields[k]);
+  if (missing.length === 0) return existingFields;
+
+  const catalog = products.slice(0, 50).map((p) => ({ name: p.name, price: p.price }));
+  const knownStr = Object.entries(existingFields)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(", ") || "none yet";
+
+  const systemPrompt = `You are an order field extractor for a Bangladeshi e-commerce shop.
+
+Already collected: ${knownStr}
+Still missing: ${missing.join(", ")}
+
+CATALOG:
+${JSON.stringify(catalog).slice(0, 3000)}
+
+From the single customer message below, extract ONLY the missing fields that appear explicitly.
+Do NOT invent or guess. If a field is not clearly stated, set it to null.
+
+Return ONLY valid JSON:
+{"customer_name": null, "phone": null, "address": null, "product_name": null, "quantity": null, "unit_price": null}`;
+
   try {
-    const [conversationHistory, products] = await Promise.all([
-      getRecentConversationHistory(supabase, conversation.id, 30),
-      getMetaReplyProductContext(orgId),
-    ]);
-
-    const catalog = products.map((p) => ({ name: p.name, price: p.price }));
-
-    const systemPrompt = `You are an order extraction assistant. Read the conversation and determine if a COMPLETE order has been confirmed.
-
-A complete order requires ALL of: customer name, phone number, delivery address, product name, quantity, and unit price.
-
-CATALOG (for price lookup):
-${JSON.stringify(catalog).slice(0, 6000)}
-
-Return ONLY valid JSON — no prose, no markdown:
-{"order": null}
-OR
-{"order": {"customer_name": "", "phone": "", "address": "", "product_name": "", "quantity": 1, "unit_price": 0}}
-
-Only set order if ALL fields are present and confirmed. Return null otherwise.`;
-
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
       body: JSON.stringify({
-        model: process.env.META_REPLY_MODEL || "gpt-4o-mini",
+        model: "gpt-4o-mini",
         temperature: 0,
+        max_tokens: 200,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `CONVERSATION:\n${conversationHistory}` },
+          { role: "user", content: String(text || "").slice(0, 800) },
         ],
       }),
     });
-
-    if (!response.ok) return;
+    if (!response.ok) return null;
     const data = await response.json();
     const raw = data.choices?.[0]?.message?.content?.trim() || "";
-    let parsed;
-    try { parsed = JSON.parse(raw); } catch { return; }
+    try { return JSON.parse(raw); } catch { return null; }
+  } catch { return null; }
+}
 
-    const orderRaw = parsed?.order;
-    if (
-      !orderRaw || typeof orderRaw !== "object" ||
-      !orderRaw.customer_name?.trim() || !orderRaw.phone?.trim() ||
-      !orderRaw.address?.trim() || !orderRaw.product_name?.trim() ||
-      !(Number(orderRaw.quantity) >= 1) || !(Number(orderRaw.unit_price) > 0)
-    ) return;
+async function updateConversationOrderFields(supabase, conversationId, orgId, fields) {
+  await supabase
+    .from("social_conversations")
+    .update({ order_fields: fields })
+    .eq("id", conversationId)
+    .eq("org_id", orgId);
+}
 
-    const order = {
-      customer_name: String(orderRaw.customer_name).trim(),
-      phone: String(orderRaw.phone).trim(),
-      address: String(orderRaw.address).trim(),
-      product_name: String(orderRaw.product_name).trim(),
-      quantity: Math.max(1, Number.parseInt(orderRaw.quantity, 10) || 1),
-      unit_price: Number(orderRaw.unit_price),
-    };
+async function processOrderFieldsFromMessage({ supabase, orgId, platform, conversation, contactId, contactName, text, products }) {
+  if (!hasOrderSignal(text)) return;
+  const existing = conversation.order_fields || {};
+  if (isOrderComplete(existing)) return;
 
-    await saveMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName, order });
-  } catch (err) {
-    console.warn("[OrderDetect] failed:", err?.message || err);
+  const extracted = await extractNewFields({ text, existingFields: existing, products });
+  if (!extracted) return;
+
+  const merged = mergeFields(existing, extracted);
+  if (merged.phone && !existing.phone) {
+    merged.phone = normalizeBdPhone(merged.phone) || merged.phone;
   }
+
+  await updateConversationOrderFields(supabase, conversation.id, orgId, merged);
+  conversation.order_fields = merged;
+
+  if (isOrderComplete(merged)) {
+    await saveMetaInboxOrder({
+      supabase, orgId, platform, conversation, contactId, contactName,
+      order: {
+        customer_name: merged.customer_name,
+        phone:         merged.phone,
+        address:       merged.address,
+        product_name:  merged.product_name,
+        quantity:      Number(merged.quantity),
+        unit_price:    Number(merged.unit_price),
+      },
+    });
+  }
+}
+
+async function syncOrderFieldsFromAIResult({ supabase, orgId, conversation, order }) {
+  if (!order) return;
+  await updateConversationOrderFields(supabase, conversation.id, orgId, {
+    customer_name: order.customer_name || null,
+    phone:         order.phone || null,
+    address:       order.address || null,
+    product_name:  order.product_name || null,
+    quantity:      order.quantity || null,
+    unit_price:    order.unit_price || null,
+  });
 }
 
 async function fetchMetaUserName(senderId, pageToken, platform = "facebook") {
@@ -4536,6 +4594,7 @@ ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS courier_message 
 ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS fraud_checked BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS fraud_data JSONB;
 ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS delivery_rate NUMERIC;
+ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS order_fields JSONB DEFAULT '{}';
     `;
 
     await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
