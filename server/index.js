@@ -3345,11 +3345,14 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
 
 // ─── Order capture: pre-filter + stateful field tracking ─────────────────────
 
-const ORDER_SIGNAL_RE = /\d{10,}|ঠিকানা|address|deliver|অর্ডার|\border\b|quantity|পিস|pcs|টাকা|taka|৳|\d+\s*[x×]\s*\w|\bname\b|নাম/i;
+const DEAD_END_RE = /^(hi+|hello|hey|ok|okay|thanks|thank you|confirmed|done|👍|🙏|😊|✓|✅|sure|np|no problem|good|great|noted|hmm|lol)\s*[!.]*$/i;
 
 function hasOrderSignal(text) {
-  if (!text || text.trim().length < 3) return false;
-  return ORDER_SIGNAL_RE.test(text);
+  if (!text) return false;
+  const t = text.trim();
+  if (t.length < 2) return false;
+  if (DEAD_END_RE.test(t)) return false;
+  return true;
 }
 
 function isOrderComplete(fields) {
