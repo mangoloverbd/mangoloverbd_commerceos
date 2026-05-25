@@ -2967,7 +2967,7 @@ function supportedCatalogImageProducts(products) {
   return products.filter((p) => p.image_url && isSupportedOpenAiImageRef(p.image_url));
 }
 
-async function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "", identifiedProduct = null }) {
+async function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "", identifiedProduct = null, includeCatalogImages = false }) {
   const orderedProducts = identifiedProduct
     ? [identifiedProduct, ...products.filter((p) => p.name !== identifiedProduct.name)]
     : products;
@@ -3004,19 +3004,21 @@ async function buildProductVisionContent({ brandDoc, products, customerMessage, 
     content.push({ type: "text", text: "Customer sent an image, but the image format could not be passed to the vision model. Use catalog/product context and conversation only." });
   }
 
-  const visualProducts = supportedCatalogImageProducts(orderedProducts).slice(0, 60);
-  for (const product of visualProducts) {
-    content.push({
-      type: "text",
-      text: `CATALOG IMAGE: ${product.name} | price=${product.price ?? "unknown"} | available=${Number(product.stock || 0) > 0 ? "yes" : "no"}`,
-    });
-    content.push({ type: "image_url", image_url: { url: product.image_url } });
+  if (includeCatalogImages) {
+    const visualProducts = supportedCatalogImageProducts(orderedProducts).slice(0, 60);
+    for (const product of visualProducts) {
+      content.push({
+        type: "text",
+        text: `CATALOG IMAGE: ${product.name} | price=${product.price ?? "unknown"} | available=${Number(product.stock || 0) > 0 ? "yes" : "no"}`,
+      });
+      content.push({ type: "image_url", image_url: { url: product.image_url } });
+    }
   }
 
   return content;
 }
 
-async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct }) {
+async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct, includeCatalogImages = false }) {
   const messages = [
     {
       role: "system",
@@ -3025,7 +3027,7 @@ async function requestMetaAutoReply({ brandDoc, products, customerMessage, image
     },
     {
       role: "user",
-      content: await buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct }),
+      content: await buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct, includeCatalogImages }),
     },
   ];
 
@@ -3053,6 +3055,19 @@ function isPriceIntentMessage(text = "") {
   const value = String(text).trim().toLowerCase();
   if (!value) return false;
   return /(^|\b)(price|pp|৳|tk|taka|dam|দাম|কত|koto|available|availability|stock|ache|আছে)(\b|[?:.!।]|$)/i.test(value);
+}
+
+function isGreetingMessage(text = "") {
+  const value = String(text).trim().toLowerCase();
+  return /^(hi|hello|hey|assalamu alaikum|salam|আসসালামু আলাইকুম|সালাম|হাই|হ্যালো)[!.।\s]*$/i.test(value);
+}
+
+function isProductContextIntent(text = "") {
+  const value = String(text).trim().toLowerCase();
+  if (!value) return false;
+  return isPriceIntentMessage(value)
+    || isOrderIntentMessage(value)
+    || /(product|item|pic|photo|image|eta|এটা|এইটা|পণ্য|অর্ডার|order|available|stock|link|size|color|colour|কিনতে|নিতে)/i.test(value);
 }
 
 function isOrderIntentMessage(text = "") {
@@ -3353,7 +3368,7 @@ async function maybeCreateMetaInboxOrder({ supabase, orgId, platform, conversati
   return { order: data, duplicate: false };
 }
 
-async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, conversationHistory, products: providedProducts, identifiedProduct }) {
+async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, conversationHistory, products: providedProducts, identifiedProduct, includeCatalogImages = false }) {
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
   if (settings.ai_auto_reply_enabled !== "true") return null;
   let channels = [];
@@ -3368,12 +3383,15 @@ async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, 
   const brandDoc = settings.brand_doc || "";
   const products = providedProducts || await getMetaReplyProductContext(orgId);
   try {
-    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct });
+    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct, includeCatalogImages });
   } catch (err) {
     console.warn("[Meta Auto Reply] OpenAI vision failed:", errorMessage(err));
-    if (!imageUrl) return null;
+    if (!imageUrl) {
+      if (isGreetingMessage(customerMessage)) return "Hi! How can I help you today?";
+      return null;
+    }
     try {
-      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null, conversationHistory, identifiedProduct });
+      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null, conversationHistory, identifiedProduct, includeCatalogImages: false });
     } catch (fallbackErr) {
       console.warn("[Meta Auto Reply] OpenAI text fallback failed:", errorMessage(fallbackErr));
       return null;
@@ -3484,9 +3502,10 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   });
 
   if (!text) return;
-  const contextImageUrl = imageUrl || await getRecentConversationImage(supabase, conversation.id);
+  const needsProductContext = !!imageUrl || isProductContextIntent(text);
+  const contextImageUrl = imageUrl || (needsProductContext ? await getRecentConversationImage(supabase, conversation.id) : null);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
-  const products = await getMetaReplyProductContext(channel.org_id);
+  const products = needsProductContext ? await getMetaReplyProductContext(channel.org_id) : [];
   let identifiedProduct = null;
   if (contextImageUrl) {
     try {
@@ -3515,6 +3534,7 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
       conversationHistory,
       products,
       identifiedProduct,
+      includeCatalogImages: !!contextImageUrl,
     });
   if (!reply) return;
 
@@ -3596,9 +3616,10 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   });
 
   if (!text) return;
-  const contextImageUrl = imageUrl || await getRecentConversationImage(supabase, conversation.id);
+  const needsProductContext = !!imageUrl || isProductContextIntent(text);
+  const contextImageUrl = imageUrl || (needsProductContext ? await getRecentConversationImage(supabase, conversation.id) : null);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
-  const products = await getMetaReplyProductContext(channel.org_id);
+  const products = needsProductContext ? await getMetaReplyProductContext(channel.org_id) : [];
   let identifiedProduct = null;
   if (contextImageUrl) {
     try {
@@ -3627,6 +3648,7 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
       conversationHistory,
       products,
       identifiedProduct,
+      includeCatalogImages: !!contextImageUrl,
     });
   if (!reply) return;
 
