@@ -2916,7 +2916,10 @@ async function getMetaReplyProductContext(orgId) {
   }
 }
 
-function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "" }) {
+function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "", identifiedProduct = null }) {
+  const orderedProducts = identifiedProduct
+    ? [identifiedProduct, ...products.filter((p) => p.name !== identifiedProduct.name)]
+    : products;
   const catalogForText = products.map((p) => ({
     name: p.name,
     price: p.price,
@@ -2930,9 +2933,15 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
       text:
         `Brand knowledge:\n${brandDoc || "(none)"}\n\n` +
         `PRODUCT CATALOG JSON:\n${JSON.stringify(catalogForText).slice(0, 18000)}\n\n` +
+        `AI IMAGE MATCH RESULT:\n${identifiedProduct ? JSON.stringify({
+          name: identifiedProduct.name,
+          price: identifiedProduct.price,
+          available: Number(identifiedProduct.stock || 0) > 0,
+          url: identifiedProduct.url,
+        }) : "(none)"}\n\n` +
         `RECENT CONVERSATION, oldest to newest:\n${conversationHistory || "(none)"}\n\n` +
         `Customer message:\n${customerMessage || "(customer sent an image only)"}\n\n` +
-        "If an image is included, visually match it against the catalog names/images and answer with the matching product price and whether it is available. Use the recent conversation as memory: honor customer corrections like 'not glass cup', keep the currently selected product across follow-ups, and do not switch products unless the customer clearly sends/selects a different product.",
+        "If AI IMAGE MATCH RESULT is present, use that exact product for price and availability unless the customer explicitly rejects it. If an image is included but no match result is present, visually match it against the catalog names/images and answer with the matching product price and whether it is available. Use the recent conversation as memory: honor customer corrections like 'not glass cup', keep the currently selected product across follow-ups, and do not switch products unless the customer clearly sends/selects a different product.",
     },
   ];
 
@@ -2941,7 +2950,7 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
     content.push({ type: "image_url", image_url: { url: imageUrl } });
   }
 
-  const visualProducts = products.filter((p) => p.image_url).slice(0, 16);
+  const visualProducts = orderedProducts.filter((p) => p.image_url).slice(0, 60);
   for (const product of visualProducts) {
     content.push({
       type: "text",
@@ -2953,16 +2962,16 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
   return content;
 }
 
-async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory }) {
+async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct }) {
   const messages = [
     {
       role: "system",
       content:
-        "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price, availability, URLs, and product images. Treat RECENT CONVERSATION as memory. If the customer corrects a product match, accept the correction and do not repeat the rejected product. Keep the same selected product across follow-up messages like price, stock, available, order, address, and place order unless the customer clearly changes it. If the customer sends an image and asks price, pp, price?, koto, দাম, or availability in a follow-up, identify the product from the most recent image by comparing it with catalog product names/images, then answer the price and availability immediately. Use ৳ for prices. Never tell customers exact stock counts; only say available or currently unavailable. Do not ask for the customer's name before answering product price/availability questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for another photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
+        "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price, availability, URLs, and product images. Treat RECENT CONVERSATION as memory. If AI IMAGE MATCH RESULT is present, use that exact product and do not substitute a different catalog item unless the customer rejects it. If the customer corrects a product match, accept the correction and do not repeat the rejected product. Keep the same selected product across follow-up messages like price, stock, available, order, address, and place order unless the customer clearly changes it. If the customer sends an image and asks price, pp, price?, koto, দাম, or availability in a follow-up, identify the product from the most recent image by comparing it with catalog product names/images, then answer the price and availability immediately. Use ৳ for prices. Never tell customers exact stock counts; only say available or currently unavailable. Do not ask for the customer's name before answering product price/availability questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for another photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
     },
     {
       role: "user",
-      content: buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory }),
+      content: buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct }),
     },
   ];
 
@@ -3072,6 +3081,58 @@ function parseMetaJsonObject(text = "") {
       return null;
     }
   }
+}
+
+async function identifyProductFromImage({ products, imageUrl, conversationHistory }) {
+  if (!process.env.OPENAI_API_KEY || !imageUrl) return null;
+  const visualProducts = products.filter((p) => p.image_url).slice(0, 60);
+  if (!visualProducts.length) return null;
+  const content = [
+    {
+      type: "text",
+      text:
+        "Match the CUSTOMER IMAGE to exactly one catalog product image if possible. Compare visual details, shape, color, material, lid/handle/straw, packaging, and product type. Do not choose a product just because it is mentioned in prior assistant replies. If the customer rejected a product in the recent conversation, avoid that rejected product. Return JSON only: {\"matched\":true|false,\"name\":\"exact catalog product name\",\"confidence\":0-1,\"reason\":\"short reason\"}.\n\n" +
+        `RECENT CONVERSATION:\n${conversationHistory || "(none)"}`,
+    },
+    { type: "text", text: "CUSTOMER IMAGE:" },
+    { type: "image_url", image_url: { url: imageUrl } },
+  ];
+
+  visualProducts.forEach((product, index) => {
+    content.push({
+      type: "text",
+      text: `CATALOG PRODUCT ${index + 1}: ${product.name} | price=${product.price ?? "unknown"} | available=${Number(product.stock || 0) > 0 ? "yes" : "no"}`,
+    });
+    content.push({ type: "image_url", image_url: { url: product.image_url } });
+  });
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-5.4-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: "You are a strict product-image matching system. Only return an exact product from the provided catalog. If the match is uncertain, return matched=false.",
+        },
+        { role: "user", content },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OpenAI ${response.status}: ${body.slice(0, 240)}`);
+  }
+  const data = await response.json();
+  const parsed = parseMetaJsonObject(data.choices?.[0]?.message?.content);
+  if (!parsed?.matched || !parsed.name || Number(parsed.confidence || 0) < 0.45) return null;
+  return findCatalogProduct(products, parsed.name);
 }
 
 function findCatalogProduct(products, productName = "") {
@@ -3233,7 +3294,7 @@ async function maybeCreateMetaInboxOrder({ supabase, orgId, platform, conversati
   return { order: data, duplicate: false };
 }
 
-async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, conversationHistory }) {
+async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, conversationHistory, products: providedProducts, identifiedProduct }) {
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
   if (settings.ai_auto_reply_enabled !== "true") return null;
   let channels = [];
@@ -3246,14 +3307,14 @@ async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, 
   if (!process.env.OPENAI_API_KEY) return null;
 
   const brandDoc = settings.brand_doc || "";
-  const products = await getMetaReplyProductContext(orgId);
+  const products = providedProducts || await getMetaReplyProductContext(orgId);
   try {
-    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory });
+    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct });
   } catch (err) {
     console.warn("[Meta Auto Reply] OpenAI vision failed:", errorMessage(err));
     if (!imageUrl) return null;
     try {
-      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null, conversationHistory });
+      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null, conversationHistory, identifiedProduct });
     } catch (fallbackErr) {
       console.warn("[Meta Auto Reply] OpenAI text fallback failed:", errorMessage(fallbackErr));
       return null;
@@ -3367,6 +3428,14 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   const contextImageUrl = imageUrl || await getRecentConversationImage(supabase, conversation.id);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
   const products = await getMetaReplyProductContext(channel.org_id);
+  let identifiedProduct = null;
+  if (contextImageUrl) {
+    try {
+      identifiedProduct = await identifyProductFromImage({ products, imageUrl: contextImageUrl, conversationHistory });
+    } catch (err) {
+      console.warn("[Meta Auto Reply] image product match failed:", errorMessage(err));
+    }
+  }
   const capturedOrder = await maybeCreateMetaInboxOrder({
     supabase,
     orgId: channel.org_id,
@@ -3374,12 +3443,20 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     conversation,
     contactId: senderId,
     latestCustomerMessage: text,
-    products,
+    products: identifiedProduct ? [identifiedProduct, ...products.filter((p) => p.name !== identifiedProduct.name)] : products,
     conversationHistory,
   });
   const reply = capturedOrder
     ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
-    : await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text, imageUrl: contextImageUrl, conversationHistory });
+    : await buildMetaAutoReply({
+      orgId: channel.org_id,
+      platform,
+      customerMessage: text,
+      imageUrl: contextImageUrl,
+      conversationHistory,
+      products,
+      identifiedProduct,
+    });
   if (!reply) return;
 
   const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
@@ -3463,6 +3540,14 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   const contextImageUrl = imageUrl || await getRecentConversationImage(supabase, conversation.id);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
   const products = await getMetaReplyProductContext(channel.org_id);
+  let identifiedProduct = null;
+  if (contextImageUrl) {
+    try {
+      identifiedProduct = await identifyProductFromImage({ products, imageUrl: contextImageUrl, conversationHistory });
+    } catch (err) {
+      console.warn("[WhatsApp Auto Reply] image product match failed:", errorMessage(err));
+    }
+  }
   const capturedOrder = await maybeCreateMetaInboxOrder({
     supabase,
     orgId: channel.org_id,
@@ -3470,7 +3555,7 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
     conversation,
     contactId: senderId,
     latestCustomerMessage: text,
-    products,
+    products: identifiedProduct ? [identifiedProduct, ...products.filter((p) => p.name !== identifiedProduct.name)] : products,
     conversationHistory,
   });
   const reply = capturedOrder
@@ -3481,6 +3566,8 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
       customerMessage: text,
       imageUrl: contextImageUrl,
       conversationHistory,
+      products,
+      identifiedProduct,
     });
   if (!reply) return;
 
