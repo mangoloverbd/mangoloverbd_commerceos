@@ -21,8 +21,15 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [backgroundReady, setBackgroundReady] = useState(false);
   const { signIn } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const image = new Image();
+    image.onload = () => setBackgroundReady(true);
+    image.src = "/auth-bg.jpeg";
+  }, []);
 
   useEffect(() => {
     const rememberedEmail = window.localStorage.getItem(rememberedEmailKey);
@@ -90,17 +97,6 @@ export default function Auth() {
             window.localStorage.removeItem(rememberedEmailKey);
           }
 
-          toast.custom(() => (
-            <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-              <div className="h-10 w-10 rounded-xl bg-red-700 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5 text-white" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-black">Welcome Back</span>
-                <span className="text-sm font-bold text-black">Successfully signed in</span>
-              </div>
-            </div>
-          ));
           navigate("/");
         }
       } else {
@@ -183,9 +179,15 @@ export default function Auth() {
   return (
     /* Full-screen background image */
     <div
-      className="min-h-screen w-full relative flex items-center justify-center"
-      style={{ backgroundImage: "url('/auth-bg.jpeg')", backgroundSize: "cover", backgroundPosition: "center" }}
+      className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-[#190606]"
     >
+      <div
+        className="absolute inset-0 bg-cover bg-center transition-opacity duration-500 ease-out"
+        style={{
+          backgroundImage: "url('/auth-bg.jpeg')",
+          opacity: backgroundReady ? 1 : 0,
+        }}
+      />
       {/* Dark red overlay to deepen the background */}
       <div className="absolute inset-0 bg-red-950/40" />
 
