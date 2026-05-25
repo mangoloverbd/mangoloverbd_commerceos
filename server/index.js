@@ -3160,12 +3160,18 @@ async function identifyProductFromImage({ products, imageUrl, conversationHistor
     return null;
   }
   const visualProducts = supportedCatalogImageProducts(products).slice(0, 60);
-  if (!visualProducts.length) return null;
+  const catalog = products.map((p) => ({
+    name: p.name,
+    price: p.price,
+    available: Number(p.stock || 0) > 0,
+    url: p.url || null,
+  }));
   const content = [
     {
       type: "text",
       text:
-        "Match the CUSTOMER IMAGE to exactly one catalog product image if possible. Compare visual details, shape, color, material, lid/handle/straw, packaging, and product type. Do not choose a product just because it is mentioned in prior assistant replies. If the customer rejected a product in the recent conversation, avoid that rejected product. Return JSON only: {\"matched\":true|false,\"name\":\"exact catalog product name\",\"confidence\":0-1,\"reason\":\"short reason\"}.\n\n" +
+        "Match the CUSTOMER IMAGE to exactly one product from PRODUCT CATALOG JSON. Use visual recognition first, then choose the closest catalog name. Compare product type, shape, color, material, lid/handle/straw, strap/text, and visible features. Do not choose a product just because it is mentioned in prior assistant replies. If the image shows a thermal/insulated coffee cup, do not match it to glass cups. If the customer rejected a product in the recent conversation, avoid that rejected product. Return JSON only: {\"matched\":true|false,\"name\":\"exact catalog product name\",\"confidence\":0-1,\"reason\":\"short reason\"}.\n\n" +
+        `PRODUCT CATALOG JSON:\n${JSON.stringify(catalog).slice(0, 18000)}\n\n` +
         `RECENT CONVERSATION:\n${conversationHistory || "(none)"}`,
     },
     { type: "text", text: "CUSTOMER IMAGE:" },
@@ -3215,6 +3221,21 @@ function findCatalogProduct(products, productName = "") {
   return products.find((p) => String(p.name || "").trim().toLowerCase() === wanted)
     || products.find((p) => String(p.name || "").toLowerCase().includes(wanted) || wanted.includes(String(p.name || "").toLowerCase()))
     || null;
+}
+
+function formatTaka(value) {
+  const amount = Number(value || 0);
+  return `৳${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
+function buildMatchedProductReply(product) {
+  const available = Number(product?.stock || 0) > 0 ? "Available" : "Currently unavailable";
+  const price = product?.price != null ? formatTaka(product.price) : "Price not set";
+  return `The product is **${product.name}**.\n\n**Price:** ${price}\n**Availability:** ${available}`;
+}
+
+function buildNoImageMatchReply() {
+  return "I couldn't confidently match this image with the product catalog. Please send another clear photo or the product name, and I’ll check the price.";
 }
 
 function extractInboxOrderHeuristic({ products, conversationHistory }) {
@@ -3526,6 +3547,10 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   });
   const reply = capturedOrder
     ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
+    : contextImageUrl && identifiedProduct && isProductContextIntent(text)
+      ? buildMatchedProductReply(identifiedProduct)
+      : contextImageUrl && !identifiedProduct && isProductContextIntent(text)
+        ? buildNoImageMatchReply()
     : await buildMetaAutoReply({
       orgId: channel.org_id,
       platform,
@@ -3640,6 +3665,10 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   });
   const reply = capturedOrder
     ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
+    : contextImageUrl && identifiedProduct && isProductContextIntent(text)
+      ? buildMatchedProductReply(identifiedProduct)
+      : contextImageUrl && !identifiedProduct && isProductContextIntent(text)
+        ? buildNoImageMatchReply()
     : await buildMetaAutoReply({
       orgId: channel.org_id,
       platform: "whatsapp",
