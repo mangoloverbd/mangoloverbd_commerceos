@@ -3139,19 +3139,18 @@ Or when all order fields are collected:
 // ─── Save confirmed order to social_inbox_orders ──────────────────────────────
 
 async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName, order }) {
-  // Deduplicate: don't create duplicate orders for the same conversation within 30 min
-  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: existing } = await supabase
+  // Deduplicate: same phone in this conversation within 5 min = duplicate
+  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const phone = normalizeBdPhone(order.phone) || order.phone;
+  const { data: existingOrders } = await supabase
     .from("social_inbox_orders")
-    .select("id")
+    .select("id, notes")
     .eq("org_id", orgId)
     .eq("conversation_id", conversation.id)
-    .gte("created_at", since)
-    .limit(1)
-    .maybeSingle();
-  if (existing) return { order: existing, duplicate: true };
+    .gte("created_at", since);
+  const duplicate = (existingOrders || []).some((o) => (o.notes || "").includes(phone));
+  if (duplicate) return { order: existingOrders[0], duplicate: true };
 
-  const phone = normalizeBdPhone(order.phone) || order.phone;
   const deliveryRate = inferDeliveryCharge(order.address);
   const totalPrice = Number(order.confirmed_total) > 0
     ? Number(order.confirmed_total)
@@ -3184,6 +3183,15 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
     console.error("[Meta AI] saveInboxOrder failed:", error.message);
     return null;
   }
+
+  // Clear the order_fields notepad so a new order can start fresh in this conversation
+  await supabase
+    .from("social_conversations")
+    .update({ order_fields: {} })
+    .eq("id", conversation.id)
+    .eq("org_id", orgId);
+
+  console.log("[OrderFields] order saved and notepad cleared:", data.id);
   return { order: data, duplicate: false };
 }
 
