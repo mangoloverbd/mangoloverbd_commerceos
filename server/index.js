@@ -3451,7 +3451,24 @@ async function processOrderFieldsFromMessage({ supabase, orgId, platform, conver
     .maybeSingle();
 
   const existing = freshConv?.order_fields || {};
-  if (isOrderComplete(existing)) return;
+
+  if (isOrderComplete(existing)) {
+    const fields = { ...existing };
+    if (!fields.quantity) fields.quantity = 1;
+    const saved = await saveMetaInboxOrder({
+      supabase, orgId, platform, conversation, contactId, contactName,
+      order: {
+        customer_name: fields.customer_name,
+        phone:         fields.phone,
+        address:       fields.address,
+        product_name:  fields.product_name,
+        quantity:      Number(fields.quantity),
+        unit_price:    Number(fields.unit_price),
+      },
+    });
+    if (!saved?.duplicate) console.log("[OrderFields] already complete — saved order", saved?.order?.id);
+    return;
+  }
 
   const extracted = await extractNewFields({ text, existingFields: existing, products });
   if (!extracted) return;
