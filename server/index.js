@@ -2872,7 +2872,7 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
   const catalogForText = products.map((p) => ({
     name: p.name,
     price: p.price,
-    stock: p.stock,
+    available: Number(p.stock || 0) > 0,
     url: p.url,
     image_url: p.image_url,
   }));
@@ -2883,7 +2883,7 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
         `Brand knowledge:\n${brandDoc || "(none)"}\n\n` +
         `PRODUCT CATALOG JSON:\n${JSON.stringify(catalogForText).slice(0, 18000)}\n\n` +
         `Customer message:\n${customerMessage || "(customer sent an image only)"}\n\n` +
-        "If an image is included, visually match it against the catalog names/images and answer with the matching product price and stock.",
+        "If an image is included, visually match it against the catalog names/images and answer with the matching product price and whether it is available.",
     },
   ];
 
@@ -2896,7 +2896,7 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
   for (const product of visualProducts) {
     content.push({
       type: "text",
-      text: `CATALOG IMAGE: ${product.name} | price=${product.price ?? "unknown"} | stock=${product.stock ?? 0}`,
+      text: `CATALOG IMAGE: ${product.name} | price=${product.price ?? "unknown"} | available=${Number(product.stock || 0) > 0 ? "yes" : "no"}`,
     });
     content.push({ type: "image_url", image_url: { url: product.image_url } });
   }
@@ -2909,7 +2909,7 @@ async function requestMetaAutoReply({ brandDoc, products, customerMessage, image
     {
       role: "system",
       content:
-        "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price, stock, URLs, and product images. If the customer sends an image, identify the product from the image by comparing it with catalog product names/images, then answer the price and availability immediately. Use ৳ for prices. Do not ask for the customer's name before answering product price/stock questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for another photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
+        "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price, availability, URLs, and product images. If the customer sends an image and asks price, pp, price?, koto, দাম, or availability in a follow-up, identify the product from the most recent image by comparing it with catalog product names/images, then answer the price and availability immediately. Use ৳ for prices. Never tell customers exact stock counts; only say available or currently unavailable. Do not ask for the customer's name before answering product price/availability questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for another photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
     },
     {
       role: "user",
@@ -2935,6 +2935,32 @@ async function requestMetaAutoReply({ brandDoc, products, customerMessage, image
   }
   const data = await response.json();
   return data.choices?.[0]?.message?.content?.trim() || null;
+}
+
+function isPriceIntentMessage(text = "") {
+  const value = String(text).trim().toLowerCase();
+  if (!value) return false;
+  return /(^|\b)(price|pp|৳|tk|taka|dam|দাম|কত|koto|available|availability|stock|ache|আছে)(\b|[?:.!।]|$)/i.test(value);
+}
+
+async function getRecentConversationImage(supabase, conversationId) {
+  if (!conversationId) return null;
+  const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("social_messages")
+    .select("image_url")
+    .eq("conversation_id", conversationId)
+    .eq("sender", "user")
+    .not("image_url", "is", null)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("[Meta Auto Reply] recent image lookup failed:", errorMessage(error));
+    return null;
+  }
+  return data?.image_url || null;
 }
 
 async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl }) {
@@ -3055,7 +3081,7 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     payload: messaging,
   });
 
-  await upsertSocialMessage({
+  const { conversation } = await upsertSocialMessage({
     supabase,
     orgId: channel.org_id,
     platform,
@@ -3067,8 +3093,9 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     messageType,
   });
 
-  if (!text && !imageUrl) return;
-  const reply = await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text, imageUrl });
+  if (!text) return;
+  const contextImageUrl = imageUrl || (isPriceIntentMessage(text) ? await getRecentConversationImage(supabase, conversation.id) : null);
+  const reply = await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text, imageUrl: contextImageUrl });
   if (!reply) return;
 
   const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
@@ -3136,7 +3163,7 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
     payload: message,
   });
 
-  await upsertSocialMessage({
+  const { conversation } = await upsertSocialMessage({
     supabase,
     orgId: channel.org_id,
     platform: "whatsapp",
@@ -3148,12 +3175,13 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
     messageType,
   });
 
-  if (!text && !imageUrl) return;
+  if (!text) return;
+  const contextImageUrl = imageUrl || (isPriceIntentMessage(text) ? await getRecentConversationImage(supabase, conversation.id) : null);
   const reply = await buildMetaAutoReply({
     orgId: channel.org_id,
     platform: "whatsapp",
     customerMessage: text,
-    imageUrl,
+    imageUrl: contextImageUrl,
   });
   if (!reply) return;
 
