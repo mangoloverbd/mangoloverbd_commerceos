@@ -2916,7 +2916,58 @@ async function getMetaReplyProductContext(orgId) {
   }
 }
 
-function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "", identifiedProduct = null }) {
+const OPENAI_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+function normalizeOpenAiImageMime(mime = "") {
+  const value = String(mime || "").split(";")[0].trim().toLowerCase();
+  if (value === "image/jpg" || value === "image/pjpeg") return "image/jpeg";
+  return value;
+}
+
+function isSupportedOpenAiImageRef(url = "") {
+  const value = String(url || "").trim();
+  if (!value) return false;
+  const dataMime = value.match(/^data:([^;,]+)[;,]/i)?.[1];
+  if (dataMime) return OPENAI_IMAGE_MIME_TYPES.has(normalizeOpenAiImageMime(dataMime));
+  try {
+    const parsed = new URL(value);
+    const pathname = parsed.pathname.toLowerCase();
+    return /\.(png|jpe?g|gif|webp)$/i.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+async function prepareOpenAiImageRef(url = "") {
+  const value = String(url || "").trim();
+  if (!value) return null;
+  if (value.startsWith("data:")) {
+    const mime = normalizeOpenAiImageMime(value.match(/^data:([^;,]+)[;,]/i)?.[1]);
+    if (!OPENAI_IMAGE_MIME_TYPES.has(mime)) return null;
+    return mime === "image/jpeg" ? value.replace(/^data:image\/jpe?g/i, "data:image/jpeg") : value;
+  }
+  if (isSupportedOpenAiImageRef(value)) return value;
+  try {
+    const response = await fetch(value, {
+      headers: { "User-Agent": "ArcLab/1.0" },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!response.ok) return null;
+    const mime = normalizeOpenAiImageMime(response.headers.get("content-type"));
+    if (!OPENAI_IMAGE_MIME_TYPES.has(mime)) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 18 * 1024 * 1024) return null;
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+function supportedCatalogImageProducts(products) {
+  return products.filter((p) => p.image_url && isSupportedOpenAiImageRef(p.image_url));
+}
+
+async function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "", identifiedProduct = null }) {
   const orderedProducts = identifiedProduct
     ? [identifiedProduct, ...products.filter((p) => p.name !== identifiedProduct.name)]
     : products;
@@ -2945,12 +2996,15 @@ function buildProductVisionContent({ brandDoc, products, customerMessage, imageU
     },
   ];
 
-  if (imageUrl) {
+  const safeCustomerImageUrl = await prepareOpenAiImageRef(imageUrl);
+  if (safeCustomerImageUrl) {
     content.push({ type: "text", text: "CUSTOMER IMAGE:" });
-    content.push({ type: "image_url", image_url: { url: imageUrl } });
+    content.push({ type: "image_url", image_url: { url: safeCustomerImageUrl } });
+  } else if (imageUrl) {
+    content.push({ type: "text", text: "Customer sent an image, but the image format could not be passed to the vision model. Use catalog/product context and conversation only." });
   }
 
-  const visualProducts = orderedProducts.filter((p) => p.image_url).slice(0, 60);
+  const visualProducts = supportedCatalogImageProducts(orderedProducts).slice(0, 60);
   for (const product of visualProducts) {
     content.push({
       type: "text",
@@ -2971,7 +3025,7 @@ async function requestMetaAutoReply({ brandDoc, products, customerMessage, image
     },
     {
       role: "user",
-      content: buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct }),
+      content: await buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory, identifiedProduct }),
     },
   ];
 
@@ -3085,7 +3139,12 @@ function parseMetaJsonObject(text = "") {
 
 async function identifyProductFromImage({ products, imageUrl, conversationHistory }) {
   if (!process.env.OPENAI_API_KEY || !imageUrl) return null;
-  const visualProducts = products.filter((p) => p.image_url).slice(0, 60);
+  const safeCustomerImageUrl = await prepareOpenAiImageRef(imageUrl);
+  if (!safeCustomerImageUrl) {
+    console.warn("[Meta Auto Reply] skipped unsupported customer image for product matching");
+    return null;
+  }
+  const visualProducts = supportedCatalogImageProducts(products).slice(0, 60);
   if (!visualProducts.length) return null;
   const content = [
     {
@@ -3095,7 +3154,7 @@ async function identifyProductFromImage({ products, imageUrl, conversationHistor
         `RECENT CONVERSATION:\n${conversationHistory || "(none)"}`,
     },
     { type: "text", text: "CUSTOMER IMAGE:" },
-    { type: "image_url", image_url: { url: imageUrl } },
+    { type: "image_url", image_url: { url: safeCustomerImageUrl } },
   ];
 
   visualProducts.forEach((product, index) => {
