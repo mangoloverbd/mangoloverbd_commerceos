@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye, EyeOff, CheckCircle2, XCircle,
-  ShieldCheck, FileHeart, ChevronRight, ArrowLeft,
+  ShieldCheck, FileHeart, ChevronRight, ArrowLeft, Link2, Unplug, Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -201,6 +201,16 @@ const SECTIONS: SectionDef[] = [
 
 type Settings = Record<string, string>;
 
+type MetaStatus = {
+  connected: boolean;
+  pages: Array<{ page_id: string; page_name: string; webhook_subscribed: boolean; status: string }>;
+  instagramAccounts: Array<{ instagram_account_id: string; username: string; account_name: string; status: string }>;
+  whatsappAccounts: Array<{ whatsapp_business_account_id: string; phone_number_id: string | null; display_phone_number: string; account_name: string; status: string }>;
+  adAccounts: Array<{ ad_account_id: string; account_name: string; currency: string | null; status: string }>;
+  aiAutomation: { enabled: boolean; channels: string[]; handoffRules: Record<string, unknown> };
+  whatsappConfigReady: boolean;
+};
+
 const GROUPS = [
   { label: "Commerce", ids: ["shopify"] },
   { label: "Marketing", ids: ["facebook"] },
@@ -208,6 +218,171 @@ const GROUPS = [
   { label: "Security", ids: ["fraudshield"] },
   { label: "Social", ids: ["facebook-messenger", "instagram-dm", "whatsapp-business"] },
 ];
+
+function AssetList({ title, items, empty }: { title: string; items: React.ReactNode[]; empty: string }) {
+  return (
+    <div className="rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[12px] font-semibold text-black">{title}</p>
+        <span className="text-[11px] text-black/35">{items.length}</span>
+      </div>
+      {items.length ? (
+        <div className="space-y-1.5">{items}</div>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-black/35">{empty}</p>
+      )}
+    </div>
+  );
+}
+
+function MetaBusinessPanel() {
+  const [status, setStatus] = useState<MetaStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const refresh = () => {
+    setLoading(true);
+    apiFetch("/api/meta/status")
+      .then((r) => r.json())
+      .then((d) => setStatus(d))
+      .catch(() => toast.error("Failed to load Meta Business status"))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("meta") === "connected") toast.success("Meta Business connected");
+    if (params.get("meta") === "error") toast.error(params.get("message") || "Meta connection failed");
+  }, []);
+
+  const connect = async () => {
+    setConnecting(true);
+    try {
+      const res = await apiFetch("/api/meta/oauth/start", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start Meta OAuth");
+      window.location.href = data.url;
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to start Meta OAuth");
+      setConnecting(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm("Disconnect Meta Business? Historical inbox messages will be preserved.")) return;
+    setDisconnecting(true);
+    try {
+      const res = await apiFetch("/api/meta/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to disconnect Meta");
+      toast.success("Meta Business disconnected");
+      refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to disconnect Meta");
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const row = (key: string, name: string, meta?: string, ok = true) => (
+    <div key={key} className="flex items-center justify-between gap-3 rounded-[9px] bg-white px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-medium text-black">{name || key}</p>
+        {meta && <p className="truncate text-[10px] text-black/35">{meta}</p>}
+      </div>
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", ok ? "bg-emerald-500" : "bg-amber-500")} />
+    </div>
+  );
+
+  return (
+    <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white">
+      <div className="flex items-start gap-3 border-b border-black/[0.06] px-4 py-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#0866FF]">
+          <MetaIcon className="h-5 w-5 text-white" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-[14px] font-semibold text-black">Meta Business</p>
+            <span className={cn(
+              "rounded-full px-2 py-0.5 text-[10px] font-medium",
+              status?.connected ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-black/45"
+            )}>
+              {status?.connected ? "Connected" : "Primary"}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[12px] leading-relaxed text-black/42">
+            OAuth connection for Messenger, Instagram DM, WhatsApp Cloud API, ad accounts, webhooks, and AI automation.
+          </p>
+        </div>
+        {loading ? (
+          <Spinner size="sm" className="text-black/30" />
+        ) : status?.connected ? (
+          <button
+            onClick={disconnect}
+            disabled={disconnecting}
+            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-red-500/15 bg-red-50 px-3 text-[12px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+          >
+            {disconnecting ? <Spinner size="sm" /> : <Unplug className="h-3.5 w-3.5" />}
+            Disconnect
+          </button>
+        ) : (
+          <button
+            onClick={connect}
+            disabled={connecting}
+            className="flex h-9 items-center gap-1.5 rounded-[10px] bg-black px-3 text-[12px] font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-50"
+            data-testid="button-connect-meta-business"
+          >
+            {connecting ? <Spinner size="sm" /> : <Link2 className="h-3.5 w-3.5" />}
+            Connect Meta Business
+          </button>
+        )}
+      </div>
+
+      {status?.connected && (
+        <div className="grid gap-3 p-4 md:grid-cols-2">
+          <AssetList
+            title="Connected Facebook Pages"
+            empty="No Pages selected yet."
+            items={status.pages.map((p) => row(p.page_id, p.page_name, p.page_id, p.webhook_subscribed))}
+          />
+          <AssetList
+            title="Connected Instagram Accounts"
+            empty="No Instagram Business accounts found."
+            items={status.instagramAccounts.map((a) => row(a.instagram_account_id, a.account_name || a.username, a.username ? `@${a.username}` : a.instagram_account_id))}
+          />
+          <AssetList
+            title="Connected WhatsApp Accounts"
+            empty={status.whatsappConfigReady ? "No WhatsApp assets found." : "Backend is ready. Add META_WHATSAPP_CONFIG_ID to enable Embedded Signup launcher later."}
+            items={status.whatsappAccounts.map((a) => row(`${a.whatsapp_business_account_id}:${a.phone_number_id}`, a.account_name || a.display_phone_number, a.display_phone_number || a.whatsapp_business_account_id))}
+          />
+          <AssetList
+            title="Connected Ad Accounts"
+            empty="No ad accounts found."
+            items={status.adAccounts.map((a) => row(a.ad_account_id, a.account_name, [a.ad_account_id, a.currency].filter(Boolean).join(" · ")))}
+          />
+          <div className="rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3 md:col-span-2">
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-black/45" />
+              <p className="text-[12px] font-semibold text-black">AI Automation Status</p>
+              <span className={cn(
+                "ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium",
+                status.aiAutomation.enabled ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-black/45"
+              )}>
+                {status.aiAutomation.enabled ? "Active" : "Paused"}
+              </span>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-black/40">
+              Enabled channels: {status.aiAutomation.channels.length ? status.aiAutomation.channels.join(", ") : "none"}.
+              Messenger and Instagram are enabled by default after OAuth connection.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function FieldRow({ field, value, onChange }: { field: FieldDef; value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
@@ -580,6 +755,12 @@ export function IntegrationSettings() {
                 {SECTIONS.filter((s) => s.fields.every((f) => !!(settings[f.key] || "").trim())).length}/{SECTIONS.length} configured
               </span>
             </p>
+          </div>
+
+          {/* Primary Meta Business OAuth integration */}
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30 px-1">Primary Social Platform</p>
+            <MetaBusinessPanel />
           </div>
 
           {/* Grouped integration lists */}

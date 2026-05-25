@@ -746,6 +746,173 @@ async function saveProductStock(orgId, productId, quantity) {
   return saveSettings({ [`${orgId}:product_stock:${productId}`]: Math.max(0, parseInt(quantity, 10) || 0) });
 }
 
+// ─── Secret Storage Helpers ─────────────────────────────────────────────────
+
+function getTokenEncryptionKey() {
+  const secret = process.env.TOKEN_ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error("Missing TOKEN_ENCRYPTION_KEY env var");
+  }
+  return crypto.createHash("sha256").update(secret).digest();
+}
+
+function encryptToken(value) {
+  if (!value) return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", getTokenEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1:${iv.toString("base64")}:${tag.toString("base64")}:${encrypted.toString("base64")}`;
+}
+
+function decryptToken(value) {
+  if (!value) return "";
+  if (!String(value).startsWith("v1:")) return String(value);
+  const [, ivB64, tagB64, encryptedB64] = String(value).split(":");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", getTokenEncryptionKey(), Buffer.from(ivB64, "base64"));
+  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedB64, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function metaGraphVersion() {
+  return process.env.META_GRAPH_VERSION || "v23.0";
+}
+
+function metaGraphUrl(path, params = {}) {
+  const url = new URL(`https://graph.facebook.com/${metaGraphVersion()}/${String(path).replace(/^\//, "")}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+  }
+  return url.toString();
+}
+
+async function metaGraph(path, { method = "GET", token, params = {}, body } = {}) {
+  const url = metaGraphUrl(path, method === "GET" ? { ...params, access_token: token } : params);
+  const response = await fetch(url, {
+    method,
+    headers: {
+      ...(method !== "GET" ? { "Content-Type": "application/json" } : {}),
+      ...(token && method !== "GET" ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.error) {
+    const err = new Error(data?.error?.message || `Meta API ${response.status}`);
+    err.meta = data?.error;
+    err.statusCode = response.status;
+    throw err;
+  }
+  return data;
+}
+
+function signMetaState(payload) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", process.env.META_APP_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "meta-state")
+    .update(encoded)
+    .digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function verifyMetaState(state) {
+  const [encoded, signature] = String(state || "").split(".");
+  if (!encoded || !signature) throw new Error("Invalid OAuth state");
+  const expected = crypto
+    .createHmac("sha256", process.env.META_APP_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "meta-state")
+    .update(encoded)
+    .digest("base64url");
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    throw new Error("Invalid OAuth state signature");
+  }
+  const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  if (!payload.ts || Date.now() - payload.ts > 10 * 60 * 1000) {
+    throw new Error("OAuth state expired");
+  }
+  return payload;
+}
+
+function metaRedirectUri() {
+  return process.env.META_REDIRECT_URI || "https://suite.arclabtechnology.com/api/meta/oauth/callback";
+}
+
+const META_SCOPES = [
+  "pages_show_list",
+  "pages_manage_metadata",
+  "pages_messaging",
+  "instagram_basic",
+  "instagram_manage_messages",
+  "business_management",
+  "ads_read",
+  "whatsapp_business_management",
+  "whatsapp_business_messaging",
+];
+
+function sanitizeMetaConnection(row) {
+  if (!row) return null;
+  const { encrypted_user_access_token, ...safe } = row;
+  return safe;
+}
+
+function sanitizeMetaPage(row) {
+  if (!row) return null;
+  const { encrypted_page_access_token, ...safe } = row;
+  return safe;
+}
+
+function sanitizeMetaWhatsApp(row) {
+  if (!row) return null;
+  const { encrypted_access_token, ...safe } = row;
+  return safe;
+}
+
+async function getMetaConnectionForOrg(supabase, orgId) {
+  const { data, error } = await supabase
+    .from("meta_connections")
+    .select("*")
+    .eq("org_id", orgId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function getMetaStatus(supabase, orgId) {
+  const [connection, pages, instagram, whatsapp, ads] = await Promise.all([
+    supabase.from("meta_connections").select("*").eq("org_id", orgId).maybeSingle(),
+    supabase.from("meta_pages").select("*").eq("org_id", orgId).order("page_name"),
+    supabase.from("meta_instagram_accounts").select("*").eq("org_id", orgId).order("account_name"),
+    supabase.from("meta_whatsapp_accounts").select("*").eq("org_id", orgId).order("account_name"),
+    supabase.from("meta_ad_accounts").select("*").eq("org_id", orgId).order("account_name"),
+  ]);
+  for (const result of [connection, pages, instagram, whatsapp, ads]) {
+    if (result.error) throw result.error;
+  }
+  return {
+    connected: !!connection.data,
+    connection: sanitizeMetaConnection(connection.data),
+    pages: (pages.data || []).map(sanitizeMetaPage),
+    instagramAccounts: instagram.data || [],
+    whatsappAccounts: (whatsapp.data || []).map(sanitizeMetaWhatsApp),
+    adAccounts: ads.data || [],
+  };
+}
+
+async function upsertMetaWebhookEvent(supabase, event) {
+  await supabase.from("meta_webhook_events").insert({
+    org_id: event.orgId || null,
+    platform: event.platform || null,
+    object_type: event.objectType || null,
+    page_id: event.pageId || null,
+    instagram_account_id: event.instagramAccountId || null,
+    sender_id: event.senderId || null,
+    event_type: event.eventType || null,
+    payload: event.payload || {},
+  });
+}
+
 app.get("/api/settings", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -823,6 +990,293 @@ app.post("/api/settings/test-fraudshield", async (req, res) => {
     return res.json({ success: true, message: "API key configured" });
   } catch (err) {
     return res.status(500).json({ error: "An internal error occurred" });
+  }
+});
+
+// ─── Meta Business OAuth + Asset Sync ───────────────────────────────────────
+
+async function exchangeMetaCodeForToken(code) {
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appId || !appSecret) throw new Error("Missing META_APP_ID or META_APP_SECRET env vars");
+
+  const shortLived = await metaGraph("/oauth/access_token", {
+    params: {
+      client_id: appId,
+      client_secret: appSecret,
+      redirect_uri: metaRedirectUri(),
+      code,
+    },
+  });
+
+  const longLived = await metaGraph("/oauth/access_token", {
+    params: {
+      grant_type: "fb_exchange_token",
+      client_id: appId,
+      client_secret: appSecret,
+      fb_exchange_token: shortLived.access_token,
+    },
+  });
+
+  return longLived.access_token || shortLived.access_token;
+}
+
+async function subscribeMetaPage(pageId, pageToken) {
+  try {
+    await metaGraph(`/${pageId}/subscribed_apps`, {
+      method: "POST",
+      token: pageToken,
+      body: {
+        subscribed_fields: [
+          "messages",
+          "messaging_postbacks",
+          "messaging_optins",
+          "messaging_referrals",
+        ],
+      },
+    });
+    return { subscribed: true, error: null };
+  } catch (err) {
+    console.warn(`[Meta] Failed to subscribe page ${pageId}:`, errorMessage(err));
+    return { subscribed: false, error: errorMessage(err) };
+  }
+}
+
+async function unsubscribeMetaPage(pageId, pageToken) {
+  try {
+    await metaGraph(`/${pageId}/subscribed_apps`, { method: "DELETE", token: pageToken });
+  } catch (err) {
+    console.warn(`[Meta] Failed to unsubscribe page ${pageId}:`, errorMessage(err));
+  }
+}
+
+async function syncMetaAssets({ supabase, orgId, userId, userToken }) {
+  const me = await metaGraph("/me", { token: userToken, params: { fields: "id,name,email" } });
+  const expiresAt = new Date(Date.now() + 55 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: connection, error: connectionError } = await supabase
+    .from("meta_connections")
+    .upsert({
+      org_id: orgId,
+      connected_by_user_id: userId,
+      meta_user_id: me.id,
+      meta_user_name: me.name || "",
+      encrypted_user_access_token: encryptToken(userToken),
+      token_expires_at: expiresAt,
+      scopes: META_SCOPES,
+      status: "connected",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "org_id" })
+    .select()
+    .single();
+  if (connectionError) throw connectionError;
+
+  const pagesResult = await metaGraph("/me/accounts", {
+    token: userToken,
+    params: {
+      fields: "id,name,access_token,tasks,instagram_business_account{id,username,name}",
+      limit: 100,
+    },
+  });
+  const pages = pagesResult.data || [];
+
+  let subscribed = 0;
+  for (const page of pages) {
+    const subscription = page.access_token ? await subscribeMetaPage(page.id, page.access_token) : { subscribed: false };
+    if (subscription.subscribed) subscribed++;
+
+    const { error: pageError } = await supabase
+      .from("meta_pages")
+      .upsert({
+        org_id: orgId,
+        connection_id: connection.id,
+        page_id: page.id,
+        page_name: page.name || "",
+        encrypted_page_access_token: encryptToken(page.access_token || ""),
+        instagram_account_id: page.instagram_business_account?.id || null,
+        webhook_subscribed: !!subscription.subscribed,
+        status: "connected",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "org_id,page_id" });
+    if (pageError) throw pageError;
+
+    if (page.instagram_business_account?.id) {
+      const ig = page.instagram_business_account;
+      const { error: igError } = await supabase
+        .from("meta_instagram_accounts")
+        .upsert({
+          org_id: orgId,
+          connection_id: connection.id,
+          page_id: page.id,
+          instagram_account_id: ig.id,
+          username: ig.username || "",
+          account_name: ig.name || ig.username || "",
+          status: "connected",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "org_id,instagram_account_id" });
+      if (igError) throw igError;
+    }
+  }
+
+  try {
+    const adAccounts = await metaGraph("/me/adaccounts", {
+      token: userToken,
+      params: { fields: "id,account_id,name,account_status,currency", limit: 100 },
+    });
+    for (const ad of adAccounts.data || []) {
+      const adAccountId = ad.id || (ad.account_id ? `act_${ad.account_id}` : null);
+      if (!adAccountId) continue;
+      const { error: adError } = await supabase
+        .from("meta_ad_accounts")
+        .upsert({
+          org_id: orgId,
+          connection_id: connection.id,
+          ad_account_id: adAccountId,
+          account_name: ad.name || adAccountId,
+          currency: ad.currency || null,
+          status: String(ad.account_status || "connected"),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "org_id,ad_account_id" });
+      if (adError) throw adError;
+    }
+  } catch (err) {
+    console.warn("[Meta] Ad account sync skipped:", errorMessage(err));
+  }
+
+  try {
+    const businesses = await metaGraph("/me/businesses", {
+      token: userToken,
+      params: { fields: "id,name", limit: 50 },
+    });
+    for (const business of businesses.data || []) {
+      const wabas = await metaGraph(`/${business.id}/owned_whatsapp_business_accounts`, {
+        token: userToken,
+        params: { fields: "id,name,phone_numbers{id,display_phone_number,verified_name}", limit: 50 },
+      });
+      for (const waba of wabas.data || []) {
+        const phoneNumbers = waba.phone_numbers?.data?.length ? waba.phone_numbers.data : [null];
+        for (const phone of phoneNumbers) {
+          const { error: waError } = await supabase
+            .from("meta_whatsapp_accounts")
+            .upsert({
+              org_id: orgId,
+              connection_id: connection.id,
+              whatsapp_business_account_id: waba.id,
+              phone_number_id: phone?.id || null,
+              display_phone_number: phone?.display_phone_number || "",
+              account_name: phone?.verified_name || waba.name || "",
+              encrypted_access_token: encryptToken(userToken),
+              status: "connected",
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "org_id,whatsapp_business_account_id,phone_number_id" });
+          if (waError) throw waError;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Meta] WhatsApp asset sync skipped:", errorMessage(err));
+  }
+
+  await saveOrgSettings(orgId, {
+    ai_auto_reply_enabled: "true",
+    auto_reply_channels: JSON.stringify(["facebook", "instagram"]),
+    auto_reply_handoff_rules: JSON.stringify({ pause_on_human_reply: true }),
+  });
+
+  return { connection, pages: pages.length, subscribed };
+}
+
+app.get("/api/meta/status", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const status = await getMetaStatus(supabase, orgId);
+    const settings = await getOrgSettings(orgId, ["ai_auto_reply_enabled", "auto_reply_channels", "auto_reply_handoff_rules"]);
+    return res.json({
+      ...status,
+      aiAutomation: {
+        enabled: settings.ai_auto_reply_enabled === "true",
+        channels: JSON.parse(settings.auto_reply_channels || "[]"),
+        handoffRules: JSON.parse(settings.auto_reply_handoff_rules || "{}"),
+      },
+      whatsappConfigReady: !!process.env.META_WHATSAPP_CONFIG_ID,
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.post("/api/meta/oauth/start", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) {
+      return res.status(500).json({ error: "Missing META_APP_ID or META_APP_SECRET env vars" });
+    }
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const state = signMetaState({ orgId, userId: user.id, ts: Date.now(), nonce: crypto.randomUUID() });
+    const url = new URL(`https://www.facebook.com/${metaGraphVersion()}/dialog/oauth`);
+    url.searchParams.set("client_id", process.env.META_APP_ID);
+    url.searchParams.set("redirect_uri", metaRedirectUri());
+    url.searchParams.set("state", state);
+    url.searchParams.set("scope", META_SCOPES.join(","));
+    url.searchParams.set("response_type", "code");
+    return res.json({ url: url.toString() });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/meta/oauth/callback", async (req, res) => {
+  try {
+    if (req.query.error) {
+      return res.redirect(`/settings?meta=error&message=${encodeURIComponent(req.query.error_description || req.query.error)}`);
+    }
+    const { orgId, userId } = verifyMetaState(req.query.state);
+    const code = req.query.code;
+    if (!code) throw new Error("Missing OAuth code");
+    const userToken = await exchangeMetaCodeForToken(code);
+    const supabase = getServiceSupabase();
+    await syncMetaAssets({ supabase, orgId, userId, userToken });
+    return res.redirect("/settings?meta=connected");
+  } catch (err) {
+    console.error("[Meta OAuth] callback failed:", errorMessage(err));
+    return res.redirect(`/settings?meta=error&message=${encodeURIComponent(errorMessage(err))}`);
+  }
+});
+
+app.post("/api/meta/disconnect", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { data: pages } = await supabase
+      .from("meta_pages")
+      .select("page_id, encrypted_page_access_token")
+      .eq("org_id", orgId);
+    for (const page of pages || []) {
+      const token = page.encrypted_page_access_token ? decryptToken(page.encrypted_page_access_token) : "";
+      if (token) await unsubscribeMetaPage(page.page_id, token);
+    }
+
+    await supabase.from("meta_ad_accounts").delete().eq("org_id", orgId);
+    await supabase.from("meta_whatsapp_accounts").delete().eq("org_id", orgId);
+    await supabase.from("meta_instagram_accounts").delete().eq("org_id", orgId);
+    await supabase.from("meta_pages").delete().eq("org_id", orgId);
+    await supabase.from("meta_connections").delete().eq("org_id", orgId);
+    await saveOrgSettings(orgId, {
+      ai_auto_reply_enabled: "false",
+      auto_reply_channels: JSON.stringify([]),
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
   }
 });
 
@@ -929,12 +1383,34 @@ app.get("/api/analytics", async (req, res) => {
       }
     }
 
-    // Fetch Facebook ad spend
+    // Fetch Meta/Facebook ad spend. Prefer OAuth-connected Meta ad accounts,
+    // but keep legacy manual Facebook Ads settings as fallback.
     let adSpend = null;
     let fbError = null;
     const cfg = await getOrgSettings(orgId, ["facebook_access_token", "facebook_ad_account_id", "usd_to_bdt_rate"]);
-    const fbToken = cfg["facebook_access_token"];
-    const fbAccountId = cfg["facebook_ad_account_id"];
+    let fbToken = cfg["facebook_access_token"];
+    let fbAccountId = cfg["facebook_ad_account_id"];
+    if (!fbToken || !fbAccountId) {
+      try {
+        const { data: connection } = await supabase
+          .from("meta_connections")
+          .select("encrypted_user_access_token")
+          .eq("org_id", orgId)
+          .maybeSingle();
+        const { data: adAccount } = await supabase
+          .from("meta_ad_accounts")
+          .select("ad_account_id")
+          .eq("org_id", orgId)
+          .limit(1)
+          .maybeSingle();
+        if (connection?.encrypted_user_access_token && adAccount?.ad_account_id) {
+          fbToken = decryptToken(connection.encrypted_user_access_token);
+          fbAccountId = adAccount.ad_account_id;
+        }
+      } catch (err) {
+        console.warn("[Meta Analytics] OAuth ad account fallback unavailable:", errorMessage(err));
+      }
+    }
     const usdToBdt = parseFloat(cfg["usd_to_bdt_rate"] || "0") || 110; // default 110
 
     if (fbToken && fbAccountId) {
@@ -953,7 +1429,7 @@ app.get("/api/analytics", async (req, res) => {
 
         let totalSpendUsd = 0;
         const spendByDayUsd = new Map();
-        let nextUrl = `https://graph.facebook.com/v20.0/${accountId}/insights?fields=spend,date_start&level=account&${dateParam}&time_increment=1&access_token=${encodeURIComponent(fbToken)}`;
+        let nextUrl = `https://graph.facebook.com/${metaGraphVersion()}/${accountId}/insights?fields=spend,date_start&level=account&${dateParam}&time_increment=1&access_token=${encodeURIComponent(fbToken)}`;
         let pages = 0;
         const MAX_PAGES = 10;
 
@@ -2274,6 +2750,310 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
   }
 });
 
+// ─── Unified Social Inbox + Meta Webhooks ───────────────────────────────────
+
+async function findMetaChannelByRecipient(supabase, recipientId, platformHint = "facebook") {
+  if (!recipientId) return null;
+  if (platformHint === "instagram") {
+    const { data: ig } = await supabase
+      .from("meta_instagram_accounts")
+      .select("org_id, page_id, instagram_account_id")
+      .eq("instagram_account_id", recipientId)
+      .maybeSingle();
+    if (ig) {
+      const { data: page } = await supabase
+        .from("meta_pages")
+        .select("encrypted_page_access_token, page_id")
+        .eq("org_id", ig.org_id)
+        .eq("page_id", ig.page_id)
+        .maybeSingle();
+      return { ...ig, page_id: ig.page_id || page?.page_id, encrypted_page_access_token: page?.encrypted_page_access_token };
+    }
+  }
+  const { data: page } = await supabase
+    .from("meta_pages")
+    .select("org_id, page_id, instagram_account_id, encrypted_page_access_token")
+    .eq("page_id", recipientId)
+    .maybeSingle();
+  if (page) return page;
+  const { data: igByPage } = await supabase
+    .from("meta_pages")
+    .select("org_id, page_id, instagram_account_id, encrypted_page_access_token")
+    .eq("instagram_account_id", recipientId)
+    .maybeSingle();
+  return igByPage || null;
+}
+
+async function upsertSocialMessage({ supabase, orgId, platform, contactId, contactName, sender, content, imageUrl, messageType }) {
+  const now = new Date().toISOString();
+  let { data: conversation, error: findError } = await supabase
+    .from("social_conversations")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("platform", platform)
+    .eq("contact_id", contactId)
+    .maybeSingle();
+  if (findError) throw findError;
+
+  if (!conversation) {
+    const inserted = await supabase
+      .from("social_conversations")
+      .insert({
+        org_id: orgId,
+        platform,
+        contact_id: contactId,
+        contact_name: contactName || contactId,
+        last_message: content || `[${messageType}]`,
+        last_message_at: now,
+        unread_count: sender === "user" ? 1 : 0,
+      })
+      .select()
+      .single();
+    if (inserted.error) throw inserted.error;
+    conversation = inserted.data;
+  } else {
+    const { data: updated, error: updateError } = await supabase
+      .from("social_conversations")
+      .update({
+        contact_name: contactName || conversation.contact_name,
+        last_message: content || `[${messageType}]`,
+        last_message_at: now,
+        unread_count: sender === "user" ? (conversation.unread_count || 0) + 1 : conversation.unread_count || 0,
+      })
+      .eq("id", conversation.id)
+      .eq("org_id", orgId)
+      .select()
+      .single();
+    if (updateError) throw updateError;
+    conversation = updated;
+  }
+
+  const { data: message, error: messageError } = await supabase
+    .from("social_messages")
+    .insert({
+      conversation_id: conversation.id,
+      sender,
+      content: content || "",
+      image_url: imageUrl || null,
+      message_type: messageType || "text",
+    })
+    .select()
+    .single();
+  if (messageError) throw messageError;
+  return { conversation, message };
+}
+
+async function buildMetaAutoReply({ orgId, platform, customerMessage }) {
+  const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
+  if (settings.ai_auto_reply_enabled !== "true") return null;
+  const channels = JSON.parse(settings.auto_reply_channels || "[]");
+  if (!channels.includes(platform)) return null;
+  if (!process.env.OPENAI_API_KEY) return null;
+
+  const brandDoc = settings.brand_doc || "";
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. If order details are needed, ask for name, phone, address, product, and quantity. Do not invent policies.",
+        },
+        {
+          role: "user",
+          content: `Brand knowledge:\n${brandDoc || "(none)"}\n\nCustomer message:\n${customerMessage}`,
+        },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    console.warn("[Meta Auto Reply] OpenAI failed:", response.status, body.slice(0, 240));
+    return null;
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim() || null;
+}
+
+async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text }) {
+  if (!text || !pageToken || !recipientId) return;
+  const path = platform === "instagram" ? `/${pageId}/messages` : `/${pageId}/messages`;
+  await metaGraph(path, {
+    method: "POST",
+    token: pageToken,
+    body: {
+      recipient: { id: recipientId },
+      messaging_type: "RESPONSE",
+      message: { text: text.slice(0, 1900) },
+    },
+  });
+}
+
+async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging }) {
+  const platform = objectType === "instagram" ? "instagram" : "facebook";
+  const senderId = messaging.sender?.id;
+  const recipientId = messaging.recipient?.id || entry.id;
+  const text = messaging.message?.text || messaging.postback?.payload || "";
+  const attachment = messaging.message?.attachments?.[0];
+  const imageUrl = attachment?.payload?.url || null;
+  const messageType = attachment?.type || (text ? "text" : "event");
+  if (!senderId || !recipientId) return;
+
+  const channel = await findMetaChannelByRecipient(supabase, recipientId, platform);
+  if (!channel?.org_id) {
+    await upsertMetaWebhookEvent(supabase, {
+      objectType,
+      platform,
+      pageId: recipientId,
+      senderId,
+      eventType: "unmatched_message",
+      payload: messaging,
+    });
+    return;
+  }
+
+  await upsertMetaWebhookEvent(supabase, {
+    orgId: channel.org_id,
+    objectType,
+    platform,
+    pageId: channel.page_id || recipientId,
+    instagramAccountId: channel.instagram_account_id || null,
+    senderId,
+    eventType: "message",
+    payload: messaging,
+  });
+
+  await upsertSocialMessage({
+    supabase,
+    orgId: channel.org_id,
+    platform,
+    contactId: senderId,
+    contactName: senderId,
+    sender: "user",
+    content: text,
+    imageUrl,
+    messageType,
+  });
+
+  if (!text) return;
+  const reply = await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text });
+  if (!reply) return;
+
+  const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
+  try {
+    await sendMetaMessage({
+      platform,
+      pageId: channel.page_id || recipientId,
+      pageToken,
+      recipientId: senderId,
+      text: reply,
+    });
+    await upsertSocialMessage({
+      supabase,
+      orgId: channel.org_id,
+      platform,
+      contactId: senderId,
+      contactName: senderId,
+      sender: "bot",
+      content: reply,
+      messageType: "text",
+    });
+  } catch (err) {
+    console.warn("[Meta Auto Reply] send failed:", errorMessage(err));
+  }
+}
+
+app.get("/api/webhooks/facebook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  const expected = process.env.META_WEBHOOK_VERIFY_TOKEN;
+  if (mode === "subscribe" && expected && token === expected) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
+});
+
+app.post("/api/webhooks/facebook", async (req, res) => {
+  const supabase = getServiceSupabase();
+  const body = req.body || {};
+  res.sendStatus(200);
+  try {
+    const entries = Array.isArray(body.entry) ? body.entry : [];
+    for (const entry of entries) {
+      for (const messaging of entry.messaging || []) {
+        await handleMetaMessagingEvent({ supabase, objectType: body.object, entry, messaging });
+      }
+      for (const change of entry.changes || []) {
+        await upsertMetaWebhookEvent(supabase, {
+          objectType: body.object,
+          platform: body.object === "instagram" ? "instagram" : "facebook",
+          pageId: entry.id,
+          eventType: change.field || "change",
+          payload: change,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[Meta Webhook] processing failed:", errorMessage(err));
+  }
+});
+
+app.get("/api/social/conversations/:platform", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const platform = req.params.platform;
+    if (!["facebook", "instagram", "whatsapp"].includes(platform)) return res.status(400).json({ error: "Invalid platform" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("social_conversations")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("platform", platform)
+      .order("last_message_at", { ascending: false });
+    if (error) throw error;
+    return res.json({ conversations: data || [] });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/social/messages/:conversationId", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: conversation, error: convError } = await supabase
+      .from("social_conversations")
+      .select("id")
+      .eq("id", req.params.conversationId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (convError) throw convError;
+    if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+    await supabase.from("social_conversations").update({ unread_count: 0 }).eq("id", conversation.id).eq("org_id", orgId);
+    const { data, error } = await supabase
+      .from("social_messages")
+      .select("*")
+      .eq("conversation_id", conversation.id)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return res.json({ messages: data || [] });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 // Brand document
 app.get("/api/social/brand-doc", async (req, res) => {
   try {
@@ -2399,6 +3179,131 @@ END $$;
 DO $$ BEGIN
   ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 0;
 EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+-- Social conversations must be unique per organization, not globally.
+DO $$ BEGIN
+  ALTER TABLE public.social_conversations DROP CONSTRAINT IF EXISTS social_conversations_platform_contact_id_key;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS social_conversations_org_platform_contact_idx
+  ON public.social_conversations(org_id, platform, contact_id);
+
+-- ── Multi-tenant Meta Business integration ─────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.meta_connections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL UNIQUE,
+  connected_by_user_id UUID,
+  meta_user_id TEXT,
+  meta_user_name TEXT,
+  encrypted_user_access_token TEXT,
+  token_expires_at TIMESTAMPTZ,
+  scopes TEXT[] DEFAULT '{}',
+  status TEXT DEFAULT 'connected',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.meta_connections ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_meta_connections" ON public.meta_connections TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.meta_pages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL,
+  connection_id UUID REFERENCES public.meta_connections(id) ON DELETE CASCADE,
+  page_id TEXT NOT NULL,
+  page_name TEXT,
+  encrypted_page_access_token TEXT,
+  instagram_account_id TEXT,
+  webhook_subscribed BOOLEAN DEFAULT FALSE,
+  status TEXT DEFAULT 'connected',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(org_id, page_id)
+);
+ALTER TABLE public.meta_pages ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_meta_pages" ON public.meta_pages TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.meta_instagram_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL,
+  connection_id UUID REFERENCES public.meta_connections(id) ON DELETE CASCADE,
+  page_id TEXT,
+  instagram_account_id TEXT NOT NULL,
+  username TEXT,
+  account_name TEXT,
+  status TEXT DEFAULT 'connected',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(org_id, instagram_account_id)
+);
+ALTER TABLE public.meta_instagram_accounts ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_meta_instagram" ON public.meta_instagram_accounts TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.meta_whatsapp_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL,
+  connection_id UUID REFERENCES public.meta_connections(id) ON DELETE CASCADE,
+  whatsapp_business_account_id TEXT NOT NULL,
+  phone_number_id TEXT,
+  display_phone_number TEXT,
+  account_name TEXT,
+  encrypted_access_token TEXT,
+  status TEXT DEFAULT 'connected',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(org_id, whatsapp_business_account_id, phone_number_id)
+);
+ALTER TABLE public.meta_whatsapp_accounts ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_meta_whatsapp" ON public.meta_whatsapp_accounts TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.meta_ad_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL,
+  connection_id UUID REFERENCES public.meta_connections(id) ON DELETE CASCADE,
+  ad_account_id TEXT NOT NULL,
+  account_name TEXT,
+  currency TEXT,
+  status TEXT DEFAULT 'connected',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(org_id, ad_account_id)
+);
+ALTER TABLE public.meta_ad_accounts ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_meta_ads" ON public.meta_ad_accounts TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.meta_webhook_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID,
+  platform TEXT,
+  object_type TEXT,
+  page_id TEXT,
+  instagram_account_id TEXT,
+  sender_id TEXT,
+  event_type TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.meta_webhook_events ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_meta_events" ON public.meta_webhook_events TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- Reload PostgREST schema cache so all new columns are visible immediately
