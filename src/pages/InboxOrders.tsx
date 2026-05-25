@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import {
   MagnifyingGlass, ShoppingBag, Package, NotePencil, Truck,
   ShieldCheck, ShieldWarning, Warning, Question, FileText, Printer,
-  Trash, Check, X, MapPin,
+  Trash, Check, MapPin,
 } from "@phosphor-icons/react";
 import {
   FacebookLogo, InstagramLogo, WhatsappLogo,
@@ -1070,61 +1070,50 @@ export default function InboxOrders() {
                   <span className="text-xs text-black font-normal ml-1">orders</span>
                 </span>
               </div>
-              <div className="flex items-center px-3 gap-1.5">
-                <PopButton
-                  color="sky"
-                  size="sm"
+              <div className="flex items-center px-3 gap-0.5">
+                <button
                   onClick={handleBulkFraudCheck}
                   disabled={isBulkChecking}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all disabled:opacity-30"
                   data-testid="button-bulk-fraud-check-inbox"
                 >
-                  {isBulkChecking ? <Spinner size="sm" /> : <ShieldCheck size={14} weight="light" />}
+                  {isBulkChecking ? <Spinner size="sm" /> : <ShieldCheck size={12} weight="light" />}
                   Fraud Check
-                </PopButton>
-                <PopButton
-                  color="neutral"
-                  size="sm"
+                </button>
+                <button
                   onClick={handleGenerateInvoice}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all"
                   data-testid="button-generate-invoice-inbox"
                 >
-                  <FileText size={14} weight="light" />
+                  <FileText size={12} weight="light" />
                   Invoice
-                </PopButton>
-                <PopButton
-                  color="slate"
-                  size="sm"
+                </button>
+                <button
                   onClick={handlePrintInvoice}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all"
                   data-testid="button-print-invoice-inbox"
                 >
-                  <Printer size={14} weight="light" />
+                  <Printer size={12} weight="light" />
                   Print
-                </PopButton>
-                <div className="w-px h-4 bg-black/[0.07] mx-0.5" />
-                <PopButton
-                  color="red"
-                  size="sm"
+                </button>
+                <div className="w-px h-4 bg-black/[0.07] mx-1" />
+                <button
                   onClick={handleDeleteOrders}
                   disabled={isDeleting}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-red-400 hover:text-red-600 hover:bg-red-50 transition-all disabled:opacity-30"
                   data-testid="button-delete-inbox-orders"
                 >
-                  {isDeleting ? <Spinner size="sm" /> : <Trash size={14} weight="light" />}
+                  {isDeleting ? <Spinner size="sm" /> : <Trash size={12} weight="light" />}
                   Delete
-                </PopButton>
-                <div className="w-px h-4 bg-black/[0.07] mx-0.5" />
-                <PopButton
-                  color="default"
-                  size="sm"
+                </button>
+                <div className="w-px h-4 bg-black/[0.07] mx-1" />
+                <button
                   onClick={() => setSelectedIds(new Set())}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  className="h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black transition-colors"
                   data-testid="button-clear-selection-inbox"
                 >
-                  <X size={14} weight="light" />
                   Clear
-                </PopButton>
+                </button>
               </div>
             </div>
           </motion.div>
