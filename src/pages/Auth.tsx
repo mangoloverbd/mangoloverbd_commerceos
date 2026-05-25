@@ -273,6 +273,14 @@ export default function Auth() {
                     transition={{ duration: 0.35, ...smooth }}
                     className="mb-6 space-y-1 text-center w-full"
                   >
+                    {/* Favicon logo */}
+                    <div className="flex justify-center mb-4">
+                      <img
+                        src="/favicon.svg"
+                        alt="Seraphine logo"
+                        className="w-12 h-12"
+                      />
+                    </div>
                     <h1
                       className="text-[32px] font-semibold leading-[1.08] tracking-normal text-white drop-shadow-sm"
                       style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif" }}
