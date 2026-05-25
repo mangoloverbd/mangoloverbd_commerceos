@@ -174,11 +174,21 @@ export function AppSidebar() {
             <SidebarHeader className="h-[52px] justify-center px-2.5">
                 <div className="flex items-center justify-between min-w-0">
                     {!isCollapsed && (
-                        <div className="flex items-center gap-2">
-                            <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-                            <span className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
-                            <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-                        </div>
+                        <Link
+                            to="/"
+                            className="flex min-w-0 items-baseline gap-1.5 text-[#111] transition-opacity hover:opacity-70"
+                            aria-label="Arc Lab Suite"
+                        >
+                            <span className="text-[15px] font-semibold leading-none tracking-normal">
+                                Arc Lab
+                            </span>
+                            <span
+                                className="text-[17px] font-semibold leading-none tracking-normal"
+                                style={{ fontFamily: "'Pixelify Sans', system-ui, sans-serif" }}
+                            >
+                                Suite
+                            </span>
+                        </Link>
                     )}
                     {/* Logo + name */}
                     <Link
