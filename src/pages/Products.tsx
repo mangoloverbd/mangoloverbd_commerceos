@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Link2, Trash2, PackageSearch,
-  Package2, TrendingUp, Globe2, RefreshCw
+  Package2, TrendingUp, Globe2, RefreshCw,
+  ChevronDown, Plus, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -21,6 +22,18 @@ function SaveIcon({ className }: { className?: string }) {
   );
 }
 
+type ProductVariant = {
+  id: string;
+  product_id: string;
+  size: string | null;
+  color: string | null;
+  sku: string | null;
+  cog: number;
+  stock_quantity: number;
+  org_id: string | null;
+  created_at: string;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -31,6 +44,7 @@ type Product = {
   stock_quantity: number;
   source_url: string | null;
   created_at: string;
+  variants: ProductVariant[];
 };
 
 function fmt(n: number | null | undefined) {
@@ -43,6 +57,275 @@ function margin(selling: number | null, cog: number) {
   return (((selling - cog) / selling) * 100).toFixed(1);
 }
 
+// ── Variants panel ────────────────────────────────────────────────────────────
+
+type VariantsPanelProps = {
+  product: Product;
+  isAdmin: boolean;
+  onClose: () => void;
+};
+
+function VariantsPanel({ product, isAdmin, onClose }: VariantsPanelProps) {
+  const qc = useQueryClient();
+  const [newSize, setNewSize] = useState("");
+  const [newColor, setNewColor] = useState("");
+  const [newSku, setNewSku] = useState("");
+  const [newCog, setNewCog] = useState("0");
+  const [newStock, setNewStock] = useState("0");
+  const [adding, setAdding] = useState(false);
+  const [variantEdits, setVariantEdits] = useState<Record<string, { stock?: string; cog?: string }>>({});
+  const [savingVariants, setSavingVariants] = useState<Set<string>>(new Set());
+
+  const variants = product.variants;
+
+  async function addVariant() {
+    if (!newSize.trim() && !newColor.trim()) {
+      toast.error("Enter at least a size or color");
+      return;
+    }
+    setAdding(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/variants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          size: newSize.trim() || null,
+          color: newColor.trim() || null,
+          sku: newSku.trim() || null,
+          cog: parseFloat(newCog) || 0,
+          stock_quantity: Math.max(0, parseInt(newStock, 10) || 0),
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to add variant");
+      await qc.invalidateQueries({ queryKey: ["/api/products"] });
+      setNewSize(""); setNewColor(""); setNewSku(""); setNewCog("0"); setNewStock("0");
+      toast.success("Variant added");
+    } catch {
+      toast.error("Failed to add variant");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function saveVariant(v: ProductVariant) {
+    const edits = variantEdits[v.id] || {};
+    if (!edits.stock && !edits.cog) return;
+    setSavingVariants((s) => new Set(s).add(v.id));
+    try {
+      const patch: Record<string, unknown> = {};
+      if (edits.stock !== undefined) patch.stock_quantity = Math.max(0, parseInt(edits.stock, 10) || 0);
+      if (edits.cog !== undefined) patch.cog = parseFloat(edits.cog) || 0;
+      const res = await apiFetch(`/api/products/${product.id}/variants/${v.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      await qc.invalidateQueries({ queryKey: ["/api/products"] });
+      setVariantEdits((e) => { const n = { ...e }; delete n[v.id]; return n; });
+      toast.success("Variant updated");
+    } catch {
+      toast.error("Failed to save variant");
+    } finally {
+      setSavingVariants((s) => { const n = new Set(s); n.delete(v.id); return n; });
+    }
+  }
+
+  async function deleteVariant(variantId: string) {
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/variants/${variantId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      await qc.invalidateQueries({ queryKey: ["/api/products"] });
+      toast.success("Variant removed");
+    } catch {
+      toast.error("Failed to remove variant");
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.2 }}
+      className="overflow-hidden border-t border-black/[0.06] bg-black/[0.02]"
+    >
+      <div className="px-6 py-4 space-y-4">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Variants — {product.name}
+          </p>
+          <button onClick={onClose} className="rounded p-1 hover:bg-black/[0.06]">
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Existing variants */}
+        {variants.length > 0 ? (
+          <div className="overflow-x-auto rounded-xl border border-black/[0.08]">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-black/[0.08] bg-black/[0.025]">
+                  {["Size", "Color", "SKU", isAdmin ? "COG" : null, "Stock", ""].filter(Boolean).map((h, i) => (
+                    <th key={i} className="px-3 py-2 text-left text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {variants.map((v) => {
+                  const ve = variantEdits[v.id] || {};
+                  const stockVal = ve.stock ?? String(v.stock_quantity);
+                  const cogVal = ve.cog ?? String(v.cog);
+                  const isDirty = ve.stock !== undefined || ve.cog !== undefined;
+                  const isSaving = savingVariants.has(v.id);
+                  return (
+                    <tr key={v.id} className="border-b border-black/[0.05] last:border-0 hover:bg-black/[0.02]">
+                      <td className="px-3 py-2 text-foreground">{v.size || <span className="text-muted-foreground/50">—</span>}</td>
+                      <td className="px-3 py-2">
+                        <span className="flex items-center gap-1.5">
+                          {v.color && (
+                            <span
+                              className="inline-block h-3 w-3 rounded-full border border-black/10"
+                              style={{ background: v.color.match(/^#[0-9a-f]{3,6}$/i) ? v.color : undefined }}
+                            />
+                          )}
+                          {v.color || <span className="text-muted-foreground/50">—</span>}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{v.sku || <span className="text-muted-foreground/50">—</span>}</td>
+                      {isAdmin && (
+                        <td className="px-3 py-2">
+                          <div className="relative w-24">
+                            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">৳</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={cogVal}
+                              onChange={(e) => setVariantEdits((prev) => ({ ...prev, [v.id]: { ...prev[v.id], cog: e.target.value } }))}
+                              onKeyDown={(e) => e.key === "Enter" && isDirty && saveVariant(v)}
+                              className="h-7 w-full rounded-lg border-0 bg-black/[0.06] pl-5 pr-2 font-mono text-xs text-foreground outline-none tabular-nums focus:ring-1 focus:ring-black/20"
+                            />
+                          </div>
+                        </td>
+                      )}
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            value={stockVal}
+                            onChange={(e) => setVariantEdits((prev) => ({ ...prev, [v.id]: { ...prev[v.id], stock: e.target.value } }))}
+                            onKeyDown={(e) => e.key === "Enter" && isDirty && saveVariant(v)}
+                            className="h-7 w-20 rounded-lg border-0 bg-black/[0.06] px-2 font-mono text-xs text-foreground outline-none tabular-nums focus:ring-1 focus:ring-black/20"
+                          />
+                          {isDirty && (
+                            <button
+                              onClick={() => saveVariant(v)}
+                              disabled={isSaving}
+                              className="h-7 rounded-lg bg-black px-2 text-white disabled:opacity-40 hover:bg-black/80"
+                            >
+                              {isSaving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => deleteVariant(v.id)}
+                          className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-500"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">No variants yet — add one below.</p>
+        )}
+
+        {/* Add variant form */}
+        <div className="rounded-xl border border-black/[0.08] bg-white p-4 space-y-3">
+          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Add variant</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="space-y-1">
+              <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Size</label>
+              <input
+                type="text"
+                placeholder="S / M / L / XL"
+                value={newSize}
+                onChange={(e) => setNewSize(e.target.value)}
+                className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 text-sm text-foreground outline-none placeholder:text-black/30 focus:ring-1 focus:ring-black/20"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Color</label>
+              <input
+                type="text"
+                placeholder="Black / Red / #1A2B3C"
+                value={newColor}
+                onChange={(e) => setNewColor(e.target.value)}
+                className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 text-sm text-foreground outline-none placeholder:text-black/30 focus:ring-1 focus:ring-black/20"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">SKU</label>
+              <input
+                type="text"
+                placeholder="Optional"
+                value={newSku}
+                onChange={(e) => setNewSku(e.target.value)}
+                className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 text-sm text-foreground outline-none placeholder:text-black/30 focus:ring-1 focus:ring-black/20"
+              />
+            </div>
+            {isAdmin && (
+              <div className="space-y-1">
+                <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">COG (৳)</label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={newCog}
+                  onChange={(e) => setNewCog(e.target.value)}
+                  className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 font-mono text-sm text-foreground outline-none tabular-nums focus:ring-1 focus:ring-black/20"
+                />
+              </div>
+            )}
+            <div className="space-y-1">
+              <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Stock</label>
+              <input
+                type="number"
+                min={0}
+                placeholder="0"
+                value={newStock}
+                onChange={(e) => setNewStock(e.target.value)}
+                className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 font-mono text-sm text-foreground outline-none tabular-nums focus:ring-1 focus:ring-black/20"
+              />
+            </div>
+          </div>
+          <button
+            onClick={addVariant}
+            disabled={adding}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-black px-3 text-xs font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-40"
+          >
+            {adding ? <Spinner size="sm" /> : <Plus className="h-3 w-3" />}
+            Add variant
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function Products() {
   const qc = useQueryClient();
   const { isAdmin } = useUserRole();
@@ -52,6 +335,7 @@ export default function Products() {
   const [cogEdits, setCogEdits] = useState<Record<string, string>>({});
   const [stockEdits, setStockEdits] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const { data, isLoading, refetch } = useQuery<{ products: Product[] }>({
     queryKey: ["/api/products"],
@@ -67,7 +351,7 @@ export default function Products() {
 
   const products = data?.products ?? [];
 
-  // Derived totals
+  // Derived totals — when a product has variants, sum variant stock; otherwise use product-level stock
   const totalProducts = products.length;
   const avgMargin = (() => {
     const withBoth = products.filter(p => p.selling_price && p.selling_price > 0);
@@ -79,8 +363,18 @@ export default function Products() {
     return (sum / withBoth.length).toFixed(1);
   })();
   const totalCogValue = products.reduce((acc, p) => acc + (p.cog || 0), 0);
-  const totalStock = products.reduce((acc, p) => acc + (p.stock_quantity || 0), 0);
+  const totalStock = products.reduce((acc, p) => {
+    if (p.variants.length > 0) return acc + p.variants.reduce((s, v) => s + v.stock_quantity, 0);
+    return acc + (p.stock_quantity || 0);
+  }, 0);
 
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
 
   async function saveProducts(prods: unknown[], sourceUrl: string) {
     try {
@@ -353,6 +647,12 @@ export default function Products() {
                     const mgn = margin(product.selling_price, cogNum);
                     const isDirty = cogEdits[product.id] !== undefined || stockEdits[product.id] !== undefined;
                     const isSaving = savingIds.has(product.id);
+                    const isExpanded = expandedIds.has(product.id);
+                    const hasVariants = product.variants.length > 0;
+                    // When variants exist show their total stock, not the product-level stock
+                    const displayStock = hasVariants
+                      ? product.variants.reduce((s, v) => s + v.stock_quantity, 0)
+                      : product.stock_quantity;
 
                     return (
                       <motion.div
@@ -362,126 +662,170 @@ export default function Products() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.15, delay: idx * 0.02 }}
-                        className={cn(
-                          "group grid gap-0 border-b border-black/[0.06] transition-colors last:border-0 hover:bg-black/[0.025]",
-                          isAdmin
-                            ? "grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px]"
-                            : "grid-cols-[56px_minmax(220px,1fr)_130px_130px_100px_52px]"
-                        )}
                       >
-                        {/* Image */}
-                        <div className="flex items-center py-3.5 pl-6">
-                          <div className="size-9 shrink-0 overflow-hidden rounded-lg bg-black/[0.05]">
-                            {product.image_url ? (
-                              <img
-                                src={product.image_url}
-                                alt={product.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        {/* Product row */}
+                        <div
+                          className={cn(
+                            "group grid gap-0 border-b border-black/[0.06] transition-colors last:border-0 hover:bg-black/[0.025]",
+                            isAdmin
+                              ? "grid-cols-[56px_minmax(220px,1fr)_130px_130px_130px_100px_52px]"
+                              : "grid-cols-[56px_minmax(220px,1fr)_130px_130px_100px_52px]",
+                            isExpanded && "bg-black/[0.015]"
+                          )}
+                        >
+                          {/* Image */}
+                          <div className="flex items-center py-3.5 pl-6">
+                            <div className="size-9 shrink-0 overflow-hidden rounded-lg bg-black/[0.05]">
+                              {product.image_url ? (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <Package2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Name + URL + variants toggle */}
+                          <div className="flex min-w-0 flex-col justify-center px-4 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <p data-testid={`text-product-name-${product.id}`}
+                                className="truncate text-sm font-medium leading-none text-foreground">
+                                {product.name}
+                              </p>
+                              {/* Variants badge / toggle */}
+                              <button
+                                onClick={() => toggleExpanded(product.id)}
+                                className={cn(
+                                  "flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest transition-colors",
+                                  hasVariants
+                                    ? "bg-violet-50 text-violet-600 hover:bg-violet-100"
+                                    : "bg-black/[0.05] text-muted-foreground hover:bg-black/[0.09]"
+                                )}
+                                title={isExpanded ? "Hide variants" : "Manage variants"}
+                              >
+                                <ChevronDown className={cn("h-2.5 w-2.5 transition-transform", isExpanded && "rotate-180")} />
+                                {hasVariants ? `${product.variants.length} var.` : "Variants"}
+                              </button>
+                            </div>
+                            {product.url && (
+                              <a
+                                href={product.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                data-testid={`link-product-${product.id}`}
+                                className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground transition-colors hover:text-foreground"
+                              >
+                                <Link2 className="h-2.5 w-2.5 shrink-0" />
+                                <span className="truncate">{product.url.replace(/^https?:\/\//, "").substring(0, 45)}</span>
+                              </a>
+                            )}
+                          </div>
+
+                          {/* Selling price */}
+                          <div className="flex items-center px-4 py-3.5">
+                            <span data-testid={`text-selling-price-${product.id}`}
+                              className="font-mono text-sm text-foreground tabular-nums">
+                              {fmt(product.selling_price)}
+                            </span>
+                          </div>
+
+                          {/* COG input — admin only */}
+                          {isAdmin && (
+                          <div className="flex items-center gap-2 px-4 py-3.5">
+                            <div className="relative flex-1">
+                              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">৳</span>
+                              <input
+                                data-testid={`input-cog-${product.id}`}
+                                type="number"
+                                min={0}
+                                value={cogVal}
+                                onChange={(e) => setCogEdits((prev) => ({ ...prev, [product.id]: e.target.value }))}
+                                onKeyDown={(e) => e.key === "Enter" && isDirty && saveProductMetrics(product)}
+                                className="h-8 w-full rounded-lg border-0 bg-black/[0.06] pl-6 pr-2 font-mono text-sm text-foreground outline-none transition-colors tabular-nums focus:ring-1 focus:ring-black/20"
                               />
+                            </div>
+                          </div>
+                          )}
+
+                          {/* Stock — show variant total (read-only) when variants exist, otherwise editable */}
+                          <div className="flex items-center gap-2 px-4 py-3.5">
+                            {hasVariants ? (
+                              <span
+                                className="font-mono text-sm text-foreground tabular-nums"
+                                title="Sum of all variant stock — edit per-variant below"
+                              >
+                                {displayStock}
+                                <span className="ml-1 text-[9px] font-medium uppercase tracking-widest text-muted-foreground">total</span>
+                              </span>
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Package2 className="h-3.5 w-3.5 text-muted-foreground" />
-                              </div>
+                              <>
+                                <input
+                                  data-testid={`input-stock-${product.id}`}
+                                  type="number"
+                                  min={0}
+                                  value={stockVal}
+                                  onChange={(e) => setStockEdits((prev) => ({ ...prev, [product.id]: e.target.value }))}
+                                  onKeyDown={(e) => e.key === "Enter" && isDirty && saveProductMetrics(product)}
+                                  className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 font-mono text-sm text-foreground outline-none transition-colors tabular-nums focus:ring-1 focus:ring-black/20"
+                                />
+                                {isDirty && (
+                                  <button
+                                    data-testid={`button-save-metrics-${product.id}`}
+                                    onClick={() => saveProductMetrics(product)}
+                                    disabled={isSaving}
+                                    className="h-8 shrink-0 rounded-lg bg-black px-2.5 text-xs font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-40"
+                                  >
+                                    {isSaving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
-                        </div>
 
-                        {/* Name + URL */}
-                        <div className="flex min-w-0 flex-col justify-center px-4 py-3.5">
-                          <p data-testid={`text-product-name-${product.id}`}
-                            className="truncate text-sm font-medium leading-none text-foreground">
-                            {product.name}
-                          </p>
-                          {product.url && (
-                            <a
-                              href={product.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              data-testid={`link-product-${product.id}`}
-                              className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground transition-colors hover:text-foreground"
+                          {/* Margin */}
+                          <div className="flex items-center px-4 py-3.5">
+                            <span
+                              data-testid={`text-margin-${product.id}`}
+                              className={cn("font-mono text-sm tabular-nums",
+                                mgn == null ? "text-foreground"
+                                : parseFloat(mgn) > 40 ? "text-emerald-600"
+                                : parseFloat(mgn) > 20 ? "text-foreground"
+                                : "text-red-500"
+                              )}
                             >
-                              <Link2 className="h-2.5 w-2.5 shrink-0" />
-                              <span className="truncate">{product.url.replace(/^https?:\/\//, "").substring(0, 45)}</span>
-                            </a>
-                          )}
-                        </div>
-
-                        {/* Selling price */}
-                        <div className="flex items-center px-4 py-3.5">
-                          <span data-testid={`text-selling-price-${product.id}`}
-                            className="font-mono text-sm text-foreground tabular-nums">
-                            {fmt(product.selling_price)}
-                          </span>
-                        </div>
-
-                        {/* COG input — admin only */}
-                        {isAdmin && (
-                        <div className="flex items-center gap-2 px-4 py-3.5">
-                          <div className="relative flex-1">
-                            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">৳</span>
-                            <input
-                              data-testid={`input-cog-${product.id}`}
-                              type="number"
-                              min={0}
-                              value={cogVal}
-                              onChange={(e) => setCogEdits((prev) => ({ ...prev, [product.id]: e.target.value }))}
-                              onKeyDown={(e) => e.key === "Enter" && isDirty && saveProductMetrics(product)}
-                              className="h-8 w-full rounded-lg border-0 bg-black/[0.06] pl-6 pr-2 font-mono text-sm text-foreground outline-none transition-colors tabular-nums focus:ring-1 focus:ring-black/20"
-                            />
+                              {mgn != null ? `${mgn}%` : "—"}
+                            </span>
                           </div>
-                        </div>
-                        )}
 
-                        {/* Stock input */}
-                        <div className="flex items-center gap-2 px-4 py-3.5">
-                          <input
-                            data-testid={`input-stock-${product.id}`}
-                            type="number"
-                            min={0}
-                            value={stockVal}
-                            onChange={(e) => setStockEdits((prev) => ({ ...prev, [product.id]: e.target.value }))}
-                            onKeyDown={(e) => e.key === "Enter" && isDirty && saveProductMetrics(product)}
-                            className="h-8 w-full rounded-lg border-0 bg-black/[0.06] px-3 font-mono text-sm text-foreground outline-none transition-colors tabular-nums focus:ring-1 focus:ring-black/20"
-                          />
-                          {isDirty && (
+                          {/* Delete */}
+                          <div className="flex items-center justify-end py-3.5 pr-4">
                             <button
-                              data-testid={`button-save-metrics-${product.id}`}
-                              onClick={() => saveProductMetrics(product)}
-                              disabled={isSaving}
-                              className="h-8 shrink-0 rounded-lg bg-black px-2.5 text-xs font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-40"
+                              data-testid={`button-delete-product-${product.id}`}
+                              onClick={() => deleteMutation.mutate(product.id)}
+                              className="rounded-lg p-1.5 text-muted-foreground opacity-0 transition-colors hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                              title="Remove"
                             >
-                              {isSaving ? <Spinner size="sm" /> : <SaveIcon className="h-3 w-3" />}
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
+                          </div>
+                        </div>
+
+                        {/* Expandable variants panel */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <VariantsPanel
+                              product={product}
+                              isAdmin={isAdmin}
+                              onClose={() => toggleExpanded(product.id)}
+                            />
                           )}
-                        </div>
-
-                        {/* Margin */}
-                        <div className="flex items-center px-4 py-3.5">
-                          <span
-                            data-testid={`text-margin-${product.id}`}
-                            className={cn("font-mono text-sm tabular-nums",
-                              mgn == null ? "text-foreground"
-                              : parseFloat(mgn) > 40 ? "text-emerald-600"
-                              : parseFloat(mgn) > 20 ? "text-foreground"
-                              : "text-red-500"
-                            )}
-                          >
-                            {mgn != null ? `${mgn}%` : "—"}
-                          </span>
-                        </div>
-
-                        {/* Delete */}
-                        <div className="flex items-center justify-end py-3.5 pr-4">
-                          <button
-                            data-testid={`button-delete-product-${product.id}`}
-                            onClick={() => deleteMutation.mutate(product.id)}
-                            className="rounded-lg p-1.5 text-muted-foreground opacity-0 transition-colors hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
-                            title="Remove"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                        </AnimatePresence>
                       </motion.div>
                     );
                   })}

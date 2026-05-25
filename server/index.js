@@ -4321,8 +4321,31 @@ app.get("/api/products", async (req, res) => {
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    const stockMap = await getProductStockMap(orgId, (data || []).map((p) => p.id));
-    return res.json({ products: (data || []).map((p) => ({ ...p, stock_quantity: stockMap[p.id] || 0 })) });
+    const productIds = (data || []).map((p) => p.id);
+    const stockMap = await getProductStockMap(orgId, productIds);
+
+    // Load all variants for this org's products in one query
+    let variantsMap = {};
+    if (productIds.length > 0) {
+      const { data: variantRows } = await supabase
+        .from("product_variants")
+        .select("*")
+        .in("product_id", productIds)
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: true });
+      for (const v of variantRows || []) {
+        if (!variantsMap[v.product_id]) variantsMap[v.product_id] = [];
+        variantsMap[v.product_id].push(v);
+      }
+    }
+
+    return res.json({
+      products: (data || []).map((p) => ({
+        ...p,
+        stock_quantity: stockMap[p.id] || 0,
+        variants: variantsMap[p.id] || [],
+      })),
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -4608,6 +4631,107 @@ app.delete("/api/products/:id", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const { error } = await supabase.from("products").delete().eq("id", req.params.id).eq("org_id", orgId);
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Product Variants ─────────────────────────────────────────────────────────
+
+// GET /api/products/:id/variants
+app.get("/api/products/:id/variants", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("product_variants")
+      .select("*")
+      .eq("product_id", req.params.id)
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return res.json({ variants: data || [] });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/products/:id/variants — add a new variant
+app.post("/api/products/:id/variants", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { size, color, sku, cog, stock_quantity } = req.body;
+    const { data, error } = await supabase
+      .from("product_variants")
+      .insert({
+        product_id: req.params.id,
+        org_id: orgId,
+        size: size || null,
+        color: color || null,
+        sku: sku || null,
+        cog: parseFloat(cog) || 0,
+        stock_quantity: Math.max(0, parseInt(stock_quantity, 10) || 0),
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return res.json({ variant: data });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/products/:id/variants/:variantId — update cog / stock / fields
+app.patch("/api/products/:id/variants/:variantId", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const allowed = ["size", "color", "sku", "cog", "stock_quantity"];
+    const patch = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        if (key === "cog") patch.cog = parseFloat(req.body.cog) || 0;
+        else if (key === "stock_quantity") patch.stock_quantity = Math.max(0, parseInt(req.body.stock_quantity, 10) || 0);
+        else patch[key] = req.body[key];
+      }
+    }
+    const { data, error } = await supabase
+      .from("product_variants")
+      .update(patch)
+      .eq("id", req.params.variantId)
+      .eq("product_id", req.params.id)
+      .eq("org_id", orgId)
+      .select()
+      .single();
+    if (error) throw error;
+    return res.json({ variant: data });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/products/:id/variants/:variantId
+app.delete("/api/products/:id/variants/:variantId", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { error } = await supabase
+      .from("product_variants")
+      .delete()
+      .eq("id", req.params.variantId)
+      .eq("product_id", req.params.id)
+      .eq("org_id", orgId);
     if (error) throw error;
     return res.json({ success: true });
   } catch (e) {
