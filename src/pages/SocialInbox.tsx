@@ -257,32 +257,51 @@ export default function SocialInbox({ platform }: Props) {
                       key={msg.id}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={cn("flex max-w-[78%] gap-2.5", msg.sender === "bot" ? "ml-auto flex-row-reverse" : "flex-row")}
+                      className={cn(
+                        "flex gap-2.5",
+                        msg.sender === "bot" ? "ml-auto flex-col items-end" : "flex-row items-end"
+                      )}
                     >
-                      <div className={cn(
-                        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl",
-                        msg.sender === "bot" ? "bg-black" : cfg.bg
-                      )}>
-                        {msg.sender === "bot"
-                          ? <Robot size={11} weight="fill" className="text-white" />
-                          : <User size={11} weight="fill" className={cfg.color} />}
-                      </div>
-                      <div className={cn(
-                        "rounded-2xl px-3.5 py-2.5 text-[12px] leading-relaxed",
-                        msg.sender === "bot"
-                          ? "bg-black text-white"
-                          : "border border-black/[0.08] bg-white text-foreground"
-                      )}>
+                      {msg.sender === "user" && (
+                        <div className={cn(
+                          "mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl",
+                          cfg.bg
+                        )}>
+                          <User size={11} weight="fill" className={cfg.color} />
+                        </div>
+                      )}
+                      <div className={cn("max-w-[calc(95%-40px)]", msg.sender === "bot" ? "ms-[70px]" : "me-[70px]")}>
                         {msg.image_url && (
-                          <div className="mb-1.5">
-                            <img src={msg.image_url} alt="" className="max-w-[160px] rounded" />
+                          <div className="mb-1.5 max-w-[200px] rounded-2xl bg-neutral-100 p-1.5">
+                            <img src={msg.image_url} alt="" className="block max-h-[120px] max-w-[184px] rounded-xl object-cover" />
                           </div>
                         )}
                         {!msg.image_url && msg.message_type === "image" && (
-                          <span className="flex items-center gap-1 text-foreground"><PhImage size={11} /> Image</span>
+                          <div className={cn(
+                            "rounded-2xl px-3.5 py-1.5",
+                            msg.sender === "bot"
+                              ? "bg-black text-white"
+                              : "border border-black/[0.08] bg-white text-foreground"
+                          )}>
+                            <span className="flex items-center gap-1 text-sm leading-5"><PhImage size={13} /> Image</span>
+                          </div>
                         )}
-                        {msg.content}
+                        {msg.content && (
+                          <div className={cn(
+                            "rounded-2xl px-3.5 py-1.5 transition-colors",
+                            msg.sender === "bot"
+                              ? "bg-black text-white"
+                              : "border border-black/[0.08] bg-white text-foreground"
+                          )}>
+                            <p className="text-sm leading-5 whitespace-pre-wrap break-words">{msg.content}</p>
+                          </div>
+                        )}
                       </div>
+                      {msg.sender === "bot" && (
+                        <div className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-black">
+                          <Robot size={11} weight="fill" className="text-white" />
+                        </div>
+                      )}
                     </motion.div>
                   ))}
                 </AnimatePresence>
