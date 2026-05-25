@@ -3183,6 +3183,63 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
   return { order: data, duplicate: false };
 }
 
+// ─── Platform send helpers ────────────────────────────────────────────────────
+
+async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text }) {
+  if (!text || !pageToken || !recipientId) return;
+  await metaGraph(`/${pageId}/messages`, {
+    method: "POST",
+    token: pageToken,
+    body: {
+      recipient: { id: recipientId },
+      messaging_type: "RESPONSE",
+      message: { text: text.slice(0, 1900) },
+    },
+  });
+}
+
+async function findMetaWhatsAppChannel(supabase, phoneNumberId) {
+  if (!phoneNumberId) return null;
+  const { data, error } = await supabase
+    .from("meta_whatsapp_accounts")
+    .select("org_id, whatsapp_business_account_id, phone_number_id, encrypted_access_token")
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function getWhatsAppMediaDataUrl(mediaId, token) {
+  if (!mediaId || !token) return null;
+  try {
+    const media = await metaGraph(`/${mediaId}`, { token });
+    if (!media?.url) return null;
+    const response = await fetch(media.url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) return null;
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    return `data:${contentType};base64,${base64}`;
+  } catch (err) {
+    console.warn("[WhatsApp] media fetch failed:", errorMessage(err));
+    return null;
+  }
+}
+
+async function sendWhatsAppMessage({ phoneNumberId, token, recipientId, text }) {
+  if (!phoneNumberId || !token || !recipientId || !text) return;
+  await metaGraph(`/${phoneNumberId}/messages`, {
+    method: "POST",
+    token,
+    body: {
+      messaging_product: "whatsapp",
+      to: recipientId,
+      type: "text",
+      text: { body: text.slice(0, 4000), preview_url: true },
+    },
+  });
+}
+
 // ─── Unified message handler ──────────────────────────────────────────────────
 
 async function handleMetaMessage({ supabase, orgId, platform, channel, senderId, contactName, text, imageUrl, messageType }) {
