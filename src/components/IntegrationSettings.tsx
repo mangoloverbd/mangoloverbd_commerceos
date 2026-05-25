@@ -375,7 +375,7 @@ function MetaBusinessPanel() {
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-black/40">
               Enabled channels: {status.aiAutomation.channels.length ? status.aiAutomation.channels.join(", ") : "none"}.
-              Messenger and Instagram are enabled by default after OAuth connection.
+              Messenger, Instagram, and WhatsApp image/product replies use the live Products catalog.
             </p>
           </div>
         </div>

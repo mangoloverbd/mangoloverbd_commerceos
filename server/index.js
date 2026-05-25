@@ -1179,7 +1179,7 @@ async function syncMetaAssets({ supabase, orgId, userId, userToken }) {
 
   await saveOrgSettings(orgId, {
     ai_auto_reply_enabled: "true",
-    auto_reply_channels: JSON.stringify(["facebook", "instagram"]),
+    auto_reply_channels: JSON.stringify(["facebook", "instagram", "whatsapp"]),
     auto_reply_handoff_rules: JSON.stringify({ pause_on_human_reply: true }),
   });
 
@@ -2848,7 +2848,7 @@ async function getMetaReplyProductContext(orgId) {
     const supabase = getServiceSupabase();
     const { data: products, error } = await supabase
       .from("products")
-      .select("id, name, url, selling_price, cog")
+      .select("id, name, url, image_url, selling_price, cog")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false })
       .limit(250);
@@ -2860,6 +2860,7 @@ async function getMetaReplyProductContext(orgId) {
       price: p.selling_price != null ? Number(p.selling_price) : null,
       stock: stockMap[p.id] ?? 0,
       url: p.url || null,
+      image_url: p.image_url || null,
     }));
   } catch (err) {
     console.warn("[Meta Auto Reply] product context unavailable:", errorMessage(err));
@@ -2867,7 +2868,76 @@ async function getMetaReplyProductContext(orgId) {
   }
 }
 
-async function buildMetaAutoReply({ orgId, platform, customerMessage }) {
+function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl }) {
+  const catalogForText = products.map((p) => ({
+    name: p.name,
+    price: p.price,
+    stock: p.stock,
+    url: p.url,
+    image_url: p.image_url,
+  }));
+  const content = [
+    {
+      type: "text",
+      text:
+        `Brand knowledge:\n${brandDoc || "(none)"}\n\n` +
+        `PRODUCT CATALOG JSON:\n${JSON.stringify(catalogForText).slice(0, 18000)}\n\n` +
+        `Customer message:\n${customerMessage || "(customer sent an image only)"}\n\n` +
+        "If an image is included, visually match it against the catalog names/images and answer with the matching product price and stock.",
+    },
+  ];
+
+  if (imageUrl) {
+    content.push({ type: "text", text: "CUSTOMER IMAGE:" });
+    content.push({ type: "image_url", image_url: { url: imageUrl } });
+  }
+
+  const visualProducts = products.filter((p) => p.image_url).slice(0, 16);
+  for (const product of visualProducts) {
+    content.push({
+      type: "text",
+      text: `CATALOG IMAGE: ${product.name} | price=${product.price ?? "unknown"} | stock=${product.stock ?? 0}`,
+    });
+    content.push({ type: "image_url", image_url: { url: product.image_url } });
+  }
+
+  return content;
+}
+
+async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl }) {
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price, stock, URLs, and product images. If the customer sends an image, identify the product from the image by comparing it with catalog product names/images, then answer the price and availability immediately. Use ৳ for prices. Do not ask for the customer's name before answering product price/stock questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for another photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
+    },
+    {
+      role: "user",
+      content: buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl }),
+    },
+  ];
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OpenAI ${response.status}: ${body.slice(0, 240)}`);
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim() || null;
+}
+
+async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl }) {
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
   if (settings.ai_auto_reply_enabled !== "true") return null;
   let channels = [];
@@ -2881,38 +2951,18 @@ async function buildMetaAutoReply({ orgId, platform, customerMessage }) {
 
   const brandDoc = settings.brand_doc || "";
   const products = await getMetaReplyProductContext(orgId);
-  const productContext = products.length
-    ? JSON.stringify(products).slice(0, 18000)
-    : "[]";
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0.4,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price and stock. If the customer asks price, availability, stock, product link, or product details, answer from PRODUCT CATALOG first. Use ৳ for prices. Do not ask for the customer's name before answering product price/stock questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for a photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
-        },
-        {
-          role: "user",
-          content: `Brand knowledge:\n${brandDoc || "(none)"}\n\nPRODUCT CATALOG JSON:\n${productContext}\n\nCustomer message:\n${customerMessage}`,
-        },
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    console.warn("[Meta Auto Reply] OpenAI failed:", response.status, body.slice(0, 240));
-    return null;
+  try {
+    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl });
+  } catch (err) {
+    console.warn("[Meta Auto Reply] OpenAI vision failed:", errorMessage(err));
+    if (!imageUrl) return null;
+    try {
+      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null });
+    } catch (fallbackErr) {
+      console.warn("[Meta Auto Reply] OpenAI text fallback failed:", errorMessage(fallbackErr));
+      return null;
+    }
   }
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content?.trim() || null;
 }
 
 async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text }) {
@@ -2925,6 +2975,48 @@ async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text 
       recipient: { id: recipientId },
       messaging_type: "RESPONSE",
       message: { text: text.slice(0, 1900) },
+    },
+  });
+}
+
+async function findMetaWhatsAppChannel(supabase, phoneNumberId) {
+  if (!phoneNumberId) return null;
+  const { data, error } = await supabase
+    .from("meta_whatsapp_accounts")
+    .select("org_id, whatsapp_business_account_id, phone_number_id, encrypted_access_token")
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function getWhatsAppMediaDataUrl(mediaId, token) {
+  if (!mediaId || !token) return null;
+  try {
+    const media = await metaGraph(`/${mediaId}`, { token });
+    if (!media?.url) return null;
+    const response = await fetch(media.url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) return null;
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    return `data:${contentType};base64,${base64}`;
+  } catch (err) {
+    console.warn("[WhatsApp] media fetch failed:", errorMessage(err));
+    return null;
+  }
+}
+
+async function sendWhatsAppMessage({ phoneNumberId, token, recipientId, text }) {
+  if (!phoneNumberId || !token || !recipientId || !text) return;
+  await metaGraph(`/${phoneNumberId}/messages`, {
+    method: "POST",
+    token,
+    body: {
+      messaging_product: "whatsapp",
+      to: recipientId,
+      type: "text",
+      text: { body: text.slice(0, 4000), preview_url: true },
     },
   });
 }
@@ -2975,8 +3067,8 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     messageType,
   });
 
-  if (!text) return;
-  const reply = await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text });
+  if (!text && !imageUrl) return;
+  const reply = await buildMetaAutoReply({ orgId: channel.org_id, platform, customerMessage: text, imageUrl });
   if (!reply) return;
 
   const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
@@ -3000,6 +3092,85 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     });
   } catch (err) {
     console.warn("[Meta Auto Reply] send failed:", errorMessage(err));
+  }
+}
+
+async function handleWhatsAppMessageEvent({ supabase, value, message, contact }) {
+  const phoneNumberId = value.metadata?.phone_number_id;
+  const senderId = message.from;
+  if (!phoneNumberId || !senderId) return;
+  const channel = await findMetaWhatsAppChannel(supabase, phoneNumberId);
+  if (!channel?.org_id) {
+    await upsertMetaWebhookEvent(supabase, {
+      objectType: "whatsapp_business_account",
+      platform: "whatsapp",
+      pageId: phoneNumberId,
+      senderId,
+      eventType: "unmatched_message",
+      payload: message,
+    });
+    return;
+  }
+
+  const token = channel.encrypted_access_token ? decryptToken(channel.encrypted_access_token) : "";
+  const text =
+    message.text?.body ||
+    message.button?.text ||
+    message.interactive?.button_reply?.title ||
+    message.interactive?.list_reply?.title ||
+    "";
+  let imageUrl = null;
+  let messageType = message.type || "event";
+  if (message.image?.id) {
+    imageUrl = await getWhatsAppMediaDataUrl(message.image.id, token);
+    messageType = "image";
+  }
+
+  await upsertMetaWebhookEvent(supabase, {
+    orgId: channel.org_id,
+    objectType: "whatsapp_business_account",
+    platform: "whatsapp",
+    pageId: phoneNumberId,
+    senderId,
+    eventType: "message",
+    payload: message,
+  });
+
+  await upsertSocialMessage({
+    supabase,
+    orgId: channel.org_id,
+    platform: "whatsapp",
+    contactId: senderId,
+    contactName: contact?.profile?.name || senderId,
+    sender: "user",
+    content: text,
+    imageUrl,
+    messageType,
+  });
+
+  if (!text && !imageUrl) return;
+  const reply = await buildMetaAutoReply({
+    orgId: channel.org_id,
+    platform: "whatsapp",
+    customerMessage: text,
+    imageUrl,
+  });
+  if (!reply) return;
+
+  try {
+    await sendWhatsAppMessage({ phoneNumberId, token, recipientId: senderId, text: reply });
+    await upsertSocialMessage({
+      supabase,
+      orgId: channel.org_id,
+      platform: "whatsapp",
+      contactId: senderId,
+      contactName: contact?.profile?.name || senderId,
+      sender: "bot",
+      content: reply,
+      messageType: "text",
+    });
+  } catch (err) {
+    console.warn("[WhatsApp Auto Reply] send failed:", errorMessage(err));
   }
 }
 
@@ -3036,6 +3207,51 @@ app.post("/api/webhooks/facebook", async (req, res) => {
     }
   } catch (err) {
     console.error("[Meta Webhook] processing failed:", errorMessage(err));
+  }
+});
+
+app.get("/api/webhooks/whatsapp", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  const expected = process.env.META_WEBHOOK_VERIFY_TOKEN || process.env.WA_VERIFY_TOKEN;
+  if (mode === "subscribe" && expected && token === expected) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
+});
+
+app.post("/api/webhooks/whatsapp", async (req, res) => {
+  const supabase = getServiceSupabase();
+  const body = req.body || {};
+  res.sendStatus(200);
+  try {
+    const entries = Array.isArray(body.entry) ? body.entry : [];
+    for (const entry of entries) {
+      for (const change of entry.changes || []) {
+        const value = change.value || {};
+        const contacts = new Map((value.contacts || []).map((contact) => [contact.wa_id, contact]));
+        for (const message of value.messages || []) {
+          await handleWhatsAppMessageEvent({
+            supabase,
+            value,
+            message,
+            contact: contacts.get(message.from),
+          });
+        }
+        if (!value.messages?.length) {
+          await upsertMetaWebhookEvent(supabase, {
+            objectType: body.object || "whatsapp_business_account",
+            platform: "whatsapp",
+            pageId: value.metadata?.phone_number_id || null,
+            eventType: change.field || "change",
+            payload: change,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[WhatsApp Webhook] processing failed:", errorMessage(err));
   }
 });
 
