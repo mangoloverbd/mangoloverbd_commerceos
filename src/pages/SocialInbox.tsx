@@ -9,7 +9,6 @@ import {
   InstagramLogo,
   WhatsappLogo,
   Robot,
-  User,
   Image as PhImage,
   MagnifyingGlass,
   ArrowLeft,
@@ -258,19 +257,11 @@ export default function SocialInbox({ platform }: Props) {
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       className={cn(
-                        "flex gap-2.5",
-                        msg.sender === "bot" ? "ml-auto flex-col items-end" : "flex-row items-end"
+                        "flex",
+                        msg.sender === "bot" ? "justify-end" : "justify-start"
                       )}
                     >
-                      {msg.sender === "user" && (
-                        <div className={cn(
-                          "mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl",
-                          cfg.bg
-                        )}>
-                          <User size={11} weight="fill" className={cfg.color} />
-                        </div>
-                      )}
-                      <div className={cn("max-w-[calc(95%-40px)]", msg.sender === "bot" ? "ms-[70px]" : "me-[70px]")}>
+                      <div className="max-w-[72%]">
                         {msg.image_url && (
                           <div className="mb-1.5 max-w-[200px] rounded-2xl bg-neutral-100 p-1.5">
                             <img src={msg.image_url} alt="" className="block max-h-[120px] max-w-[184px] rounded-xl object-cover" />
@@ -297,11 +288,6 @@ export default function SocialInbox({ platform }: Props) {
                           </div>
                         )}
                       </div>
-                      {msg.sender === "bot" && (
-                        <div className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-black">
-                          <Robot size={11} weight="fill" className="text-white" />
-                        </div>
-                      )}
                     </motion.div>
                   ))}
                 </AnimatePresence>
@@ -309,10 +295,25 @@ export default function SocialInbox({ platform }: Props) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Bot notice */}
-            <div className="shrink-0 border-t border-black/10 bg-white px-4 py-3">
-              <p className="text-center text-[10px] font-medium text-muted-foreground">
-                AI bot responds automatically · Replies sent via {cfg.label} API
+            {/* Bot notice / composer */}
+            <div className="shrink-0 border-t border-black/10 bg-white px-4 pb-4 pt-3">
+              <div className="relative cursor-text rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08]">
+                <div className="px-3.5 pt-3 pb-0">
+                  <p className="text-[13px] leading-[1.6] text-muted-foreground">
+                    AI bot responds automatically
+                  </p>
+                </div>
+                <div className="flex items-center justify-end px-2 pb-2 pt-1">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-200">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-400">
+                      <line x1="12" y1="19" x2="12" y2="5" />
+                      <polyline points="5 12 12 5 19 12" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-2 text-center text-[10px] font-medium text-muted-foreground">
+                Replies sent via {cfg.label} API
               </p>
             </div>
           </>
