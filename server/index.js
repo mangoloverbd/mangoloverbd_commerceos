@@ -3153,7 +3153,9 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
 
   const phone = normalizeBdPhone(order.phone) || order.phone;
   const deliveryRate = inferDeliveryCharge(order.address);
-  const totalPrice = order.unit_price * order.quantity + deliveryRate;
+  const totalPrice = Number(order.confirmed_total) > 0
+    ? Number(order.confirmed_total)
+    : order.unit_price * order.quantity + deliveryRate;
 
   const notes = [
     `Phone: ${phone}`,
@@ -3369,7 +3371,7 @@ function isOrderComplete(fields) {
 
 function mergeFields(existing = {}, incoming = {}) {
   const merged = { ...existing };
-  for (const key of ["customer_name", "phone", "address", "product_name", "quantity", "unit_price"]) {
+  for (const key of ["customer_name", "phone", "address", "product_name", "quantity", "unit_price", "confirmed_total"]) {
     const v = incoming[key];
     if (v !== null && v !== undefined && v !== "" && !merged[key]) {
       merged[key] = v;
@@ -3380,7 +3382,7 @@ function mergeFields(existing = {}, incoming = {}) {
 
 async function extractNewFields({ text, existingFields = {}, products = [] }) {
   if (!process.env.OPENAI_API_KEY) return null;
-  const missing = ["customer_name", "phone", "address", "product_name", "quantity", "unit_price"]
+  const missing = ["customer_name", "phone", "address", "product_name", "quantity", "unit_price", "confirmed_total"]
     .filter((k) => !existingFields[k]);
   if (missing.length === 0) return existingFields;
 
@@ -3395,8 +3397,13 @@ async function extractNewFields({ text, existingFields = {}, products = [] }) {
 Already collected: ${knownStr}
 Still missing: ${missing.join(", ")}
 
-CATALOG:
+CATALOG (fallback for price only if no price is stated in the conversation):
 ${JSON.stringify(catalog).slice(0, 3000)}
+
+PRICE RULES (strict priority):
+1. If the message explicitly states a price (e.g. "500 taka", "৳700", "price 620"), use that as unit_price. This overrides the catalog.
+2. If the agent says "total X taka" or "total ৳X", extract X as confirmed_total (the final agreed price including delivery).
+3. Only use catalog price if NO price is mentioned anywhere in the conversation.
 
 From the single message below, extract ONLY the missing fields that appear explicitly.
 Do NOT invent or guess. If a field is not clearly stated, set it to null.
@@ -3406,7 +3413,7 @@ Patterns like "1 ta", "2ta", "3 ta" also mean quantity 1, 2, 3.
 If the message says "order korte chai" or similar without a number, set quantity to 1.
 
 Return ONLY valid JSON:
-{"customer_name": null, "phone": null, "address": null, "product_name": null, "quantity": null, "unit_price": null}`;
+{"customer_name": null, "phone": null, "address": null, "product_name": null, "quantity": null, "unit_price": null, "confirmed_total": null}`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -3458,12 +3465,13 @@ async function processOrderFieldsFromMessage({ supabase, orgId, platform, conver
     const saved = await saveMetaInboxOrder({
       supabase, orgId, platform, conversation, contactId, contactName,
       order: {
-        customer_name: fields.customer_name,
-        phone:         fields.phone,
-        address:       fields.address,
-        product_name:  fields.product_name,
-        quantity:      Number(fields.quantity),
-        unit_price:    Number(fields.unit_price),
+        customer_name:   fields.customer_name,
+        phone:           fields.phone,
+        address:         fields.address,
+        product_name:    fields.product_name,
+        quantity:        Number(fields.quantity),
+        unit_price:      Number(fields.unit_price),
+        confirmed_total: fields.confirmed_total ? Number(fields.confirmed_total) : null,
       },
     });
     if (!saved?.duplicate) console.log("[OrderFields] already complete — saved order", saved?.order?.id);
@@ -3487,12 +3495,13 @@ async function processOrderFieldsFromMessage({ supabase, orgId, platform, conver
     await saveMetaInboxOrder({
       supabase, orgId, platform, conversation, contactId, contactName,
       order: {
-        customer_name: merged.customer_name,
-        phone:         merged.phone,
-        address:       merged.address,
-        product_name:  merged.product_name,
-        quantity:      Number(merged.quantity),
-        unit_price:    Number(merged.unit_price),
+        customer_name:   merged.customer_name,
+        phone:           merged.phone,
+        address:         merged.address,
+        product_name:    merged.product_name,
+        quantity:        Number(merged.quantity),
+        unit_price:      Number(merged.unit_price),
+        confirmed_total: merged.confirmed_total ? Number(merged.confirmed_total) : null,
       },
     });
   }
