@@ -1280,6 +1280,54 @@ app.post("/api/meta/disconnect", async (req, res) => {
   }
 });
 
+app.delete("/api/meta/assets/:type/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { type, id } = req.params;
+
+    if (type === "page") {
+      const { data: page, error: pageError } = await supabase
+        .from("meta_pages")
+        .select("id, page_id, encrypted_page_access_token, instagram_account_id")
+        .eq("id", id)
+        .eq("org_id", orgId)
+        .maybeSingle();
+      if (pageError) throw pageError;
+      if (!page) return res.status(404).json({ error: "Page asset not found" });
+
+      const token = page.encrypted_page_access_token ? decryptToken(page.encrypted_page_access_token) : "";
+      if (token) await unsubscribeMetaPage(page.page_id, token);
+      if (page.instagram_account_id) {
+        await supabase
+          .from("meta_instagram_accounts")
+          .delete()
+          .eq("org_id", orgId)
+          .eq("instagram_account_id", page.instagram_account_id);
+      }
+      const { error } = await supabase.from("meta_pages").delete().eq("id", id).eq("org_id", orgId);
+      if (error) throw error;
+      return res.json({ success: true });
+    }
+
+    const tableByType = {
+      instagram: "meta_instagram_accounts",
+      whatsapp: "meta_whatsapp_accounts",
+      ad: "meta_ad_accounts",
+    };
+    const table = tableByType[type];
+    if (!table) return res.status(400).json({ error: "Invalid Meta asset type" });
+
+    const { error } = await supabase.from(table).delete().eq("id", id).eq("org_id", orgId);
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
 app.get("/api/analytics", async (req, res) => {

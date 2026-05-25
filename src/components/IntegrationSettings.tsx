@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye, EyeOff, CheckCircle2, XCircle,
-  ShieldCheck, FileHeart, ChevronRight, ArrowLeft, Link2, Unplug, Bot,
+  ShieldCheck, FileHeart, ChevronRight, ArrowLeft, Link2, Unplug, Bot, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -203,10 +203,10 @@ type Settings = Record<string, string>;
 
 type MetaStatus = {
   connected: boolean;
-  pages: Array<{ page_id: string; page_name: string; webhook_subscribed: boolean; status: string }>;
-  instagramAccounts: Array<{ instagram_account_id: string; username: string; account_name: string; status: string }>;
-  whatsappAccounts: Array<{ whatsapp_business_account_id: string; phone_number_id: string | null; display_phone_number: string; account_name: string; status: string }>;
-  adAccounts: Array<{ ad_account_id: string; account_name: string; currency: string | null; status: string }>;
+  pages: Array<{ id: string; page_id: string; page_name: string; webhook_subscribed: boolean; status: string }>;
+  instagramAccounts: Array<{ id: string; instagram_account_id: string; username: string; account_name: string; status: string }>;
+  whatsappAccounts: Array<{ id: string; whatsapp_business_account_id: string; phone_number_id: string | null; display_phone_number: string; account_name: string; status: string }>;
+  adAccounts: Array<{ id: string; ad_account_id: string; account_name: string; currency: string | null; status: string }>;
   aiAutomation: { enabled: boolean; channels: string[]; handoffRules: Record<string, unknown> };
   whatsappConfigReady: boolean;
 };
@@ -219,17 +219,39 @@ const GROUPS = [
   { label: "Social", ids: ["facebook-messenger", "instagram-dm", "whatsapp-business"] },
 ];
 
-function AssetList({ title, items, empty }: { title: string; items: React.ReactNode[]; empty: string }) {
+function MetaAssetSection({
+  title,
+  count,
+  expanded,
+  onToggle,
+  children,
+  empty,
+}: {
+  title: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  empty: string;
+}) {
   return (
-    <div className="rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[12px] font-semibold text-black">{title}</p>
-        <span className="text-[11px] text-black/35">{items.length}</span>
-      </div>
-      {items.length ? (
-        <div className="space-y-1.5">{items}</div>
-      ) : (
-        <p className="text-[11px] leading-relaxed text-black/35">{empty}</p>
+    <div className="overflow-hidden border-b border-black/[0.06] last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-black/[0.025]"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold text-black">{title}</p>
+          <p className="text-[11px] text-black/38">{count ? `${count} connected` : empty}</p>
+        </div>
+        <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] font-medium text-black/45">{count}</span>
+        <ChevronDown className={cn("h-4 w-4 text-black/35 transition-transform", expanded && "rotate-180")} />
+      </button>
+      {expanded && (
+        <div className="space-y-1.5 bg-black/[0.015] px-4 pb-4">
+          {count ? children : <p className="rounded-[10px] bg-white px-3 py-2 text-[11px] leading-relaxed text-black/35">{empty}</p>}
+        </div>
       )}
     </div>
   );
@@ -240,6 +262,13 @@ function MetaBusinessPanel() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    pages: true,
+    instagram: false,
+    whatsapp: false,
+    ads: false,
+  });
+  const [assetBusy, setAssetBusy] = useState<string | null>(null);
 
   const refresh = () => {
     setLoading(true);
@@ -286,13 +315,41 @@ function MetaBusinessPanel() {
     }
   };
 
-  const row = (key: string, name: string, meta?: string, ok = true) => (
+  const disconnectAsset = async (type: "page" | "instagram" | "whatsapp" | "ad", id: string, label: string) => {
+    if (!window.confirm(`Disconnect ${label}? Historical inbox messages will be preserved.`)) return;
+    const busyKey = `${type}:${id}`;
+    setAssetBusy(busyKey);
+    try {
+      const res = await apiFetch(`/api/meta/assets/${type}/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to disconnect asset");
+      toast.success(`${label} disconnected`);
+      refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to disconnect asset");
+    } finally {
+      setAssetBusy(null);
+    }
+  };
+
+  const toggle = (key: string) => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const row = (key: string, name: string, meta: string | undefined, ok: boolean, onDisconnect: () => void, busy: boolean) => (
     <div key={key} className="flex items-center justify-between gap-3 rounded-[9px] bg-white px-3 py-2">
       <div className="min-w-0">
         <p className="truncate text-[12px] font-medium text-black">{name || key}</p>
         {meta && <p className="truncate text-[10px] text-black/35">{meta}</p>}
       </div>
       <span className={cn("h-2 w-2 shrink-0 rounded-full", ok ? "bg-emerald-500" : "bg-amber-500")} />
+      <button
+        type="button"
+        onClick={onDisconnect}
+        disabled={busy}
+        className="ml-1 flex h-7 shrink-0 items-center gap-1 rounded-[8px] border border-red-500/10 bg-red-50 px-2 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+      >
+        {busy ? <Spinner size="sm" /> : <Unplug className="h-3 w-3" />}
+        Disconnect
+      </button>
     </div>
   );
 
@@ -341,28 +398,72 @@ function MetaBusinessPanel() {
       </div>
 
       {status?.connected && (
-        <div className="grid gap-3 p-4 md:grid-cols-2">
-          <AssetList
+        <div>
+          <MetaAssetSection
             title="Connected Facebook Pages"
+            count={status.pages.length}
+            expanded={expanded.pages}
+            onToggle={() => toggle("pages")}
             empty="No Pages selected yet."
-            items={status.pages.map((p) => row(p.page_id, p.page_name, p.page_id, p.webhook_subscribed))}
-          />
-          <AssetList
+          >
+            {status.pages.map((p) => row(
+              p.id,
+              p.page_name,
+              `${p.page_id}${p.webhook_subscribed ? " · webhooks active" : " · webhooks not active"}`,
+              p.webhook_subscribed,
+              () => disconnectAsset("page", p.id, p.page_name || "Facebook Page"),
+              assetBusy === `page:${p.id}`
+            ))}
+          </MetaAssetSection>
+          <MetaAssetSection
             title="Connected Instagram Accounts"
+            count={status.instagramAccounts.length}
+            expanded={expanded.instagram}
+            onToggle={() => toggle("instagram")}
             empty="No Instagram Business accounts found."
-            items={status.instagramAccounts.map((a) => row(a.instagram_account_id, a.account_name || a.username, a.username ? `@${a.username}` : a.instagram_account_id))}
-          />
-          <AssetList
+          >
+            {status.instagramAccounts.map((a) => row(
+              a.id,
+              a.account_name || a.username,
+              a.username ? `@${a.username}` : a.instagram_account_id,
+              true,
+              () => disconnectAsset("instagram", a.id, a.account_name || a.username || "Instagram Account"),
+              assetBusy === `instagram:${a.id}`
+            ))}
+          </MetaAssetSection>
+          <MetaAssetSection
             title="Connected WhatsApp Accounts"
+            count={status.whatsappAccounts.length}
+            expanded={expanded.whatsapp}
+            onToggle={() => toggle("whatsapp")}
             empty={status.whatsappConfigReady ? "No WhatsApp assets found." : "Backend is ready. Add META_WHATSAPP_CONFIG_ID to enable Embedded Signup launcher later."}
-            items={status.whatsappAccounts.map((a) => row(`${a.whatsapp_business_account_id}:${a.phone_number_id}`, a.account_name || a.display_phone_number, a.display_phone_number || a.whatsapp_business_account_id))}
-          />
-          <AssetList
+          >
+            {status.whatsappAccounts.map((a) => row(
+              a.id,
+              a.account_name || a.display_phone_number,
+              a.display_phone_number || a.whatsapp_business_account_id,
+              true,
+              () => disconnectAsset("whatsapp", a.id, a.account_name || a.display_phone_number || "WhatsApp Account"),
+              assetBusy === `whatsapp:${a.id}`
+            ))}
+          </MetaAssetSection>
+          <MetaAssetSection
             title="Connected Ad Accounts"
+            count={status.adAccounts.length}
+            expanded={expanded.ads}
+            onToggle={() => toggle("ads")}
             empty="No ad accounts found."
-            items={status.adAccounts.map((a) => row(a.ad_account_id, a.account_name, [a.ad_account_id, a.currency].filter(Boolean).join(" · ")))}
-          />
-          <div className="rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3 md:col-span-2">
+          >
+            {status.adAccounts.map((a) => row(
+              a.id,
+              a.account_name,
+              [a.ad_account_id, a.currency].filter(Boolean).join(" · "),
+              true,
+              () => disconnectAsset("ad", a.id, a.account_name || "Ad Account"),
+              assetBusy === `ad:${a.id}`
+            ))}
+          </MetaAssetSection>
+          <div className="m-4 rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3">
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 text-black/45" />
               <p className="text-[12px] font-semibold text-black">AI Automation Status</p>
