@@ -2891,12 +2891,21 @@ async function upsertSocialMessage({ supabase, orgId, platform, contactId, conta
   return { conversation, message };
 }
 
+// ─── Meta AI Reply Pipeline ───────────────────────────────────────────────────
+//
+// Clean, single-function design:
+//  1. Every incoming message → one GPT-4o call with vision + catalog + history
+//  2. GPT returns JSON with { reply, order } — structured output
+//  3. If order is fully populated, insert to social_inbox_orders automatically
+//
+// No heuristic intent detection. No conditional product loading. Always run GPT.
+
 async function getMetaReplyProductContext(orgId) {
   try {
     const supabase = getServiceSupabase();
     const { data: products, error } = await supabase
       .from("products")
-      .select("id, name, url, image_url, selling_price, cog")
+      .select("id, name, url, image_url, selling_price")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false })
       .limit(250);
@@ -2911,13 +2920,14 @@ async function getMetaReplyProductContext(orgId) {
       image_url: p.image_url || null,
     }));
   } catch (err) {
-    console.warn("[Meta Auto Reply] product context unavailable:", errorMessage(err));
+    console.warn("[Meta AI] product context unavailable:", errorMessage(err));
     return [];
   }
 }
 
+// ─── Image helpers ────────────────────────────────────────────────────────────
+
 const OPENAI_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-const META_REPLY_MODEL = process.env.META_REPLY_MODEL || "gpt-4o";
 
 function normalizeOpenAiImageMime(mime = "") {
   const value = String(mime || "").split(";")[0].trim().toLowerCase();
@@ -2925,29 +2935,19 @@ function normalizeOpenAiImageMime(mime = "") {
   return value;
 }
 
-function isSupportedOpenAiImageRef(url = "") {
-  const value = String(url || "").trim();
-  if (!value) return false;
-  const dataMime = value.match(/^data:([^;,]+)[;,]/i)?.[1];
-  if (dataMime) return OPENAI_IMAGE_MIME_TYPES.has(normalizeOpenAiImageMime(dataMime));
-  try {
-    const parsed = new URL(value);
-    const pathname = parsed.pathname.toLowerCase();
-    return /\.(png|jpe?g|gif|webp)$/i.test(pathname);
-  } catch {
-    return false;
-  }
-}
-
 async function prepareOpenAiImageRef(url = "") {
   const value = String(url || "").trim();
   if (!value) return null;
   if (value.startsWith("data:")) {
     const mime = normalizeOpenAiImageMime(value.match(/^data:([^;,]+)[;,]/i)?.[1]);
-    if (!OPENAI_IMAGE_MIME_TYPES.has(mime)) return null;
-    return mime === "image/jpeg" ? value.replace(/^data:image\/jpe?g/i, "data:image/jpeg") : value;
+    return OPENAI_IMAGE_MIME_TYPES.has(mime) ? value : null;
   }
-  if (isSupportedOpenAiImageRef(value)) return value;
+  try {
+    const parsed = new URL(value);
+    const pathname = parsed.pathname.toLowerCase();
+    if (/\.(png|jpe?g|gif|webp)$/i.test(pathname)) return value;
+  } catch { /* not a URL */ }
+  // Fetch and base64-encode if the URL doesn't have an obvious extension
   try {
     const response = await fetch(value, {
       headers: { "User-Agent": "ArcLab/1.0" },
@@ -2964,138 +2964,9 @@ async function prepareOpenAiImageRef(url = "") {
   }
 }
 
-function supportedCatalogImageProducts(products) {
-  return products.filter((p) => p.image_url && isSupportedOpenAiImageRef(p.image_url));
-}
+// ─── Conversation history ─────────────────────────────────────────────────────
 
-async function buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory = "", includeCatalogImages = false }) {
-  const catalogForText = products.map((p) => ({
-    name: p.name,
-    price: p.price,
-    available: Number(p.stock || 0) > 0,
-    url: p.url,
-    image_url: p.image_url,
-  }));
-  const content = [
-    {
-      type: "text",
-      text:
-        `Brand knowledge:\n${brandDoc || "(none)"}\n\n` +
-        `PRODUCT CATALOG JSON:\n${JSON.stringify(catalogForText).slice(0, 18000)}\n\n` +
-        `RECENT CONVERSATION, oldest to newest:\n${conversationHistory || "(none)"}\n\n` +
-        `Customer message:\n${customerMessage || "(customer sent an image only)"}\n\n` +
-        "If a customer image is included, use your vision ability to recognize the product and match it to the closest product in PRODUCT CATALOG JSON. Do not require the exact same catalog photo; match by real product identity/type. If the image shows an insulated/vacuum/thermal coffee cup or tumbler, do not call it glass cups. Answer naturally like a helpful shop assistant. Use catalog price/availability only; never invent price or exact stock count.",
-    },
-  ];
-
-  const safeCustomerImageUrl = await prepareOpenAiImageRef(imageUrl);
-  if (safeCustomerImageUrl) {
-    content.push({ type: "text", text: "CUSTOMER IMAGE:" });
-    content.push({ type: "image_url", image_url: { url: safeCustomerImageUrl } });
-  } else if (imageUrl) {
-    content.push({ type: "text", text: "Customer sent an image, but the image format could not be passed to the vision model. Use catalog/product context and conversation only." });
-  }
-
-  if (includeCatalogImages) {
-    const visualProducts = supportedCatalogImageProducts(products).slice(0, 60);
-    for (const product of visualProducts) {
-      content.push({
-        type: "text",
-        text: `CATALOG IMAGE: ${product.name} | price=${product.price ?? "unknown"} | available=${Number(product.stock || 0) > 0 ? "yes" : "no"}`,
-      });
-      content.push({ type: "image_url", image_url: { url: product.image_url } });
-    }
-  }
-
-  return content;
-}
-
-async function requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, includeCatalogImages = false }) {
-  const messages = [
-    {
-      role: "system",
-      content:
-        "You are a warm, natural ecommerce support assistant for social DMs. Reply like a real Bangladeshi shop assistant: short, friendly, and helpful. Use the customer's language when clear. You have live product catalog data with price, availability, URLs, and product images. Treat RECENT CONVERSATION as memory. If the customer sends an image or asks price after an image, use vision to identify what the product is and match it to the closest catalog product by product identity/type, not exact photo duplication. If the image shows an insulated/vacuum/thermal coffee cup or tumbler, do not call it glass cups. Use ৳ for prices. Never tell exact stock counts; only available/currently unavailable. Do not ask for name before answering price. Only ask for name, phone, address, product, and quantity when the customer is ready to order. Do not invent prices, stock, discounts, delivery promises, or policies.",
-    },
-    {
-      role: "user",
-      content: await buildProductVisionContent({ brandDoc, products, customerMessage, imageUrl, conversationHistory, includeCatalogImages }),
-    },
-  ];
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: META_REPLY_MODEL,
-      temperature: 0.2,
-      messages,
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI ${response.status}: ${body.slice(0, 240)}`);
-  }
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content?.trim() || null;
-}
-
-function isPriceIntentMessage(text = "") {
-  const value = String(text).trim().toLowerCase();
-  if (!value) return false;
-  return /(^|\b)(price|pp|৳|tk|taka|dam|দাম|কত|koto|available|availability|stock|ache|আছে)(\b|[?:.!।]|$)/i.test(value);
-}
-
-function isGreetingMessage(text = "") {
-  const value = String(text).trim().toLowerCase();
-  return /^(hi|hello|hey|assalamu alaikum|salam|আসসালামু আলাইকুম|সালাম|হাই|হ্যালো)[!.।\s]*$/i.test(value);
-}
-
-function isProductContextIntent(text = "") {
-  const value = String(text).trim().toLowerCase();
-  if (!value) return false;
-  return isPriceIntentMessage(value)
-    || isOrderIntentMessage(value)
-    || /(product|item|pic|photo|image|eta|এটা|এইটা|পণ্য|অর্ডার|order|available|stock|link|size|color|colour|কিনতে|নিতে)/i.test(value);
-}
-
-function isRecentImageFollowupIntent(text = "") {
-  const value = String(text).trim().toLowerCase();
-  if (!value) return false;
-  return isPriceIntentMessage(value)
-    || /^(this|eta|এটা|এইটা|ei ta|ei product|এই পণ্য|link|details|available|stock|color|colour|size)[?.!।\s]*$/i.test(value);
-}
-
-function isOrderIntentMessage(text = "") {
-  const value = String(text).trim().toLowerCase();
-  if (!value) return false;
-  return /(place\s+the\s+order|place\s+order|confirm\s+(the\s+)?order|order\s+(now|confirm|koren|করেন|করুন)|i\s*(would|want|wanna|like).*order|নিতে\s*চাই|অর্ডার|order ta|order kore|order koren)/i.test(value);
-}
-
-async function getRecentConversationImage(supabase, conversationId) {
-  if (!conversationId) return null;
-  const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from("social_messages")
-    .select("image_url")
-    .eq("conversation_id", conversationId)
-    .eq("sender", "user")
-    .not("image_url", "is", null)
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) {
-    console.warn("[Meta Auto Reply] recent image lookup failed:", errorMessage(error));
-    return null;
-  }
-  return data?.image_url || null;
-}
-
-async function getRecentConversationHistory(supabase, conversationId, limit = 14) {
+async function getRecentConversationHistory(supabase, conversationId, limit = 20) {
   if (!conversationId) return "";
   const { data, error } = await supabase
     .from("social_messages")
@@ -3104,113 +2975,104 @@ async function getRecentConversationHistory(supabase, conversationId, limit = 14
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) {
-    console.warn("[Meta Auto Reply] conversation history lookup failed:", errorMessage(error));
+    console.warn("[Meta AI] history lookup failed:", errorMessage(error));
     return "";
   }
   return (data || [])
     .reverse()
     .map((m) => {
       const who = m.sender === "bot" ? "assistant" : "customer";
-      const image = m.image_url ? " [image attached]" : "";
+      const img = m.image_url ? " [image]" : "";
       const body = String(m.content || "").trim() || `[${m.message_type || "message"}]`;
-      return `${who}${image}: ${body}`.slice(0, 900);
+      return `${who}${img}: ${body}`.slice(0, 900);
     })
     .join("\n");
 }
 
+// ─── Delivery charge inference ────────────────────────────────────────────────
+
 function inferDeliveryCharge(address = "") {
-  const lowerAddress = String(address || "").toLowerCase();
+  const lower = String(address || "").toLowerCase();
   const dhakaKeywords = [
     "dhaka", "dhanmondi", "gulshan", "banani", "mirpur", "mohammadpur",
     "uttara", "badda", "khilgaon", "motijheel", "paltan", "farmgate",
-    "shahbagh", "new market", "azampur", "kurmitola", "tejgaon",
+    "shahbagh", "new market", "azampur", "tejgaon",
   ];
-  return dhakaKeywords.some((k) => lowerAddress.includes(k)) ? 80 : 120;
+  return dhakaKeywords.some((k) => lower.includes(k)) ? 80 : 120;
 }
 
 function parseInboxOrderNotes(notes = "") {
   return {
-    phone: String(notes).match(/Phone:\s*([^,\n]+)/i)?.[1]?.trim() || "",
-    address: String(notes).match(/Address:\s*([^\n]+)/i)?.[1]?.trim() || "",
+    phone: (notes || "").match(/Phone:\s*([^\n,]+)/i)?.[1]?.trim() || "",
+    address: (notes || "").match(/Address:\s*(.+)/i)?.[1]?.trim() || "",
   };
 }
 
-function parseMetaJsonObject(text = "") {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]);
-    } catch {
-      return null;
-    }
-  }
-}
+// ─── Core AI function: one GPT-4o call per message ───────────────────────────
+//
+// Returns { reply: string, order: object|null }
+//
+// GPT-4o is instructed to return structured JSON with two fields:
+//   reply  — the natural-language reply to send back to the customer
+//   order  — null, or a fully-populated order object when all fields collected
+//
+// This eliminates all heuristic intent detection. GPT decides when the order
+// is complete, not a regex.
 
-function findCatalogProduct(products, productName = "") {
-  const wanted = String(productName || "").trim().toLowerCase();
-  if (!wanted) return null;
-  return products.find((p) => String(p.name || "").trim().toLowerCase() === wanted)
-    || products.find((p) => String(p.name || "").toLowerCase().includes(wanted) || wanted.includes(String(p.name || "").toLowerCase()))
-    || null;
-}
-
-function extractInboxOrderHeuristic({ products, conversationHistory }) {
-  const history = String(conversationHistory || "");
-  const lowerHistory = history.toLowerCase();
-  const phoneMatch = history.match(/(?:\+?880|0)?(1[3-9]\d{8})/);
-  const phone = phoneMatch ? `0${phoneMatch[1]}` : "";
-  if (!phone) return null;
-
-  const phoneLine = history.split("\n").find((line) => line.includes(phoneMatch[0])) || "";
-  const beforePhone = phoneLine.split(phoneMatch[0])[0]?.replace(/^customer:\s*/i, "").trim();
-  const afterPhone = phoneLine.split(phoneMatch[0])[1]?.replace(/^[\s,;:-]+/, "").trim();
-  const customerName = beforePhone?.split(/\s+/).slice(-3).join(" ").trim() || "";
-  const address = afterPhone || "";
-  if (!customerName || !address) return null;
-
-  const rejected = [];
-  for (const match of lowerHistory.matchAll(/(?:not|না|নয়|নয়)\s+([a-z0-9\u0980-\u09ff ]{2,40})/gi)) {
-    rejected.push(match[1].trim());
-  }
-
-  let bestProduct = null;
-  let bestIndex = -1;
-  for (const product of products) {
-    const name = String(product.name || "");
-    const lowerName = name.toLowerCase();
-    if (rejected.some((term) => term && (lowerName.includes(term) || term.includes(lowerName)))) continue;
-    const productIndex = lowerHistory.lastIndexOf(lowerName);
-    if (productIndex > bestIndex) {
-      bestProduct = product;
-      bestIndex = productIndex;
-    }
-  }
-  if (!bestProduct) return null;
-  return {
-    ready: true,
-    customer_name: customerName,
-    phone,
-    address,
-    product_name: bestProduct.name,
-    quantity: 1,
-    price: bestProduct.price,
-    reason: "heuristic",
-  };
-}
-
-async function extractInboxOrderFromConversation({ products, conversationHistory, latestCustomerMessage }) {
-  if (!process.env.OPENAI_API_KEY) return null;
+async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrl }) {
   const catalog = products.map((p) => ({
     name: p.name,
     price: p.price,
     available: Number(p.stock || 0) > 0,
     url: p.url || null,
   }));
+
+  const systemPrompt = `You are a helpful sales assistant for a Bangladeshi e-commerce shop replying to social media DMs (Facebook, Instagram, WhatsApp).
+
+RULES:
+- Reply in the same language the customer uses (Bangla or English). Keep replies SHORT and natural (1-3 sentences).
+- You have vision ability. If the customer sends a product image, identify it and match it to the closest product in the catalog by product type (not exact photo). If the image shows an insulated/vacuum/thermal coffee cup or tumbler, do NOT call it glass cups.
+- Use ৳ for prices. Never reveal exact stock counts — just say "available" or "out of stock".
+- When the customer wants to order: collect name, phone number, delivery address, product name, and quantity — one missing field at a time.
+- Once you have ALL FIVE fields confirmed, set order to the populated object. Do not set order until every field is present and confirmed.
+- Never invent prices, discounts, or delivery promises not in the catalog.
+
+CATALOG:
+${JSON.stringify(catalog).slice(0, 12000)}
+
+${brandDoc ? `BRAND INFO:\n${brandDoc.slice(0, 2000)}` : ""}
+
+RESPONSE FORMAT — return ONLY valid JSON, no prose, no markdown:
+{
+  "reply": "<your message to the customer>",
+  "order": null
+}
+
+Or when all order fields are collected:
+{
+  "reply": "<confirmation message>",
+  "order": {
+    "customer_name": "",
+    "phone": "",
+    "address": "",
+    "product_name": "",
+    "quantity": 1,
+    "unit_price": 0
+  }
+}`;
+
+  // Build message array
+  const userContent = [];
+  userContent.push({ type: "text", text: `CONVERSATION SO FAR:\n${conversationHistory || "(start of conversation)"}\n\nCUSTOMER MESSAGE:\n${customerMessage || "(no text, image only)"}` });
+
+  const safeImageUrl = imageUrl ? await prepareOpenAiImageRef(imageUrl) : null;
+  if (safeImageUrl) {
+    userContent.push({ type: "text", text: "CUSTOMER IMAGE:" });
+    userContent.push({ type: "image_url", image_url: { url: safeImageUrl } });
+  } else if (imageUrl) {
+    userContent.push({ type: "text", text: "(Customer sent an image but it could not be loaded. Use conversation context only.)" });
+  }
+
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -3218,96 +3080,82 @@ async function extractInboxOrderFromConversation({ products, conversationHistory
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-5.4-mini",
-      temperature: 0,
+      model: process.env.META_REPLY_MODEL || "gpt-4o",
+      temperature: 0.3,
       response_format: { type: "json_object" },
       messages: [
-        {
-          role: "system",
-          content:
-            "Extract a social commerce order from the conversation. Return JSON only. Only set ready=true when the customer has clearly asked to place/confirm the order and the conversation contains customer_name, phone, address, product_name, quantity, and price or a product match in the catalog. Honor the latest customer correction; if they rejected a product, do not use it. Never invent missing fields.",
-        },
-        {
-          role: "user",
-          content:
-            `PRODUCT CATALOG JSON:\n${JSON.stringify(catalog).slice(0, 16000)}\n\n` +
-            `RECENT CONVERSATION, oldest to newest:\n${conversationHistory || "(none)"}\n\n` +
-            `LATEST CUSTOMER MESSAGE:\n${latestCustomerMessage || ""}\n\n` +
-            "Return exactly this shape: {\"ready\":boolean,\"customer_name\":\"\",\"phone\":\"\",\"address\":\"\",\"product_name\":\"\",\"quantity\":1,\"price\":0,\"reason\":\"\"}",
-        },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
       ],
     }),
   });
+
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`OpenAI ${response.status}: ${body.slice(0, 240)}`);
+    throw new Error(`OpenAI ${response.status}: ${body.slice(0, 200)}`);
   }
+
   const data = await response.json();
-  return parseMetaJsonObject(data.choices?.[0]?.message?.content);
+  const raw = data.choices?.[0]?.message?.content?.trim() || "";
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // GPT returned non-JSON — treat as plain reply
+    return { reply: raw || null, order: null };
+  }
+
+  const reply = String(parsed?.reply || "").trim() || null;
+  const orderRaw = parsed?.order;
+
+  // Validate order has all required fields
+  let order = null;
+  if (
+    orderRaw &&
+    typeof orderRaw === "object" &&
+    orderRaw.customer_name?.trim() &&
+    orderRaw.phone?.trim() &&
+    orderRaw.address?.trim() &&
+    orderRaw.product_name?.trim() &&
+    Number(orderRaw.quantity) >= 1 &&
+    Number(orderRaw.unit_price) > 0
+  ) {
+    order = {
+      customer_name: String(orderRaw.customer_name).trim(),
+      phone: String(orderRaw.phone).trim(),
+      address: String(orderRaw.address).trim(),
+      product_name: String(orderRaw.product_name).trim(),
+      quantity: Math.max(1, Number.parseInt(orderRaw.quantity, 10) || 1),
+      unit_price: Number(orderRaw.unit_price),
+    };
+  }
+
+  return { reply, order };
 }
 
-// Returns true when the conversation history (multi-line string of past messages)
-// contains a prior order intent — used to detect cases where the customer
-// already said "place the order" but is now just providing a missing field
-// (e.g., replying "1" for quantity or providing their address on a new line).
-function conversationHistoryHasOrderIntent(history = "") {
-  if (!history) return false;
-  // Look at the CUSTOMER lines only (lines preceded by CUSTOMER: prefix or unprefixed lines
-  // that are interleaved as plain text).
-  const customerLines = history
-    .split("\n")
-    .filter((l) => /^(CUSTOMER|USER|user):/i.test(l) || !/^(BOT|ASSISTANT):/i.test(l))
-    .map((l) => l.replace(/^(CUSTOMER|USER|user):\s*/i, "").trim())
-    .filter(Boolean);
-  return customerLines.some((line) => isOrderIntentMessage(line));
-}
+// ─── Save confirmed order to social_inbox_orders ──────────────────────────────
 
-async function maybeCreateMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, latestCustomerMessage, products, conversationHistory }) {
-  // Trigger order capture when EITHER the latest message is an order intent
-  // OR the conversation history already established intent (customer filling in
-  // missing fields like quantity "1", address, phone across multiple turns).
-  const hasCurrentIntent = isOrderIntentMessage(latestCustomerMessage);
-  const hasHistoryIntent = !hasCurrentIntent && conversationHistoryHasOrderIntent(conversationHistory);
-  if (!hasCurrentIntent && !hasHistoryIntent) return null;
-
+async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName, order }) {
+  // Deduplicate: don't create duplicate orders for the same conversation within 30 min
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const { data: existing } = await supabase
     .from("social_inbox_orders")
-    .select("*")
+    .select("id")
     .eq("org_id", orgId)
     .eq("conversation_id", conversation.id)
     .gte("created_at", since)
-    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (existing) return { order: existing, duplicate: true };
 
-  let extracted = null;
-  try {
-    extracted = await extractInboxOrderFromConversation({ products, conversationHistory, latestCustomerMessage });
-  } catch (err) {
-    console.warn("[Meta Inbox Order] extraction failed:", errorMessage(err));
-  }
-  if (!extracted?.ready) {
-    extracted = extractInboxOrderHeuristic({ products, conversationHistory });
-  }
-  if (!extracted?.ready) return null;
+  const phone = normalizeBdPhone(order.phone) || order.phone;
+  const deliveryRate = inferDeliveryCharge(order.address);
+  const totalPrice = order.unit_price * order.quantity + deliveryRate;
 
-  const product = findCatalogProduct(products, extracted.product_name);
-  const productName = product?.name || String(extracted.product_name || "").trim();
-  const quantity = Math.max(1, Number.parseInt(extracted.quantity, 10) || 1);
-  const unitPrice = Number(product?.price ?? extracted.price ?? 0) || 0;
-  const phone = normalizeBdPhone(extracted.phone || "");
-  const address = String(extracted.address || "").trim();
-  const customerName = String(extracted.customer_name || "").trim();
-  if (!productName || !phone || !address || !customerName || unitPrice <= 0) return null;
-  if (product && Number(product.stock || 0) <= 0) return null;
-
-  const deliveryRate = inferDeliveryCharge(address);
-  const totalPrice = unitPrice * quantity + deliveryRate;
   const notes = [
     `Phone: ${phone}`,
-    `Address: ${address}`,
+    `Address: ${order.address}`,
     `Source: ${platform} AI auto-capture`,
   ].join("\n");
 
@@ -3317,9 +3165,9 @@ async function maybeCreateMetaInboxOrder({ supabase, orgId, platform, conversati
       org_id: orgId,
       conversation_id: conversation.id,
       platform,
-      contact_name: customerName,
+      contact_name: order.customer_name,
       contact_id: contactId,
-      items: [{ product: productName, quantity, unit_price: unitPrice }],
+      items: [{ product: order.product_name, quantity: order.quantity, unit_price: order.unit_price }],
       notes,
       total_price: totalPrice,
       delivery_rate: deliveryRate,
@@ -3327,94 +3175,112 @@ async function maybeCreateMetaInboxOrder({ supabase, orgId, platform, conversati
     })
     .select("*")
     .single();
-  if (error) throw error;
+
+  if (error) {
+    console.error("[Meta AI] saveInboxOrder failed:", error.message);
+    return null;
+  }
   return { order: data, duplicate: false };
 }
 
-async function buildMetaAutoReply({ orgId, platform, customerMessage, imageUrl, conversationHistory, products: providedProducts, includeCatalogImages = false }) {
+// ─── Unified message handler ──────────────────────────────────────────────────
+
+async function handleMetaMessage({ supabase, orgId, platform, channel, senderId, contactName, text, imageUrl, messageType }) {
+  // 1. Get settings
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
-  if (settings.ai_auto_reply_enabled !== "true") return null;
+
+  // Check if auto-reply is enabled for this platform
+  if (settings.ai_auto_reply_enabled !== "true") return;
   let channels = [];
-  try {
-    channels = JSON.parse(settings.auto_reply_channels || "[]");
-  } catch {
-    channels = [];
-  }
-  if (!channels.includes(platform)) return null;
-  if (!process.env.OPENAI_API_KEY) return null;
+  try { channels = JSON.parse(settings.auto_reply_channels || "[]"); } catch { channels = []; }
+  if (!channels.includes(platform)) return;
+  if (!process.env.OPENAI_API_KEY) return;
+
+  // Skip if no message content at all
+  if (!text && !imageUrl) return;
+
+  // 2. Store the incoming user message
+  const { conversation } = await upsertSocialMessage({
+    supabase,
+    orgId,
+    platform,
+    contactId: senderId,
+    contactName: contactName || senderId,
+    sender: "user",
+    content: text || "",
+    imageUrl: imageUrl || null,
+    messageType: messageType || (imageUrl ? "image" : "text"),
+  });
+
+  // 3. Load context
+  const [conversationHistory, products] = await Promise.all([
+    getRecentConversationHistory(supabase, conversation.id, 20),
+    getMetaReplyProductContext(orgId),
+  ]);
 
   const brandDoc = settings.brand_doc || "";
-  const products = providedProducts || await getMetaReplyProductContext(orgId);
+
+  // 4. Run GPT-4o — single call handles reply + order detection
+  let aiResult;
   try {
-    return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl, conversationHistory, includeCatalogImages });
+    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrl: imageUrl || null });
   } catch (err) {
-    console.warn("[Meta Auto Reply] OpenAI vision failed:", errorMessage(err));
-    if (!imageUrl) {
-      if (isGreetingMessage(customerMessage)) return "Hi! How can I help you today?";
-      return null;
-    }
+    console.error("[Meta AI] GPT call failed:", errorMessage(err));
+    return;
+  }
+
+  let reply = aiResult.reply;
+  const orderData = aiResult.order;
+
+  // 5. Save order if GPT confirmed it has all fields
+  if (orderData) {
     try {
-      return await requestMetaAutoReply({ brandDoc, products, customerMessage, imageUrl: null, conversationHistory, includeCatalogImages: false });
-    } catch (fallbackErr) {
-      console.warn("[Meta Auto Reply] OpenAI text fallback failed:", errorMessage(fallbackErr));
-      return null;
+      const saved = await saveMetaInboxOrder({
+        supabase, orgId, platform,
+        conversation,
+        contactId: senderId,
+        contactName: contactName || senderId,
+        order: orderData,
+      });
+      if (saved && !saved.duplicate) {
+        const shortId = saved.order.id.slice(-6).toUpperCase();
+        // Override reply with order confirmation that includes the ID
+        reply = `Your order has been placed! Order ID: IO-${shortId}. Total: ৳${Number(saved.order.total_price || 0).toLocaleString("en-US")}. We'll be in touch soon.`;
+      }
+    } catch (err) {
+      console.error("[Meta AI] order save failed:", errorMessage(err));
     }
   }
-}
 
-async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text }) {
-  if (!text || !pageToken || !recipientId) return;
-  const path = platform === "instagram" ? `/${pageId}/messages` : `/${pageId}/messages`;
-  await metaGraph(path, {
-    method: "POST",
-    token: pageToken,
-    body: {
-      recipient: { id: recipientId },
-      messaging_type: "RESPONSE",
-      message: { text: text.slice(0, 1900) },
-    },
-  });
-}
+  if (!reply) return;
 
-async function findMetaWhatsAppChannel(supabase, phoneNumberId) {
-  if (!phoneNumberId) return null;
-  const { data, error } = await supabase
-    .from("meta_whatsapp_accounts")
-    .select("org_id, whatsapp_business_account_id, phone_number_id, encrypted_access_token")
-    .eq("phone_number_id", phoneNumberId)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
-async function getWhatsAppMediaDataUrl(mediaId, token) {
-  if (!mediaId || !token) return null;
+  // 6. Send reply back via platform API
+  const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
   try {
-    const media = await metaGraph(`/${mediaId}`, { token });
-    if (!media?.url) return null;
-    const response = await fetch(media.url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) return null;
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    return `data:${contentType};base64,${base64}`;
+    if (platform === "whatsapp") {
+      await sendWhatsAppMessage({
+        phoneNumberId: channel.phone_number_id,
+        token: channel.encrypted_access_token ? decryptToken(channel.encrypted_access_token) : pageToken,
+        recipientId: senderId,
+        text: reply,
+      });
+    } else {
+      await sendMetaMessage({ platform, pageId: channel.page_id || "", pageToken, recipientId: senderId, text: reply });
+    }
   } catch (err) {
-    console.warn("[WhatsApp] media fetch failed:", errorMessage(err));
-    return null;
+    console.warn("[Meta AI] send failed:", errorMessage(err));
   }
-}
 
-async function sendWhatsAppMessage({ phoneNumberId, token, recipientId, text }) {
-  if (!phoneNumberId || !token || !recipientId || !text) return;
-  await metaGraph(`/${phoneNumberId}/messages`, {
-    method: "POST",
-    token,
-    body: {
-      messaging_product: "whatsapp",
-      to: recipientId,
-      type: "text",
-      text: { body: text.slice(0, 4000), preview_url: true },
-    },
+  // 7. Store bot reply
+  await upsertSocialMessage({
+    supabase,
+    orgId,
+    platform,
+    contactId: senderId,
+    contactName: contactName || senderId,
+    sender: "bot",
+    content: reply,
+    messageType: "text",
   });
 }
 
@@ -3426,115 +3292,45 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   const attachment = messaging.message?.attachments?.[0];
   const imageUrl = attachment?.payload?.url || null;
   const messageType = attachment?.type || (text ? "text" : "event");
+
   if (!senderId || !recipientId) return;
+  // Skip echo messages (bot's own messages reflected back)
+  if (messaging.message?.is_echo) return;
 
   const channel = await findMetaChannelByRecipient(supabase, recipientId, platform);
   if (!channel?.org_id) {
-    await upsertMetaWebhookEvent(supabase, {
-      objectType,
-      platform,
-      pageId: recipientId,
-      senderId,
-      eventType: "unmatched_message",
-      payload: messaging,
-    });
+    await upsertMetaWebhookEvent(supabase, { objectType, platform, pageId: recipientId, senderId, eventType: "unmatched_message", payload: messaging });
     return;
   }
 
   await upsertMetaWebhookEvent(supabase, {
-    orgId: channel.org_id,
-    objectType,
-    platform,
+    orgId: channel.org_id, objectType, platform,
     pageId: channel.page_id || recipientId,
     instagramAccountId: channel.instagram_account_id || null,
-    senderId,
-    eventType: "message",
-    payload: messaging,
+    senderId, eventType: "message", payload: messaging,
   });
 
-  const { conversation } = await upsertSocialMessage({
+  await handleMetaMessage({
     supabase,
     orgId: channel.org_id,
     platform,
-    contactId: senderId,
+    channel,
+    senderId,
     contactName: senderId,
-    sender: "user",
-    content: text,
+    text,
     imageUrl,
     messageType,
   });
-
-  if (!text) return;
-  const shouldUseRecentImage = !imageUrl && isRecentImageFollowupIntent(text);
-  const contextImageUrl = imageUrl || (shouldUseRecentImage ? await getRecentConversationImage(supabase, conversation.id) : null);
-  const needsProductContext = !!contextImageUrl || isProductContextIntent(text);
-  const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
-  // Also fetch products when the conversation history contains an order intent so
-  // maybeCreateMetaInboxOrder can match products even when the latest message is
-  // just a quantity reply like "1".
-  const needsOrderContext = !needsProductContext && (isOrderIntentMessage(text) || conversationHistoryHasOrderIntent(conversationHistory));
-  const products = (needsProductContext || needsOrderContext) ? await getMetaReplyProductContext(channel.org_id) : [];
-  const capturedOrder = await maybeCreateMetaInboxOrder({
-    supabase,
-    orgId: channel.org_id,
-    platform,
-    conversation,
-    contactId: senderId,
-    latestCustomerMessage: text,
-    products,
-    conversationHistory,
-  });
-  const reply = capturedOrder
-    ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
-    : await buildMetaAutoReply({
-      orgId: channel.org_id,
-      platform,
-      customerMessage: text,
-      imageUrl: contextImageUrl,
-      conversationHistory,
-      products,
-      includeCatalogImages: !!contextImageUrl,
-    });
-  if (!reply) return;
-
-  const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
-  try {
-    await sendMetaMessage({
-      platform,
-      pageId: channel.page_id || recipientId,
-      pageToken,
-      recipientId: senderId,
-      text: reply,
-    });
-    await upsertSocialMessage({
-      supabase,
-      orgId: channel.org_id,
-      platform,
-      contactId: senderId,
-      contactName: senderId,
-      sender: "bot",
-      content: reply,
-      messageType: "text",
-    });
-  } catch (err) {
-    console.warn("[Meta Auto Reply] send failed:", errorMessage(err));
-  }
 }
 
 async function handleWhatsAppMessageEvent({ supabase, value, message, contact }) {
   const phoneNumberId = value.metadata?.phone_number_id;
   const senderId = message.from;
   if (!phoneNumberId || !senderId) return;
+
   const channel = await findMetaWhatsAppChannel(supabase, phoneNumberId);
   if (!channel?.org_id) {
-    await upsertMetaWebhookEvent(supabase, {
-      objectType: "whatsapp_business_account",
-      platform: "whatsapp",
-      pageId: phoneNumberId,
-      senderId,
-      eventType: "unmatched_message",
-      payload: message,
-    });
+    await upsertMetaWebhookEvent(supabase, { objectType: "whatsapp_business_account", platform: "whatsapp", pageId: phoneNumberId, senderId, eventType: "unmatched_message", payload: message });
     return;
   }
 
@@ -3553,73 +3349,23 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   }
 
   await upsertMetaWebhookEvent(supabase, {
-    orgId: channel.org_id,
-    objectType: "whatsapp_business_account",
-    platform: "whatsapp",
-    pageId: phoneNumberId,
-    senderId,
-    eventType: "message",
-    payload: message,
+    orgId: channel.org_id, objectType: "whatsapp_business_account", platform: "whatsapp",
+    pageId: phoneNumberId, senderId, eventType: "message", payload: message,
   });
 
-  const { conversation } = await upsertSocialMessage({
+  await handleMetaMessage({
     supabase,
     orgId: channel.org_id,
     platform: "whatsapp",
-    contactId: senderId,
+    channel: { ...channel, phone_number_id: phoneNumberId },
+    senderId,
     contactName: contact?.profile?.name || senderId,
-    sender: "user",
-    content: text,
+    text,
     imageUrl,
     messageType,
   });
-
-  if (!text) return;
-  const shouldUseRecentImage = !imageUrl && isRecentImageFollowupIntent(text);
-  const contextImageUrl = imageUrl || (shouldUseRecentImage ? await getRecentConversationImage(supabase, conversation.id) : null);
-  const needsProductContext = !!contextImageUrl || isProductContextIntent(text);
-  const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
-  const needsOrderContext = !needsProductContext && (isOrderIntentMessage(text) || conversationHistoryHasOrderIntent(conversationHistory));
-  const products = (needsProductContext || needsOrderContext) ? await getMetaReplyProductContext(channel.org_id) : [];
-  const capturedOrder = await maybeCreateMetaInboxOrder({
-    supabase,
-    orgId: channel.org_id,
-    platform: "whatsapp",
-    conversation,
-    contactId: senderId,
-    latestCustomerMessage: text,
-    products,
-    conversationHistory,
-  });
-  const reply = capturedOrder
-    ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
-    : await buildMetaAutoReply({
-      orgId: channel.org_id,
-      platform: "whatsapp",
-      customerMessage: text,
-      imageUrl: contextImageUrl,
-      conversationHistory,
-      products,
-      includeCatalogImages: !!contextImageUrl,
-    });
-  if (!reply) return;
-
-  try {
-    await sendWhatsAppMessage({ phoneNumberId, token, recipientId: senderId, text: reply });
-    await upsertSocialMessage({
-      supabase,
-      orgId: channel.org_id,
-      platform: "whatsapp",
-      contactId: senderId,
-      contactName: contact?.profile?.name || senderId,
-      sender: "bot",
-      content: reply,
-      messageType: "text",
-    });
-  } catch (err) {
-    console.warn("[WhatsApp Auto Reply] send failed:", errorMessage(err));
-  }
 }
+
 
 app.get("/api/webhooks/facebook", (req, res) => {
   const mode = req.query["hub.mode"];
