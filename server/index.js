@@ -2843,14 +2843,47 @@ async function upsertSocialMessage({ supabase, orgId, platform, contactId, conta
   return { conversation, message };
 }
 
+async function getMetaReplyProductContext(orgId) {
+  try {
+    const supabase = getServiceSupabase();
+    const { data: products, error } = await supabase
+      .from("products")
+      .select("id, name, url, selling_price, cog")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(250);
+    if (error) throw error;
+    const rows = products || [];
+    const stockMap = rows.length ? await getProductStockMap(orgId, rows.map((p) => p.id)) : {};
+    return rows.map((p) => ({
+      name: p.name,
+      price: p.selling_price != null ? Number(p.selling_price) : null,
+      stock: stockMap[p.id] ?? 0,
+      url: p.url || null,
+    }));
+  } catch (err) {
+    console.warn("[Meta Auto Reply] product context unavailable:", errorMessage(err));
+    return [];
+  }
+}
+
 async function buildMetaAutoReply({ orgId, platform, customerMessage }) {
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
   if (settings.ai_auto_reply_enabled !== "true") return null;
-  const channels = JSON.parse(settings.auto_reply_channels || "[]");
+  let channels = [];
+  try {
+    channels = JSON.parse(settings.auto_reply_channels || "[]");
+  } catch {
+    channels = [];
+  }
   if (!channels.includes(platform)) return null;
   if (!process.env.OPENAI_API_KEY) return null;
 
   const brandDoc = settings.brand_doc || "";
+  const products = await getMetaReplyProductContext(orgId);
+  const productContext = products.length
+    ? JSON.stringify(products).slice(0, 18000)
+    : "[]";
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -2864,11 +2897,11 @@ async function buildMetaAutoReply({ orgId, platform, customerMessage }) {
         {
           role: "system",
           content:
-            "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. If order details are needed, ask for name, phone, address, product, and quantity. Do not invent policies.",
+            "You are a helpful ecommerce support assistant for social DMs. Reply naturally, briefly, and in the customer's language when clear. You have live product catalog data with price and stock. If the customer asks price, availability, stock, product link, or product details, answer from PRODUCT CATALOG first. Use ৳ for prices. Do not ask for the customer's name before answering product price/stock questions. If one clear product matches, answer directly. If multiple products match, list the closest 2-4 options with prices and ask which one they mean. If no product matches, say you cannot find that exact product and ask for a photo or exact product name. Only ask for name, phone, address, product, and quantity when the customer is ready to place an order. Do not invent prices, stock, discounts, delivery promises, or policies.",
         },
         {
           role: "user",
-          content: `Brand knowledge:\n${brandDoc || "(none)"}\n\nCustomer message:\n${customerMessage}`,
+          content: `Brand knowledge:\n${brandDoc || "(none)"}\n\nPRODUCT CATALOG JSON:\n${productContext}\n\nCustomer message:\n${customerMessage}`,
         },
       ],
     }),
