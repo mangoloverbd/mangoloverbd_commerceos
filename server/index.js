@@ -3435,7 +3435,17 @@ async function updateConversationOrderFields(supabase, conversationId, orgId, fi
 
 async function processOrderFieldsFromMessage({ supabase, orgId, platform, conversation, contactId, contactName, text, products }) {
   if (!hasOrderSignal(text)) return;
-  const existing = conversation.order_fields || {};
+
+  // Always re-fetch order_fields fresh from DB — stale in-memory object causes each
+  // message to overwrite accumulated fields instead of adding to them.
+  const { data: freshConv } = await supabase
+    .from("social_conversations")
+    .select("order_fields")
+    .eq("id", conversation.id)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
+  const existing = freshConv?.order_fields || {};
   if (isOrderComplete(existing)) return;
 
   const extracted = await extractNewFields({ text, existingFields: existing, products });
@@ -3447,7 +3457,6 @@ async function processOrderFieldsFromMessage({ supabase, orgId, platform, conver
   }
 
   await updateConversationOrderFields(supabase, conversation.id, orgId, merged);
-  conversation.order_fields = merged;
 
   if (isOrderComplete(merged)) {
     await saveMetaInboxOrder({
