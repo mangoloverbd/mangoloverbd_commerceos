@@ -3355,14 +3355,50 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
 
 // ─── Order capture: pre-filter + stateful field tracking ─────────────────────
 
-const DEAD_END_RE = /^(hi+|hello|hey|ok|okay|thanks|thank you|confirmed|done|👍|🙏|😊|✓|✅|sure|np|no problem|good|great|noted|hmm|lol)\s*[!.]*$/i;
+// ─── Order capture: event-driven extraction ───────────────────────────────────
 
-function hasOrderSignal(text) {
-  if (!text) return false;
-  const t = text.trim();
-  if (t.length < 2) return false;
-  if (DEAD_END_RE.test(t)) return false;
-  return true;
+const PHONE_RE = /\b(01[3-9]\d{8})\b/;
+const PRICE_RE = /(\d[\d,]+)\s*(taka|টাকা|৳|tk)\b|৳\s*\d/i;
+const CONFIRM_RE = /\b(confirm|confirmed|korun|korte chai|order\s*d(en|iye|ilam)|yes|haan|ha\b|thik|theek|proceed|place.*order|order.*place)\b/i;
+const ORDER_INTENT_RE = /\b(order|ordar|nite chai|kinbo|buy|purchase|lagbe|chai|dorkar|dite paren)\b/i;
+const ADDRESS_RE = /\b(road|rd|block|sector|avenue|ave|lane|ln|floor|flat|apt|house|building|dohs|dhanmondi|gulshan|mirpur|uttara|mohammadpur|banani|bashundhara|baridhara|motijheel|khilgaon|rampura|badda|gazipur|narayanganj|cumilla|chittagong|sylhet|rajshahi|khulna)\b/i;
+const NAME_ONLY_RE = /^[A-Za-z\u0980-\u09FF]+([\s][A-Za-z\u0980-\u09FF]+){0,3}$/;
+const NOT_NAME_RE = /\d|taka|taaka|order|confirm|address|phone|price|deliver|product|stock|available/i;
+
+function classifyMessageEvent(text, messageType, existingFields = {}, catalog = []) {
+  if (!text && messageType !== "image") return "irrelevant";
+  const t = (text || "").trim();
+  if (messageType === "image" || messageType === "mixed") return "image_uploaded";
+  if (t.length < 2) return "irrelevant";
+  if (/^[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]+$/u.test(t)) return "irrelevant";
+  if (/^(hi+|hello|hey|ok|okay|thanks|thank you|done|👍|🙏|sure|np|good|great|noted|hmm|lol|আচ্ছা|ঠিক আছে)\s*[!.?]*$/i.test(t)) return "irrelevant";
+  if (PHONE_RE.test(t) && !existingFields.phone) return "phone_shared";
+  if (/total\s*[\d,]+\s*(taka|টাকা|৳|tk)/i.test(t) || /total\s*৳\s*[\d,]+/i.test(t)) return "order_confirmed";
+  if (PRICE_RE.test(t) && !existingFields.unit_price && !existingFields.confirmed_total) return "price_stated";
+  if (CONFIRM_RE.test(t)) return "order_confirmed";
+  if (!existingFields.address && ADDRESS_RE.test(t)) return "address_shared";
+  if (!existingFields.product_name) {
+    const tLower = t.toLowerCase();
+    const catalogHit = catalog.some((p) => p.name && tLower.includes(p.name.toLowerCase().split(" ")[0]));
+    if (catalogHit || ORDER_INTENT_RE.test(t)) return "product_mentioned";
+  }
+  if (!existingFields.customer_name && NAME_ONLY_RE.test(t) && !NOT_NAME_RE.test(t) && t.split(" ").length <= 4) return "name_shared";
+  if (!existingFields.address && t.split(" ").length >= 3 && !PHONE_RE.test(t) && !PRICE_RE.test(t)) return "address_shared";
+  return "irrelevant";
+}
+
+function fieldsToExtract(event, existingFields) {
+  const missing = (keys) => keys.filter((k) => !existingFields[k]);
+  switch (event) {
+    case "phone_shared":      return missing(["phone", "customer_name"]);
+    case "price_stated":      return missing(["unit_price", "quantity", "product_name"]);
+    case "order_confirmed":   return missing(["confirmed_total", "customer_name", "phone", "address", "product_name", "quantity", "unit_price"]);
+    case "address_shared":    return missing(["address", "customer_name"]);
+    case "product_mentioned": return missing(["product_name", "quantity"]);
+    case "name_shared":       return missing(["customer_name"]);
+    case "image_uploaded":    return missing(["product_name"]);
+    default:                  return [];
+  }
 }
 
 function isOrderComplete(fields) {
@@ -3381,47 +3417,48 @@ function mergeFields(existing = {}, incoming = {}) {
   const merged = { ...existing };
   for (const key of ["customer_name", "phone", "address", "product_name", "quantity", "unit_price", "confirmed_total"]) {
     const v = incoming[key];
-    if (v !== null && v !== undefined && v !== "" && !merged[key]) {
-      merged[key] = v;
-    }
+    if (v !== null && v !== undefined && v !== "" && !merged[key]) merged[key] = v;
   }
   return merged;
 }
 
-async function extractNewFields({ text, existingFields = {}, products = [] }) {
+async function extractNewFields({ text, event, fieldsNeeded, existingFields = {}, products = [] }) {
   if (!process.env.OPENAI_API_KEY) return null;
-  const missing = ["customer_name", "phone", "address", "product_name", "quantity", "unit_price", "confirmed_total"]
-    .filter((k) => !existingFields[k]);
-  if (missing.length === 0) return existingFields;
+  if (!fieldsNeeded || fieldsNeeded.length === 0) return null;
 
   const catalog = products.slice(0, 50).map((p) => ({ name: p.name, price: p.price }));
-  const knownStr = Object.entries(existingFields)
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(", ") || "none yet";
+  const knownStr = Object.entries(existingFields).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(", ") || "none yet";
+
+  const eventHints = {
+    phone_shared:      "The customer just sent their contact info. Extract phone number and name if present.",
+    price_stated:      "The agent just quoted a price. Extract unit_price. Also extract product_name and quantity if mentioned.",
+    order_confirmed:   "The order is being confirmed. Extract confirmed_total if agent stated a total. Extract any remaining missing fields.",
+    address_shared:    "The customer just sent their delivery address. Extract address and customer_name if present.",
+    product_mentioned: "The customer mentioned a product or order intent. Extract product_name and quantity.",
+    name_shared:       "The customer shared their name. Extract customer_name.",
+    image_uploaded:    "Customer sent an image. Extract product_name if it can be inferred.",
+  };
 
   const systemPrompt = `You are an order field extractor for a Bangladeshi e-commerce shop.
 
+EVENT: ${event}
+HINT: ${eventHints[event] || "Extract any relevant order fields."}
+
 Already collected: ${knownStr}
-Still missing: ${missing.join(", ")}
+Extract ONLY these fields: ${fieldsNeeded.join(", ")}
 
-CATALOG (fallback for price only if no price is stated in the conversation):
-${JSON.stringify(catalog).slice(0, 3000)}
+CATALOG (for price lookup only if no price stated):
+${JSON.stringify(catalog).slice(0, 2000)}
 
-PRICE RULES (strict priority):
-1. If the message explicitly states a price (e.g. "500 taka", "৳700", "price 620"), use that as unit_price. This overrides the catalog.
-2. If the agent says "total X taka" or "total ৳X", extract X as confirmed_total (the final agreed price including delivery).
-3. Only use catalog price if NO price is mentioned anywhere in the conversation.
+RULES:
+- Explicitly stated price overrides catalog price.
+- "total X taka" from agent → confirmed_total = X.
+- Bangla quantities: ekta=1, duita=2, tinta=3, charta=4. "1 ta"/"2ta" = 1, 2.
+- No quantity stated + order intent = quantity 1.
+- Do NOT guess. If a field is not clearly present, return null for it.
 
-From the single message below, extract ONLY the missing fields that appear explicitly.
-Do NOT invent or guess. If a field is not clearly stated, set it to null.
-
-Bangla quantity words: ekta/এক্টা=1, duita/দুইটা=2, tinta/তিনটা=3, charta/চারটা=4, pachta/পাঁচটা=5.
-Patterns like "1 ta", "2ta", "3 ta" also mean quantity 1, 2, 3.
-If the message says "order korte chai" or similar without a number, set quantity to 1.
-
-Return ONLY valid JSON:
-{"customer_name": null, "phone": null, "address": null, "product_name": null, "quantity": null, "unit_price": null, "confirmed_total": null}`;
+Return ONLY valid JSON with exactly these keys:
+${JSON.stringify(Object.fromEntries(fieldsNeeded.map((k) => [k, null])))}`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -3430,7 +3467,7 @@ Return ONLY valid JSON:
       body: JSON.stringify({
         model: "gpt-4o-mini",
         temperature: 0,
-        max_tokens: 200,
+        max_tokens: 150,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
@@ -3441,23 +3478,16 @@ Return ONLY valid JSON:
     if (!response.ok) return null;
     const data = await response.json();
     const raw = data.choices?.[0]?.message?.content?.trim() || "";
+    console.log(`[OrderFields] event=${event} extracted from "${(text||"").slice(0,35)}": ${raw.slice(0,100)}`);
     try { return JSON.parse(raw); } catch { return null; }
   } catch { return null; }
 }
 
 async function updateConversationOrderFields(supabase, conversationId, orgId, fields) {
-  await supabase
-    .from("social_conversations")
-    .update({ order_fields: fields })
-    .eq("id", conversationId)
-    .eq("org_id", orgId);
+  await supabase.from("social_conversations").update({ order_fields: fields }).eq("id", conversationId).eq("org_id", orgId);
 }
 
-async function processOrderFieldsFromMessage({ supabase, orgId, platform, conversation, contactId, contactName, text, products }) {
-  if (!hasOrderSignal(text)) return;
-
-  // Always re-fetch order_fields fresh from DB — stale in-memory object causes each
-  // message to overwrite accumulated fields instead of adding to them.
+async function processOrderFieldsFromMessage({ supabase, orgId, platform, conversation, contactId, contactName, text, messageType, products }) {
   const { data: freshConv } = await supabase
     .from("social_conversations")
     .select("order_fields")
@@ -3468,47 +3498,47 @@ async function processOrderFieldsFromMessage({ supabase, orgId, platform, conver
   const existing = freshConv?.order_fields || {};
 
   if (isOrderComplete(existing)) {
-    const fields = { ...existing };
-    if (!fields.quantity) fields.quantity = 1;
+    const fields = { ...existing, quantity: existing.quantity || 1 };
     const saved = await saveMetaInboxOrder({
       supabase, orgId, platform, conversation, contactId, contactName,
       order: {
-        customer_name:   fields.customer_name,
-        phone:           fields.phone,
-        address:         fields.address,
-        product_name:    fields.product_name,
-        quantity:        Number(fields.quantity),
-        unit_price:      Number(fields.unit_price),
+        customer_name: fields.customer_name, phone: fields.phone,
+        address: fields.address, product_name: fields.product_name,
+        quantity: Number(fields.quantity), unit_price: Number(fields.unit_price),
         confirmed_total: fields.confirmed_total ? Number(fields.confirmed_total) : null,
       },
     });
-    if (!saved?.duplicate) console.log("[OrderFields] already complete — saved order", saved?.order?.id);
+    if (!saved?.duplicate) console.log("[OrderFields] saved on retry:", saved?.order?.id);
     return;
   }
 
-  const extracted = await extractNewFields({ text, existingFields: existing, products });
+  const event = classifyMessageEvent(text, messageType, existing, products);
+  if (event === "irrelevant") { console.log(`[OrderFields] irrelevant: "${(text||"").slice(0,35)}"`); return; }
+
+  const fieldsNeeded = fieldsToExtract(event, existing);
+  if (fieldsNeeded.length === 0) { console.log(`[OrderFields] event=${event} all fields collected`); return; }
+
+  console.log(`[OrderFields] event=${event} fieldsNeeded=${fieldsNeeded.join(",")}`);
+
+  const extracted = await extractNewFields({ text, event, fieldsNeeded, existingFields: existing, products });
   if (!extracted) return;
 
   const merged = mergeFields(existing, extracted);
-  if (merged.phone && !existing.phone) {
-    merged.phone = normalizeBdPhone(merged.phone) || merged.phone;
-  }
+  if (merged.phone && !existing.phone) merged.phone = normalizeBdPhone(merged.phone) || merged.phone;
 
-  await updateConversationOrderFields(supabase, conversation.id, orgId, merged);
+  const { error: updateErr } = await supabase.from("social_conversations").update({ order_fields: merged }).eq("id", conversation.id).eq("org_id", orgId);
+  if (updateErr) { console.warn("[OrderFields] update failed:", updateErr.message); return; }
 
-  // Default quantity to 1 if never stated
   if (!merged.quantity) merged.quantity = 1;
 
   if (isOrderComplete(merged)) {
+    console.log("[OrderFields] COMPLETE — saving", JSON.stringify(merged));
     await saveMetaInboxOrder({
       supabase, orgId, platform, conversation, contactId, contactName,
       order: {
-        customer_name:   merged.customer_name,
-        phone:           merged.phone,
-        address:         merged.address,
-        product_name:    merged.product_name,
-        quantity:        Number(merged.quantity),
-        unit_price:      Number(merged.unit_price),
+        customer_name: merged.customer_name, phone: merged.phone,
+        address: merged.address, product_name: merged.product_name,
+        quantity: Number(merged.quantity), unit_price: Number(merged.unit_price),
         confirmed_total: merged.confirmed_total ? Number(merged.confirmed_total) : null,
       },
     });
