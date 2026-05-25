@@ -3356,12 +3356,13 @@ function hasOrderSignal(text) {
 }
 
 function isOrderComplete(fields) {
+  const qty = Number(fields?.quantity) >= 1 ? Number(fields.quantity) : 1;
   return !!(
     fields?.customer_name?.trim() &&
     fields?.phone?.trim() &&
     fields?.address?.trim() &&
     fields?.product_name?.trim() &&
-    Number(fields?.quantity) >= 1 &&
+    qty >= 1 &&
     Number(fields?.unit_price) > 0
   );
 }
@@ -3397,8 +3398,12 @@ Still missing: ${missing.join(", ")}
 CATALOG:
 ${JSON.stringify(catalog).slice(0, 3000)}
 
-From the single customer message below, extract ONLY the missing fields that appear explicitly.
+From the single message below, extract ONLY the missing fields that appear explicitly.
 Do NOT invent or guess. If a field is not clearly stated, set it to null.
+
+Bangla quantity words: ekta/এক্টা=1, duita/দুইটা=2, tinta/তিনটা=3, charta/চারটা=4, pachta/পাঁচটা=5.
+Patterns like "1 ta", "2ta", "3 ta" also mean quantity 1, 2, 3.
+If the message says "order korte chai" or similar without a number, set quantity to 1.
 
 Return ONLY valid JSON:
 {"customer_name": null, "phone": null, "address": null, "product_name": null, "quantity": null, "unit_price": null}`;
@@ -3457,6 +3462,9 @@ async function processOrderFieldsFromMessage({ supabase, orgId, platform, conver
   }
 
   await updateConversationOrderFields(supabase, conversation.id, orgId, merged);
+
+  // Default quantity to 1 if never stated
+  if (!merged.quantity) merged.quantity = 1;
 
   if (isOrderComplete(merged)) {
     await saveMetaInboxOrder({
