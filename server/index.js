@@ -3343,6 +3343,78 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   });
 }
 
+// ─── Order detection for any message (AI or human mode) ──────────────────────
+// Runs a focused extraction-only GPT call on the full conversation history.
+// If a complete order is found and not already saved, inserts it to social_inbox_orders.
+// Used in AI mode by sendAndStoreMetaAIReply; also available for human-mode messages.
+
+async function detectAndSaveInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName }) {
+  if (!process.env.OPENAI_API_KEY) return;
+  try {
+    const [conversationHistory, products] = await Promise.all([
+      getRecentConversationHistory(supabase, conversation.id, 30),
+      getMetaReplyProductContext(orgId),
+    ]);
+
+    const catalog = products.map((p) => ({ name: p.name, price: p.price }));
+
+    const systemPrompt = `You are an order extraction assistant. Read the conversation and determine if a COMPLETE order has been confirmed.
+
+A complete order requires ALL of: customer name, phone number, delivery address, product name, quantity, and unit price.
+
+CATALOG (for price lookup):
+${JSON.stringify(catalog).slice(0, 6000)}
+
+Return ONLY valid JSON — no prose, no markdown:
+{"order": null}
+OR
+{"order": {"customer_name": "", "phone": "", "address": "", "product_name": "", "quantity": 1, "unit_price": 0}}
+
+Only set order if ALL fields are present and confirmed. Return null otherwise.`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: process.env.META_REPLY_MODEL || "gpt-4o-mini",
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `CONVERSATION:\n${conversationHistory}` },
+        ],
+      }),
+    });
+
+    if (!response.ok) return;
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "";
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { return; }
+
+    const orderRaw = parsed?.order;
+    if (
+      !orderRaw || typeof orderRaw !== "object" ||
+      !orderRaw.customer_name?.trim() || !orderRaw.phone?.trim() ||
+      !orderRaw.address?.trim() || !orderRaw.product_name?.trim() ||
+      !(Number(orderRaw.quantity) >= 1) || !(Number(orderRaw.unit_price) > 0)
+    ) return;
+
+    const order = {
+      customer_name: String(orderRaw.customer_name).trim(),
+      phone: String(orderRaw.phone).trim(),
+      address: String(orderRaw.address).trim(),
+      product_name: String(orderRaw.product_name).trim(),
+      quantity: Math.max(1, Number.parseInt(orderRaw.quantity, 10) || 1),
+      unit_price: Number(orderRaw.unit_price),
+    };
+
+    await saveMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName, order });
+  } catch (err) {
+    console.warn("[OrderDetect] failed:", err?.message || err);
+  }
+}
+
 async function fetchMetaUserName(senderId, pageToken, platform = "facebook") {
   if (!pageToken) return null;
   try {
