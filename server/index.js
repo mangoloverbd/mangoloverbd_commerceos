@@ -3070,6 +3070,13 @@ function isProductContextIntent(text = "") {
     || /(product|item|pic|photo|image|eta|এটা|এইটা|পণ্য|অর্ডার|order|available|stock|link|size|color|colour|কিনতে|নিতে)/i.test(value);
 }
 
+function isRecentImageFollowupIntent(text = "") {
+  const value = String(text).trim().toLowerCase();
+  if (!value) return false;
+  return isPriceIntentMessage(value)
+    || /^(this|eta|এটা|এইটা|ei ta|ei product|এই পণ্য|link|details|available|stock|color|colour|size)[?.!।\s]*$/i.test(value);
+}
+
 function isOrderIntentMessage(text = "") {
   const value = String(text).trim().toLowerCase();
   if (!value) return false;
@@ -3231,11 +3238,11 @@ function formatTaka(value) {
 function buildMatchedProductReply(product) {
   const available = Number(product?.stock || 0) > 0 ? "Available" : "Currently unavailable";
   const price = product?.price != null ? formatTaka(product.price) : "Price not set";
-  return `The product is **${product.name}**.\n\n**Price:** ${price}\n**Availability:** ${available}`;
+  return `Sure, this looks like **${product.name}**. Price is **${price}** and it’s **${available.toLowerCase()}**.`;
 }
 
 function buildNoImageMatchReply() {
-  return "I couldn't confidently match this image with the product catalog. Please send another clear photo or the product name, and I’ll check the price.";
+  return "I can see the product, but I don’t want to give you the wrong price. Please send the product name or one clearer photo, and I’ll check it for you.";
 }
 
 function extractInboxOrderHeuristic({ products, conversationHistory }) {
@@ -3523,8 +3530,9 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   });
 
   if (!text) return;
-  const needsProductContext = !!imageUrl || isProductContextIntent(text);
-  const contextImageUrl = imageUrl || (needsProductContext ? await getRecentConversationImage(supabase, conversation.id) : null);
+  const shouldUseRecentImage = !imageUrl && isRecentImageFollowupIntent(text);
+  const contextImageUrl = imageUrl || (shouldUseRecentImage ? await getRecentConversationImage(supabase, conversation.id) : null);
+  const needsProductContext = !!contextImageUrl || isProductContextIntent(text);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
   const products = needsProductContext ? await getMetaReplyProductContext(channel.org_id) : [];
   let identifiedProduct = null;
@@ -3547,9 +3555,9 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   });
   const reply = capturedOrder
     ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
-    : contextImageUrl && identifiedProduct && isProductContextIntent(text)
+    : contextImageUrl && identifiedProduct && (imageUrl || isRecentImageFollowupIntent(text))
       ? buildMatchedProductReply(identifiedProduct)
-      : contextImageUrl && !identifiedProduct && isProductContextIntent(text)
+      : contextImageUrl && !identifiedProduct && (imageUrl || isRecentImageFollowupIntent(text))
         ? buildNoImageMatchReply()
     : await buildMetaAutoReply({
       orgId: channel.org_id,
@@ -3641,8 +3649,9 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   });
 
   if (!text) return;
-  const needsProductContext = !!imageUrl || isProductContextIntent(text);
-  const contextImageUrl = imageUrl || (needsProductContext ? await getRecentConversationImage(supabase, conversation.id) : null);
+  const shouldUseRecentImage = !imageUrl && isRecentImageFollowupIntent(text);
+  const contextImageUrl = imageUrl || (shouldUseRecentImage ? await getRecentConversationImage(supabase, conversation.id) : null);
+  const needsProductContext = !!contextImageUrl || isProductContextIntent(text);
   const conversationHistory = await getRecentConversationHistory(supabase, conversation.id);
   const products = needsProductContext ? await getMetaReplyProductContext(channel.org_id) : [];
   let identifiedProduct = null;
@@ -3665,9 +3674,9 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   });
   const reply = capturedOrder
     ? `Done, your order has been placed. Order ID: IO-${capturedOrder.order.id.slice(-6).toUpperCase()}. Total: ৳${Number(capturedOrder.order.total_price || 0).toLocaleString("en-US")}.`
-    : contextImageUrl && identifiedProduct && isProductContextIntent(text)
+    : contextImageUrl && identifiedProduct && (imageUrl || isRecentImageFollowupIntent(text))
       ? buildMatchedProductReply(identifiedProduct)
-      : contextImageUrl && !identifiedProduct && isProductContextIntent(text)
+      : contextImageUrl && !identifiedProduct && (imageUrl || isRecentImageFollowupIntent(text))
         ? buildNoImageMatchReply()
     : await buildMetaAutoReply({
       orgId: channel.org_id,
