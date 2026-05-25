@@ -2972,7 +2972,7 @@ async function requestMetaAutoReply({ brandDoc, products, customerMessage, image
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: "gpt-5.4-mini",
       temperature: 0.2,
       messages,
     }),

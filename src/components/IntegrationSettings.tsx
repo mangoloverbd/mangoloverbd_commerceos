@@ -334,13 +334,12 @@ function MetaBusinessPanel() {
 
   const toggle = (key: string) => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const row = (key: string, name: string, meta: string | undefined, ok: boolean, onDisconnect: () => void, busy: boolean) => (
+  const row = (key: string, name: string, meta: string | undefined, onDisconnect: () => void, busy: boolean) => (
     <div key={key} className="flex items-center justify-between gap-3 rounded-[9px] bg-white px-3 py-2">
       <div className="min-w-0">
         <p className="truncate text-[12px] font-medium text-black">{name || key}</p>
         {meta && <p className="truncate text-[10px] text-black/35">{meta}</p>}
       </div>
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", ok ? "bg-emerald-500" : "bg-amber-500")} />
       <button
         type="button"
         onClick={onDisconnect}
@@ -410,7 +409,6 @@ function MetaBusinessPanel() {
               p.id,
               p.page_name,
               `${p.page_id}${p.webhook_subscribed ? " · webhooks active" : " · webhooks not active"}`,
-              p.webhook_subscribed,
               () => disconnectAsset("page", p.id, p.page_name || "Facebook Page"),
               assetBusy === `page:${p.id}`
             ))}
@@ -426,7 +424,6 @@ function MetaBusinessPanel() {
               a.id,
               a.account_name || a.username,
               a.username ? `@${a.username}` : a.instagram_account_id,
-              true,
               () => disconnectAsset("instagram", a.id, a.account_name || a.username || "Instagram Account"),
               assetBusy === `instagram:${a.id}`
             ))}
@@ -442,7 +439,6 @@ function MetaBusinessPanel() {
               a.id,
               a.account_name || a.display_phone_number,
               a.display_phone_number || a.whatsapp_business_account_id,
-              true,
               () => disconnectAsset("whatsapp", a.id, a.account_name || a.display_phone_number || "WhatsApp Account"),
               assetBusy === `whatsapp:${a.id}`
             ))}
@@ -458,7 +454,6 @@ function MetaBusinessPanel() {
               a.id,
               a.account_name,
               [a.ad_account_id, a.currency].filter(Boolean).join(" · "),
-              true,
               () => disconnectAsset("ad", a.id, a.account_name || "Ad Account"),
               assetBusy === `ad:${a.id}`
             ))}
