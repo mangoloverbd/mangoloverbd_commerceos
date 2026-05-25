@@ -2863,7 +2863,9 @@ async function upsertSocialMessage({ supabase, orgId, platform, contactId, conta
     const { data: updated, error: updateError } = await supabase
       .from("social_conversations")
       .update({
-        contact_name: contactName || conversation.contact_name,
+        contact_name: (contactName && contactName !== contactId)
+          ? contactName
+          : (/^\d{10,}$/.test(conversation.contact_name || "") ? (contactName || conversation.contact_name) : conversation.contact_name),
         last_message: content || `[${messageType}]`,
         last_message_at: now,
         unread_count: sender === "user" ? (conversation.unread_count || 0) + 1 : conversation.unread_count || 0,
@@ -3341,6 +3343,17 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   });
 }
 
+async function fetchMetaUserName(senderId, pageToken, platform = "facebook") {
+  if (!pageToken) return null;
+  try {
+    const fields = platform === "instagram" ? "name,username" : "name";
+    const data = await metaGraph(senderId, { token: pageToken, params: { fields } });
+    return data?.name || data?.username || null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging }) {
   const platform = objectType === "instagram" ? "instagram" : "facebook";
   const senderId = messaging.sender?.id;
@@ -3367,13 +3380,16 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     senderId, eventType: "message", payload: messaging,
   });
 
+  const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
+  const resolvedName = await fetchMetaUserName(senderId, pageToken, platform);
+
   await handleMetaMessage({
     supabase,
     orgId: channel.org_id,
     platform,
     channel,
     senderId,
-    contactName: senderId,
+    contactName: resolvedName || senderId,
     text,
     imageUrl,
     messageType,
