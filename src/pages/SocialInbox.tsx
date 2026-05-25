@@ -76,6 +76,8 @@ export default function SocialInbox({ platform }: Props) {
   const [search, setSearch] = useState("");
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isInitialLoad = useRef(true);
   const cfg = PLATFORM_CONFIG[platform];
   const Icon = cfg.icon;
 
@@ -104,7 +106,24 @@ export default function SocialInbox({ platform }: Props) {
   }, [selectedId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    isInitialLoad.current = true;
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (isInitialLoad.current) {
+      // First load for this conversation — always jump to bottom instantly
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      isInitialLoad.current = false;
+      return;
+    }
+    // Polling update — only scroll if user is within 120px of the bottom
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom < 120) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   const filtered = conversations.filter((c) =>
@@ -240,7 +259,7 @@ export default function SocialInbox({ platform }: Props) {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 space-y-3 overflow-y-auto bg-[#FAFAF8] px-4 py-4">
+            <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto bg-[#FAFAF8] px-4 py-4">
               {msgLoading ? (
                 <div className="flex h-full items-center justify-center">
                   <Spinner className="text-muted-foreground" />
