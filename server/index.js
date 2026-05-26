@@ -3531,15 +3531,20 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
 
 // ─── Platform send helpers ────────────────────────────────────────────────────
 
-async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text }) {
+async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text, instagramAccountId }) {
   if (!text || !pageToken || !recipientId) return;
-  await metaGraph(`/${pageId}/messages`, {
+  // Instagram replies must use the Instagram account ID as the endpoint,
+  // not the Facebook page ID. The recipient is the Instagram-scoped user ID.
+  const endpointId = (platform === "instagram" && instagramAccountId)
+    ? instagramAccountId
+    : pageId;
+  await metaGraph(`/${endpointId}/messages`, {
     method: "POST",
     token: pageToken,
     body: {
       recipient: { id: recipientId },
       messaging_type: "RESPONSE",
-      message: { text: text.slice(0, 1900) },
+      message: { text: text.slice(0, 1000) },
     },
   });
 }
@@ -3668,7 +3673,14 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
         text: reply,
       });
     } else {
-      await sendMetaMessage({ platform, pageId: channel.page_id || "", pageToken, recipientId: senderId, text: reply });
+      await sendMetaMessage({
+        platform,
+        pageId: channel.page_id || "",
+        pageToken,
+        recipientId: senderId,
+        text: reply,
+        instagramAccountId: channel.instagram_account_id || null,
+      });
     }
   } catch (err) {
     console.warn("[Meta AI] send failed:", errorMessage(err));
