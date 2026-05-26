@@ -4157,6 +4157,9 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   const senderId = message.from;
   if (!phoneNumberId || !senderId) return;
 
+  // Skip status updates (delivered, read, failed) — not customer messages
+  if (message.type === "status" || value.statuses?.length) return;
+
   const channel = await findMetaWhatsAppChannel(supabase, phoneNumberId);
   if (!channel?.org_id) {
     await upsertMetaWebhookEvent(supabase, { objectType: "whatsapp_business_account", platform: "whatsapp", pageId: phoneNumberId, senderId, eventType: "unmatched_message", payload: message });
@@ -4164,18 +4167,55 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
   }
 
   const token = channel.encrypted_access_token ? decryptToken(channel.encrypted_access_token) : "";
+
+  // Extract text from all WhatsApp message types
   const text =
     message.text?.body ||
     message.button?.text ||
     message.interactive?.button_reply?.title ||
     message.interactive?.list_reply?.title ||
     "";
-  let imageUrl = null;
-  let messageType = message.type || "event";
+
+  // Extract ALL media — WhatsApp sends one media item per message
+  // but handle image, video, document, sticker, audio
+  const imageUrls = [];
+  let messageType = message.type || "text";
+
   if (message.image?.id) {
-    imageUrl = await getWhatsAppMediaDataUrl(message.image.id, token);
+    const url = await getWhatsAppMediaDataUrl(message.image.id, token);
+    if (url) imageUrls.push(url);
     messageType = "image";
+  } else if (message.sticker?.id) {
+    const url = await getWhatsAppMediaDataUrl(message.sticker.id, token);
+    if (url) imageUrls.push(url);
+    messageType = "image";
+  } else if (message.document?.id) {
+    // Documents — store but don't send to vision AI
+    messageType = "document";
+  } else if (message.audio?.id) {
+    messageType = "audio";
+  } else if (message.video?.id) {
+    const url = await getWhatsAppMediaDataUrl(message.video.id, token);
+    if (url) imageUrls.push(url);
+    messageType = "video";
+  } else if (message.location) {
+    // Location share — pass as text context
+    const loc = message.location;
+    const locationText = `📍 Location: ${loc.name || ""} ${loc.address || ""} (lat: ${loc.latitude}, lng: ${loc.longitude})`.trim();
+    await upsertMetaWebhookEvent(supabase, {
+      orgId: channel.org_id, objectType: "whatsapp_business_account", platform: "whatsapp",
+      pageId: phoneNumberId, senderId, eventType: "message", payload: message,
+    });
+    await handleMetaMessage({
+      supabase, orgId: channel.org_id, platform: "whatsapp",
+      channel: { ...channel, phone_number_id: phoneNumberId },
+      senderId, contactName: contact?.profile?.name || senderId,
+      text: locationText, imageUrl: null, imageUrls: [], messageType: "text",
+    });
+    return;
   }
+
+  const imageUrl = imageUrls[0] || null;
 
   await upsertMetaWebhookEvent(supabase, {
     orgId: channel.org_id, objectType: "whatsapp_business_account", platform: "whatsapp",
@@ -4191,6 +4231,7 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
     contactName: contact?.profile?.name || senderId,
     text,
     imageUrl,
+    imageUrls,
     messageType,
   });
 }
@@ -4289,12 +4330,22 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
   const body = req.body || {};
   res.sendStatus(200);
   try {
-    // Raw log — helps diagnose if webhook is being received at all
-    console.log(`[Webhook/WA] object=${body.object} raw=${JSON.stringify(body).slice(0, 500)}`);
     const entries = Array.isArray(body.entry) ? body.entry : [];
     for (const entry of entries) {
       for (const change of entry.changes || []) {
         const value = change.value || {};
+
+        // Skip status updates (delivered/read receipts) — log minimally
+        if (value.statuses?.length && !value.messages?.length) {
+          console.log(`[Webhook/WA] status update: ${value.statuses.map(s => `${s.status} id=${s.id}`).join(", ")}`);
+          continue;
+        }
+
+        // Log real message events
+        if (value.messages?.length) {
+          console.log(`[Webhook/WA] message from=${value.messages[0].from} type=${value.messages[0].type} phone_number_id=${value.metadata?.phone_number_id}`);
+        }
+
         const contacts = new Map((value.contacts || []).map((contact) => [contact.wa_id, contact]));
         for (const message of value.messages || []) {
           await handleWhatsAppMessageEvent({
@@ -4304,7 +4355,7 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
             contact: contacts.get(message.from),
           });
         }
-        if (!value.messages?.length) {
+        if (!value.messages?.length && !value.statuses?.length) {
           await upsertMetaWebhookEvent(supabase, {
             objectType: body.object || "whatsapp_business_account",
             platform: "whatsapp",
