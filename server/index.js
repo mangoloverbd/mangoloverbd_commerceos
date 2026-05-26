@@ -3331,6 +3331,10 @@ async function prepareOpenAiImageRef(url = "", authToken = "") {
 }
 
 // ─── Conversation history ─────────────────────────────────────────────────────
+// Only include messages from the current session.
+// A "session" ends after 30 minutes of inactivity — if the gap between any two
+// consecutive messages exceeds 30 minutes, everything before that gap is dropped.
+// This prevents stale order-collection state from bleeding into a new conversation.
 
 async function getRecentConversationHistory(supabase, conversationId, limit = 20) {
   if (!conversationId) return "";
@@ -3344,8 +3348,25 @@ async function getRecentConversationHistory(supabase, conversationId, limit = 20
     console.warn("[Meta AI] history lookup failed:", errorMessage(error));
     return "";
   }
-  return (data || [])
-    .reverse()
+  const messages = (data || []).reverse();
+  if (!messages.length) return "";
+
+  // Find the start of the current session — walk backwards from the latest
+  // message and stop when we hit a gap of more than 30 minutes between messages.
+  const SESSION_GAP_MS = 30 * 60 * 1000; // 30 minutes
+  const sessionMessages = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (sessionMessages.length === 0) {
+      sessionMessages.unshift(messages[i]);
+    } else {
+      const newerTs = new Date(sessionMessages[0].created_at).getTime();
+      const olderTs = new Date(messages[i].created_at).getTime();
+      if (newerTs - olderTs > SESSION_GAP_MS) break; // session boundary
+      sessionMessages.unshift(messages[i]);
+    }
+  }
+
+  return sessionMessages
     .map((m) => {
       const who = m.sender === "bot" ? "assistant" : "customer";
       const img = m.image_url ? " [image]" : "";
@@ -3424,6 +3445,7 @@ RULES:
 - When the customer wants to order: collect name, phone number, delivery address, product name (including which variant if applicable), and quantity — one missing field at a time.
 - Once you have ALL FIVE fields confirmed, set order to the populated object. Do not set order until every field is present and confirmed.
 - Never invent prices, discounts, or delivery promises not in the catalog or brand knowledge base.
+- IMPORTANT: If the customer sends a simple greeting (Hi, Hello, Hey, Assalamualaikum, etc.) with NO prior context in the conversation history shown, treat it as the START of a new conversation. Greet them naturally and ask how you can help. Do NOT continue any previous order collection or assume they want to order something specific.
 
 CATALOG (name, price, availability, variants where applicable):
 ${JSON.stringify(catalog).slice(0, 12000)}
