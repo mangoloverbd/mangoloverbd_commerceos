@@ -8,6 +8,7 @@ import {
   Package2, Globe2, RefreshCw, Plus, X,
   Check, AlertTriangle, ChevronDown,
 } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -75,9 +76,9 @@ function attrLabel(a: Record<string, string>): string {
 }
 
 // ── Shared input class — every numeric cell uses this exact height/width ──────
-// h-9 = 36 px, fully uniform across Price, COG, Stock columns
+// h-9 = 36 px, fully uniform — matches Settings page input style exactly
 const INPUT_CLS =
-  "h-9 w-full rounded-xl border border-black/[0.09] bg-[#F5F5F7] px-3 font-mono text-[13px] text-foreground outline-none tabular-nums transition-colors focus:border-black/25 focus:bg-white focus:ring-0 placeholder:text-black/25";
+  "h-9 w-full rounded-xl border border-black/[0.1] bg-black/[0.04] px-3 font-mono text-[13px] text-black outline-none tabular-nums transition-colors focus-visible:ring-1 focus-visible:ring-black/20 focus:bg-white placeholder:text-black/25";
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
@@ -85,15 +86,15 @@ function StatCard({
   label, value, sub, accent,
 }: { label: string; value: React.ReactNode; sub: string; accent?: string }) {
   return (
-    <div className="flex flex-col gap-1 px-7 py-5">
-      <p className="text-[11px] font-medium tracking-[0.06em] uppercase text-[#86868B]" style={{ fontFamily: SYS }}>
+    <div className="flex flex-col gap-1 px-6 py-5">
+      <p className="text-[11px] font-medium tracking-[0.06em] uppercase text-black/40" style={{ fontFamily: SYS }}>
         {label}
       </p>
-      <p className={cn("text-[28px] font-light leading-none tabular-nums tracking-tight", accent ?? "text-[#1D1D1F]")}
+      <p className={cn("text-[26px] font-light leading-none tabular-nums tracking-tight", accent ?? "text-black")}
         style={{ fontFamily: SYS }}>
         {value}
       </p>
-      <p className="text-[12px] text-[#86868B]" style={{ fontFamily: SYS }}>{sub}</p>
+      <p className="text-[12px] text-black/40" style={{ fontFamily: SYS }}>{sub}</p>
     </div>
   );
 }
@@ -154,19 +155,19 @@ function VariantChip({
 
   const chipCls = cn(
     "inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[11px] font-medium leading-none transition-all",
-    status === "out" && "bg-[#FFF2F2] text-[#FF3B30] ring-1 ring-inset ring-[#FF3B30]/20",
-    status === "low" && "bg-[#FFF8EC] text-[#FF9500] ring-1 ring-inset ring-[#FF9500]/25",
-    status === "ok"  && "bg-[#F5F5F7] text-[#1D1D1F] ring-1 ring-inset ring-black/[0.07]",
-    open && "ring-2 ring-[#0071E3]"
+    status === "out" && "bg-red-50 text-red-600 ring-1 ring-inset ring-red-200",
+    status === "low" && "bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-200",
+    status === "ok"  && "bg-black/[0.04] text-black ring-1 ring-inset ring-black/[0.08]",
+    open && "ring-2 ring-black/30"
   );
 
   return (
     <div className="relative inline-block" ref={ref}>
       <button className={chipCls} onClick={() => setOpen(v => !v)}>
         <span className={cn("h-[5px] w-[5px] rounded-full shrink-0",
-          status === "out" && "bg-[#FF3B30]",
-          status === "low" && "bg-[#FF9500]",
-          status === "ok"  && "bg-[#34C759]"
+          status === "out" && "bg-red-500",
+          status === "low" && "bg-amber-400",
+          status === "ok"  && "bg-emerald-500"
         )} />
         <span style={{ fontFamily: SYS }}>{attrLabel(variant.attributes)}</span>
         <span className="opacity-30">·</span>
@@ -182,21 +183,21 @@ function VariantChip({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.96 }}
             transition={{ duration: 0.14, ease: [0.36, 0.66, 0.04, 1] }}
-            className="absolute left-0 top-full z-50 mt-2 w-60 rounded-2xl border border-black/[0.08] bg-white p-4 shadow-2xl shadow-black/[0.10]"
+            className="absolute left-0 top-full z-50 mt-2 w-60 rounded-[14px] border border-black/[0.08] bg-white p-4 shadow-sm"
             style={{ fontFamily: SYS }}
           >
             {/* Attribute tags */}
             <div className="mb-3 flex flex-wrap gap-1">
               {Object.entries(variant.attributes).map(([k, v]) => (
-                <span key={k} className="rounded-lg bg-[#F5F5F7] px-2 py-0.5 text-[11px] text-[#1D1D1F]">
-                  <span className="text-[#86868B]">{k}:</span> {v}
+                <span key={k} className="rounded-lg bg-black/[0.04] px-2 py-0.5 text-[11px] text-black">
+                  <span className="text-black/40">{k}:</span> {v}
                 </span>
               ))}
             </div>
 
             <div className="space-y-2.5">
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-[#86868B]">Stock</label>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Stock</label>
                 <input ref={inputRef} type="number" min={0} value={stockDraft}
                   onChange={e => setStockDraft(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && save()}
@@ -204,9 +205,9 @@ function VariantChip({
               </div>
               {isAdmin && (
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-[#86868B]">Cost (৳)</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Cost (৳)</label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#86868B]">৳</span>
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/40">৳</span>
                     <input type="number" min={0} value={cogDraft}
                       onChange={e => setCogDraft(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && save()}
@@ -218,11 +219,11 @@ function VariantChip({
 
             <div className="mt-3 flex items-center gap-2">
               <button onClick={save} disabled={saving}
-                className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#0071E3] text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40">
+                className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-xl bg-black text-[12px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40">
                 {saving ? <Spinner size="sm" /> : <><Check className="h-3 w-3" />Save</>}
               </button>
               <button onClick={del}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[#86868B] transition-colors hover:bg-[#FFF2F2] hover:text-[#FF3B30]">
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-black/40 transition-colors hover:bg-red-50 hover:text-red-500">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -249,7 +250,7 @@ function VariantStrip({
   if (variants.length === 0) {
     return (
       <button onClick={onAdd}
-        className="inline-flex items-center gap-1 rounded-full border border-dashed border-black/[0.15] px-3 py-[5px] text-[11px] text-[#86868B] transition-colors hover:border-black/30 hover:text-[#1D1D1F]"
+        className="inline-flex items-center gap-1 rounded-full border border-dashed border-black/[0.15] px-3 py-[5px] text-[11px] text-black/40 transition-colors hover:border-black/30 hover:text-black"
         style={{ fontFamily: SYS }}>
         <Plus className="h-3 w-3" /> Add variants
       </button>
@@ -266,8 +267,8 @@ function VariantStrip({
           className={cn(
             "inline-flex items-center gap-1 rounded-full px-2.5 py-[5px] text-[11px] font-medium ring-1 ring-inset transition-colors",
             hasAlert
-              ? "bg-[#FFF8EC] text-[#FF9500] ring-[#FF9500]/25 hover:bg-[#FFF0D6]"
-              : "bg-[#F5F5F7] text-[#86868B] ring-black/[0.07] hover:text-[#1D1D1F]"
+              ? "bg-amber-50 text-amber-600 ring-amber-200 hover:bg-amber-100"
+              : "bg-black/[0.04] text-black/40 ring-black/[0.08] hover:text-black"
           )} style={{ fontFamily: SYS }}>
           {hasAlert && <AlertTriangle className="h-2.5 w-2.5" />}
           +{overflow}
@@ -275,13 +276,13 @@ function VariantStrip({
       )}
       {showAll && overflow > 0 && (
         <button onClick={() => setShowAll(false)}
-          className="rounded-full bg-[#F5F5F7] px-2.5 py-[5px] text-[11px] text-[#86868B] ring-1 ring-inset ring-black/[0.07] hover:text-[#1D1D1F]"
+          className="rounded-full bg-black/[0.04] px-2.5 py-[5px] text-[11px] text-black/40 ring-1 ring-inset ring-black/[0.08] hover:text-black"
           style={{ fontFamily: SYS }}>
           Less
         </button>
       )}
       <button onClick={onAdd}
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-black/[0.15] text-[#86868B] transition-colors hover:border-black/30 hover:text-[#1D1D1F]">
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-black/[0.15] text-black/40 transition-colors hover:border-black/30 hover:text-black">
         <Plus className="h-3 w-3" />
       </button>
     </div>
@@ -339,16 +340,16 @@ function AddVariantDrawer({
       animate={{ opacity: 1, height: "auto" }}
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.2, ease: [0.36, 0.66, 0.04, 1] }}
-      className="overflow-hidden border-t border-black/[0.06] bg-[#FAFAFA]"
+      className="overflow-hidden border-t border-black/[0.06] bg-[#FAFAF8]"
       style={{ fontFamily: SYS }}
     >
       <div className="px-6 py-5">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#86868B]">
-            Add Variant — <span className="text-[#1D1D1F]">{product.name}</span>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-black/40">
+            Add Variant — <span className="text-black">{product.name}</span>
           </p>
           <button onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-[#86868B] transition-colors hover:bg-black/[0.06]">
+            className="flex h-6 w-6 items-center justify-center rounded-full text-black/40 transition-colors hover:bg-black/[0.06]">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -356,9 +357,9 @@ function AddVariantDrawer({
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
           {/* Dynamic attribute builder */}
           <div className="flex-1 space-y-2">
-            <p className="text-[11px] font-medium text-[#86868B]">
+            <p className="text-[11px] font-medium text-black/40">
               Attributes&nbsp;
-              <span className="font-normal text-[#ADADB8]">— any key / value combination</span>
+              <span className="font-normal text-black/25">— any key / value combination</span>
             </p>
             <div className="space-y-2">
               {rows.map((row, i) => (
@@ -370,7 +371,7 @@ function AddVariantDrawer({
                     onChange={e => setRow(i, "key", e.target.value)}
                     className={cn(INPUT_CLS, "h-9 w-36 shrink-0")}
                   />
-                  <span className="text-[12px] text-[#ADADB8] shrink-0">:</span>
+                  <span className="text-[12px] text-black/25 shrink-0">:</span>
                   <input
                     type="text"
                     placeholder="value"
@@ -380,7 +381,7 @@ function AddVariantDrawer({
                   />
                   {rows.length > 1 && (
                     <button onClick={() => setRows(r => r.filter((_, j) => j !== i))}
-                      className="shrink-0 rounded-lg p-1 text-[#86868B] hover:text-[#FF3B30]">
+                      className="shrink-0 rounded-lg p-1 text-black/40 hover:text-red-500">
                       <X className="h-3 w-3" />
                     </button>
                   )}
@@ -388,7 +389,7 @@ function AddVariantDrawer({
               ))}
             </div>
             <button onClick={() => setRows(r => [...r, { key: "", value: "" }])}
-              className="flex items-center gap-1.5 text-[12px] text-[#0071E3] hover:opacity-75 transition-opacity">
+              className="flex items-center gap-1.5 text-[12px] text-black/40 hover:text-black transition-colors">
               <Plus className="h-3 w-3" /> Add attribute
             </button>
           </div>
@@ -396,7 +397,7 @@ function AddVariantDrawer({
           {/* Numeric fields — all h-9, identical styling */}
           <div className="flex flex-wrap items-end gap-3 lg:flex-nowrap">
             <div className="w-[104px] space-y-1.5">
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#86868B]">Stock</label>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-black/40">Stock</label>
               <input type="number" min={0} value={stock}
                 onChange={e => setStock(e.target.value)}
                 className={cn(INPUT_CLS, "h-9")} />
@@ -404,18 +405,18 @@ function AddVariantDrawer({
             {isAdmin && (
               <>
                 <div className="w-[104px] space-y-1.5">
-                  <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#86868B]">Cost (৳)</label>
+                  <label className="block text-[10px] font-semibold uppercase tracking-widest text-black/40">Cost (৳)</label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#86868B]">৳</span>
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/40">৳</span>
                     <input type="number" min={0} value={cog}
                       onChange={e => setCog(e.target.value)}
                       className={cn(INPUT_CLS, "h-9 pl-7")} />
                   </div>
                 </div>
                 <div className="w-[104px] space-y-1.5">
-                  <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#86868B]">Price ±</label>
+                  <label className="block text-[10px] font-semibold uppercase tracking-widest text-black/40">Price ±</label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#86868B]">৳</span>
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/40">৳</span>
                     <input type="number" value={priceAdj}
                       onChange={e => setPriceAdj(e.target.value)}
                       className={cn(INPUT_CLS, "h-9 pl-7")} />
@@ -428,12 +429,12 @@ function AddVariantDrawer({
 
         <div className="mt-5 flex items-center gap-2">
           <button onClick={submit} disabled={saving}
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-[#1D1D1F] px-5 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40">
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-5 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40">
             {saving ? <Spinner size="sm" /> : <Plus className="h-3.5 w-3.5" />}
             Add variant
           </button>
           <button onClick={onClose}
-            className="h-9 rounded-xl border border-black/[0.09] bg-[#F5F5F7] px-4 text-[13px] font-medium text-[#86868B] transition-colors hover:text-[#1D1D1F]">
+            className="h-9 rounded-xl border border-black/[0.1] bg-black/[0.04] px-4 text-[13px] font-medium text-black/40 transition-colors hover:text-black">
             Cancel
           </button>
         </div>
@@ -454,16 +455,15 @@ export default function Products() {
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  // Import
-  const [crawlUrl, setCrawlUrl] = useState("");
-  const [crawlStatus, setCrawlStatus] = useState<"idle" | "crawling" | "done" | "error">("idle");
-  const [crawlMsg, setCrawlMsg] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
-
   // Inline edits
   const [cogEdits, setCogEdits] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [addingFor, setAddingFor] = useState<string | null>(null);
+
+  // Import
+  const [crawlUrl, setCrawlUrl] = useState("");
+  const [crawlStatus, setCrawlStatus] = useState<"idle" | "crawling" | "done" | "error">("idle");
+  const [crawlMsg, setCrawlMsg] = useState("");
 
   // Close filter dropdown on outside click
   useEffect(() => {
@@ -589,74 +589,132 @@ export default function Products() {
     : "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_84px_44px]";
 
   return (
-    <div className="min-h-full bg-[#F5F5F7]" style={{ fontFamily: SYS }}>
-      <div className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 lg:px-6 lg:py-5">
+    <div className="min-h-full" style={{ fontFamily: SYS }}>
+      <div className="mx-auto max-w-[1600px] space-y-5 px-4 py-4 lg:px-6 lg:py-5">
 
         {/* ── Stats bar ── */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white"
+          className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
         >
-          <div className="grid divide-y divide-black/[0.05] sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
-            <StatCard label="Products" value={isLoading ? <span className="inline-block h-7 w-10 animate-pulse rounded-lg bg-black/[0.05]" /> : totalProducts} sub="In catalogue" />
+          <div className="grid divide-y divide-black/[0.06] sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+            <StatCard
+              label="Products"
+              value={isLoading ? <span className="inline-block h-7 w-10 animate-pulse rounded-lg bg-black/[0.05]" /> : totalProducts}
+              sub="In catalogue"
+            />
             <StatCard
               label="Avg Margin"
               value={isLoading ? <span className="inline-block h-7 w-14 animate-pulse rounded-lg bg-black/[0.05]" /> : (avgMargin ? `${avgMargin}%` : "—")}
               sub="Selling price − cost"
-              accent={avgMargin ? (parseFloat(avgMargin) > 40 ? "text-[#34C759]" : parseFloat(avgMargin) > 20 ? "text-[#1D1D1F]" : "text-[#FF3B30]") : undefined}
+              accent={avgMargin ? (parseFloat(avgMargin) > 40 ? "text-emerald-600" : parseFloat(avgMargin) > 20 ? "text-black" : "text-red-500") : undefined}
             />
-            <StatCard label="Total Stock" value={isLoading ? <span className="inline-block h-7 w-16 animate-pulse rounded-lg bg-black/[0.05]" /> : totalStock.toLocaleString("en-BD")} sub="Units available" />
+            <StatCard
+              label="Total Stock"
+              value={isLoading ? <span className="inline-block h-7 w-16 animate-pulse rounded-lg bg-black/[0.05]" /> : totalStock.toLocaleString("en-BD")}
+              sub="Units available"
+            />
             <StatCard
               label="Out of Stock"
               value={isLoading ? <span className="inline-block h-7 w-8 animate-pulse rounded-lg bg-black/[0.05]" /> : outCount}
               sub="Variants / products"
-              accent={outCount > 0 ? "text-[#FF3B30]" : "text-[#1D1D1F]"}
+              accent={outCount > 0 ? "text-red-500" : "text-black"}
             />
           </div>
-          <div className="border-t border-black/[0.05] px-7 py-2.5">
-            <span className="text-[12px] text-[#86868B]">
-              Total cost value: <span className="font-medium text-[#1D1D1F]">{fmt(totalCog)}</span>
+          <div className="border-t border-black/[0.06] px-6 py-2.5">
+            <span className="text-[12px] text-black/40">
+              Total cost value: <span className="font-medium text-black">{fmt(totalCog)}</span>
             </span>
           </div>
         </motion.div>
 
-        {/* ── Main card ── */}
+        {/* ── Import from website — always visible ── */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.05 }}
-          className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white"
+          transition={{ duration: 0.4, delay: 0.04 }}
+          className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
+        >
+          <div className="flex h-[50px] items-center gap-2.5 border-b border-black/[0.06] px-5">
+            <Globe2 className="h-3.5 w-3.5 text-black/40" />
+            <span className="text-[15px] font-semibold tracking-tight text-black">Import from Website</span>
+          </div>
+          <div className="px-5 py-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                data-testid="input-crawl-url"
+                type="url"
+                placeholder="https://yourstore.com — AI extracts products automatically"
+                value={crawlUrl}
+                onChange={e => setCrawlUrl(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
+                className={cn(INPUT_CLS, "h-9 flex-1 font-sans")}
+              />
+              <button
+                data-testid="button-crawl"
+                onClick={handleCrawl}
+                disabled={crawlStatus === "crawling" || !crawlUrl.trim()}
+                className="flex h-9 shrink-0 items-center gap-2 rounded-xl bg-black px-5 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-30"
+              >
+                {crawlStatus === "crawling"
+                  ? <><Spinner size="sm" />Extracting…</>
+                  : <><RefreshCw className="h-3.5 w-3.5" />Extract</>}
+              </button>
+            </div>
+            <AnimatePresence>
+              {crawlMsg && (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className={cn("mt-2 text-[12px]",
+                    crawlStatus === "error" ? "text-red-500" : "text-emerald-600"
+                  )}
+                >
+                  {crawlMsg}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+
+        {/* ── Main product card ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.08 }}
+          className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
         >
           {/* ── Toolbar ── */}
           <div className="flex flex-col gap-3 border-b border-black/[0.06] px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-            {/* Left: title */}
+            {/* Left: title + count */}
             <div className="flex items-center gap-2.5">
-              <Package2 className="h-4 w-4 text-[#86868B]" />
-              <span className="text-[15px] font-semibold text-[#1D1D1F]">Products</span>
+              <Package2 className="h-4 w-4 text-black/40" />
+              <span className="text-[15px] font-semibold tracking-tight text-black">Products</span>
               {!isLoading && (
-                <span className="rounded-full bg-[#F5F5F7] px-2 py-0.5 text-[11px] font-medium text-[#86868B]">
+                <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black/40">
                   {products.length}{products.length !== allProducts.length && `/${allProducts.length}`}
                 </span>
               )}
             </div>
 
-            {/* Right: search + filter + import + refresh */}
+            {/* Right: search + filter + refresh */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Search */}
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#ADADB8]" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-black/25" />
                 <input
                   type="text"
                   placeholder="Search products…"
                   value={query}
                   onChange={e => setQuery(e.target.value)}
-                  className="h-9 w-52 rounded-xl border border-black/[0.09] bg-[#F5F5F7] pl-9 pr-3 text-[13px] text-[#1D1D1F] outline-none transition-all placeholder:text-[#ADADB8] focus:border-black/20 focus:bg-white focus:w-64"
+                  className="h-9 w-52 rounded-xl border border-black/[0.1] bg-black/[0.04] pl-9 pr-3 text-[13px] text-black outline-none transition-all placeholder:text-black/25 focus-visible:ring-1 focus-visible:ring-black/20 focus:bg-white focus:w-64"
                 />
                 {query && (
                   <button onClick={() => setQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#ADADB8] hover:text-[#1D1D1F]">
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-black/25 hover:text-black">
                     <X className="h-3 w-3" />
                   </button>
                 )}
@@ -669,8 +727,8 @@ export default function Products() {
                   className={cn(
                     "flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors",
                     stockFilter !== "all"
-                      ? "border-[#0071E3]/30 bg-[#EBF4FF] text-[#0071E3]"
-                      : "border-black/[0.09] bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F]"
+                      ? "border-black/20 bg-black text-white"
+                      : "border-black/[0.1] bg-black/[0.04] text-black/40 hover:text-black"
                   )}>
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   {FILTER_LABELS[stockFilter]}
@@ -683,20 +741,20 @@ export default function Products() {
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 4, scale: 0.97 }}
                       transition={{ duration: 0.12 }}
-                      className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-xl border border-black/[0.08] bg-white py-1 shadow-xl shadow-black/[0.08]"
+                      className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-[14px] border border-black/[0.08] bg-white py-1 shadow-sm"
                     >
                       {(["all", "in_stock", "low_stock", "out_of_stock"] as StockFilter[]).map(f => (
                         <button key={f}
                           onClick={() => { setStockFilter(f); setFilterOpen(false); }}
                           className={cn(
-                            "flex w-full items-center gap-2 px-3 py-2 text-[13px] transition-colors hover:bg-[#F5F5F7]",
-                            stockFilter === f ? "font-semibold text-[#0071E3]" : "text-[#1D1D1F]"
+                            "flex w-full items-center gap-2 px-3 py-2 text-[13px] transition-colors hover:bg-black/[0.04]",
+                            stockFilter === f ? "font-semibold text-black" : "text-black/60"
                           )}>
                           <span className={cn("h-2 w-2 rounded-full",
-                            f === "in_stock"    && "bg-[#34C759]",
-                            f === "low_stock"   && "bg-[#FF9500]",
-                            f === "out_of_stock" && "bg-[#FF3B30]",
-                            f === "all"         && "bg-[#ADADB8]"
+                            f === "in_stock"     && "bg-emerald-500",
+                            f === "low_stock"    && "bg-amber-400",
+                            f === "out_of_stock" && "bg-red-500",
+                            f === "all"          && "bg-black/[0.15]"
                           )} />
                           {FILTER_LABELS[f]}
                         </button>
@@ -706,110 +764,54 @@ export default function Products() {
                 </AnimatePresence>
               </div>
 
-              {/* Import from URL */}
-              <button
-                onClick={() => setImportOpen(v => !v)}
-                className={cn(
-                  "flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors",
-                  importOpen
-                    ? "border-[#0071E3]/30 bg-[#EBF4FF] text-[#0071E3]"
-                    : "border-black/[0.09] bg-[#F5F5F7] text-[#86868B] hover:text-[#1D1D1F]"
-                )}>
-                <Globe2 className="h-3.5 w-3.5" />
-                Import
-              </button>
-
               {/* Refresh */}
               <button
                 onClick={() => refetch()}
                 disabled={isLoading}
                 data-testid="button-refresh-products"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-black/[0.09] bg-[#F5F5F7] text-[#86868B] transition-colors hover:text-[#1D1D1F] disabled:opacity-30">
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-black/[0.1] bg-black/[0.04] text-black/40 transition-colors hover:text-black disabled:opacity-30">
                 {isLoading ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
               </button>
             </div>
           </div>
 
-          {/* ── Import bar (collapsible) ── */}
-          <AnimatePresence>
-            {importOpen && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden border-b border-black/[0.06] bg-[#FAFAFA]"
-              >
-                <div className="flex flex-col gap-2.5 px-5 py-4 sm:flex-row sm:items-center">
-                  <input
-                    data-testid="input-crawl-url"
-                    type="url"
-                    placeholder="https://yourstore.com — AI extracts products automatically"
-                    value={crawlUrl}
-                    onChange={e => setCrawlUrl(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
-                    className={cn(INPUT_CLS, "h-9 flex-1")}
-                  />
-                  <button
-                    data-testid="button-crawl"
-                    onClick={handleCrawl}
-                    disabled={crawlStatus === "crawling" || !crawlUrl.trim()}
-                    className="flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#1D1D1F] px-5 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-30"
-                  >
-                    {crawlStatus === "crawling" ? <><Spinner size="sm" />Extracting…</> : <><RefreshCw className="h-3.5 w-3.5" />Extract</>}
-                  </button>
-                  {crawlMsg && (
-                    <span className={cn("shrink-0 text-[12px]",
-                      crawlStatus === "error" ? "text-[#FF3B30]" : "text-[#34C759]")}>
-                      {crawlMsg}
-                    </span>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* ── Table ── */}
+          {/* ── Table body ── */}
           {isLoading ? (
-            <div className="flex items-center justify-center py-24 text-[#86868B]">
+            <div className="flex items-center justify-center py-24 text-black/40">
               <Spinner className="mr-2.5" />
               <span className="text-[14px]">Loading products…</span>
             </div>
           ) : allProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-28 space-y-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F5F5F7]">
-                <PackageSearch className="h-7 w-7 text-[#ADADB8]" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-black/[0.08] bg-black/[0.03]">
+                <PackageSearch className="h-7 w-7 text-black/20" />
               </div>
               <div className="space-y-1 text-center">
-                <p className="text-[15px] font-semibold text-[#1D1D1F]">No products yet</p>
-                <p className="text-[13px] text-[#86868B] max-w-xs">
-                  Use the Import button above to extract products from your store URL.
+                <p className="text-[15px] font-semibold text-black">No products yet</p>
+                <p className="text-[13px] text-black/40 max-w-xs">
+                  Use the Import from Website section above to extract products from your store URL.
                 </p>
               </div>
-              <button onClick={() => setImportOpen(true)}
-                className="flex h-9 items-center gap-1.5 rounded-xl bg-[#0071E3] px-5 text-[13px] font-medium text-white transition-opacity hover:opacity-85">
-                <Globe2 className="h-3.5 w-3.5" /> Import products
-              </button>
             </div>
           ) : products.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-3">
-              <Search className="h-8 w-8 text-[#ADADB8]" />
-              <p className="text-[14px] font-medium text-[#1D1D1F]">No results for "{query || FILTER_LABELS[stockFilter]}"</p>
+              <Search className="h-8 w-8 text-black/20" />
+              <p className="text-[14px] font-medium text-black">No results for "{query || FILTER_LABELS[stockFilter]}"</p>
               <button onClick={() => { setQuery(""); setStockFilter("all"); }}
-                className="text-[13px] text-[#0071E3] hover:opacity-75 transition-opacity">
+                className="text-[13px] text-black/40 underline underline-offset-2 hover:text-black transition-colors">
                 Clear filters
               </button>
             </div>
           ) : (
             <>
               {/* Column headers */}
-              <div className={cn("grid border-b border-black/[0.05] bg-[#FAFAFA]", GRID)}>
+              <div className={cn("grid border-b border-black/[0.06] bg-black/[0.02]", GRID)}>
                 {(isAdmin
                   ? ["", "Product", "Variants", "Price", "Cost", "Margin", ""]
                   : ["", "Product", "Variants", "Price", "Margin", ""]
                 ).map((h, i) => (
                   <div key={i} className={cn("px-4 py-2.5", i === 0 && "pl-5")}>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#86868B]">{h}</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-black/40">{h}</span>
                   </div>
                 ))}
               </div>
@@ -835,48 +837,48 @@ export default function Products() {
                     >
                       {/* Row */}
                       <div className={cn(
-                        "group grid items-center border-b border-black/[0.04] transition-colors last:border-0 hover:bg-[#FAFAFA]",
-                        GRID, isAdding && "bg-[#FAFAFA]"
+                        "group grid items-center border-b border-black/[0.04] transition-colors last:border-0 hover:bg-black/[0.015]",
+                        GRID, isAdding && "bg-black/[0.01]"
                       )}>
 
                         {/* Thumbnail */}
                         <div className="flex items-center py-4 pl-5">
-                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-[#F5F5F7]">
+                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-black/[0.06] bg-black/[0.03]">
                             {product.image_url
                               ? <img src={product.image_url} alt={product.name}
                                   className="h-full w-full object-cover"
                                   onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
                               : <div className="flex h-full w-full items-center justify-center">
-                                  <Package2 className="h-4 w-4 text-[#ADADB8]" />
+                                  <Package2 className="h-4 w-4 text-black/20" />
                                 </div>
                             }
                           </div>
                         </div>
 
-                        {/* Name + URL + stock dot (no-variant) */}
+                        {/* Name + URL + stock (no-variant) */}
                         <div className="flex min-w-0 flex-col gap-0.5 px-4 py-4">
                           <p data-testid={`text-product-name-${product.id}`}
-                            className="truncate text-[13px] font-medium text-[#1D1D1F]">
+                            className="truncate text-[13px] font-medium text-black">
                             {product.name}
                           </p>
                           {product.url && (
                             <a href={product.url} target="_blank" rel="noopener noreferrer"
                               data-testid={`link-product-${product.id}`}
-                              className="flex items-center gap-1 truncate text-[11px] text-[#ADADB8] transition-colors hover:text-[#86868B]">
-                              <span className="truncate">{product.url.replace(/^https?:\/\//, "").substring(0, 42)}</span>
+                              className="truncate text-[11px] text-black/30 transition-colors hover:text-black/50">
+                              {product.url.replace(/^https?:\/\//, "").substring(0, 42)}
                             </a>
                           )}
                           {product.variants.length === 0 && (
                             <div className="flex items-center gap-1.5">
                               <span className={cn("h-[5px] w-[5px] rounded-full",
-                                ss === "out" && "bg-[#FF3B30]",
-                                ss === "low" && "bg-[#FF9500]",
-                                ss === "ok"  && "bg-[#34C759]"
+                                ss === "out" && "bg-red-500",
+                                ss === "low" && "bg-amber-400",
+                                ss === "ok"  && "bg-emerald-500"
                               )} />
                               <span className={cn("text-[11px]",
-                                ss === "out" && "text-[#FF3B30] font-medium",
-                                ss === "low" && "text-[#FF9500] font-medium",
-                                ss === "ok"  && "text-[#86868B]"
+                                ss === "out" && "text-red-500 font-medium",
+                                ss === "low" && "text-amber-500 font-medium",
+                                ss === "ok"  && "text-black/40"
                               )}>
                                 {ss === "out" ? "Out of stock" : `${stock} in stock`}
                               </span>
@@ -893,9 +895,12 @@ export default function Products() {
                           />
                         </div>
 
-                        {/* Price — read-only, uniform box */}
+                        {/* Price — uniform display box, same visual weight as COG input */}
                         <div className="px-4 py-4">
-                          <div className={cn(INPUT_CLS, "flex h-9 cursor-default items-center bg-transparent border-transparent text-[#1D1D1F]")}>
+                          <div className={cn(
+                            "flex h-9 items-center rounded-xl border border-transparent bg-transparent px-3",
+                            "font-mono text-[13px] tabular-nums text-black"
+                          )}>
                             <span data-testid={`text-selling-price-${product.id}`}>
                               {fmt(product.selling_price)}
                             </span>
@@ -906,7 +911,7 @@ export default function Products() {
                         {isAdmin && (
                           <div className="flex items-center gap-1.5 px-4 py-4">
                             <div className="relative flex-1">
-                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#ADADB8]">৳</span>
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
                               <input
                                 data-testid={`input-cog-${product.id}`}
                                 type="number" min={0} value={cogVal}
@@ -924,7 +929,7 @@ export default function Products() {
                                   data-testid={`button-save-metrics-${product.id}`}
                                   onClick={() => saveCog(product)}
                                   disabled={isSaving}
-                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1D1D1F] text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
                                 >
                                   {isSaving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
                                 </motion.button>
@@ -938,10 +943,10 @@ export default function Products() {
                           <span
                             data-testid={`text-margin-${product.id}`}
                             className={cn("text-[13px] tabular-nums font-medium",
-                              mgn == null ? "text-[#ADADB8]"
-                              : parseFloat(mgn) > 40 ? "text-[#34C759]"
-                              : parseFloat(mgn) > 20 ? "text-[#1D1D1F]"
-                              : "text-[#FF3B30]"
+                              mgn == null ? "text-black/25"
+                              : parseFloat(mgn) > 40 ? "text-emerald-600"
+                              : parseFloat(mgn) > 20 ? "text-black"
+                              : "text-red-500"
                             )}>
                             {mgn != null ? `${mgn}%` : "—"}
                           </span>
@@ -952,7 +957,7 @@ export default function Products() {
                           <button
                             data-testid={`button-delete-product-${product.id}`}
                             onClick={() => deleteMutation.mutate(product.id)}
-                            className="flex h-8 w-8 items-center justify-center rounded-xl text-[#ADADB8] opacity-0 transition-all hover:bg-[#FFF2F2] hover:text-[#FF3B30] group-hover:opacity-100">
+                            className="flex h-8 w-8 items-center justify-center rounded-xl text-black/25 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -974,13 +979,13 @@ export default function Products() {
               </AnimatePresence>
 
               {/* Footer legend */}
-              <div className="flex items-center gap-5 border-t border-black/[0.05] px-6 py-3">
+              <div className="flex items-center gap-5 border-t border-black/[0.06] px-6 py-3">
                 {[
-                  { dot: "bg-[#34C759]", label: "In stock" },
-                  { dot: "bg-[#FF9500]", label: "Low (≤5)" },
-                  { dot: "bg-[#FF3B30]", label: "Out of stock" },
+                  { dot: "bg-emerald-500", label: "In stock" },
+                  { dot: "bg-amber-400",   label: "Low (≤5)" },
+                  { dot: "bg-red-500",     label: "Out of stock" },
                 ].map(({ dot, label }) => (
-                  <span key={label} className="flex items-center gap-1.5 text-[11px] text-[#86868B]">
+                  <span key={label} className="flex items-center gap-1.5 text-[11px] text-black/40">
                     <span className={cn("h-[6px] w-[6px] rounded-full", dot)} />
                     {label}
                   </span>
