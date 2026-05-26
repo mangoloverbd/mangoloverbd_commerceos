@@ -925,27 +925,44 @@ async function metaGraph(path, { method = "GET", token, params = {}, body } = {}
 }
 
 function signMetaState(payload) {
+  const secret = process.env.META_APP_SECRET;
+  if (!secret) throw new Error("META_APP_SECRET env var is not set");
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = crypto
-    .createHmac("sha256", process.env.META_APP_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "meta-state")
+    .createHmac("sha256", secret)
     .update(encoded)
     .digest("base64url");
   return `${encoded}.${signature}`;
 }
 
 function verifyMetaState(state) {
-  const [encoded, signature] = String(state || "").split(".");
-  if (!encoded || !signature) throw new Error("Invalid OAuth state");
+  const secret = process.env.META_APP_SECRET;
+  if (!secret) throw new Error("META_APP_SECRET env var is not set");
+  const raw = String(state || "");
+  // base64url state contains no dots except our separator — split on last dot only
+  const dotIdx = raw.lastIndexOf(".");
+  if (dotIdx === -1) throw new Error("Invalid OAuth state: missing separator");
+  const encoded = raw.slice(0, dotIdx);
+  const signature = raw.slice(dotIdx + 1);
+  if (!encoded || !signature) throw new Error("Invalid OAuth state: empty parts");
   const expected = crypto
-    .createHmac("sha256", process.env.META_APP_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "meta-state")
+    .createHmac("sha256", secret)
     .update(encoded)
     .digest("base64url");
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-    throw new Error("Invalid OAuth state signature");
+  // Pad buffers to same length before timingSafeEqual to avoid crash on mismatch
+  const sigBuf = Buffer.from(signature.padEnd(expected.length, " "));
+  const expBuf = Buffer.from(expected.padEnd(signature.length, " "));
+  if (!crypto.timingSafeEqual(sigBuf, expBuf)) {
+    throw new Error("Invalid OAuth state: signature mismatch");
   }
-  const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
-  if (!payload.ts || Date.now() - payload.ts > 10 * 60 * 1000) {
-    throw new Error("OAuth state expired");
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  } catch {
+    throw new Error("Invalid OAuth state: malformed payload");
+  }
+  if (!payload.ts || Date.now() - payload.ts > 15 * 60 * 1000) {
+    throw new Error("OAuth state expired — please try connecting again");
   }
   return payload;
 }
@@ -1465,7 +1482,12 @@ app.get("/api/meta/oauth/callback", async (req, res) => {
     if (req.query.error) {
       return res.redirect(`/settings?meta=error&message=${encodeURIComponent(req.query.error_description || req.query.error)}`);
     }
-    const { orgId, userId } = verifyMetaState(req.query.state);
+    const rawState = req.query.state;
+    if (!rawState) {
+      console.error("[Meta OAuth] callback missing state parameter — query:", JSON.stringify(req.query));
+      throw new Error("Missing OAuth state parameter");
+    }
+    const { orgId, userId } = verifyMetaState(rawState);
     const code = req.query.code;
     if (!code) throw new Error("Missing OAuth code");
     const userToken = await exchangeMetaCodeForToken(code);
