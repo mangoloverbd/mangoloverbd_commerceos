@@ -271,6 +271,7 @@ function MetaBusinessPanel() {
   const [assetBusy, setAssetBusy] = useState<string | null>(null);
   const [aiSaving, setAiSaving] = useState(false);
   const [resubscribing, setResubscribing] = useState(false);
+  const [resubscribingPages, setResubscribingPages] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -386,6 +387,20 @@ function MetaBusinessPanel() {
     }
   };
 
+  const resubscribePages = async () => {
+    setResubscribingPages(true);
+    try {
+      const res = await apiFetch("/api/meta/resubscribe-pages", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(data.message || "Pages re-subscribed with Instagram DM fields");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to resubscribe pages");
+    } finally {
+      setResubscribingPages(false);
+    }
+  };
+
   const row = (key: string, name: string, meta: string | undefined, onDisconnect: () => void, busy: boolean) => (
     <div key={key} className="flex items-center justify-between gap-3 rounded-[9px] bg-white px-3 py-2">
       <div className="min-w-0">
@@ -479,6 +494,21 @@ function MetaBusinessPanel() {
               () => disconnectAsset("instagram", a.id, a.account_name || a.username || "Instagram Account"),
               assetBusy === `instagram:${a.id}`
             ))}
+            {status.instagramAccounts.length > 0 && (
+              <div className="mt-2 px-1">
+                <button
+                  onClick={resubscribePages}
+                  disabled={resubscribingPages}
+                  className="flex items-center gap-1.5 rounded-[8px] border border-black/[0.08] bg-white px-3 py-1.5 text-[11px] font-medium text-black/60 transition-colors hover:bg-black/[0.04] hover:text-black disabled:opacity-40"
+                >
+                  {resubscribingPages ? <Spinner size="sm" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Fix Instagram DM subscription
+                </button>
+                <p className="mt-1 text-[10px] text-black/30">
+                  Run this once if Instagram DMs aren't appearing in the inbox.
+                </p>
+              </div>
+            )}
           </MetaAssetSection>
           <MetaAssetSection
             title="Connected WhatsApp Accounts"

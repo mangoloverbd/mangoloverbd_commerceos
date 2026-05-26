@@ -1160,13 +1160,20 @@ async function subscribeMetaPage(pageId, pageToken) {
       token: pageToken,
       body: {
         subscribed_fields: [
+          // Facebook Messenger
           "messages",
           "messaging_postbacks",
           "messaging_optins",
           "messaging_referrals",
+          // Instagram DMs — these fields on the Facebook Page subscription
+          // are what triggers instagram DM webhooks to arrive at /api/webhooks/facebook
+          "instagram_manage_messages",
+          "message_deliveries",
+          "message_reads",
         ],
       },
     });
+    console.log(`[Meta] Page ${pageId} subscribed (Messenger + Instagram DM fields).`);
     return { subscribed: true, error: null };
   } catch (err) {
     console.warn(`[Meta] Failed to subscribe page ${pageId}:`, errorMessage(err));
@@ -1455,6 +1462,46 @@ app.post("/api/meta/resubscribe-whatsapp", async (req, res) => {
     return res.json({
       success: true,
       message: `Subscribed ${succeeded}/${wabaIds.length} WhatsApp Business Accounts to webhooks.`,
+      results,
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// POST /api/meta/resubscribe-pages
+// Re-subscribes all Facebook Pages with the full field list (Messenger + Instagram DMs).
+// Run this once after adding instagram_manage_messages to the subscription.
+app.post("/api/meta/resubscribe-pages", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { data: pages } = await supabase
+      .from("meta_pages")
+      .select("page_id, encrypted_page_access_token")
+      .eq("org_id", orgId);
+
+    if (!pages?.length) {
+      return res.status(400).json({ error: "No Facebook Pages found for this org." });
+    }
+
+    const results = [];
+    for (const page of pages) {
+      const token = page.encrypted_page_access_token
+        ? decryptToken(page.encrypted_page_access_token)
+        : "";
+      if (!token) { results.push({ pageId: page.page_id, subscribed: false, error: "No token" }); continue; }
+      const result = await subscribeMetaPage(page.page_id, token);
+      results.push({ pageId: page.page_id, ...result });
+    }
+
+    const succeeded = results.filter((r) => r.subscribed).length;
+    return res.json({
+      success: true,
+      message: `Re-subscribed ${succeeded}/${pages.length} pages with Instagram DM fields.`,
       results,
     });
   } catch (err) {
