@@ -3385,7 +3385,11 @@ function parseInboxOrderNotes(notes = "") {
 // This eliminates all heuristic intent detection. GPT decides when the order
 // is complete, not a regex.
 
-async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrl, platformToken = "" }) {
+async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrls, imageUrl, platformToken = "" }) {
+  // Support both old imageUrl (single) and new imageUrls (array)
+  const allImageUrls = Array.isArray(imageUrls) && imageUrls.length > 0
+    ? imageUrls
+    : (imageUrl ? [imageUrl] : []);
   // Build catalog — include variant breakdown so AI can answer availability per option
   const catalog = products.map((p) => {
     const entry = {
@@ -3443,15 +3447,22 @@ Or when all order fields are collected:
   }
 }`;
 
-  // Build message array
+  // Build message array — add ALL customer images to the vision context
   const userContent = [];
   userContent.push({ type: "text", text: `CONVERSATION SO FAR:\n${conversationHistory || "(start of conversation)"}\n\nCUSTOMER MESSAGE:\n${customerMessage || "(no text, image only)"}` });
 
-  const safeImageUrl = imageUrl ? await prepareOpenAiImageRef(imageUrl, platformToken) : null;
-  if (safeImageUrl) {
-    userContent.push({ type: "text", text: "CUSTOMER IMAGE:" });
-    userContent.push({ type: "image_url", image_url: { url: safeImageUrl } });
-  } else if (imageUrl) {
+  // Fetch and add all images (max 5 to stay within token limits)
+  const imagesToProcess = allImageUrls.slice(0, 5);
+  let loadedCount = 0;
+  for (const url of imagesToProcess) {
+    const safeUrl = await prepareOpenAiImageRef(url, platformToken);
+    if (safeUrl) {
+      if (loadedCount === 0) userContent.push({ type: "text", text: `CUSTOMER IMAGE${imagesToProcess.length > 1 ? "S" : ""}:` });
+      userContent.push({ type: "image_url", image_url: { url: safeUrl } });
+      loadedCount++;
+    }
+  }
+  if (allImageUrls.length > 0 && loadedCount === 0) {
     userContent.push({ type: "text", text: "(Customer sent an image but it could not be loaded. Use conversation context only.)" });
   }
 
@@ -3656,7 +3667,12 @@ async function sendWhatsAppMessage({ phoneNumberId, token, recipientId, text }) 
 
 // ─── Unified message handler ──────────────────────────────────────────────────
 
-async function handleMetaMessage({ supabase, orgId, platform, channel, senderId, contactName, text, imageUrl, messageType }) {
+async function handleMetaMessage({ supabase, orgId, platform, channel, senderId, contactName, text, imageUrl, imageUrls, messageType }) {
+  // Normalise — always work with an array of image URLs
+  const allImageUrls = Array.isArray(imageUrls) && imageUrls.length > 0
+    ? imageUrls
+    : (imageUrl ? [imageUrl] : []);
+  const primaryImageUrl = allImageUrls[0] || null;
   // 1. Get settings
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
 
@@ -3667,11 +3683,11 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   try { channels = JSON.parse(settings.auto_reply_channels || "[]"); } catch { channels = []; }
   if (!channels.includes(platform)) { console.log(`[${platform.toUpperCase()} AI] skipped: platform not in channels=${JSON.stringify(channels)}`); return; }
   if (!process.env.OPENAI_API_KEY) { console.log(`[${platform.toUpperCase()} AI] skipped: no OPENAI_API_KEY`); return; }
-  if (!text && !imageUrl) { console.log(`[${platform.toUpperCase()} AI] skipped: no text and no image`); return; }
+  if (!text && allImageUrls.length === 0) { console.log(`[${platform.toUpperCase()} AI] skipped: no text and no image`); return; }
 
-  console.log(`[${platform.toUpperCase()} AI] processing message from senderId=${senderId}`);
+  console.log(`[${platform.toUpperCase()} AI] processing message from senderId=${senderId} images=${allImageUrls.length}`);
 
-  // 2. Store the incoming user message
+  // 2. Store the incoming user message (store first image URL in DB for display)
   const { conversation } = await upsertSocialMessage({
     supabase,
     orgId,
@@ -3680,16 +3696,13 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     contactName: contactName || senderId,
     sender: "user",
     content: text || "",
-    imageUrl: imageUrl || null,
-    messageType: messageType || (imageUrl ? "image" : "text"),
+    imageUrl: primaryImageUrl,
+    messageType: messageType || (primaryImageUrl ? "image" : "text"),
   });
 
   // Race condition guard: if this is a plain-text message with no image, check if the
   // previous message in this conversation was an image sent within the last 6 seconds.
-  // If so, skip this AI call — the image message's AI call is already running and will
-  // incorporate the conversation context. This prevents two simultaneous AI replies
-  // when a customer sends an image and a text caption within seconds of each other.
-  if (text && !imageUrl) {
+  if (text && allImageUrls.length === 0) {
     const { data: recentMessages } = await supabase
       .from("social_messages")
       .select("sender, message_type, created_at")
@@ -3724,7 +3737,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
 
   let aiResult;
   try {
-    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrl: imageUrl || null, platformToken });
+    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrls: allImageUrls, platformToken });
   } catch (err) {
     console.error("[Meta AI] GPT call failed:", errorMessage(err));
     return;
@@ -4063,31 +4076,35 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
 
   const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
 
-  // ── Image resolution — identical pipeline for Messenger and Instagram ────────
-  let imageUrl = null;
+  // ── Image resolution — extract ALL image attachments, not just the first ──────
+  const allAttachments = messaging.message?.attachments || [];
+  const imageUrls = [];
   let messageType = text ? "text" : "event";
 
-  if (attachment) {
-    messageType = attachment.type || "attachment";
-    if (attachment.type === "image" || attachment.type === "video" || attachment.type === "audio") {
-      if (attachment.payload?.url) {
-        // Messenger: direct CDN URL
-        imageUrl = attachment.payload.url;
-      } else if (attachment.payload?.sticker_id) {
-        // Sticker — treat as image, use sticker URL if available
-        imageUrl = attachment.payload?.url || null;
-        messageType = "image";
-      }
-    } else if (attachment.type === "share") {
-      // Shared post or story reply — extract url if present
-      imageUrl = attachment.payload?.url || null;
+  for (const att of allAttachments) {
+    if (!att) continue;
+    messageType = att.type || "attachment";
+    let url = null;
+
+    if (att.type === "image" || att.type === "sticker") {
+      url = att.payload?.url || null;
+      messageType = "image";
+    } else if (att.type === "video" || att.type === "audio") {
+      url = att.payload?.url || null;
+    } else if (att.type === "share") {
+      url = att.payload?.url || null;
     }
+
+    // Instagram: media ID instead of direct URL
+    if (platform === "instagram" && att.payload?.id && !url) {
+      url = await fetchInstagramMediaUrl(att.payload.id, pageToken);
+    }
+
+    if (url) imageUrls.push(url);
   }
 
-  // Instagram: if attachment has a media ID instead of a direct URL, fetch it
-  if (platform === "instagram" && attachment?.payload?.id && !imageUrl) {
-    imageUrl = await fetchInstagramMediaUrl(attachment.payload.id, pageToken);
-  }
+  // Single imageUrl for DB storage (first image); all imageUrls passed to AI
+  const imageUrl = imageUrls[0] || null;
 
   await upsertMetaWebhookEvent(supabase, {
     orgId: channel.org_id, objectType, platform,
@@ -4108,6 +4125,7 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     contactName: resolvedName || senderId,
     text,
     imageUrl,
+    imageUrls,
     messageType,
   });
 }
