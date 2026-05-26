@@ -1625,12 +1625,6 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
     return sendError(res, err);
   }
 });
-    });
-  } catch (err) {
-    console.error("[WhatsApp Embedded Signup] token exchange failed:", errorMessage(err));
-    return sendError(res, err);
-  }
-});
 
 app.post("/api/meta/oauth/start", async (req, res) => {
   try {
