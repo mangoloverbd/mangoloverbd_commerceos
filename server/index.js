@@ -3684,6 +3684,30 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     messageType: messageType || (imageUrl ? "image" : "text"),
   });
 
+  // Race condition guard: if this is a plain-text message with no image, check if the
+  // previous message in this conversation was an image sent within the last 6 seconds.
+  // If so, skip this AI call — the image message's AI call is already running and will
+  // incorporate the conversation context. This prevents two simultaneous AI replies
+  // when a customer sends an image and a text caption within seconds of each other.
+  if (text && !imageUrl) {
+    const { data: recentMessages } = await supabase
+      .from("social_messages")
+      .select("sender, message_type, created_at")
+      .eq("conversation_id", conversation.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    const prevUserMsg = (recentMessages || []).find(
+      (m) => m.sender === "user" && m.message_type === "image"
+    );
+    if (prevUserMsg) {
+      const ageMs = Date.now() - new Date(prevUserMsg.created_at).getTime();
+      if (ageMs < 6000) {
+        console.log(`[${platform.toUpperCase()} AI] skipped: image sent ${ageMs}ms ago, deferring to image AI call`);
+        return;
+      }
+    }
+  }
+
   // 3. Load context
   const [conversationHistory, products] = await Promise.all([
     getRecentConversationHistory(supabase, conversation.id, 20),
