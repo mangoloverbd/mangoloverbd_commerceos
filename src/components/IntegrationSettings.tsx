@@ -170,7 +170,7 @@ const SECTIONS: SectionDef[] = [
     color: "bg-[#0866FF]",
     fields: [
       { key: "fb_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Meta Business Suite → Your Page → Settings → Page Access Token" },
-      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://dashboard.arclabtechnology.com/api/webhooks/facebook` },
+      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://suite.arclabtechnology.com/api/webhooks/facebook` },
       { key: "fb_app_secret", label: "App Secret", placeholder: "Your Meta App Secret", secret: true, hint: "Meta Developer Portal → Your App → Settings → Basic → App Secret" },
     ],
   },
@@ -182,7 +182,7 @@ const SECTIONS: SectionDef[] = [
     color: "bg-gradient-to-br from-[#f9ce34] via-[#ee2a7b] to-[#6228d7]",
     fields: [
       { key: "ig_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Same Facebook Page token — Instagram is connected via Facebook." },
-      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "same-as-facebook", hint: `Uses the same webhook as Facebook: https://dashboard.arclabtechnology.com/api/webhooks/facebook` },
+      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "same-as-facebook", hint: `Uses the same webhook as Facebook: https://suite.arclabtechnology.com/api/webhooks/facebook` },
     ],
   },
   {
@@ -194,7 +194,7 @@ const SECTIONS: SectionDef[] = [
     fields: [
       { key: "wa_phone_number_id", label: "Phone Number ID", placeholder: "123456789012345", hint: "Meta Developer Console → WhatsApp → API Setup → Phone Number ID" },
       { key: "wa_access_token", label: "Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Permanent system user token from Meta Business Suite" },
-      { key: "wa_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://dashboard.arclabtechnology.com/api/webhooks/whatsapp` },
+      { key: "wa_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://suite.arclabtechnology.com/api/webhooks/whatsapp` },
     ],
   },
 ];
