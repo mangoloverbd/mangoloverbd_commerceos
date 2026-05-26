@@ -8,9 +8,9 @@ import {
   Package2, Globe2, RefreshCw, Plus, X,
   Check, AlertTriangle, ChevronDown,
 } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
+import { Button } from "@/components/ui/button";
 import { useUserRole } from "@/hooks/useUserRole";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -428,15 +428,13 @@ function AddVariantDrawer({
         </div>
 
         <div className="mt-5 flex items-center gap-2">
-          <button onClick={submit} disabled={saving}
-            className="flex h-9 items-center gap-1.5 rounded-xl bg-black px-5 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40">
+          <Button variant="default" size="sm" type="button" onClick={submit} disabled={saving}>
             {saving ? <Spinner size="sm" /> : <Plus className="h-3.5 w-3.5" />}
             Add variant
-          </button>
-          <button onClick={onClose}
-            className="h-9 rounded-xl border border-black/[0.1] bg-black/[0.04] px-4 text-[13px] font-medium text-black/40 transition-colors hover:text-black">
+          </Button>
+          <Button variant="outline" size="sm" type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </motion.div>
@@ -590,7 +588,7 @@ export default function Products() {
 
   return (
     <div className="min-h-full" style={{ fontFamily: SYS }}>
-      <div className="mx-auto max-w-[1600px] space-y-5 px-4 py-4 lg:px-6 lg:py-5">
+      <div className="space-y-5 p-1 lg:p-2">
 
         {/* ── Stats bar ── */}
         <motion.div
