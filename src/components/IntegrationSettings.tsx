@@ -270,6 +270,7 @@ function MetaBusinessPanel() {
   });
   const [assetBusy, setAssetBusy] = useState<string | null>(null);
   const [aiSaving, setAiSaving] = useState(false);
+  const [resubscribing, setResubscribing] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -369,6 +370,20 @@ function MetaBusinessPanel() {
       ? current.filter((c) => c !== ch)
       : [...current, ch];
     patchAI({ channels: next });
+  };
+
+  const resubscribeWhatsApp = async () => {
+    setResubscribing(true);
+    try {
+      const res = await apiFetch("/api/meta/resubscribe-whatsapp", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(data.message || "WhatsApp webhook subscriptions refreshed");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to resubscribe WhatsApp");
+    } finally {
+      setResubscribing(false);
+    }
   };
 
   const row = (key: string, name: string, meta: string | undefined, onDisconnect: () => void, busy: boolean) => (
@@ -479,6 +494,21 @@ function MetaBusinessPanel() {
               () => disconnectAsset("whatsapp", a.id, a.account_name || a.display_phone_number || "WhatsApp Account"),
               assetBusy === `whatsapp:${a.id}`
             ))}
+            {status.whatsappAccounts.length > 0 && (
+              <div className="mt-2 px-1">
+                <button
+                  onClick={resubscribeWhatsApp}
+                  disabled={resubscribing}
+                  className="flex items-center gap-1.5 rounded-[8px] border border-black/[0.08] bg-white px-3 py-1.5 text-[11px] font-medium text-black/60 transition-colors hover:bg-black/[0.04] hover:text-black disabled:opacity-40"
+                >
+                  {resubscribing ? <Spinner size="sm" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Fix webhook subscription
+                </button>
+                <p className="mt-1 text-[10px] text-black/30">
+                  Run this once if WhatsApp messages aren't appearing in the inbox.
+                </p>
+              </div>
+            )}
           </MetaAssetSection>
           <MetaAssetSection
             title="Connected Ad Accounts"

@@ -1157,6 +1157,23 @@ async function subscribeMetaPage(pageId, pageToken) {
   }
 }
 
+// Subscribe a WhatsApp Business Account to receive message webhooks.
+// Requires the WABA id and a user token with whatsapp_business_messaging scope.
+// This is separate from Facebook page subscription — must be called for each WABA.
+async function subscribeWhatsAppWABA(wabaId, userToken) {
+  try {
+    await metaGraph(`/${wabaId}/subscribed_apps`, {
+      method: "POST",
+      token: userToken,
+    });
+    console.log(`[Meta] WhatsApp WABA ${wabaId} subscribed to webhook.`);
+    return { subscribed: true };
+  } catch (err) {
+    console.warn(`[Meta] Failed to subscribe WhatsApp WABA ${wabaId}:`, errorMessage(err));
+    return { subscribed: false, error: errorMessage(err) };
+  }
+}
+
 async function unsubscribeMetaPage(pageId, pageToken) {
   try {
     await metaGraph(`/${pageId}/subscribed_apps`, { method: "DELETE", token: pageToken });
@@ -1269,6 +1286,9 @@ async function syncMetaAssets({ supabase, orgId, userId, userToken }) {
         params: { fields: "id,name,phone_numbers{id,display_phone_number,verified_name}", limit: 50 },
       });
       for (const waba of wabas.data || []) {
+        // Subscribe this WABA to receive webhook message events
+        await subscribeWhatsAppWABA(waba.id, userToken);
+
         const phoneNumbers = waba.phone_numbers?.data?.length ? waba.phone_numbers.data : [null];
         for (const phone of phoneNumbers) {
           const { error: waError } = await supabase
@@ -1362,6 +1382,57 @@ app.patch("/api/meta/ai-automation", async (req, res) => {
     if (!Object.keys(patch).length) return res.status(400).json({ error: "Provide enabled or channels" });
     await saveOrgSettings(orgId, patch);
     return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// POST /api/meta/resubscribe-whatsapp
+// Re-subscribes all connected WhatsApp WABAs to webhooks without needing a full re-OAuth.
+// Call this once after connecting a new WhatsApp account to fix missing webhook subscriptions.
+app.post("/api/meta/resubscribe-whatsapp", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    // Get the user access token from the Meta connection
+    const { data: connection } = await supabase
+      .from("meta_connections")
+      .select("encrypted_user_access_token")
+      .eq("org_id", orgId)
+      .maybeSingle();
+
+    if (!connection?.encrypted_user_access_token) {
+      return res.status(400).json({ error: "No Meta connection found. Please connect via OAuth first." });
+    }
+    const userToken = decryptToken(connection.encrypted_user_access_token);
+
+    // Get all WABAs for this org
+    const { data: waAccounts } = await supabase
+      .from("meta_whatsapp_accounts")
+      .select("whatsapp_business_account_id")
+      .eq("org_id", orgId);
+
+    if (!waAccounts?.length) {
+      return res.status(400).json({ error: "No WhatsApp accounts found for this org." });
+    }
+
+    // Deduplicate WABA IDs (multiple phone numbers share one WABA)
+    const wabaIds = [...new Set(waAccounts.map((a) => a.whatsapp_business_account_id))];
+    const results = [];
+    for (const wabaId of wabaIds) {
+      const result = await subscribeWhatsAppWABA(wabaId, userToken);
+      results.push({ wabaId, ...result });
+    }
+
+    const succeeded = results.filter((r) => r.subscribed).length;
+    return res.json({
+      success: true,
+      message: `Subscribed ${succeeded}/${wabaIds.length} WhatsApp Business Accounts to webhooks.`,
+      results,
+    });
   } catch (err) {
     return sendError(res, err);
   }
