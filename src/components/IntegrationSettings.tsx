@@ -268,7 +268,7 @@ function MetaBusinessPanel() {
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    pages: true,
+    pages: false,
     instagram: false,
     whatsapp: false,
     ads: false,
