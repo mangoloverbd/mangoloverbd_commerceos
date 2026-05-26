@@ -1525,27 +1525,91 @@ app.get("/api/meta/whatsapp/config", async (req, res) => {
 
 // POST /api/meta/whatsapp/exchange-token
 // Called after Embedded Signup completes. Receives the auth code from the
-// FB SDK callback, exchanges it for a user token, then syncs the WABA assets.
+// FB SDK callback, exchanges it for a token, then syncs the WABA assets.
+// Uses META_SYSTEM_USER_TOKEN for ongoing WABA operations if available.
 app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-    const { code } = req.body;
+    const { code, wabaId, phoneNumberId } = req.body;
     if (!code) return res.status(400).json({ error: "code is required" });
 
     if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) {
       return res.status(500).json({ error: "META_APP_ID or META_APP_SECRET not configured" });
     }
 
-    // Exchange the short-lived code for a long-lived user token
-    const userToken = await exchangeMetaCodeForToken(code);
-
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
 
-    // Sync all Meta assets (pages, Instagram, WhatsApp) with the new token.
-    // For Embedded Signup the primary new asset is the WhatsApp WABA + phone number.
+    // Exchange the short-lived code for a token
+    let userToken;
+    try {
+      userToken = await exchangeMetaCodeForToken(code);
+    } catch (err) {
+      console.error("[WA Signup] token exchange failed:", errorMessage(err));
+      return res.status(400).json({ error: `Token exchange failed: ${errorMessage(err)}` });
+    }
+
+    // If we have a system user token and a specific WABA ID from the session info,
+    // use the system user token for the WABA subscription (more reliable, doesn't expire)
+    const systemToken = process.env.META_SYSTEM_USER_TOKEN;
+
+    // If wabaId came from the session postMessage, subscribe it directly
+    if (wabaId && systemToken) {
+      try {
+        // Subscribe WABA to webhook using system user token
+        await subscribeWhatsAppWABA(wabaId, systemToken);
+
+        // Save the WhatsApp account with system user token
+        if (phoneNumberId) {
+          // Get phone number details
+          let phoneDetails = { display_phone_number: "", verified_name: "" };
+          try {
+            const pn = await metaGraph(`/${phoneNumberId}`, {
+              token: systemToken,
+              params: { fields: "display_phone_number,verified_name,id" },
+            });
+            phoneDetails = pn;
+          } catch { /* ignore */ }
+
+          const { data: conn } = await supabase
+            .from("meta_connections")
+            .select("id")
+            .eq("org_id", orgId)
+            .maybeSingle();
+
+          await supabase.from("meta_whatsapp_accounts").upsert({
+            org_id: orgId,
+            connection_id: conn?.id || null,
+            whatsapp_business_account_id: wabaId,
+            phone_number_id: phoneNumberId,
+            display_phone_number: phoneDetails.display_phone_number || "",
+            account_name: phoneDetails.verified_name || "",
+            encrypted_access_token: encryptToken(systemToken),
+            status: "connected",
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "org_id,whatsapp_business_account_id,phone_number_id" });
+
+          // Ensure auto-reply is enabled for whatsapp
+          const existing = await getOrgSettings(orgId, ["auto_reply_channels", "ai_auto_reply_enabled"]);
+          let channels = [];
+          try { channels = JSON.parse(existing.auto_reply_channels || "[]"); } catch { channels = []; }
+          if (!channels.includes("whatsapp")) channels.push("whatsapp");
+          await saveOrgSettings(orgId, {
+            ai_auto_reply_enabled: "true",
+            auto_reply_channels: JSON.stringify(channels),
+          });
+
+          console.log(`[WA Signup] WABA ${wabaId} phone ${phoneNumberId} connected for org ${orgId}`);
+        }
+      } catch (err) {
+        console.warn("[WA Signup] direct WABA setup failed, falling back to syncMetaAssets:", errorMessage(err));
+        // Fall through to syncMetaAssets below
+      }
+    }
+
+    // Full sync using the user token to discover all assets
     const result = await syncMetaAssets({ supabase, orgId, userId: user.id, userToken });
 
     // Return the refreshed status so the UI updates immediately
@@ -1555,6 +1619,12 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
       pages: result.pages,
       subscribed: result.subscribed,
       status: statusData,
+    });
+  } catch (err) {
+    console.error("[WhatsApp Embedded Signup] token exchange failed:", errorMessage(err));
+    return sendError(res, err);
+  }
+});
     });
   } catch (err) {
     console.error("[WhatsApp Embedded Signup] token exchange failed:", errorMessage(err));

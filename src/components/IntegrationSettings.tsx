@@ -428,6 +428,24 @@ function MetaBusinessPanel() {
       }
       const { appId, configId } = waConfigRef.current;
 
+      // Set up postMessage listener to capture WABA ID + Phone Number ID from session info
+      let sessionWabaId = "";
+      let sessionPhoneId = "";
+      const messageHandler = (event: MessageEvent) => {
+        if (event.origin !== "https://www.facebook.com") return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "WA_EMBEDDED_SIGNUP") {
+            if (data.event === "FINISH" || data.data?.waba_id) {
+              sessionWabaId = data.data?.waba_id || "";
+              sessionPhoneId = data.data?.phone_number_id || "";
+              console.log("[WA Signup] session info:", { wabaId: sessionWabaId, phoneId: sessionPhoneId });
+            }
+          }
+        } catch { /* ignore non-JSON */ }
+      };
+      window.addEventListener("message", messageHandler);
+
       // Load FB SDK if not already loaded
       await new Promise<void>((resolve, reject) => {
         if ((window as any).FB) { resolve(); return; }
@@ -475,10 +493,15 @@ function MetaBusinessPanel() {
       });
 
       if (loginResult.authResponse?.code) {
+        window.removeEventListener("message", messageHandler);
         const exchangeRes = await apiFetch("/api/meta/whatsapp/exchange-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: loginResult.authResponse.code }),
+          body: JSON.stringify({
+            code: loginResult.authResponse.code,
+            wabaId: sessionWabaId || undefined,
+            phoneNumberId: sessionPhoneId || undefined,
+          }),
         });
         const data = await exchangeRes.json();
         if (!exchangeRes.ok) throw new Error(data.error || "Token exchange failed");
@@ -486,8 +509,10 @@ function MetaBusinessPanel() {
         else refresh();
         toast.success("WhatsApp Business account connected!");
       } else if (loginResult.status === "not_authorized") {
+        window.removeEventListener("message", messageHandler);
         throw new Error("Permission denied. Please grant all requested permissions in the popup.");
       } else {
+        window.removeEventListener("message", messageHandler);
         // User closed the popup — not an error
         toast("WhatsApp signup was cancelled.");
       }
@@ -497,7 +522,7 @@ function MetaBusinessPanel() {
     } finally {
       setWaSignupLoading(false);
     }
-  }, []);
+  }, [waMode]);
 
   const row = (key: string, name: string, meta: string | undefined, onDisconnect: () => void, busy: boolean) => (
     <div key={key} className="flex items-center justify-between gap-3 rounded-[9px] bg-white px-3 py-2">
