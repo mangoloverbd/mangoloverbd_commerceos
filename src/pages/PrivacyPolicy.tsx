@@ -18,7 +18,7 @@ export default function PrivacyPolicy() {
       </header>
 
       {/* Content */}
-      <main className="mx-auto max-w-3xl px-6 py-12 space-y-10">
+      <main className="mx-auto max-w-3xl px-6 py-12 space-y-10 text-center">
         {/* Title */}
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-black/40">Legal</p>
@@ -31,7 +31,7 @@ export default function PrivacyPolicy() {
           </p>
         </div>
 
-        <div className="prose prose-sm max-w-none space-y-8 text-[15px] leading-relaxed text-black/80">
+        <div className="prose prose-sm max-w-none space-y-8 text-[15px] leading-relaxed text-black/80 text-center [&_ul]:text-left [&_p]:text-center">
 
           {/* Introduction */}
           <Section title="1. Introduction">
@@ -247,9 +247,8 @@ export default function PrivacyPolicy() {
 
       {/* Footer */}
       <footer className="border-t border-black/[0.08] mt-16">
-        <div className="mx-auto max-w-3xl px-6 py-6 flex items-center justify-between text-[12px] text-black/35">
+        <div className="mx-auto max-w-3xl px-6 py-6 flex items-center justify-center text-[12px] text-black/35">
           <span>© {new Date().getFullYear()} Arc Lab Technology. All rights reserved.</span>
-          <a href="/" className="hover:text-black transition-colors">suite.arclabtechnology.com</a>
         </div>
       </footer>
     </div>
@@ -258,18 +257,18 @@ export default function PrivacyPolicy() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-3 text-center">
       <h2 className="text-[18px] font-semibold tracking-tight text-black">{title}</h2>
-      <div className="space-y-3 text-[15px] text-black/75 leading-relaxed">{children}</div>
+      <div className="space-y-3 text-[15px] text-black/75 leading-relaxed text-center [&_ul]:text-left [&_ul]:inline-block [&_ul]:text-left">{children}</div>
     </section>
   );
 }
 
 function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5 pl-0">
+    <div className="space-y-1.5 text-center">
       <h3 className="text-[14px] font-semibold text-black/80">{title}</h3>
-      <div className="text-[14px] text-black/70 leading-relaxed">{children}</div>
+      <div className="text-[14px] text-black/70 leading-relaxed text-center">{children}</div>
     </div>
   );
 }
