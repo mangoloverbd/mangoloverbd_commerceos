@@ -1160,20 +1160,16 @@ async function subscribeMetaPage(pageId, pageToken) {
       token: pageToken,
       body: {
         subscribed_fields: [
-          // Facebook Messenger
           "messages",
           "messaging_postbacks",
           "messaging_optins",
           "messaging_referrals",
-          // Instagram DMs — these fields on the Facebook Page subscription
-          // are what triggers instagram DM webhooks to arrive at /api/webhooks/facebook
-          "instagram_manage_messages",
           "message_deliveries",
           "message_reads",
         ],
       },
     });
-    console.log(`[Meta] Page ${pageId} subscribed (Messenger + Instagram DM fields).`);
+    console.log(`[Meta] Page ${pageId} subscribed.`);
     return { subscribed: true, error: null };
   } catch (err) {
     console.warn(`[Meta] Failed to subscribe page ${pageId}:`, errorMessage(err));
@@ -3731,10 +3727,17 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
       });
     }
   } catch (err) {
-    console.warn("[Meta AI] send failed:", errorMessage(err));
+    const errMsg = errorMessage(err);
+    // (#3) = app lacks permission to send on this platform (e.g. instagram_manage_messages not approved)
+    // Message is still stored in the inbox — agent can reply manually
+    if (errMsg.includes("(#3)")) {
+      console.warn(`[Meta AI] send skipped for ${platform}: app permission not approved for sending. Message stored in inbox for manual reply.`);
+      return; // don't store bot reply if it was never sent
+    }
+    console.warn("[Meta AI] send failed:", errMsg);
   }
 
-  // 7. Store bot reply
+  // 7. Store bot reply (only if send succeeded)
   await upsertSocialMessage({
     supabase,
     orgId,
