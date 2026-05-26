@@ -610,23 +610,7 @@ function MetaBusinessPanel() {
             count={status.whatsappAccounts.length}
             expanded={expanded.whatsapp}
             onToggle={() => toggle("whatsapp")}
-            empty={
-              <div className="space-y-2 px-1 py-1">
-                <p className="text-[12px] text-black/45">No WhatsApp Business accounts connected yet.</p>
-                <button
-                  onClick={launchWhatsAppSignup}
-                  disabled={waSignupLoading}
-                  className="flex items-center gap-2 rounded-[10px] bg-[#25D366] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  {waSignupLoading ? <Spinner size="sm" /> : (
-                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-white" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-                    </svg>
-                  )}
-                  Connect WhatsApp Business
-                </button>
-              </div>
-            }
+            empty="No WhatsApp Business accounts connected yet."
           >
             {status.whatsappAccounts.map((a) => row(
               a.id,
@@ -635,21 +619,8 @@ function MetaBusinessPanel() {
               () => disconnectAsset("whatsapp", a.id, a.account_name || a.display_phone_number || "WhatsApp Account"),
               assetBusy === `whatsapp:${a.id}`
             ))}
-            {/* Always show Connect button so users can add more accounts */}
-            <div className="mt-2 px-1 space-y-2">
-              <button
-                onClick={launchWhatsAppSignup}
-                disabled={waSignupLoading}
-                className="flex items-center gap-2 rounded-[10px] bg-[#25D366] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {waSignupLoading ? <Spinner size="sm" /> : (
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-white" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-                  </svg>
-                )}
-                {status.whatsappAccounts.length > 0 ? "Add Another WhatsApp Account" : "Connect WhatsApp Business"}
-              </button>
-              {status.whatsappAccounts.length > 0 && (
+            {status.whatsappAccounts.length > 0 && (
+              <div className="mt-2 px-1">
                 <button
                   onClick={resubscribeWhatsApp}
                   disabled={resubscribing}
@@ -658,8 +629,8 @@ function MetaBusinessPanel() {
                   {resubscribing ? <Spinner size="sm" /> : <CheckCircle2 className="h-3 w-3" />}
                   Fix webhook subscription
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </MetaAssetSection>
           <MetaAssetSection
             title="Connected Ad Accounts"
@@ -676,61 +647,28 @@ function MetaBusinessPanel() {
               assetBusy === `ad:${a.id}`
             ))}
           </MetaAssetSection>
-          <div className="m-4 rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3 space-y-3">
-            {/* Header + master on/off toggle */}
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-black/45" />
-              <p className="text-[12px] font-semibold text-black">AI Auto-Reply</p>
-              {aiSaving && <Spinner size="sm" className="ml-1" />}
-              {/* Master toggle */}
-              <button
-                onClick={() => patchAI({ enabled: !status.aiAutomation.enabled })}
-                disabled={aiSaving}
-                className={cn(
-                  "ml-auto relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:opacity-50",
-                  status.aiAutomation.enabled ? "bg-emerald-500" : "bg-black/20"
-                )}
-              >
-                <span className={cn(
-                  "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
-                  status.aiAutomation.enabled ? "translate-x-4" : "translate-x-0.5"
-                )} />
-              </button>
-            </div>
+        </div>
+      )}
 
-            {/* Per-channel toggles */}
-            <div className="space-y-1.5">
-              {(["facebook", "instagram", "whatsapp"] as const).map((ch) => {
-                const labels: Record<string, string> = {
-                  facebook: "Facebook Messenger",
-                  instagram: "Instagram DM",
-                  whatsapp: "WhatsApp Business",
-                };
-                const active = status.aiAutomation.channels.includes(ch);
-                return (
-                  <div key={ch} className="flex items-center justify-between rounded-[8px] bg-white px-2.5 py-1.5">
-                    <span className="text-[11px] font-medium text-black/70">{labels[ch]}</span>
-                    <button
-                      onClick={() => toggleChannel(ch)}
-                      disabled={aiSaving || !status.aiAutomation.enabled}
-                      className={cn(
-                        "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:opacity-40",
-                        active && status.aiAutomation.enabled ? "bg-emerald-500" : "bg-black/20"
-                      )}
-                    >
-                      <span className={cn(
-                        "inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform",
-                        active && status.aiAutomation.enabled ? "translate-x-3.5" : "translate-x-0.5"
-                      )} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-[10px] leading-relaxed text-black/35">
-              Replies use your Products catalog for variant availability and pricing.
-            </p>
+      {/* Connect WhatsApp Business — standalone button outside the accordion, always visible when Meta is connected */}
+      {status?.connected && (
+        <div className="flex items-center justify-between border-t border-black/[0.06] px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-black">WhatsApp Business</p>
+            <p className="text-[11px] text-black/40">Add a WhatsApp Cloud API number via Meta Embedded Signup</p>
           </div>
+          <button
+            onClick={launchWhatsAppSignup}
+            disabled={waSignupLoading}
+            className="flex shrink-0 items-center gap-2 rounded-[10px] bg-[#25D366] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 ml-3"
+          >
+            {waSignupLoading ? <Spinner size="sm" /> : (
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-white" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+              </svg>
+            )}
+            Connect WhatsApp
+          </button>
         </div>
       )}
     </div>

@@ -3760,7 +3760,12 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   if (settings.ai_auto_reply_enabled !== "true") { console.log(`[${platform.toUpperCase()} AI] skipped: ai_auto_reply_enabled is not true`); return; }
   let channels = [];
   try { channels = JSON.parse(settings.auto_reply_channels || "[]"); } catch { channels = []; }
-  if (!channels.includes(platform)) { console.log(`[${platform.toUpperCase()} AI] skipped: platform not in channels=${JSON.stringify(channels)}`); return; }
+  // Auto-heal: if enabled but channel missing, add it silently
+  if (!channels.includes(platform)) {
+    channels.push(platform);
+    await saveOrgSettings(orgId, { auto_reply_channels: JSON.stringify(channels) });
+    console.log(`[${platform.toUpperCase()} AI] auto-added ${platform} to channels`);
+  }
   if (!process.env.OPENAI_API_KEY) { console.log(`[${platform.toUpperCase()} AI] skipped: no OPENAI_API_KEY`); return; }
   if (!text && allImageUrls.length === 0) { console.log(`[${platform.toUpperCase()} AI] skipped: no text and no image`); return; }
 
