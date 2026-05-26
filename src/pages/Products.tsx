@@ -849,7 +849,7 @@ export default function Products() {
                     >
                       {/* Row */}
                       <div className={cn(
-                        "group grid items-center border-b border-black/[0.04] transition-colors last:border-0 hover:bg-black/[0.015]",
+                        "group grid items-start border-b border-black/[0.04] transition-colors last:border-0 hover:bg-black/[0.015]",
                         GRID, isAdding && "bg-black/[0.01]"
                       )}>
 
@@ -907,21 +907,19 @@ export default function Products() {
                           />
                         </div>
 
-                        {/* Price — uniform display box, same visual weight as COG input */}
-                        <div className="px-4 py-4">
-                          <div className={cn(
-                            "flex h-9 items-center rounded-xl border border-transparent bg-transparent px-3",
-                            "font-mono text-[13px] tabular-nums text-black"
-                          )}>
-                            <span data-testid={`text-selling-price-${product.id}`}>
-                              {fmt(product.selling_price)}
-                            </span>
-                          </div>
+                        {/* Price — top-aligned to match column header */}
+                        <div className="px-4 pt-4 pb-3">
+                          <span
+                            data-testid={`text-selling-price-${product.id}`}
+                            className="font-mono text-[13px] tabular-nums text-black"
+                          >
+                            {fmt(product.selling_price)}
+                          </span>
                         </div>
 
-                        {/* COG — admin editable, same h-9 box */}
+                        {/* COG — admin editable, top-aligned */}
                         {isAdmin && (
-                          <div className="flex items-center gap-1.5 px-4 py-4">
+                          <div className="flex items-start gap-1.5 px-4 pt-4 pb-3">
                             <div className="relative flex-1">
                               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
                               <input
@@ -950,8 +948,8 @@ export default function Products() {
                           </div>
                         )}
 
-                        {/* Margin */}
-                        <div className="px-4 py-4">
+                        {/* Margin — top-aligned */}
+                        <div className="px-4 pt-4 pb-3">
                           <span
                             data-testid={`text-margin-${product.id}`}
                             className={cn("text-[13px] tabular-nums font-medium",
@@ -965,7 +963,7 @@ export default function Products() {
                         </div>
 
                         {/* Delete */}
-                        <div className="flex items-center justify-center py-4 pr-3">
+                        <div className="flex items-start justify-center pt-4 pb-3 pr-3">
                           <button
                             data-testid={`button-delete-product-${product.id}`}
                             onClick={() => deleteMutation.mutate(product.id)}
