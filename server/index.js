@@ -4660,24 +4660,30 @@ app.get("/api/products/:id/variants", async (req, res) => {
   }
 });
 
-// POST /api/products/:id/variants — add a new variant
+// POST /api/products/:id/variants — add a new variant (universal attributes)
 app.post("/api/products/:id/variants", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { size, color, sku, cog, stock_quantity } = req.body;
+    const { attributes, cog, stock_quantity, price_adjustment } = req.body;
+    if (!attributes || typeof attributes !== "object" || Object.keys(attributes).length === 0) {
+      return res.status(400).json({ error: "attributes object with at least one key required" });
+    }
+    // Sanitise: all attribute values must be strings
+    const sanitised = Object.fromEntries(
+      Object.entries(attributes).map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
+    );
     const { data, error } = await supabase
       .from("product_variants")
       .insert({
         product_id: req.params.id,
         org_id: orgId,
-        size: size || null,
-        color: color || null,
-        sku: sku || null,
+        attributes: sanitised,
         cog: parseFloat(cog) || 0,
         stock_quantity: Math.max(0, parseInt(stock_quantity, 10) || 0),
+        price_adjustment: parseFloat(price_adjustment) || 0,
       })
       .select()
       .single();
@@ -4688,22 +4694,25 @@ app.post("/api/products/:id/variants", async (req, res) => {
   }
 });
 
-// PATCH /api/products/:id/variants/:variantId — update cog / stock / fields
+// PATCH /api/products/:id/variants/:variantId — update attributes / cog / stock / price_adjustment
 app.patch("/api/products/:id/variants/:variantId", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["size", "color", "sku", "cog", "stock_quantity"];
     const patch = {};
-    for (const key of allowed) {
-      if (req.body[key] !== undefined) {
-        if (key === "cog") patch.cog = parseFloat(req.body.cog) || 0;
-        else if (key === "stock_quantity") patch.stock_quantity = Math.max(0, parseInt(req.body.stock_quantity, 10) || 0);
-        else patch[key] = req.body[key];
+    if (req.body.attributes !== undefined) {
+      if (typeof req.body.attributes !== "object" || Object.keys(req.body.attributes).length === 0) {
+        return res.status(400).json({ error: "attributes must be a non-empty object" });
       }
+      patch.attributes = Object.fromEntries(
+        Object.entries(req.body.attributes).map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
+      );
     }
+    if (req.body.cog !== undefined) patch.cog = parseFloat(req.body.cog) || 0;
+    if (req.body.stock_quantity !== undefined) patch.stock_quantity = Math.max(0, parseInt(req.body.stock_quantity, 10) || 0);
+    if (req.body.price_adjustment !== undefined) patch.price_adjustment = parseFloat(req.body.price_adjustment) || 0;
     const { data, error } = await supabase
       .from("product_variants")
       .update(patch)
