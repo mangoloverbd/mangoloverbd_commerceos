@@ -1292,9 +1292,31 @@ async function syncMetaAssets({ supabase, orgId, userId, userToken }) {
     console.warn("[Meta] WhatsApp asset sync skipped:", errorMessage(err));
   }
 
+  // Build the channels list from what was actually discovered in this OAuth flow,
+  // then MERGE with whatever was already stored — so connecting WhatsApp later
+  // never clobbers the existing facebook/instagram setting, and vice versa.
+  const discoveredChannels = [];
+  if (pages.length > 0) {
+    discoveredChannels.push("facebook");
+    if (pages.some((p) => p.instagram_business_account?.id)) discoveredChannels.push("instagram");
+  }
+  // Check if any WhatsApp accounts were upserted in this sync
+  const { data: waRows } = await supabase
+    .from("meta_whatsapp_accounts")
+    .select("id")
+    .eq("org_id", orgId)
+    .limit(1);
+  if (waRows?.length > 0) discoveredChannels.push("whatsapp");
+
+  // Read existing channels and merge (union) — never remove a channel that was already enabled
+  const existingSettings = await getOrgSettings(orgId, ["auto_reply_channels"]);
+  let existingChannels = [];
+  try { existingChannels = JSON.parse(existingSettings.auto_reply_channels || "[]"); } catch { existingChannels = []; }
+  const mergedChannels = Array.from(new Set([...existingChannels, ...discoveredChannels]));
+
   await saveOrgSettings(orgId, {
     ai_auto_reply_enabled: "true",
-    auto_reply_channels: JSON.stringify(["facebook", "instagram", "whatsapp"]),
+    auto_reply_channels: JSON.stringify(mergedChannels),
     auto_reply_handoff_rules: JSON.stringify({ pause_on_human_reply: true }),
   });
 
@@ -1318,6 +1340,28 @@ app.get("/api/meta/status", async (req, res) => {
       },
       whatsappConfigReady: !!process.env.META_WHATSAPP_CONFIG_ID,
     });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// PATCH /api/meta/ai-automation — update enabled flag and/or per-channel toggles
+app.patch("/api/meta/ai-automation", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { enabled, channels } = req.body;
+    const patch = {};
+    if (enabled !== undefined) patch.ai_auto_reply_enabled = enabled ? "true" : "false";
+    if (Array.isArray(channels)) {
+      const valid = ["facebook", "instagram", "whatsapp"];
+      patch.auto_reply_channels = JSON.stringify(channels.filter((c) => valid.includes(c)));
+    }
+    if (!Object.keys(patch).length) return res.status(400).json({ error: "Provide enabled or channels" });
+    await saveOrgSettings(orgId, patch);
+    return res.json({ success: true });
   } catch (err) {
     return sendError(res, err);
   }

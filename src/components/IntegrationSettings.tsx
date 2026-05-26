@@ -269,6 +269,7 @@ function MetaBusinessPanel() {
     ads: false,
   });
   const [assetBusy, setAssetBusy] = useState<string | null>(null);
+  const [aiSaving, setAiSaving] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -333,6 +334,42 @@ function MetaBusinessPanel() {
   };
 
   const toggle = (key: string) => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // AI automation patch helpers
+  const patchAI = async (body: { enabled?: boolean; channels?: string[] }) => {
+    if (!status) return;
+    setAiSaving(true);
+    try {
+      const res = await apiFetch("/api/meta/ai-automation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to update");
+      // Optimistically update local state
+      setStatus((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev.aiAutomation };
+        if (body.enabled !== undefined) updated.enabled = body.enabled!;
+        if (body.channels !== undefined) updated.channels = body.channels!;
+        return { ...prev, aiAutomation: updated };
+      });
+      toast.success("AI automation updated");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update");
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const toggleChannel = (ch: string) => {
+    if (!status) return;
+    const current = status.aiAutomation.channels;
+    const next = current.includes(ch)
+      ? current.filter((c) => c !== ch)
+      : [...current, ch];
+    patchAI({ channels: next });
+  };
 
   const row = (key: string, name: string, meta: string | undefined, onDisconnect: () => void, busy: boolean) => (
     <div key={key} className="flex items-center justify-between gap-3 rounded-[9px] bg-white px-3 py-2">
@@ -458,20 +495,59 @@ function MetaBusinessPanel() {
               assetBusy === `ad:${a.id}`
             ))}
           </MetaAssetSection>
-          <div className="m-4 rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3">
+          <div className="m-4 rounded-[12px] border border-black/[0.07] bg-black/[0.015] px-3 py-3 space-y-3">
+            {/* Header + master on/off toggle */}
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 text-black/45" />
-              <p className="text-[12px] font-semibold text-black">AI Automation Status</p>
-              <span className={cn(
-                "ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium",
-                status.aiAutomation.enabled ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-black/45"
-              )}>
-                {status.aiAutomation.enabled ? "Active" : "Paused"}
-              </span>
+              <p className="text-[12px] font-semibold text-black">AI Auto-Reply</p>
+              {aiSaving && <Spinner size="sm" className="ml-1" />}
+              {/* Master toggle */}
+              <button
+                onClick={() => patchAI({ enabled: !status.aiAutomation.enabled })}
+                disabled={aiSaving}
+                className={cn(
+                  "ml-auto relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:opacity-50",
+                  status.aiAutomation.enabled ? "bg-emerald-500" : "bg-black/20"
+                )}
+              >
+                <span className={cn(
+                  "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
+                  status.aiAutomation.enabled ? "translate-x-4" : "translate-x-0.5"
+                )} />
+              </button>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-black/40">
-              Enabled channels: {status.aiAutomation.channels.length ? status.aiAutomation.channels.join(", ") : "none"}.
-              Messenger, Instagram, and WhatsApp image/product replies use the live Products catalog.
+
+            {/* Per-channel toggles */}
+            <div className="space-y-1.5">
+              {(["facebook", "instagram", "whatsapp"] as const).map((ch) => {
+                const labels: Record<string, string> = {
+                  facebook: "Facebook Messenger",
+                  instagram: "Instagram DM",
+                  whatsapp: "WhatsApp Business",
+                };
+                const active = status.aiAutomation.channels.includes(ch);
+                return (
+                  <div key={ch} className="flex items-center justify-between rounded-[8px] bg-white px-2.5 py-1.5">
+                    <span className="text-[11px] font-medium text-black/70">{labels[ch]}</span>
+                    <button
+                      onClick={() => toggleChannel(ch)}
+                      disabled={aiSaving || !status.aiAutomation.enabled}
+                      className={cn(
+                        "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:opacity-40",
+                        active && status.aiAutomation.enabled ? "bg-emerald-500" : "bg-black/20"
+                      )}
+                    >
+                      <span className={cn(
+                        "inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow transition-transform",
+                        active && status.aiAutomation.enabled ? "translate-x-3.5" : "translate-x-0.5"
+                      )} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] leading-relaxed text-black/35">
+              Replies use your Products catalog for variant availability and pricing.
             </p>
           </div>
         </div>
