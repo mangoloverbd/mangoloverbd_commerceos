@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { Button } from "@/components/ui/button";
+import { PopButton } from "@/components/ui/pop-button";
 import { useUserRole } from "@/hooks/useUserRole";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -428,13 +428,26 @@ function AddVariantDrawer({
         </div>
 
         <div className="mt-5 flex items-center gap-2">
-          <Button variant="default" size="sm" type="button" onClick={submit} disabled={saving}>
+          <PopButton
+            color="blue"
+            size="sm"
+            type="button"
+            onClick={submit}
+            disabled={saving}
+            className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+          >
             {saving ? <Spinner size="sm" /> : <Plus className="h-3.5 w-3.5" />}
             Add variant
-          </Button>
-          <Button variant="outline" size="sm" type="button" onClick={onClose}>
+          </PopButton>
+          <PopButton
+            color="default"
+            size="sm"
+            type="button"
+            onClick={onClose}
+            className="px-3 text-[11px] font-bold tracking-normal"
+          >
             Cancel
-          </Button>
+          </PopButton>
         </div>
       </div>
     </motion.div>
@@ -689,7 +702,7 @@ export default function Products() {
           <div className="flex flex-col gap-3 border-b border-black/[0.06] px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             {/* Left: title + count */}
             <div className="flex items-center gap-2.5">
-              <Package2 className="h-4 w-4 text-black/40" />
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#000000"><g clipPath="url(#clip0_4418_8364)"><path d="M11.75 7H11H7C4.24 7 2 9.24 2 12V17C2 19.76 4.24 22 7 22H12C14.76 22 17 19.76 17 17V13V12.25C17 9.35 14.65 7 11.75 7Z" fill="currentColor" opacity="0.35"/><path d="M21.8799 6.33033C22.4045 8.88991 21.1621 11.2123 19.159 12.306C18.8514 12.4739 18.4999 12.2343 18.4999 11.8838V11.7503C18.4999 8.31033 15.6899 5.50033 12.2499 5.50033H12.1164C11.7659 5.50033 11.5263 5.14879 11.6942 4.84119C12.7879 2.8381 15.1103 1.59574 17.6699 2.12033C19.7599 2.55033 21.4499 4.24033 21.8799 6.33033Z" fill="currentColor"/></g><defs><clipPath id="clip0_4418_8364"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>
               <span className="text-[15px] font-semibold tracking-tight text-black">Products</span>
               {!isLoading && (
                 <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black/40">
