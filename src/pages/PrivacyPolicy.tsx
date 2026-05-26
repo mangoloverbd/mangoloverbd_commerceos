@@ -31,7 +31,7 @@ export default function PrivacyPolicy() {
           </p>
         </div>
 
-        <div className="prose prose-sm max-w-none space-y-8 text-[15px] leading-relaxed text-black/80 text-center [&_ul]:text-left [&_p]:text-center">
+        <div className="prose prose-sm max-w-none space-y-8 text-[15px] leading-relaxed text-black/80 text-center [&_ul]:mx-auto [&_ul]:max-w-2xl [&_ul]:text-left [&_p]:text-center">
 
           {/* Introduction */}
           <Section title="1. Introduction">
@@ -259,7 +259,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="space-y-3 text-center">
       <h2 className="text-[18px] font-semibold tracking-tight text-black">{title}</h2>
-      <div className="space-y-3 text-[15px] text-black/75 leading-relaxed text-center [&_ul]:text-left [&_ul]:inline-block [&_ul]:text-left">{children}</div>
+      <div className="space-y-3 text-[15px] text-black/75 leading-relaxed text-center [&_ul]:mx-auto [&_ul]:max-w-2xl [&_ul]:text-left [&_p]:text-center">{children}</div>
     </section>
   );
 }
