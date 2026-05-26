@@ -417,7 +417,8 @@ function MetaBusinessPanel() {
         const cfgRes = await apiFetch("/api/meta/whatsapp/config");
         const cfg = await cfgRes.json();
         if (!cfg.ready) {
-          toast.error("WhatsApp Embedded Signup is not configured. Add META_APP_ID and META_WHATSAPP_CONFIG_ID to Railway.");
+          toast.error("META_APP_ID and META_WHATSAPP_CONFIG_ID must be set in Railway env vars.");
+          setWaSignupLoading(false);
           return;
         }
         waConfigRef.current = { appId: cfg.appId, configId: cfg.configId };
@@ -427,48 +428,51 @@ function MetaBusinessPanel() {
       // Load FB SDK if not already loaded
       await new Promise<void>((resolve, reject) => {
         if ((window as any).FB) { resolve(); return; }
+        // Check if script already added (avoid duplicates)
+        if (document.getElementById("fb-sdk-script")) {
+          // Wait for it to load
+          const check = setInterval(() => {
+            if ((window as any).FB) { clearInterval(check); resolve(); }
+          }, 100);
+          setTimeout(() => { clearInterval(check); reject(new Error("Facebook SDK timeout")); }, 10000);
+          return;
+        }
         const script = document.createElement("script");
+        script.id = "fb-sdk-script";
         script.src = "https://connect.facebook.net/en_US/sdk.js";
+        script.async = true;
         script.onload = () => resolve();
-        script.onerror = () => reject(new Error("Failed to load Facebook SDK"));
+        script.onerror = () => reject(new Error("Failed to load Facebook SDK. Check your internet connection."));
         document.body.appendChild(script);
       });
 
-      // Init FB SDK
+      // Init FB SDK (safe to call multiple times)
       (window as any).FB.init({
         appId,
         autoLogAppEvents: true,
-        xfbml: true,
+        xfbml: false,
         version: "v23.0",
       });
 
-      // Launch Embedded Signup — opens a popup
-      await new Promise<void>((resolve, reject) => {
+      // Launch Embedded Signup popup
+      // Use a timeout so loading state resets if popup is blocked or user takes too long
+      const loginResult = await new Promise<any>((resolve, reject) => {
+        let resolved = false;
+
+        // Safety timeout — reset after 3 minutes if callback never fires
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            reject(new Error("Signup timed out. The popup may have been blocked — please allow popups for this site and try again."));
+          }
+        }, 3 * 60 * 1000);
+
         (window as any).FB.login(
-          async (response: any) => {
-            if (response.authResponse?.code) {
-              try {
-                setWaSignupLoading(true);
-                const exchangeRes = await apiFetch("/api/meta/whatsapp/exchange-token", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ code: response.authResponse.code }),
-                });
-                const data = await exchangeRes.json();
-                if (!exchangeRes.ok) throw new Error(data.error || "Token exchange failed");
-                // Refresh the Meta status
-                if (data.status) setStatus(data.status);
-                else refresh();
-                toast.success("WhatsApp Business account connected successfully!");
-                resolve();
-              } catch (err: any) {
-                reject(err);
-              }
-            } else if (response.status === "not_authorized") {
-              reject(new Error("Permission not granted. Please allow all requested permissions."));
-            } else {
-              reject(new Error("WhatsApp signup cancelled or failed."));
-            }
+          (response: any) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timeout);
+            resolve(response);
           },
           {
             config_id: configId,
@@ -482,8 +486,27 @@ function MetaBusinessPanel() {
           }
         );
       });
+
+      if (loginResult.authResponse?.code) {
+        const exchangeRes = await apiFetch("/api/meta/whatsapp/exchange-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: loginResult.authResponse.code }),
+        });
+        const data = await exchangeRes.json();
+        if (!exchangeRes.ok) throw new Error(data.error || "Token exchange failed");
+        if (data.status) setStatus(data.status);
+        else refresh();
+        toast.success("WhatsApp Business account connected!");
+      } else if (loginResult.status === "not_authorized") {
+        throw new Error("Permission denied. Please grant all requested permissions in the popup.");
+      } else {
+        // User closed the popup — not an error
+        toast("WhatsApp signup was cancelled.");
+      }
     } catch (err: any) {
-      toast.error(err?.message || "WhatsApp signup failed");
+      console.error("[WA Signup]", err);
+      toast.error(err?.message || "WhatsApp signup failed. Please try again.");
     } finally {
       setWaSignupLoading(false);
     }
