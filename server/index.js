@@ -7,7 +7,109 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { readFile } from "fs/promises";
 import pg from "pg";
+import { Redis } from "@upstash/redis";
+import { Ratelimit } from "@upstash/ratelimit";
 const { Pool } = pg;
+
+// ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
+// Three tiers keyed by authenticated user ID (or IP for auth endpoints):
+//   ai   — expensive AI/crawl routes: 20 req / 60 s
+//   auth — registration: 5 req / 15 min (brute-force protection)
+//   api  — all other /api routes: 120 req / 60 s
+//
+// Falls back silently when Redis is unreachable — never blocks the request.
+
+let redisClient = null;
+let rlAI = null;
+let rlAuth = null;
+let rlAPI = null;
+
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  try {
+    redisClient = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    rlAI = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(20, "60 s"),
+      prefix: "rl:ai",
+    });
+    rlAuth = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(5, "15 m"),
+      prefix: "rl:auth",
+    });
+    rlAPI = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(120, "60 s"),
+      prefix: "rl:api",
+    });
+    console.log("[RateLimit] Upstash Redis connected.");
+  } catch (err) {
+    console.warn("[RateLimit] Failed to init Upstash — rate limiting disabled:", err.message);
+  }
+} else {
+  console.warn("[RateLimit] UPSTASH_REDIS_REST_URL / TOKEN not set — rate limiting disabled.");
+}
+
+/**
+ * Build an Express middleware for a given Ratelimit instance.
+ * @param {Ratelimit|null} limiter
+ * @param {"user"|"ip"} keyStrategy  "user" uses the JWT subject; "ip" uses remote IP
+ */
+function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
+  return async (req, res, next) => {
+    if (!limiter) return next(); // disabled — pass through
+
+    let identifier;
+    if (keyStrategy === "ip") {
+      identifier = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    } else {
+      // Extract user id from JWT without full verification (already verified per-route).
+      // Use IP as fallback for unauthenticated requests.
+      try {
+        const authHeader = req.headers.authorization || "";
+        const token = authHeader.replace(/^Bearer\s+/i, "");
+        if (token) {
+          const [, payloadB64] = token.split(".");
+          const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
+          identifier = payload.sub || payload.user_id || null;
+        }
+      } catch { /* ignore malformed JWT */ }
+      if (!identifier) {
+        identifier = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      }
+    }
+
+    try {
+      const { success, limit, remaining, reset } = await limiter.limit(identifier);
+      res.setHeader("X-RateLimit-Limit", limit);
+      res.setHeader("X-RateLimit-Remaining", remaining);
+      res.setHeader("X-RateLimit-Reset", reset);
+
+      if (!success) {
+        const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
+        res.setHeader("Retry-After", retryAfterSecs);
+        return res.status(429).json({
+          error: "Too many requests. Please slow down.",
+          retryAfter: retryAfterSecs,
+        });
+      }
+      next();
+    } catch (err) {
+      // Redis error — fail open (don't block the user)
+      console.warn("[RateLimit] Redis check failed, allowing request:", err.message);
+      next();
+    }
+  };
+}
+
+const rateLimitAI   = makeRateLimitMiddleware(rlAI,   "user");
+const rateLimitAuth = makeRateLimitMiddleware(rlAuth,  "ip");
+const rateLimitAPI  = makeRateLimitMiddleware(rlAPI,   "user");
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Let Railway restart the process after truly unexpected failures. Continuing
 // after these can leave auth or DB state half-broken.
@@ -31,6 +133,19 @@ app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS
 app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
+
+// Apply general API rate limit to all /api/* routes.
+// AI-specific routes apply their own stricter rateLimitAI middleware on top.
+// Webhook routes are excluded — they are server-to-server and must not be blocked.
+app.use("/api", (req, res, next) => {
+  const path = req.path;
+  // Exclude webhook endpoints and public config from rate limiting
+  if (
+    path.startsWith("/webhooks/") ||
+    path === "/config"
+  ) return next();
+  return rateLimitAPI(req, res, next);
+});
 
 const PORT = process.env.PORT || 5000;
 const isDev = process.env.NODE_ENV !== "production";
@@ -409,7 +524,7 @@ app.get("/api/config", (req, res) => {
 // ─── Auth Registration Endpoint ──────────────────────────────────────────────
 
 // Register a new user and automatically assign them the admin role
-app.post("/api/auth/register", async (req, res) => {
+app.post("/api/auth/register", rateLimitAuth, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -1786,7 +1901,7 @@ async function buildForecastNarrative(payload) {
   }
 }
 
-app.get("/api/business-forecast", async (req, res) => {
+app.get("/api/business-forecast", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -1985,7 +2100,7 @@ app.get("/api/sidebar-alerts", async (req, res) => {
 
 const ORDER_CHAT_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
 
-app.post("/api/order-chat", async (req, res) => {
+app.post("/api/order-chat", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -2185,7 +2300,7 @@ ${JSON.stringify(inboxOrderDetails).slice(0, 8000)}`;
 });
 
 // ── Studio: AI Copy Generation ────────────────────────────────────────────────
-app.post("/api/studio/generate", async (req, res) => {
+app.post("/api/studio/generate", rateLimitAI, async (req, res) => {
   try {
     const token = getToken(req);
     const { user } = await getUser(token);
@@ -4486,7 +4601,7 @@ app.post("/api/products/save", async (req, res) => {
   }
 });
 
-app.post("/api/products/crawl", async (req, res) => {
+app.post("/api/products/crawl", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -4673,7 +4788,7 @@ Respond with raw JSON array only — no markdown fences.`,
   }
 });
 
-app.post("/api/extract-order-from-text", async (req, res) => {
+app.post("/api/extract-order-from-text", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
