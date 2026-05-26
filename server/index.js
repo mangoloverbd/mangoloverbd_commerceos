@@ -1505,6 +1505,63 @@ app.post("/api/meta/resubscribe-pages", async (req, res) => {
   }
 });
 
+// ── WhatsApp Embedded Signup ──────────────────────────────────────────────────
+
+// GET /api/meta/whatsapp/config
+// Returns public config needed by the Embedded Signup frontend flow.
+app.get("/api/meta/whatsapp/config", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    return res.json({
+      appId: process.env.META_APP_ID || "",
+      configId: process.env.META_WHATSAPP_CONFIG_ID || "",
+      ready: !!(process.env.META_APP_ID && process.env.META_WHATSAPP_CONFIG_ID),
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// POST /api/meta/whatsapp/exchange-token
+// Called after Embedded Signup completes. Receives the auth code from the
+// FB SDK callback, exchanges it for a user token, then syncs the WABA assets.
+app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: "code is required" });
+
+    if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) {
+      return res.status(500).json({ error: "META_APP_ID or META_APP_SECRET not configured" });
+    }
+
+    // Exchange the short-lived code for a long-lived user token
+    const userToken = await exchangeMetaCodeForToken(code);
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    // Sync all Meta assets (pages, Instagram, WhatsApp) with the new token.
+    // For Embedded Signup the primary new asset is the WhatsApp WABA + phone number.
+    const result = await syncMetaAssets({ supabase, orgId, userId: user.id, userToken });
+
+    // Return the refreshed status so the UI updates immediately
+    const statusData = await getMetaStatus(supabase, orgId);
+    return res.json({
+      success: true,
+      pages: result.pages,
+      subscribed: result.subscribed,
+      status: statusData,
+    });
+  } catch (err) {
+    console.error("[WhatsApp Embedded Signup] token exchange failed:", errorMessage(err));
+    return sendError(res, err);
+  }
+});
+
 app.post("/api/meta/oauth/start", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
