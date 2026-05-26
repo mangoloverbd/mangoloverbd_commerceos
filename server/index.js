@@ -4007,6 +4007,9 @@ app.post("/api/webhooks/facebook", async (req, res) => {
     const entries = Array.isArray(body.entry) ? body.entry : [];
     const objectType = body.object || "";
 
+    // Raw log — helps diagnose Instagram/Facebook payload shape
+    console.log(`[Webhook/FB] object=${objectType} entries=${entries.length} raw=${JSON.stringify(body).slice(0, 500)}`);
+
     for (const entry of entries) {
       // ── Facebook Messenger: messages arrive in entry.messaging ──────────────
       if (objectType === "page") {
@@ -4079,6 +4082,8 @@ app.post("/api/webhooks/whatsapp", async (req, res) => {
   const body = req.body || {};
   res.sendStatus(200);
   try {
+    // Raw log — helps diagnose if webhook is being received at all
+    console.log(`[Webhook/WA] object=${body.object} raw=${JSON.stringify(body).slice(0, 500)}`);
     const entries = Array.isArray(body.entry) ? body.entry : [];
     for (const entry of entries) {
       for (const change of entry.changes || []) {
