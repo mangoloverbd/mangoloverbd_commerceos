@@ -19,6 +19,7 @@ import InstagramInbox from "./pages/InstagramInbox";
 import WhatsappInbox from "./pages/WhatsappInbox";
 import InboxOrders from "./pages/InboxOrders";
 import Studio from "./pages/Studio";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { Spinner } from "@/components/ui/ios-spinner";
 
 const queryClient = new QueryClient();
@@ -115,6 +116,7 @@ const AppRoutes = () => (
     />
     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
     <Route path="*" element={<NotFound />} />
+    <Route path="/privacy" element={<PrivacyPolicy />} />
   </Routes>
 );
 
