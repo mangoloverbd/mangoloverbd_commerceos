@@ -3298,7 +3298,7 @@ function normalizeOpenAiImageMime(mime = "") {
   return value;
 }
 
-async function prepareOpenAiImageRef(url = "") {
+async function prepareOpenAiImageRef(url = "", authToken = "") {
   const value = String(url || "").trim();
   if (!value) return null;
   if (value.startsWith("data:")) {
@@ -3308,12 +3308,15 @@ async function prepareOpenAiImageRef(url = "") {
   try {
     const parsed = new URL(value);
     const pathname = parsed.pathname.toLowerCase();
-    if (/\.(png|jpe?g|gif|webp)$/i.test(pathname)) return value;
+    // Only return as direct URL if public (no token) AND has clear image extension
+    if (!authToken && /\.(png|jpe?g|gif|webp)$/i.test(pathname)) return value;
   } catch { /* not a URL */ }
-  // Fetch and base64-encode if the URL doesn't have an obvious extension
+  // Fetch and base64-encode — use auth token if provided (Instagram, WhatsApp CDN URLs are token-gated)
   try {
+    const headers = { "User-Agent": "ArcLab/1.0" };
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
     const response = await fetch(value, {
-      headers: { "User-Agent": "ArcLab/1.0" },
+      headers,
       signal: AbortSignal.timeout(7000),
     });
     if (!response.ok) return null;
@@ -3382,7 +3385,7 @@ function parseInboxOrderNotes(notes = "") {
 // This eliminates all heuristic intent detection. GPT decides when the order
 // is complete, not a regex.
 
-async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrl }) {
+async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrl, platformToken = "" }) {
   // Build catalog — include variant breakdown so AI can answer availability per option
   const catalog = products.map((p) => {
     const entry = {
@@ -3444,7 +3447,7 @@ Or when all order fields are collected:
   const userContent = [];
   userContent.push({ type: "text", text: `CONVERSATION SO FAR:\n${conversationHistory || "(start of conversation)"}\n\nCUSTOMER MESSAGE:\n${customerMessage || "(no text, image only)"}` });
 
-  const safeImageUrl = imageUrl ? await prepareOpenAiImageRef(imageUrl) : null;
+  const safeImageUrl = imageUrl ? await prepareOpenAiImageRef(imageUrl, platformToken) : null;
   if (safeImageUrl) {
     userContent.push({ type: "text", text: "CUSTOMER IMAGE:" });
     userContent.push({ type: "image_url", image_url: { url: safeImageUrl } });
@@ -3690,9 +3693,14 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   const brandDoc = settings.brand_doc || "";
 
   // 4. Run GPT-4o — single call handles reply + order detection
+  // Pass page token so Instagram/WhatsApp token-gated image URLs can be fetched
+  const platformToken = platform === "whatsapp"
+    ? (channel.encrypted_access_token ? decryptToken(channel.encrypted_access_token) : "")
+    : (channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "");
+
   let aiResult;
   try {
-    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrl: imageUrl || null });
+    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrl: imageUrl || null, platformToken });
   } catch (err) {
     console.error("[Meta AI] GPT call failed:", errorMessage(err));
     return;
@@ -3965,6 +3973,35 @@ async function syncOrderFieldsFromAIResult({ supabase, orgId, conversation, orde
   });
 }
 
+// Fetch image from a URL that may require auth (Instagram CDN URLs are token-gated).
+// For Instagram, we need to fetch the media URL via the Graph API first.
+async function fetchInstagramMediaUrl(mediaId, pageToken) {
+  if (!mediaId || !pageToken) return null;
+  try {
+    // Get the CDN URL for the media item
+    const media = await metaGraph(`/${mediaId}`, {
+      token: pageToken,
+      params: { fields: "image_data,video_data" },
+    });
+    const url = media?.image_data?.url || media?.video_data?.url;
+    if (!url) return null;
+    // Fetch and base64-encode so OpenAI can read it
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${pageToken}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return null;
+    const mime = normalizeOpenAiImageMime(response.headers.get("content-type") || "image/jpeg");
+    if (!OPENAI_IMAGE_MIME_TYPES.has(mime)) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 18 * 1024 * 1024) return null;
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  } catch (err) {
+    console.warn("[Instagram] media fetch failed:", errorMessage(err));
+    return null;
+  }
+}
+
 async function fetchMetaUserName(senderId, pageToken, platform = "facebook") {
   if (!pageToken) return null;
   try {
@@ -3982,13 +4019,14 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   const recipientId = messaging.recipient?.id || entry.id;
   const text = messaging.message?.text || messaging.postback?.payload || "";
   const attachment = messaging.message?.attachments?.[0];
-  const imageUrl = attachment?.payload?.url || null;
-  const messageType = attachment?.type || (text ? "text" : "event");
 
-  console.log(`[${platform.toUpperCase()}] incoming senderId=${senderId} recipientId=${recipientId} text="${text?.slice(0,50)}" is_echo=${!!messaging.message?.is_echo}`);
+  // Skip echo messages (bot's own messages reflected back) — same as Messenger
+  if (messaging.message?.is_echo) return;
+  // Skip unsupported / delivery / read receipts
+  if (!senderId || !recipientId) return;
+  if (!text && !attachment && !messaging.message) return;
 
-  if (!senderId || !recipientId) { console.log(`[${platform.toUpperCase()}] skipped: missing sender/recipient`); return; }
-  if (messaging.message?.is_echo) { console.log(`[${platform.toUpperCase()}] skipped: echo`); return; }
+  console.log(`[${platform.toUpperCase()}] incoming senderId=${senderId} recipientId=${recipientId} text="${text?.slice(0,50)}" attachment_type=${attachment?.type || "none"}`);
 
   const channel = await findMetaChannelByRecipient(supabase, recipientId, platform);
   if (!channel?.org_id) {
@@ -3999,6 +4037,34 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
 
   console.log(`[${platform.toUpperCase()}] channel matched orgId=${channel.org_id} page_id=${channel.page_id} ig_id=${channel.instagram_account_id}`);
 
+  const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
+
+  // ── Image resolution — identical pipeline for Messenger and Instagram ────────
+  let imageUrl = null;
+  let messageType = text ? "text" : "event";
+
+  if (attachment) {
+    messageType = attachment.type || "attachment";
+    if (attachment.type === "image" || attachment.type === "video" || attachment.type === "audio") {
+      if (attachment.payload?.url) {
+        // Messenger: direct CDN URL
+        imageUrl = attachment.payload.url;
+      } else if (attachment.payload?.sticker_id) {
+        // Sticker — treat as image, use sticker URL if available
+        imageUrl = attachment.payload?.url || null;
+        messageType = "image";
+      }
+    } else if (attachment.type === "share") {
+      // Shared post or story reply — extract url if present
+      imageUrl = attachment.payload?.url || null;
+    }
+  }
+
+  // Instagram: if attachment has a media ID instead of a direct URL, fetch it
+  if (platform === "instagram" && attachment?.payload?.id && !imageUrl) {
+    imageUrl = await fetchInstagramMediaUrl(attachment.payload.id, pageToken);
+  }
+
   await upsertMetaWebhookEvent(supabase, {
     orgId: channel.org_id, objectType, platform,
     pageId: channel.page_id || recipientId,
@@ -4006,7 +4072,7 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
     senderId, eventType: "message", payload: messaging,
   });
 
-  const pageToken = channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "";
+  // ── Contact name — same approach for both platforms ──────────────────────────
   const resolvedName = await fetchMetaUserName(senderId, pageToken, platform);
 
   await handleMetaMessage({
