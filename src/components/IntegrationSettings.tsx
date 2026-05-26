@@ -454,7 +454,7 @@ function MetaBusinessPanel() {
         appId,
         autoLogAppEvents: true,
         xfbml: false,
-        version: "v23.0",
+        version: "v25.0",
       });
 
       // Launch Embedded Signup popup — wait indefinitely for user to complete the form
@@ -466,9 +466,9 @@ function MetaBusinessPanel() {
             response_type: "code",
             override_default_response_type: true,
             extras: {
-              setup: {},
-              featureType: mode === "migrate" ? "migrate_bsp" : "",
+              version: "v4",
               sessionInfoVersion: "3",
+              ...(mode === "migrate" ? { featureType: "migrate_bsp" } : {}),
             },
           }
         );
