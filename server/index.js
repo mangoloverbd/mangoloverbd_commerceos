@@ -4066,57 +4066,58 @@ app.get("/api/webhooks/facebook", (req, res) => {
 app.post("/api/webhooks/facebook", async (req, res) => {
   const supabase = getServiceSupabase();
   const body = req.body || {};
-  res.sendStatus(200);
+  res.sendStatus(200); // always ack immediately
+
+  // ── FULL RAW LOG — see exact payload Meta sends ───────────────────────────
+  console.log("[Webhook/FB] FULL BODY:", JSON.stringify(body, null, 2));
+
   try {
     const entries = Array.isArray(body.entry) ? body.entry : [];
     const objectType = body.object || "";
 
-    // Raw log — helps diagnose Instagram/Facebook payload shape
-    console.log(`[Webhook/FB] object=${objectType} entries=${entries.length} raw=${JSON.stringify(body).slice(0, 500)}`);
-
     for (const entry of entries) {
-      // ── Facebook Messenger: messages arrive in entry.messaging ──────────────
-      if (objectType === "page") {
-        for (const messaging of entry.messaging || []) {
-          await handleMetaMessagingEvent({ supabase, objectType, entry, messaging });
-        }
-        // Log non-message changes (likes, reactions, etc.)
-        for (const change of entry.changes || []) {
-          if (change.field !== "messages") {
-            await upsertMetaWebhookEvent(supabase, {
-              objectType,
-              platform: "facebook",
-              pageId: entry.id,
-              eventType: change.field || "change",
-              payload: change,
-            });
-          }
+
+      // ── SCENARIO A: object=page, entry.messaging[] ─────────────────────────
+      // Standard Facebook Messenger + some Instagram setups
+      if (entry.messaging?.length) {
+        for (const messaging of entry.messaging) {
+          const platform = objectType === "instagram" ? "instagram" : "facebook";
+          console.log(`[Webhook/FB] scenario=A platform=${platform} sender=${messaging.sender?.id} text=${messaging.message?.text?.slice(0,50)}`);
+          await handleMetaMessagingEvent({ supabase, objectType: platform === "instagram" ? "instagram" : objectType, entry, messaging });
         }
       }
 
-      // ── Instagram DMs: messages arrive in entry.changes[].value ─────────────
-      if (objectType === "instagram") {
-        for (const change of entry.changes || []) {
+      // ── SCENARIO B: object=instagram OR object=page, entry.changes[] ───────
+      // Instagram DMs arrive here in most configurations
+      if (entry.changes?.length) {
+        for (const change of entry.changes) {
           const value = change.value || {};
-          console.log(`[Webhook/IG] entry.id=${entry.id} field=${change.field} value_keys=${Object.keys(value).join(",")} sender=${value.sender?.id} has_message=${!!value.message}`);
+          const field = change.field || "";
+          console.log(`[Webhook/FB] scenario=B object=${objectType} field=${field} value_keys=${Object.keys(value).join(",")} sender=${value.sender?.id} from=${value.from?.id}`);
 
-          if (change.field === "messages" && value.sender?.id && value.message) {
-            // Normalise into the same shape handleMetaMessagingEvent expects
+          // Instagram DM: value has sender + message
+          if (field === "messages" && (value.sender?.id || value.from?.id) && (value.message || value.text)) {
+            const senderId = value.sender?.id || value.from?.id;
+            const recipientId = value.recipient?.id || value.to?.id || entry.id;
+            const msgText = value.message?.text || value.text?.body || value.text || "";
+            const mid = value.message?.mid || value.message?.id || "";
             const messaging = {
-              sender:    { id: value.sender.id },
-              recipient: { id: value.recipient?.id || entry.id },
-              message:   value.message,
-              postback:  value.postback || null,
+              sender:    { id: senderId },
+              recipient: { id: recipientId },
+              message:   { mid, text: msgText, attachments: value.message?.attachments },
               timestamp: value.timestamp,
             };
-            await handleMetaMessagingEvent({ supabase, objectType: "instagram", entry, messaging });
+            const platform = objectType === "instagram" ? "instagram" : "facebook";
+            console.log(`[Webhook/FB] DM matched platform=${platform} sender=${senderId} recipient=${recipientId} text="${msgText?.slice(0,50)}"`);
+            await handleMetaMessagingEvent({ supabase, objectType: platform === "instagram" ? "instagram" : objectType, entry, messaging });
           } else {
-            // Non-message Instagram change — just log it
+            // Non-DM change event — just store it
+            const platform = objectType === "instagram" ? "instagram" : "facebook";
             await upsertMetaWebhookEvent(supabase, {
               objectType,
-              platform: "instagram",
+              platform,
               pageId: entry.id,
-              eventType: change.field || "change",
+              eventType: field || "change",
               payload: change,
             });
           }
