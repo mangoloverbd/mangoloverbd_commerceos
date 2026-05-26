@@ -2020,6 +2020,20 @@ app.post("/api/order-chat", async (req, res) => {
       : {};
     const rawProducts = baseProducts.map((p) => ({ ...p, stock_quantity: stockMap[p.id] ?? 0 }));
 
+    // Load variants for all products in one query
+    let chatVariantsMap = {};
+    if (baseProducts.length > 0) {
+      const { data: variantRows } = await supabase
+        .from("product_variants")
+        .select("product_id, attributes, stock_quantity, price_adjustment")
+        .in("product_id", baseProducts.map((p) => p.id))
+        .eq("org_id", orgId);
+      for (const v of variantRows || []) {
+        if (!chatVariantsMap[v.product_id]) chatVariantsMap[v.product_id] = [];
+        chatVariantsMap[v.product_id].push(v);
+      }
+    }
+
     const orders = rawOrders || [];
     const products = rawProducts || [];
     const inboxOrders = rawInboxOrders || [];
@@ -2057,14 +2071,28 @@ app.post("/api/order-chat", async (req, res) => {
       dt: o.created_at?.slice(0, 10),
     }));
 
-    const productDetails = products.map((p) => ({
-      id: p.id,
-      name: p.name,
-      price: p.selling_price,
-      cog: p.cog,
-      stock: p.stock_quantity ?? null,
-      url: p.url,
-    }));
+    const productDetails = products.map((p) => {
+      const variants = (chatVariantsMap[p.id] || []).map((v) => ({
+        option: Object.entries(v.attributes || {}).map(([k, val]) => `${k}: ${val}`).join(", "),
+        available: v.stock_quantity > 0,
+        price: v.price_adjustment
+          ? (p.selling_price != null ? Number(p.selling_price) + Number(v.price_adjustment) : null)
+          : (p.selling_price != null ? Number(p.selling_price) : null),
+      }));
+      const entry = {
+        id: p.id,
+        name: p.name,
+        price: p.selling_price,
+        cog: p.cog,
+        stock: variants.length > 0 ? null : (p.stock_quantity ?? null),
+        available: variants.length > 0
+          ? variants.some((v) => v.available)
+          : (p.stock_quantity ?? 0) > 0,
+        url: p.url,
+      };
+      if (variants.length > 0) entry.variants = variants;
+      return entry;
+    });
 
     const inboxOrderDetails = inboxOrders.map((o) => ({
       "#": o.order_number,
@@ -2087,7 +2115,9 @@ Rules:
 - Use compact numbered lists for orders: "1. #OrderNum (Customer): detail"
 - Use bold for key numbers.
 - Use ৳ for currency.
-- If asked about stock, reference the products data.
+- If asked about stock, reference the products data. For products with variants, check per-variant availability.
+- If asked which colors/sizes/options are available, list only variants where available=true.
+- If all variants are unavailable, say the product is out of stock.
 - If asked about social/inbox orders, reference the inbox orders data.
 
 === BUSINESS SUMMARY ===
@@ -2104,7 +2134,7 @@ ${JSON.stringify(orderDetails).slice(0, 40000)}
 
 === PRODUCTS & STOCK ===
 Total products: ${products.length} | Total catalog value: ৳${totalProductValue.toFixed(2)} | Total COG: ৳${totalCOG.toFixed(2)}
-Product field key: id, name, price=selling_price, cog=cost_of_goods, stock=stock_quantity(null=not tracked), url
+Product field key: id, name, price=selling_price, cog=cost_of_goods, stock=stock_quantity(null when variants exist), available=in_stock, url, variants=[{option, available, price}]
 
 ${JSON.stringify(productDetails).slice(0, 8000)}
 
@@ -2914,13 +2944,42 @@ async function getMetaReplyProductContext(orgId) {
     if (error) throw error;
     const rows = products || [];
     const stockMap = rows.length ? await getProductStockMap(orgId, rows.map((p) => p.id)) : {};
-    return rows.map((p) => ({
-      name: p.name,
-      price: p.selling_price != null ? Number(p.selling_price) : null,
-      stock: stockMap[p.id] ?? 0,
-      url: p.url || null,
-      image_url: p.image_url || null,
-    }));
+
+    // Load all variants for these products in one query
+    let variantsMap = {};
+    if (rows.length > 0) {
+      const { data: variantRows } = await supabase
+        .from("product_variants")
+        .select("product_id, attributes, stock_quantity, price_adjustment")
+        .in("product_id", rows.map((p) => p.id))
+        .eq("org_id", orgId);
+      for (const v of variantRows || []) {
+        if (!variantsMap[v.product_id]) variantsMap[v.product_id] = [];
+        variantsMap[v.product_id].push(v);
+      }
+    }
+
+    return rows.map((p) => {
+      const baseStock = stockMap[p.id] ?? 0;
+      const variants = (variantsMap[p.id] || []).map((v) => ({
+        attributes: v.attributes,                      // e.g. {color:"Black", size:"M"}
+        available: v.stock_quantity > 0,
+        price: v.price_adjustment
+          ? (p.selling_price != null ? Number(p.selling_price) + Number(v.price_adjustment) : null)
+          : (p.selling_price != null ? Number(p.selling_price) : null),
+      }));
+      return {
+        name: p.name,
+        price: p.selling_price != null ? Number(p.selling_price) : null,
+        // available reflects product-level stock only when no variants exist
+        available: variants.length > 0
+          ? variants.some((v) => v.available)          // true if at least one variant is in stock
+          : baseStock > 0,
+        variants,                                       // [] for products with no variants
+        url: p.url || null,
+        image_url: p.image_url || null,
+      };
+    });
   } catch (err) {
     console.warn("[Meta AI] product context unavailable:", errorMessage(err));
     return [];
@@ -3022,12 +3081,24 @@ function parseInboxOrderNotes(notes = "") {
 // is complete, not a regex.
 
 async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrl }) {
-  const catalog = products.map((p) => ({
-    name: p.name,
-    price: p.price,
-    available: Number(p.stock || 0) > 0,
-    url: p.url || null,
-  }));
+  // Build catalog — include variant breakdown so AI can answer availability per option
+  const catalog = products.map((p) => {
+    const entry = {
+      name: p.name,
+      price: p.price,
+      available: p.available,
+      url: p.url || null,
+    };
+    if (p.variants && p.variants.length > 0) {
+      // Each variant: readable label + availability + price
+      entry.variants = p.variants.map((v) => ({
+        option: Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(", "),
+        available: v.available,
+        price: v.price,
+      }));
+    }
+    return entry;
+  });
 
   const systemPrompt = `You are a helpful sales assistant for a Bangladeshi e-commerce shop replying to social media DMs (Facebook, Instagram, WhatsApp).
 
@@ -3038,12 +3109,14 @@ RULES:
 - Reply in the same language the customer uses (Bangla or English). Keep replies SHORT and natural (1-3 sentences).
 - Always follow the tone, policies, and product information in the Brand Knowledge Base above.
 - You have vision ability. If the customer sends a product image, identify it and match it to the closest product in the catalog by product type (not exact photo). If the image shows an insulated/vacuum/thermal coffee cup or tumbler, do NOT call it glass cups.
-- Use ৳ for prices. Never reveal exact stock counts — just say "available" or "out of stock".
-- When the customer wants to order: collect name, phone number, delivery address, product name, and quantity — one missing field at a time.
+- Use ৳ for prices. Never reveal exact stock counts — only say "available" or "out of stock" per variant or product.
+- When a customer asks about a product that has variants (colors, sizes, weights, etc.), list the AVAILABLE variants only. Do NOT mention out-of-stock variants unless the customer specifically asks.
+- If ALL variants of a product are out of stock, say the product is currently unavailable.
+- When the customer wants to order: collect name, phone number, delivery address, product name (including which variant if applicable), and quantity — one missing field at a time.
 - Once you have ALL FIVE fields confirmed, set order to the populated object. Do not set order until every field is present and confirmed.
 - Never invent prices, discounts, or delivery promises not in the catalog or brand knowledge base.
 
-CATALOG:
+CATALOG (name, price, availability, variants where applicable):
 ${JSON.stringify(catalog).slice(0, 12000)}
 
 RESPONSE FORMAT — return ONLY valid JSON, no prose, no markdown:
