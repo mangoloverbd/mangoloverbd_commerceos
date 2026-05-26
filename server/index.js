@@ -3576,20 +3576,37 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
 
 async function sendMetaMessage({ platform, pageId, pageToken, recipientId, text, instagramAccountId }) {
   if (!text || !pageToken || !recipientId) return;
-  // Instagram replies must use the Instagram account ID as the endpoint,
-  // not the Facebook page ID. The recipient is the Instagram-scoped user ID.
+  // For Instagram, try the instagram account endpoint first, fall back to page endpoint
   const endpointId = (platform === "instagram" && instagramAccountId)
     ? instagramAccountId
     : pageId;
-  await metaGraph(`/${endpointId}/messages`, {
-    method: "POST",
-    token: pageToken,
-    body: {
-      recipient: { id: recipientId },
-      messaging_type: "RESPONSE",
-      message: { text: text.slice(0, 1000) },
-    },
-  });
+  try {
+    await metaGraph(`/${endpointId}/messages`, {
+      method: "POST",
+      token: pageToken,
+      body: {
+        recipient: { id: recipientId },
+        messaging_type: "RESPONSE",
+        message: { text: text.slice(0, 1000) },
+      },
+    });
+  } catch (err) {
+    // If instagram account endpoint fails with #3, fall back to page endpoint
+    if (platform === "instagram" && instagramAccountId && endpointId !== pageId) {
+      console.log(`[Meta AI] Instagram account endpoint failed, trying page endpoint for ${pageId}`);
+      await metaGraph(`/${pageId}/messages`, {
+        method: "POST",
+        token: pageToken,
+        body: {
+          recipient: { id: recipientId },
+          messaging_type: "RESPONSE",
+          message: { text: text.slice(0, 1000) },
+        },
+      });
+    } else {
+      throw err;
+    }
+  }
 }
 
 async function findMetaWhatsAppChannel(supabase, phoneNumberId) {
@@ -3728,16 +3745,10 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     }
   } catch (err) {
     const errMsg = errorMessage(err);
-    // (#3) = app lacks permission to send on this platform (e.g. instagram_manage_messages not approved)
-    // Message is still stored in the inbox — agent can reply manually
-    if (errMsg.includes("(#3)")) {
-      console.warn(`[Meta AI] send skipped for ${platform}: app permission not approved for sending. Message stored in inbox for manual reply.`);
-      return; // don't store bot reply if it was never sent
-    }
-    console.warn("[Meta AI] send failed:", errMsg);
+    console.warn(`[Meta AI] send failed for ${platform}:`, errMsg);
   }
 
-  // 7. Store bot reply (only if send succeeded)
+  // 7. Store bot reply
   await upsertSocialMessage({
     supabase,
     orgId,
