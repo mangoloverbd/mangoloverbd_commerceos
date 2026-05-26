@@ -454,26 +454,10 @@ function MetaBusinessPanel() {
         version: "v23.0",
       });
 
-      // Launch Embedded Signup popup
-      // Use a timeout so loading state resets if popup is blocked or user takes too long
-      const loginResult = await new Promise<any>((resolve, reject) => {
-        let resolved = false;
-
-        // Safety timeout — reset after 3 minutes if callback never fires
-        const timeout = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            reject(new Error("Signup timed out. The popup may have been blocked — please allow popups for this site and try again."));
-          }
-        }, 3 * 60 * 1000);
-
+      // Launch Embedded Signup popup — wait indefinitely for user to complete the form
+      const loginResult = await new Promise<any>((resolve) => {
         (window as any).FB.login(
-          (response: any) => {
-            if (resolved) return;
-            resolved = true;
-            clearTimeout(timeout);
-            resolve(response);
-          },
+          (response: any) => resolve(response),
           {
             config_id: configId,
             response_type: "code",
