@@ -3597,15 +3597,16 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   // 1. Get settings
   const settings = await getOrgSettings(orgId, ["brand_doc", "ai_auto_reply_enabled", "auto_reply_channels"]);
 
-  // Check if auto-reply is enabled for this platform
-  if (settings.ai_auto_reply_enabled !== "true") return;
+  console.log(`[${platform.toUpperCase()} AI] orgId=${orgId} enabled=${settings.ai_auto_reply_enabled} channels=${settings.auto_reply_channels} hasText=${!!text} hasImage=${!!imageUrl}`);
+
+  if (settings.ai_auto_reply_enabled !== "true") { console.log(`[${platform.toUpperCase()} AI] skipped: ai_auto_reply_enabled is not true`); return; }
   let channels = [];
   try { channels = JSON.parse(settings.auto_reply_channels || "[]"); } catch { channels = []; }
-  if (!channels.includes(platform)) return;
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!channels.includes(platform)) { console.log(`[${platform.toUpperCase()} AI] skipped: platform not in channels=${JSON.stringify(channels)}`); return; }
+  if (!process.env.OPENAI_API_KEY) { console.log(`[${platform.toUpperCase()} AI] skipped: no OPENAI_API_KEY`); return; }
+  if (!text && !imageUrl) { console.log(`[${platform.toUpperCase()} AI] skipped: no text and no image`); return; }
 
-  // Skip if no message content at all
-  if (!text && !imageUrl) return;
+  console.log(`[${platform.toUpperCase()} AI] processing message from senderId=${senderId}`);
 
   // 2. Store the incoming user message
   const { conversation } = await upsertSocialMessage({
@@ -3923,15 +3924,19 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   const imageUrl = attachment?.payload?.url || null;
   const messageType = attachment?.type || (text ? "text" : "event");
 
-  if (!senderId || !recipientId) return;
-  // Skip echo messages (bot's own messages reflected back)
-  if (messaging.message?.is_echo) return;
+  console.log(`[${platform.toUpperCase()}] incoming senderId=${senderId} recipientId=${recipientId} text="${text?.slice(0,50)}" is_echo=${!!messaging.message?.is_echo}`);
+
+  if (!senderId || !recipientId) { console.log(`[${platform.toUpperCase()}] skipped: missing sender/recipient`); return; }
+  if (messaging.message?.is_echo) { console.log(`[${platform.toUpperCase()}] skipped: echo`); return; }
 
   const channel = await findMetaChannelByRecipient(supabase, recipientId, platform);
   if (!channel?.org_id) {
+    console.log(`[${platform.toUpperCase()}] unmatched channel for recipientId=${recipientId}`);
     await upsertMetaWebhookEvent(supabase, { objectType, platform, pageId: recipientId, senderId, eventType: "unmatched_message", payload: messaging });
     return;
   }
+
+  console.log(`[${platform.toUpperCase()}] channel matched orgId=${channel.org_id} page_id=${channel.page_id} ig_id=${channel.instagram_account_id}`);
 
   await upsertMetaWebhookEvent(supabase, {
     orgId: channel.org_id, objectType, platform,
@@ -4043,13 +4048,11 @@ app.post("/api/webhooks/facebook", async (req, res) => {
       }
 
       // ── Instagram DMs: messages arrive in entry.changes[].value ─────────────
-      // Meta sends object="instagram" and puts the message inside
-      // change.value with sender/recipient/message fields — NOT entry.messaging.
       if (objectType === "instagram") {
         for (const change of entry.changes || []) {
           const value = change.value || {};
+          console.log(`[Webhook/IG] entry.id=${entry.id} field=${change.field} value_keys=${Object.keys(value).join(",")} sender=${value.sender?.id} has_message=${!!value.message}`);
 
-          // A DM message event has value.sender + value.message
           if (change.field === "messages" && value.sender?.id && value.message) {
             // Normalise into the same shape handleMetaMessagingEvent expects
             const messaging = {
