@@ -1179,11 +1179,18 @@ async function subscribeMetaPage(pageId, pageToken) {
 // This is separate from Facebook page subscription — must be called for each WABA.
 async function subscribeWhatsAppWABA(wabaId, userToken) {
   try {
+    // Check current subscription first
+    let currentSubs = [];
+    try {
+      const existing = await metaGraph(`/${wabaId}/subscribed_apps`, { token: userToken });
+      currentSubs = existing?.data || [];
+    } catch { /* ignore — may not have read permission */ }
+
     await metaGraph(`/${wabaId}/subscribed_apps`, {
       method: "POST",
       token: userToken,
     });
-    console.log(`[Meta] WhatsApp WABA ${wabaId} subscribed to webhook.`);
+    console.log(`[Meta] WhatsApp WABA ${wabaId} subscribed to webhook. Previous subs: ${JSON.stringify(currentSubs.map(s => s.name || s.id))}`);
     return { subscribed: true };
   } catch (err) {
     console.warn(`[Meta] Failed to subscribe WhatsApp WABA ${wabaId}:`, errorMessage(err));
@@ -3998,18 +4005,57 @@ app.post("/api/webhooks/facebook", async (req, res) => {
   res.sendStatus(200);
   try {
     const entries = Array.isArray(body.entry) ? body.entry : [];
+    const objectType = body.object || "";
+
     for (const entry of entries) {
-      for (const messaging of entry.messaging || []) {
-        await handleMetaMessagingEvent({ supabase, objectType: body.object, entry, messaging });
+      // ── Facebook Messenger: messages arrive in entry.messaging ──────────────
+      if (objectType === "page") {
+        for (const messaging of entry.messaging || []) {
+          await handleMetaMessagingEvent({ supabase, objectType, entry, messaging });
+        }
+        // Log non-message changes (likes, reactions, etc.)
+        for (const change of entry.changes || []) {
+          if (change.field !== "messages") {
+            await upsertMetaWebhookEvent(supabase, {
+              objectType,
+              platform: "facebook",
+              pageId: entry.id,
+              eventType: change.field || "change",
+              payload: change,
+            });
+          }
+        }
       }
-      for (const change of entry.changes || []) {
-        await upsertMetaWebhookEvent(supabase, {
-          objectType: body.object,
-          platform: body.object === "instagram" ? "instagram" : "facebook",
-          pageId: entry.id,
-          eventType: change.field || "change",
-          payload: change,
-        });
+
+      // ── Instagram DMs: messages arrive in entry.changes[].value ─────────────
+      // Meta sends object="instagram" and puts the message inside
+      // change.value with sender/recipient/message fields — NOT entry.messaging.
+      if (objectType === "instagram") {
+        for (const change of entry.changes || []) {
+          const value = change.value || {};
+
+          // A DM message event has value.sender + value.message
+          if (change.field === "messages" && value.sender?.id && value.message) {
+            // Normalise into the same shape handleMetaMessagingEvent expects
+            const messaging = {
+              sender:    { id: value.sender.id },
+              recipient: { id: value.recipient?.id || entry.id },
+              message:   value.message,
+              postback:  value.postback || null,
+              timestamp: value.timestamp,
+            };
+            await handleMetaMessagingEvent({ supabase, objectType: "instagram", entry, messaging });
+          } else {
+            // Non-message Instagram change — just log it
+            await upsertMetaWebhookEvent(supabase, {
+              objectType,
+              platform: "instagram",
+              pageId: entry.id,
+              eventType: change.field || "change",
+              payload: change,
+            });
+          }
+        }
       }
     }
   } catch (err) {
