@@ -4361,6 +4361,8 @@ app.post("/api/products/save", async (req, res) => {
     }
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+
+    // Insert product rows (without variants)
     const rows = products.map((p) => ({
       name: String(p.name || "").trim(),
       url: p.url || null,
@@ -4371,9 +4373,41 @@ app.post("/api/products/save", async (req, res) => {
       org_id: orgId,
     })).filter((r) => r.name);
     if (!rows.length) return res.status(400).json({ error: "No valid products to save" });
+
     const { data, error } = await supabase.from("products").insert(rows).select();
     if (error) throw error;
-    return res.json({ saved: data.length, products: data });
+
+    // Bulk-insert variants for products that came with extracted variant data
+    const variantRows = [];
+    for (let i = 0; i < data.length; i++) {
+      const savedProduct = data[i];
+      const sourceProduct = products[i];
+      if (!Array.isArray(sourceProduct.variants) || sourceProduct.variants.length === 0) continue;
+      for (const v of sourceProduct.variants) {
+        if (!v.attributes || typeof v.attributes !== "object" || Object.keys(v.attributes).length === 0) continue;
+        // Compute price_adjustment relative to base selling_price
+        const basePx = savedProduct.selling_price;
+        const varPx = v.selling_price != null ? parseFloat(v.selling_price) : null;
+        const priceAdj = basePx != null && varPx != null ? varPx - basePx : 0;
+        variantRows.push({
+          product_id: savedProduct.id,
+          org_id: orgId,
+          attributes: Object.fromEntries(
+            Object.entries(v.attributes).map(([k, val]) => [k.trim().toLowerCase(), String(val).trim()])
+          ),
+          cog: 0,
+          stock_quantity: 0,
+          price_adjustment: priceAdj,
+        });
+      }
+    }
+
+    if (variantRows.length > 0) {
+      const { error: vErr } = await supabase.from("product_variants").insert(variantRows);
+      if (vErr) console.error("[products/save] variant insert error:", vErr.message);
+    }
+
+    return res.json({ saved: data.length, variants_saved: variantRows.length, products: data });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -4403,14 +4437,25 @@ app.post("/api/products/crawl", async (req, res) => {
 
     let products = [];
 
-    // Use Firecrawl extract for structured product data
+    // Step 2: Firecrawl structured extract — now includes universal variants
     try {
       const extractResult = await firecrawl.scrapeUrl(url, {
         formats: [
           "markdown",
           {
             type: "json",
-            prompt: "Extract all products being sold on this page. For each product include its name, selling price as a plain number (no currency symbols), image URL, and product URL. Only include real products for sale — ignore navigation links, blog posts, categories, and page titles.",
+            prompt: `Extract all products being sold on this page.
+For each product include:
+- name: product name
+- selling_price: base price as a plain number, no currency symbols
+- image_url: main product image URL
+- url: product page URL
+- variants: array of variant combinations available (e.g. color + size, weight, material, flavour, storage, capacity, volume — whatever attributes this product type has). Each variant must have:
+  - attributes: object with arbitrary key/value string pairs (e.g. {"color":"Black","size":"M"} or {"weight":"500g"} or {"storage":"256GB","color":"Space Grey"})
+  - selling_price: variant-specific price if different from base, otherwise omit
+
+Only include real products for sale. Ignore navigation links, blog posts, categories.
+If a product has no distinguishable variants, return an empty variants array.`,
             schema: {
               type: "object",
               properties: {
@@ -4423,6 +4468,17 @@ app.post("/api/products/crawl", async (req, res) => {
                       selling_price: { type: "number" },
                       image_url:     { type: "string" },
                       url:           { type: "string" },
+                      variants: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            attributes:    { type: "object" },
+                            selling_price: { type: "number" },
+                          },
+                          required: ["attributes"],
+                        },
+                      },
                     },
                     required: ["name"],
                   },
@@ -4443,16 +4499,29 @@ app.post("/api/products/crawl", async (req, res) => {
             image_url: p.image_url || null,
             selling_price: p.selling_price ? parseFloat(p.selling_price) : null,
             cog: 0,
+            variants: Array.isArray(p.variants)
+              ? p.variants
+                  .filter((v) => v.attributes && typeof v.attributes === "object" && Object.keys(v.attributes).length > 0)
+                  .map((v) => ({
+                    attributes: Object.fromEntries(
+                      Object.entries(v.attributes).map(([k, val]) => [
+                        k.trim().toLowerCase(),
+                        String(val).trim(),
+                      ])
+                    ),
+                    selling_price: v.selling_price ? parseFloat(v.selling_price) : null,
+                  }))
+              : [],
           }));
       }
     } catch { /* extract failed, fall through to GPT */ }
 
-    // GPT fallback over the clean markdown if extract found nothing
+    // Step 3: GPT-4o-mini fallback if Firecrawl found nothing
     if (products.length === 0 && scrapeResult.markdown) {
       try {
         const OpenAI = (await import("openai")).default;
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const snippet = scrapeResult.markdown.slice(0, 5000);
+        const snippet = scrapeResult.markdown.slice(0, 6000);
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           temperature: 0,
@@ -4460,10 +4529,22 @@ app.post("/api/products/crawl", async (req, res) => {
             {
               role: "system",
               content: `You extract product listings from e-commerce page content.
-Return a JSON array. Each item: { "name": string, "selling_price": number|null, "image_url": string|null }.
-Only include real products for sale. Ignore navigation, categories, blog posts, page titles.
-If no products found, return [].
-Respond with raw JSON only — no markdown fences.`,
+Return a JSON array. Each item:
+{
+  "name": string,
+  "selling_price": number|null,
+  "image_url": string|null,
+  "variants": [
+    {
+      "attributes": { "key": "value" },
+      "selling_price": number|null
+    }
+  ]
+}
+The attributes object holds ANY product-specific variant dimensions relevant to that product type — color, size, weight, material, flavour, storage, capacity, volume, etc. Use lowercase keys.
+If a product has no variants, set "variants" to [].
+Only include real products for sale. Ignore navigation, categories, blog posts.
+Respond with raw JSON array only — no markdown fences.`,
             },
             {
               role: "user",
@@ -4482,6 +4563,19 @@ Respond with raw JSON only — no markdown fences.`,
               image_url: p.image_url || null,
               selling_price: p.selling_price ? parseFloat(p.selling_price) : null,
               cog: 0,
+              variants: Array.isArray(p.variants)
+                ? p.variants
+                    .filter((v) => v.attributes && typeof v.attributes === "object" && Object.keys(v.attributes).length > 0)
+                    .map((v) => ({
+                      attributes: Object.fromEntries(
+                        Object.entries(v.attributes).map(([k, val]) => [
+                          k.trim().toLowerCase(),
+                          String(val).trim(),
+                        ])
+                      ),
+                      selling_price: v.selling_price ? parseFloat(v.selling_price) : null,
+                    }))
+                : [],
             }));
         }
       } catch { /* GPT fallback failed */ }

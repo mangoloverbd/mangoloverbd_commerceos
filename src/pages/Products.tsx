@@ -543,8 +543,9 @@ export default function Products() {
     if (!res.ok) throw new Error(json.error || "Save failed");
     await qc.invalidateQueries({ queryKey: ["/api/products"] });
     setCrawlStatus("done");
-    setCrawlMsg(`${json.saved} product${json.saved !== 1 ? "s" : ""} imported.`);
-    toast.success(`${json.saved} products imported`);
+    const varMsg = json.variants_saved > 0 ? ` with ${json.variants_saved} variant${json.variants_saved !== 1 ? "s" : ""}` : "";
+    setCrawlMsg(`${json.saved} product${json.saved !== 1 ? "s" : ""}${varMsg} imported.`);
+    toast.success(`${json.saved} products imported${varMsg}`);
   }
 
   async function handleCrawl() {
