@@ -1127,7 +1127,10 @@ app.post("/api/settings/test-fraudshield", async (req, res) => {
 
 // ─── Meta Business OAuth + Asset Sync ───────────────────────────────────────
 
-async function exchangeMetaCodeForToken(code) {
+// fromEmbeddedSignup: FB.login() (popup) produces codes that Facebook validates
+// with redirect_uri="" — the OAuth callback URL must NOT be sent for these codes,
+// only for codes produced by the standard /dialog/oauth redirect flow.
+async function exchangeMetaCodeForToken(code, { fromEmbeddedSignup = false } = {}) {
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
   if (!appId || !appSecret) throw new Error("Missing META_APP_ID or META_APP_SECRET env vars");
@@ -1136,7 +1139,9 @@ async function exchangeMetaCodeForToken(code) {
     params: {
       client_id: appId,
       client_secret: appSecret,
-      redirect_uri: metaRedirectUri(),
+      // Embedded Signup (FB.login popup) requires redirect_uri to be empty string.
+      // Standard OAuth dialog redirect requires the registered callback URL.
+      redirect_uri: fromEmbeddedSignup ? "" : metaRedirectUri(),
       code,
     },
   });
@@ -1543,9 +1548,10 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
 
     // Exchange the short-lived code for a token
+    // fromEmbeddedSignup=true: FB.login popup codes require redirect_uri=""
     let userToken;
     try {
-      userToken = await exchangeMetaCodeForToken(code);
+      userToken = await exchangeMetaCodeForToken(code, { fromEmbeddedSignup: true });
     } catch (err) {
       console.error("[WA Signup] token exchange failed:", errorMessage(err));
       return res.status(400).json({ error: `Token exchange failed: ${errorMessage(err)}` });
