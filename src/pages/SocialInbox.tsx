@@ -12,7 +12,9 @@ import {
   Image as PhImage,
   MagnifyingGlass,
   ArrowLeft,
+  Trash,
 } from "@phosphor-icons/react";
+import { toast } from "sonner";
 
 type Platform = "facebook" | "instagram" | "whatsapp";
 
@@ -75,6 +77,7 @@ export default function SocialInbox({ platform }: Props) {
   const [msgLoading, setMsgLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
@@ -137,6 +140,30 @@ export default function SocialInbox({ platform }: Props) {
     setMobileView("chat");
   }
 
+  async function deleteConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!window.confirm("Delete this conversation? All messages will be permanently removed.")) return;
+    setDeletingId(id);
+    try {
+      const res = await apiFetch(`/api/social/conversations/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Failed to delete");
+      }
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (selectedId === id) {
+        setSelectedId(null);
+        setMessages([]);
+        setMobileView("list");
+      }
+      toast.success("Conversation deleted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete conversation");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="flex h-[calc(100vh-82px)] overflow-hidden bg-[#FAFAF8] p-1 lg:p-2">
       {/* Conversation list */}
@@ -194,31 +221,52 @@ export default function SocialInbox({ platform }: Props) {
               <p className="text-[12px] font-medium text-muted-foreground">No conversations yet</p>
             </div>
           ) : (
-            filtered.map((conv) => (
-              <button
-                key={conv.id}
-                onClick={() => selectConversation(conv.id)}
-                className={cn(
-                  "group flex w-full items-center gap-3 border-b border-black/[0.06] px-4 py-3.5 text-left transition-colors hover:bg-black/[0.025]",
-                  selectedId === conv.id && "bg-black/[0.045]"
-                )}
-                data-testid={`button-conversation-${conv.id}`}
-              >
-                <Avatar name={conv.contact_name || "?"} platform={platform} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-[12px] font-semibold text-foreground">{conv.contact_name || "Unknown"}</span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">{formatTime(conv.last_message_at)}</span>
-                  </div>
-                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{conv.last_message || "—"}</p>
-                </div>
-                {conv.unread_count > 0 && (
-                  <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white", platform === "facebook" ? "bg-[#1877F2]" : platform === "instagram" ? "bg-[#E1306C]" : "bg-[#25D366]")}>
-                    {conv.unread_count > 9 ? "9+" : conv.unread_count}
-                  </span>
-                )}
-              </button>
-            ))
+            <AnimatePresence initial={false}>
+              {filtered.map((conv) => (
+                <motion.div
+                  key={conv.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -16, height: 0, overflow: "hidden" }}
+                  transition={{ duration: 0.2 }}
+                  className="group relative"
+                >
+                  <button
+                    onClick={() => selectConversation(conv.id)}
+                    className={cn(
+                      "flex w-full items-center gap-3 border-b border-black/[0.06] px-4 py-3.5 text-left transition-colors hover:bg-black/[0.025]",
+                      selectedId === conv.id && "bg-black/[0.045]"
+                    )}
+                    data-testid={`button-conversation-${conv.id}`}
+                  >
+                    <Avatar name={conv.contact_name || "?"} platform={platform} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-[12px] font-semibold text-foreground">{conv.contact_name || "Unknown"}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">{formatTime(conv.last_message_at)}</span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{conv.last_message || "—"}</p>
+                    </div>
+                    {conv.unread_count > 0 && (
+                      <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white", platform === "facebook" ? "bg-[#1877F2]" : platform === "instagram" ? "bg-[#E1306C]" : "bg-[#25D366]")}>
+                        {conv.unread_count > 9 ? "9+" : conv.unread_count}
+                      </span>
+                    )}
+                  </button>
+                  {/* Delete button — appears on hover */}
+                  <button
+                    onClick={(e) => deleteConversation(conv.id, e)}
+                    disabled={deletingId === conv.id}
+                    title="Delete conversation"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg text-black/20 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    {deletingId === conv.id
+                      ? <Spinner className="h-3 w-3" />
+                      : <Trash size={12} weight="light" />}
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           )}
         </div>
       </div>

@@ -4518,6 +4518,35 @@ app.get("/api/social/conversations/:platform", async (req, res) => {
   }
 });
 
+app.delete("/api/social/conversations/:conversationId", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    // Verify the conversation belongs to this org before deleting
+    const { data: conv, error: convErr } = await supabase
+      .from("social_conversations")
+      .select("id")
+      .eq("id", req.params.conversationId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (convErr) throw convErr;
+    if (!conv) return res.status(404).json({ error: "Conversation not found" });
+    // Delete messages first (in case FK constraint doesn't cascade)
+    await supabase.from("social_messages").delete().eq("conversation_id", conv.id);
+    const { error: delErr } = await supabase
+      .from("social_conversations")
+      .delete()
+      .eq("id", conv.id)
+      .eq("org_id", orgId);
+    if (delErr) throw delErr;
+    return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 app.get("/api/social/messages/:conversationId", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));

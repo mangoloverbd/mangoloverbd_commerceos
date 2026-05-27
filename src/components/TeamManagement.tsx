@@ -108,60 +108,90 @@ export function TeamManagement() {
         </div>
 
         <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white">
-          {loading ? (
-            <div className="flex items-center justify-center py-10">
-              <Spinner className="h-4 w-4 text-black/30" />
-            </div>
-          ) : members.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 gap-2">
-              <Users className="h-5 w-5 text-black/20" strokeWidth={1.5} />
-              <p className="text-[13px] text-black/30">No members yet</p>
-            </div>
-          ) : (
-            members.map((member, i) => (
-              <div
-                key={member.id}
-                className={cn(
-                  "group flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-black/[0.025]",
-                  i !== members.length - 1 && "border-b border-black/[0.06]"
-                )}
+          <AnimatePresence mode="wait">
+            {loading ? (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="flex items-center justify-center py-10"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white text-[11px] font-semibold",
-                    member.role === "admin" ? "bg-black" : "bg-black/20"
-                  )}>
-                    {member.email?.[0]?.toUpperCase() || "?"}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-black truncate">
-                      {member.email || `${member.user_id.slice(0, 16)}…`}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {member.role === "admin" ? (
-                        <Crown className="h-3 w-3 text-amber-500" strokeWidth={1.8} />
-                      ) : (
-                        <Users className="h-3 w-3 text-black/30" strokeWidth={1.8} />
+                <Spinner className="h-4 w-4 text-black/30" />
+              </motion.div>
+            ) : members.length === 0 ? (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22 }}
+                className="flex flex-col items-center justify-center py-10 gap-2"
+              >
+                <Users className="h-5 w-5 text-black/20" strokeWidth={1.5} />
+                <p className="text-[13px] text-black/30">No members yet</p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="list"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                <AnimatePresence initial={false}>
+                  {members.map((member, i) => (
+                    <motion.div
+                      key={member.id}
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 12, height: 0, paddingTop: 0, paddingBottom: 0 }}
+                      transition={{ duration: 0.2, delay: i * 0.04 }}
+                      className={cn(
+                        "group flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-black/[0.025]",
+                        i !== members.length - 1 && "border-b border-black/[0.06]"
                       )}
-                      <p className="text-[11px] text-black/40">
-                        {member.role === "admin" ? "Admin" : "Team member"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                {isAdmin && member.user_id !== user?.id && member.role !== "admin" && (
-                  <button
-                    onClick={() => handleRemoveMember(member.id)}
-                    className="shrink-0 rounded-lg p-1.5 text-black/25 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
-                    title="Remove"
-                    data-testid={`button-remove-member-${member.id}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            ))
-          )}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white text-[11px] font-semibold",
+                          member.role === "admin" ? "bg-black" : "bg-black/20"
+                        )}>
+                          {member.email?.[0]?.toUpperCase() || "?"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-black truncate">
+                            {member.email || `${member.user_id.slice(0, 16)}…`}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {member.role === "admin" ? (
+                              <Crown className="h-3 w-3 text-amber-500" strokeWidth={1.8} />
+                            ) : (
+                              <Users className="h-3 w-3 text-black/30" strokeWidth={1.8} />
+                            )}
+                            <p className="text-[11px] text-black/40">
+                              {member.role === "admin" ? "Admin" : "Team member"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      {isAdmin && member.user_id !== user?.id && member.role !== "admin" && (
+                        <button
+                          onClick={() => handleRemoveMember(member.id)}
+                          className="shrink-0 rounded-lg p-1.5 text-black/25 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+                          title="Remove"
+                          data-testid={`button-remove-member-${member.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

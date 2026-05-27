@@ -543,7 +543,12 @@ function MetaBusinessPanel() {
   );
 
   return (
-    <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
+      className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
+    >
       <div className="flex items-start gap-3 border-b border-black/[0.06] px-4 py-4">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#0866FF]">
           <MetaIcon className="h-5 w-5 text-white" />
@@ -551,12 +556,21 @@ function MetaBusinessPanel() {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="text-[14px] font-semibold text-black">Meta Business</p>
-            <span className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-medium",
-              status?.connected ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-black/45"
-            )}>
-              {status?.connected ? "Connected" : "Primary"}
-            </span>
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={loading ? "loading" : status?.connected ? "connected" : "primary"}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.18 }}
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                  status?.connected ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-black/45"
+                )}
+              >
+                {status?.connected ? "Connected" : "Primary"}
+              </motion.span>
+            </AnimatePresence>
           </div>
           <p className="mt-0.5 text-[12px] leading-relaxed text-black/42">
             OAuth connection for Messenger, Instagram DM, WhatsApp Cloud API, ad accounts, webhooks, and AI automation.
@@ -586,8 +600,14 @@ function MetaBusinessPanel() {
         )}
       </div>
 
-      {status?.connected && (
-        <div>
+      <AnimatePresence>
+        {status?.connected && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.26, ease: [0.25, 0.1, 0.25, 1] }}
+        >
           <MetaAssetSection
             title="Connected Facebook Pages"
             count={status.pages.length}
@@ -675,8 +695,9 @@ function MetaBusinessPanel() {
               assetBusy === `ad:${a.id}`
             ))}
           </MetaAssetSection>
-        </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Connect WhatsApp Business — standalone button, always visible when Meta is connected */}
       {status?.connected && (
@@ -802,7 +823,7 @@ function MetaBusinessPanel() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
