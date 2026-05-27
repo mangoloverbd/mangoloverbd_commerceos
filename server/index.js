@@ -1537,8 +1537,8 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-    const { code, wabaId, phoneNumberId } = req.body;
-    if (!code) return res.status(400).json({ error: "code is required" });
+    const { code, accessToken, wabaId, phoneNumberId } = req.body;
+    if (!code && !accessToken) return res.status(400).json({ error: "code or accessToken is required" });
 
     if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) {
       return res.status(500).json({ error: "META_APP_ID or META_APP_SECRET not configured" });
@@ -1547,11 +1547,35 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
 
-    // Exchange the short-lived code for a token
-    // fromEmbeddedSignup=true: FB.login popup codes require redirect_uri=""
+    // Two paths depending on what FB.login() returned:
+    //
+    // Path A — authResponse.code (Business Integration System User token flow):
+    //   Exchange the code using GET /oauth/access_token WITHOUT redirect_uri.
+    //   metaGraphUrl() already skips empty-string values so redirect_uri is
+    //   simply absent from the request.
+    //
+    // Path B — authResponse.accessToken (short-lived user access token flow):
+    //   Skip the code exchange entirely; extend the short-lived token directly
+    //   via grant_type=fb_exchange_token.
     let userToken;
     try {
-      userToken = await exchangeMetaCodeForToken(code, { fromEmbeddedSignup: true });
+      if (accessToken) {
+        // Path B: extend short-lived user access token → long-lived token
+        console.log("[WA Signup] using accessToken path (fb_exchange_token)");
+        const longLived = await metaGraph("/oauth/access_token", {
+          params: {
+            grant_type: "fb_exchange_token",
+            client_id: process.env.META_APP_ID,
+            client_secret: process.env.META_APP_SECRET,
+            fb_exchange_token: accessToken,
+          },
+        });
+        userToken = longLived.access_token || accessToken;
+      } else {
+        // Path A: exchange auth code → token, no redirect_uri (omitted = skipped by metaGraphUrl)
+        console.log("[WA Signup] using code path (no redirect_uri)");
+        userToken = await exchangeMetaCodeForToken(code, { fromEmbeddedSignup: true });
+      }
     } catch (err) {
       console.error("[WA Signup] token exchange failed:", errorMessage(err));
       return res.status(400).json({ error: `Token exchange failed: ${errorMessage(err)}` });

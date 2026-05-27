@@ -492,16 +492,28 @@ function MetaBusinessPanel() {
         );
       });
 
-      if (loginResult.authResponse?.code) {
+      if (loginResult.authResponse?.code || loginResult.authResponse?.accessToken) {
         window.removeEventListener("message", messageHandler);
+
+        // FB.login() with config_id + response_type:"code" may return either:
+        //   authResponse.code        → Business Integration System User code (Path A)
+        //   authResponse.accessToken → short-lived user access token (Path B)
+        // Send whichever we got; the backend handles both paths correctly.
+        const payload: Record<string, string | undefined> = {
+          wabaId: sessionWabaId || undefined,
+          phoneNumberId: sessionPhoneId || undefined,
+        };
+        if (loginResult.authResponse.code) {
+          payload.code = loginResult.authResponse.code;
+        } else {
+          payload.accessToken = loginResult.authResponse.accessToken;
+        }
+        console.log("[WA Signup] authResponse path:", loginResult.authResponse.code ? "code" : "accessToken");
+
         const exchangeRes = await apiFetch("/api/meta/whatsapp/exchange-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code: loginResult.authResponse.code,
-            wabaId: sessionWabaId || undefined,
-            phoneNumberId: sessionPhoneId || undefined,
-          }),
+          body: JSON.stringify(payload),
         });
         const data = await exchangeRes.json();
         if (!exchangeRes.ok) throw new Error(data.error || "Token exchange failed");
