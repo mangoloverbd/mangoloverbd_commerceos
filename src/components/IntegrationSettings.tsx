@@ -475,19 +475,21 @@ function MetaBusinessPanel() {
         version: "v25.0",
       });
 
-      // Launch Embedded Signup popup — wait indefinitely for user to complete the form.
-      // IMPORTANT: do NOT pass response_type:"code" here.
-      // FB.login() popup codes are bound to Facebook's internal xd_arbiter redirect URI
-      // which is never accessible server-side — they CANNOT be exchanged via the Graph API
-      // token endpoint and always produce "redirect_uri mismatch" errors.
-      // Using the default token flow (no response_type override) returns
-      // authResponse.accessToken — a short-lived user access token that CAN be
-      // extended server-side via grant_type=fb_exchange_token with no redirect_uri.
+      // Launch Embedded Signup popup.
+      // config_id flows REQUIRE response_type:"code" — omitting it causes
+      // "response_type=token is not supported in this flow".
+      // The code returned by FB.login() cannot be exchanged server-side
+      // (it's bound to Facebook's internal xd_arbiter URI). Instead we
+      // exchange it client-side using FB.api() which handles the xd_arbiter
+      // relay internally and returns an accessToken we can then extend
+      // server-side via grant_type=fb_exchange_token.
       const loginResult = await new Promise<any>((resolve) => {
         (window as any).FB.login(
           (response: any) => resolve(response),
           {
             config_id: configId,
+            response_type: "code",
+            override_default_response_type: true,
             extras: {
               version: "v4",
               sessionInfoVersion: "3",
@@ -497,12 +499,44 @@ function MetaBusinessPanel() {
         );
       });
 
-      if (loginResult.authResponse?.accessToken) {
+      const authCode = loginResult.authResponse?.code;
+      const authToken = loginResult.authResponse?.accessToken;
+
+      if (authCode || authToken) {
         window.removeEventListener("message", messageHandler);
 
-        console.log("[WA Signup] got accessToken from FB.login, sending to backend");
+        // If we got a code, exchange it client-side via FB.api so the SDK
+        // handles the xd_arbiter redirect internally — we get back an accessToken.
+        let shortLivedToken: string | null = authToken || null;
+        if (authCode && !shortLivedToken) {
+          console.log("[WA Signup] exchanging code client-side via FB.api");
+          shortLivedToken = await new Promise<string | null>((resolve) => {
+            (window as any).FB.api(
+              "/oauth/access_token",
+              "get",
+              {
+                client_id: appId,
+                code: authCode,
+              },
+              (apiRes: any) => {
+                if (apiRes?.access_token) {
+                  resolve(apiRes.access_token);
+                } else {
+                  console.warn("[WA Signup] FB.api token exchange returned:", apiRes);
+                  resolve(null);
+                }
+              }
+            );
+          });
+        }
+
+        if (!shortLivedToken) {
+          throw new Error("Could not obtain access token from Facebook. Please try again.");
+        }
+
+        console.log("[WA Signup] sending accessToken to backend for extension");
         const payload: Record<string, string | undefined> = {
-          accessToken: loginResult.authResponse.accessToken,
+          accessToken: shortLivedToken,
           wabaId: sessionWabaId || undefined,
           phoneNumberId: sessionPhoneId || undefined,
         };
