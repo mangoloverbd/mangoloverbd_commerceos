@@ -475,14 +475,19 @@ function MetaBusinessPanel() {
         version: "v25.0",
       });
 
-      // Launch Embedded Signup popup — wait indefinitely for user to complete the form
+      // Launch Embedded Signup popup — wait indefinitely for user to complete the form.
+      // IMPORTANT: do NOT pass response_type:"code" here.
+      // FB.login() popup codes are bound to Facebook's internal xd_arbiter redirect URI
+      // which is never accessible server-side — they CANNOT be exchanged via the Graph API
+      // token endpoint and always produce "redirect_uri mismatch" errors.
+      // Using the default token flow (no response_type override) returns
+      // authResponse.accessToken — a short-lived user access token that CAN be
+      // extended server-side via grant_type=fb_exchange_token with no redirect_uri.
       const loginResult = await new Promise<any>((resolve) => {
         (window as any).FB.login(
           (response: any) => resolve(response),
           {
             config_id: configId,
-            response_type: "code",
-            override_default_response_type: true,
             extras: {
               version: "v4",
               sessionInfoVersion: "3",
@@ -492,23 +497,15 @@ function MetaBusinessPanel() {
         );
       });
 
-      if (loginResult.authResponse?.code || loginResult.authResponse?.accessToken) {
+      if (loginResult.authResponse?.accessToken) {
         window.removeEventListener("message", messageHandler);
 
-        // FB.login() with config_id + response_type:"code" may return either:
-        //   authResponse.code        → Business Integration System User code (Path A)
-        //   authResponse.accessToken → short-lived user access token (Path B)
-        // Send whichever we got; the backend handles both paths correctly.
+        console.log("[WA Signup] got accessToken from FB.login, sending to backend");
         const payload: Record<string, string | undefined> = {
+          accessToken: loginResult.authResponse.accessToken,
           wabaId: sessionWabaId || undefined,
           phoneNumberId: sessionPhoneId || undefined,
         };
-        if (loginResult.authResponse.code) {
-          payload.code = loginResult.authResponse.code;
-        } else {
-          payload.accessToken = loginResult.authResponse.accessToken;
-        }
-        console.log("[WA Signup] authResponse path:", loginResult.authResponse.code ? "code" : "accessToken");
 
         const exchangeRes = await apiFetch("/api/meta/whatsapp/exchange-token", {
           method: "POST",

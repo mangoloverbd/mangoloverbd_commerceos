@@ -1127,9 +1127,10 @@ app.post("/api/settings/test-fraudshield", async (req, res) => {
 
 // ─── Meta Business OAuth + Asset Sync ───────────────────────────────────────
 
-// fromEmbeddedSignup: FB.login() (popup) produces codes that Facebook validates
-// with redirect_uri="" — the OAuth callback URL must NOT be sent for these codes,
-// only for codes produced by the standard /dialog/oauth redirect flow.
+// Used ONLY for the standard OAuth redirect flow (/api/meta/oauth/callback).
+// Do NOT use for FB.login() Embedded Signup — popup codes are bound to
+// Facebook's internal xd_arbiter redirect URI and cannot be exchanged
+// server-side regardless of what redirect_uri value you pass.
 async function exchangeMetaCodeForToken(code, { fromEmbeddedSignup = false } = {}) {
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
@@ -1139,8 +1140,8 @@ async function exchangeMetaCodeForToken(code, { fromEmbeddedSignup = false } = {
     params: {
       client_id: appId,
       client_secret: appSecret,
-      // Embedded Signup (FB.login popup) requires redirect_uri to be empty string.
-      // Standard OAuth dialog redirect requires the registered callback URL.
+      // Standard OAuth redirect flow must pass the registered callback URL.
+      // fromEmbeddedSignup omits it (empty string is skipped by metaGraphUrl).
       redirect_uri: fromEmbeddedSignup ? "" : metaRedirectUri(),
       code,
     },
@@ -1538,7 +1539,7 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const { code, accessToken, wabaId, phoneNumberId } = req.body;
-    if (!code && !accessToken) return res.status(400).json({ error: "code or accessToken is required" });
+    if (!accessToken && !code) return res.status(400).json({ error: "accessToken is required" });
 
     if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) {
       return res.status(500).json({ error: "META_APP_ID or META_APP_SECRET not configured" });
@@ -1547,21 +1548,19 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
 
-    // Two paths depending on what FB.login() returned:
+    // The correct Embedded Signup token flow:
     //
-    // Path A — authResponse.code (Business Integration System User token flow):
-    //   Exchange the code using GET /oauth/access_token WITHOUT redirect_uri.
-    //   metaGraphUrl() already skips empty-string values so redirect_uri is
-    //   simply absent from the request.
+    // FB.login() popup returns authResponse.accessToken (short-lived user token).
+    // We extend it to a long-lived token via grant_type=fb_exchange_token.
+    // No redirect_uri is needed or used — it has nothing to do with OAuth redirects.
     //
-    // Path B — authResponse.accessToken (short-lived user access token flow):
-    //   Skip the code exchange entirely; extend the short-lived token directly
-    //   via grant_type=fb_exchange_token.
+    // The "code" path is kept only as a last-resort fallback but should never be
+    // reached in normal operation because FB.login() popup codes are bound to
+    // Facebook's internal xd_arbiter URI and cannot be exchanged server-side.
     let userToken;
     try {
       if (accessToken) {
-        // Path B: extend short-lived user access token → long-lived token
-        console.log("[WA Signup] using accessToken path (fb_exchange_token)");
+        console.log("[WA Signup] extending short-lived user token via fb_exchange_token");
         const longLived = await metaGraph("/oauth/access_token", {
           params: {
             grant_type: "fb_exchange_token",
@@ -1571,9 +1570,10 @@ app.post("/api/meta/whatsapp/exchange-token", async (req, res) => {
           },
         });
         userToken = longLived.access_token || accessToken;
+        console.log("[WA Signup] long-lived token obtained");
       } else {
-        // Path A: exchange auth code → token, no redirect_uri (omitted = skipped by metaGraphUrl)
-        console.log("[WA Signup] using code path (no redirect_uri)");
+        // Fallback: code path — likely to fail with redirect_uri mismatch for popup flows
+        console.warn("[WA Signup] falling back to code exchange — this may fail for FB.login() popup codes");
         userToken = await exchangeMetaCodeForToken(code, { fromEmbeddedSignup: true });
       }
     } catch (err) {
