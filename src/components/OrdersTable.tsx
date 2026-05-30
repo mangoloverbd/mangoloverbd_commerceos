@@ -32,6 +32,7 @@ import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
+import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
 
@@ -409,6 +410,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
 }
 
 export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: OrdersTableProps) {
+  const { orgName } = useOrgName();
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [sendingPathaoIds, setSendingPathaoIds] = useState<Set<string>>(new Set());
@@ -756,7 +758,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       // Small delay to ensure UI renders before heavy PDF gen blocks thread
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      await generateInvoice(selectedOrders);
+      await generateInvoice(selectedOrders, orgName);
 
       toast.dismiss(toastId);
       toast.custom((t) => (
@@ -794,7 +796,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
     if (selectedOrders.length === 0) return;
     try {
-      printInvoice(selectedOrders);
+      printInvoice(selectedOrders, orgName);
     } catch (error) {
       console.error("Print failed:", error);
       toast.error("Failed to print invoices");

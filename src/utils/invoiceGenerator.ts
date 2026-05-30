@@ -1,6 +1,5 @@
 import jsPDF from "jspdf";
 import { format } from "date-fns";
-import { LOGO_SVG_DATA_URI } from "./logoData";
 
 interface Order {
   id: string;
@@ -160,7 +159,7 @@ function renderFragileBadge(widthPx: number, heightPx: number): Promise<string> 
   });
 }
 
-const buildInvoicePdf = async (orders: Order[]) => {
+const buildInvoicePdf = async (orders: Order[], businessName?: string) => {
   const pageWidth = 75;
   const pageHeight = 100;
 
@@ -173,11 +172,6 @@ const buildInvoicePdf = async (orders: Order[]) => {
   const margin = 4;
   const contentWidth = pageWidth - margin * 2;
 
-  // Pre-render logo once
-  let logoPngData: string | null = null;
-  try {
-    logoPngData = await svgToPngDataUrl(LOGO_SVG_DATA_URI, 188, 80);
-  } catch { /* fallback to text */ }
 
   for (let index = 0; index < orders.length; index++) {
     const order = orders[index];
@@ -206,14 +200,11 @@ const buildInvoicePdf = async (orders: Order[]) => {
     let y = margin + 2.5;
 
     // --- Swiss Header ---
-    if (logoPngData) {
-      doc.addImage(logoPngData, "PNG", margin, y - 2.5, 22, 9.5);
-    } else {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7);
-      ink();
-      doc.text("Angonaloy", margin, y);
-    }
+    const brandName = businessName || "My Business";
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    ink();
+    doc.text(cleanPdfText(brandName, "My Business"), margin, y + 1);
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.2);
@@ -377,8 +368,8 @@ const buildInvoicePdf = async (orders: Order[]) => {
   return doc;
 };
 
-export const generateInvoice = async (orders: Order[]) => {
-  const doc = await buildInvoicePdf(orders);
+export const generateInvoice = async (orders: Order[], businessName?: string) => {
+  const doc = await buildInvoicePdf(orders, businessName);
   const filename = orders.length > 1
     ? `Invoices_Bulk_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`
     : `Invoice_${orders[0].order_number}.pdf`;
@@ -399,7 +390,7 @@ const formatMoney = (value: number | null | undefined) =>
     maximumFractionDigits: 2,
   });
 
-export const printInvoice = (orders: Order[]) => {
+export const printInvoice = (orders: Order[], businessName?: string) => {
   const invoicePages = orders
     .map((order) => {
       const invoiceNo = escapeHtml(order.order_number.replace("#", ""));
@@ -440,7 +431,7 @@ export const printInvoice = (orders: Order[]) => {
             <span class="fragile-title">FRAGILE</span>
             <span class="fragile-sub">HANDLE<br>WITH CARE</span>
           </div>
-          <div class="brand"><img src="${LOGO_SVG_DATA_URI}" alt="Angonaloy" style="height:36px;" /></div>
+          <div class="brand">${escapeHtml(businessName || "My Business")}</div>
           <div class="meta"><span>Invoice No.:</span> <strong>AN-${invoiceNo}</strong></div>
           <div class="meta"><span>Invoice Date:</span> <strong>${format(new Date(order.created_at), "MMM dd, yyyy")}</strong></div>
           <div class="meta"><span>Courier:</span> <strong>${courierName}</strong></div>
@@ -577,7 +568,7 @@ export const printInvoice = (orders: Order[]) => {
   const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!iframeDoc) {
     document.body.removeChild(iframe);
-    generateInvoice(orders).catch(() => {});
+    generateInvoice(orders, businessName).catch(() => {});
     return;
   }
 

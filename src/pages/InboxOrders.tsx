@@ -25,6 +25,7 @@ import {
   FacebookLogo, InstagramLogo, WhatsappLogo,
 } from "@phosphor-icons/react";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
+import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { AnimatedText } from "@/components/ui/animated-text";
 
@@ -417,6 +418,7 @@ function InboxNotesPopover({ order, onOrderUpdate }: {
 
 export default function InboxOrders() {
   const queryClient = useQueryClient();
+  const { orgName } = useOrgName();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -631,7 +633,7 @@ export default function InboxOrders() {
     ), { duration: Infinity });
     try {
       await new Promise((r) => setTimeout(r, 100));
-      await generateInvoice(selectedOrders as Parameters<typeof generateInvoice>[0]);
+      await generateInvoice(selectedOrders as Parameters<typeof generateInvoice>[0], orgName);
       toast.dismiss(toastId);
       toast.custom(() => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
@@ -656,7 +658,7 @@ export default function InboxOrders() {
   const handlePrintInvoice = () => {
     const selectedOrders = allOrders.filter((o) => selectedIds.has(o.id)).map(toInvoiceOrder);
     if (selectedOrders.length === 0) return;
-    try { printInvoice(selectedOrders as Parameters<typeof printInvoice>[0]); } catch { toast.error("Failed to print"); }
+    try { printInvoice(selectedOrders as Parameters<typeof printInvoice>[0], orgName); } catch { toast.error("Failed to print"); }
   };
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
