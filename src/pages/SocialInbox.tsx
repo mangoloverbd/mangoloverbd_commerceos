@@ -419,7 +419,7 @@ export default function SocialInbox({ platform }: Props) {
                           <div className={cn(
                             "rounded-2xl px-3.5 py-1.5",
                             msg.sender === "bot"
-                              ? "bg-black text-white"
+                              ? "bg-[#1a2b4a] text-white"
                               : "border border-black/[0.08] bg-white text-foreground"
                           )}>
                             <span className="flex items-center gap-1 text-sm leading-5"><PhImage size={13} /> Image</span>
@@ -429,7 +429,7 @@ export default function SocialInbox({ platform }: Props) {
                           <div className={cn(
                             "rounded-2xl px-3.5 py-1.5 transition-colors",
                             msg.sender === "bot"
-                              ? "bg-black text-white"
+                              ? "bg-[#1a2b4a] text-white"
                               : "border border-black/[0.08] bg-white text-foreground"
                           )}>
                             <p className="text-sm leading-5 whitespace-pre-wrap break-words">{msg.content}</p>
@@ -481,7 +481,7 @@ export default function SocialInbox({ platform }: Props) {
                 <div className="relative rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08]">
                   <div className="px-3.5 py-3">
                     <p className="text-[13px] leading-[1.6] text-muted-foreground flex items-center gap-1.5">
-                      <Robot size={13} className="text-black/40" />
+                      <img src="https://img.icons8.com/material-rounded/24/bard--v2.png" alt="" className="h-[13px] w-[13px] opacity-50" />
                       AI bot responds automatically
                     </p>
                   </div>
