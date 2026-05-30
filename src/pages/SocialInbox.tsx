@@ -375,10 +375,10 @@ export default function SocialInbox({ platform }: Props) {
                   AI
                 </span>
                 <Switch
-                  checked={!pausedAi}
+                  checked={pausedAi}
                   onCheckedChange={() => { if (!togglingAi) toggleAi(); }}
                   disabled={togglingAi}
-                  className="h-[18px] w-8 data-[state=checked]:bg-black data-[state=unchecked]:bg-amber-400"
+                  className="h-[18px] w-8 data-[state=checked]:bg-amber-400 data-[state=unchecked]:bg-black"
                   thumbClassName="h-3.5 w-3.5 data-[state=checked]:translate-x-3.5"
                 />
                 <span className={cn("text-[9px] font-semibold tracking-wide transition-colors", pausedAi ? "text-amber-600" : "text-black/30")}>
