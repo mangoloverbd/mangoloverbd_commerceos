@@ -3878,6 +3878,12 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     messageType: messageType || (primaryImageUrl ? "image" : "text"),
   });
 
+  // Check if AI is paused for this conversation (human takeover mode)
+  if (conversation.paused_ai) {
+    console.log(`[${platform.toUpperCase()} AI] skipped: paused_ai=true for conversation ${conversation.id}`);
+    return;
+  }
+
   // Race condition guard: if this is a plain-text message with no image, check if the
   // previous message in this conversation was an image sent within the last 6 seconds.
   if (text && allImageUrls.length === 0) {
@@ -4365,7 +4371,7 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
     await handleMetaMessage({
       supabase, orgId: channel.org_id, platform: "whatsapp",
       channel: { ...channel, phone_number_id: phoneNumberId },
-      senderId, contactName: contact?.profile?.name || senderId,
+      senderId, contactName: contact?.profile?.name || (senderId ? `+${senderId}` : senderId),
       text: locationText, imageUrl: null, imageUrls: [], messageType: "text",
     });
     return;
@@ -4384,7 +4390,7 @@ async function handleWhatsAppMessageEvent({ supabase, value, message, contact })
     platform: "whatsapp",
     channel: { ...channel, phone_number_id: phoneNumberId },
     senderId,
-    contactName: contact?.profile?.name || senderId,
+    contactName: contact?.profile?.name || (senderId ? `+${senderId}` : senderId),
     text,
     imageUrl,
     imageUrls,
@@ -4558,7 +4564,39 @@ app.get("/api/social/conversations/:platform", async (req, res) => {
       .eq("platform", platform)
       .order("last_message_at", { ascending: false });
     if (error) throw error;
-    return res.json({ conversations: data || [] });
+    // Re-resolve numeric contact names in background (don't block response)
+    const conversations = data || [];
+    const numericNameConvos = conversations.filter(c => c.contact_name && /^\d{10,}$/.test(c.contact_name));
+    if (numericNameConvos.length > 0 && platform !== "whatsapp") {
+      // Try to resolve names — get page token for this org
+      const { data: page } = await supabase
+        .from("meta_pages")
+        .select("encrypted_page_access_token")
+        .eq("org_id", orgId)
+        .limit(1)
+        .maybeSingle();
+      if (page?.encrypted_page_access_token) {
+        const pageToken = decryptToken(page.encrypted_page_access_token);
+        for (const conv of numericNameConvos.slice(0, 10)) {
+          try {
+            const name = await fetchMetaUserName(conv.contact_id, pageToken, platform);
+            if (name && name !== conv.contact_name) {
+              conv.contact_name = name;
+              supabase.from("social_conversations").update({ contact_name: name }).eq("id", conv.id).then(() => {});
+            }
+          } catch {}
+        }
+      }
+    }
+    // For WhatsApp, ensure phone numbers have + prefix
+    if (platform === "whatsapp") {
+      for (const conv of conversations) {
+        if (conv.contact_name && /^\d{10,}$/.test(conv.contact_name)) {
+          conv.contact_name = `+${conv.contact_name}`;
+        }
+      }
+    }
+    return res.json({ conversations });
   } catch (err) {
     return sendError(res, err);
   }
@@ -4614,7 +4652,111 @@ app.get("/api/social/messages/:conversationId", async (req, res) => {
       .eq("conversation_id", conversation.id)
       .order("created_at", { ascending: true });
     if (error) throw error;
-    return res.json({ messages: data || [] });
+    // Include paused_ai status for the composer UI
+    const { data: convData } = await supabase.from("social_conversations").select("paused_ai").eq("id", conversation.id).maybeSingle();
+    return res.json({ messages: data || [], paused_ai: convData?.paused_ai || false });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ── Manual reply from dashboard ───────────────────────────────────────────────
+app.post("/api/social/reply", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const { conversationId, text } = req.body;
+    if (!conversationId || !text?.trim()) return res.status(400).json({ error: "conversationId and text required" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    // Verify conversation belongs to this org
+    const { data: conv, error: convErr } = await supabase
+      .from("social_conversations")
+      .select("id, platform, contact_id, org_id")
+      .eq("id", conversationId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (convErr) throw convErr;
+    if (!conv) return res.status(404).json({ error: "Conversation not found" });
+
+    const platform = conv.platform;
+    const recipientId = conv.contact_id;
+
+    // Resolve channel credentials for sending
+    if (platform === "whatsapp") {
+      // Find the WhatsApp account for this org
+      const { data: waAccount } = await supabase
+        .from("meta_whatsapp_accounts")
+        .select("phone_number_id, encrypted_access_token")
+        .eq("org_id", orgId)
+        .limit(1)
+        .maybeSingle();
+      if (!waAccount) return res.status(400).json({ error: "No WhatsApp account connected" });
+      const token = waAccount.encrypted_access_token ? decryptToken(waAccount.encrypted_access_token) : "";
+      await sendWhatsAppMessage({ phoneNumberId: waAccount.phone_number_id, token, recipientId, text: text.trim() });
+    } else {
+      // Facebook or Instagram — use meta_pages
+      const { data: page } = await supabase
+        .from("meta_pages")
+        .select("page_id, instagram_account_id, encrypted_page_access_token")
+        .eq("org_id", orgId)
+        .limit(1)
+        .maybeSingle();
+      if (!page) return res.status(400).json({ error: "No Facebook/Instagram page connected" });
+      const pageToken = page.encrypted_page_access_token ? decryptToken(page.encrypted_page_access_token) : "";
+      await sendMetaMessage({
+        platform,
+        pageId: page.page_id,
+        pageToken,
+        recipientId,
+        text: text.trim(),
+        instagramAccountId: platform === "instagram" ? page.instagram_account_id : null,
+      });
+    }
+
+    // Store the sent message in social_messages
+    const now = new Date().toISOString();
+    await supabase.from("social_messages").insert({
+      conversation_id: conversationId,
+      sender: "bot",
+      content: text.trim(),
+      message_type: "text",
+      created_at: now,
+    });
+
+    // Update conversation last_message
+    await supabase.from("social_conversations").update({
+      last_message: text.trim().slice(0, 200),
+      last_message_at: now,
+    }).eq("id", conversationId).eq("org_id", orgId);
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("[Social Reply] error:", errorMessage(err));
+    return sendError(res, err);
+  }
+});
+
+// Toggle AI auto-reply for a specific conversation
+app.patch("/api/social/conversations/:id/pause-ai", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const paused = req.body.paused === true;
+    const { data, error } = await supabase
+      .from("social_conversations")
+      .update({ paused_ai: paused })
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .select("id, paused_ai")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Conversation not found" });
+    return res.json({ success: true, paused_ai: data.paused_ai });
   } catch (err) {
     return sendError(res, err);
   }
@@ -4726,11 +4868,13 @@ CREATE TABLE IF NOT EXISTS public.social_conversations (
   last_message TEXT,
   last_message_at TIMESTAMPTZ DEFAULT now(),
   unread_count INT DEFAULT 0,
+  paused_ai BOOLEAN DEFAULT false,
   org_id UUID,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(platform, contact_id)
 );
 ALTER TABLE public.social_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS paused_ai BOOLEAN DEFAULT false;
 DO $$ BEGIN
   CREATE POLICY "service_role_all_social_conv" ON public.social_conversations
     TO service_role USING (true) WITH CHECK (true);
@@ -5058,10 +5202,12 @@ CREATE TABLE IF NOT EXISTS public.social_conversations (
   last_message TEXT,
   last_message_at TIMESTAMPTZ DEFAULT now(),
   unread_count INT DEFAULT 0,
+  paused_ai BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(platform, contact_id)
 );
 ALTER TABLE public.social_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS paused_ai BOOLEAN DEFAULT false;
 DO $$ BEGIN
   CREATE POLICY "service_role_all_social_conv" ON public.social_conversations TO service_role USING (true) WITH CHECK (true);
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -5753,6 +5899,7 @@ ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS fraud_checked BO
 ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS fraud_data JSONB;
 ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS delivery_rate NUMERIC;
 ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS order_fields JSONB DEFAULT '{}';
+ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS paused_ai BOOLEAN DEFAULT false;
     `;
 
     await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {

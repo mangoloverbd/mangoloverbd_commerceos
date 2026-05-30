@@ -9,10 +9,12 @@ import {
   InstagramLogo,
   WhatsappLogo,
   Robot,
+  User,
   Image as PhImage,
   MagnifyingGlass,
   ArrowLeft,
   Trash,
+  PaperPlaneRight,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
@@ -78,8 +80,13 @@ export default function SocialInbox({ platform }: Props) {
   const [search, setSearch] = useState("");
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [pausedAi, setPausedAi] = useState(false);
+  const [togglingAi, setTogglingAi] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isInitialLoad = useRef(true);
   const cfg = PLATFORM_CONFIG[platform];
   const Icon = cfg.icon;
@@ -96,10 +103,12 @@ export default function SocialInbox({ platform }: Props) {
   useEffect(() => {
     if (!selectedId) return;
     setMsgLoading(true);
+    setReplyText("");
     apiFetch(`/api/social/messages/${selectedId}`)
       .then((r) => r.json())
       .then((d) => {
         setMessages(d.messages || []);
+        setPausedAi(d.paused_ai || false);
         setConversations((prev) =>
           prev.map((c) => (c.id === selectedId ? { ...c, unread_count: 0 } : c))
         );
@@ -138,6 +147,61 @@ export default function SocialInbox({ platform }: Props) {
   function selectConversation(id: string) {
     setSelectedId(id);
     setMobileView("chat");
+  }
+
+  async function sendReply() {
+    if (!selectedId || !replyText.trim() || sending) return;
+    setSending(true);
+    try {
+      const res = await apiFetch("/api/social/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: selectedId, text: replyText.trim() }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Failed to send");
+      }
+      const now = new Date().toISOString();
+      setMessages((prev) => [...prev, {
+        id: `temp-${Date.now()}`,
+        conversation_id: selectedId,
+        sender: "bot",
+        content: replyText.trim(),
+        image_url: null,
+        message_type: "text",
+        created_at: now,
+      }]);
+      setConversations((prev) =>
+        prev.map((c) => c.id === selectedId ? { ...c, last_message: replyText.trim().slice(0, 200), last_message_at: now } : c)
+      );
+      setReplyText("");
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send reply");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function toggleAi() {
+    if (!selectedId || togglingAi) return;
+    setTogglingAi(true);
+    const newPaused = !pausedAi;
+    try {
+      const res = await apiFetch(`/api/social/conversations/${selectedId}/pause-ai`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: newPaused }),
+      });
+      if (!res.ok) throw new Error("Failed to toggle");
+      setPausedAi(newPaused);
+      toast.success(newPaused ? "Switched to Human mode" : "AI auto-reply enabled");
+    } catch {
+      toast.error("Failed to toggle AI mode");
+    } finally {
+      setTogglingAi(false);
+    }
   }
 
   async function deleteConversation(id: string, e: React.MouseEvent) {
@@ -297,13 +361,27 @@ export default function SocialInbox({ platform }: Props) {
                 <ArrowLeft size={14} />
               </button>
               {selected && <Avatar name={selected.contact_name || "?"} platform={platform} />}
-              <div>
-                <p className="text-[13px] font-semibold text-foreground">{selected?.contact_name || "Unknown"}</p>
-                <p className={cn("flex items-center gap-1 text-[10px] font-medium", cfg.color)}>
-                  <Robot size={9} />
-                  AI bot active
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-foreground truncate">{selected?.contact_name || "Unknown"}</p>
+                <p className={cn("flex items-center gap-1 text-[10px] font-medium", pausedAi ? "text-amber-600" : cfg.color)}>
+                  {pausedAi ? <User size={9} weight="fill" /> : <Robot size={9} />}
+                  {pausedAi ? "Human mode" : "AI bot active"}
                 </p>
               </div>
+              {/* AI / Human toggle */}
+              <button
+                onClick={toggleAi}
+                disabled={togglingAi}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition-all",
+                  pausedAi
+                    ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+                    : "bg-black/[0.04] text-black/60 ring-1 ring-black/[0.08] hover:bg-black/[0.08]"
+                )}
+              >
+                {pausedAi ? <User size={10} weight="fill" /> : <Robot size={10} />}
+                {pausedAi ? "Human" : "AI"}
+              </button>
             </div>
 
             {/* Messages */}
@@ -362,23 +440,57 @@ export default function SocialInbox({ platform }: Props) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Bot notice / composer */}
+            {/* Composer */}
             <div className="shrink-0 border-t border-black/10 bg-white px-4 pb-4 pt-3">
-              <div className="relative cursor-text rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08]">
-                <div className="px-3.5 pt-3 pb-0">
-                  <p className="text-[13px] leading-[1.6] text-muted-foreground">
-                    AI bot responds automatically
-                  </p>
-                </div>
-                <div className="flex items-center justify-end px-2 pb-2 pt-1">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-200">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-400">
-                      <line x1="12" y1="19" x2="12" y2="5" />
-                      <polyline points="5 12 12 5 19 12" />
-                    </svg>
+              {pausedAi ? (
+                <div className="relative rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08] focus-within:ring-black/20 transition-all">
+                  <textarea
+                    ref={textareaRef}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); }
+                    }}
+                    placeholder="Type a reply..."
+                    rows={1}
+                    className="w-full resize-none bg-transparent px-3.5 pt-3 pb-0 text-[13px] leading-[1.6] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                    style={{ minHeight: "36px", maxHeight: "120px" }}
+                    onInput={(e) => {
+                      const t = e.currentTarget;
+                      t.style.height = "36px";
+                      t.style.height = `${Math.min(t.scrollHeight, 120)}px`;
+                    }}
+                  />
+                  <div className="flex items-center justify-end px-2 pb-2 pt-1">
+                    <button
+                      onClick={sendReply}
+                      disabled={!replyText.trim() || sending}
+                      className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-full transition-all",
+                        replyText.trim() ? "bg-black text-white hover:bg-black/80" : "bg-neutral-200 text-neutral-400"
+                      )}
+                    >
+                      {sending ? <Spinner className="h-3.5 w-3.5" /> : <PaperPlaneRight size={14} weight="fill" />}
+                    </button>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="relative rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08]">
+                  <div className="px-3.5 pt-3 pb-0">
+                    <p className="text-[13px] leading-[1.6] text-muted-foreground">
+                      AI bot responds automatically
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end px-2 pb-2 pt-1">
+                    <button
+                      onClick={toggleAi}
+                      className="flex h-8 items-center gap-1.5 rounded-full bg-amber-50 px-3 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100 transition-all"
+                    >
+                      <User size={10} weight="fill" /> Take over
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="mt-2 text-center text-[10px] font-medium text-muted-foreground">
                 Replies sent via {cfg.label} API
               </p>
