@@ -175,24 +175,18 @@ export default function Auth() {
       {/* Glass card */}
       <div className="relative z-10 flex items-center mx-4">
       <motion.div
-        className="relative w-[480px] rounded-3xl px-10 py-7"
+        className="relative w-[400px] rounded-2xl px-8 py-6"
         layout
         style={{
-          background: "rgba(255, 255, 255, 0.85)",
-          backdropFilter: "blur(40px)",
-          WebkitBackdropFilter: "blur(40px)",
-          border: "1px solid rgba(255, 255, 255, 0.6)",
-          boxShadow: "0 0 0 0.5px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.02)",
+          background: "#ffffff",
+          border: "1.5px solid rgba(0,0,0,0.06)",
+          borderRadius: "20px",
+          boxShadow: "0 0 0 4px rgba(0,0,0,0.015), 0 0 0 1px rgba(0,0,0,0.04)",
         }}
         initial={{ opacity: 0, y: 32, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.8, ...smooth }}
       >
-        {/* Subtle inner shine line at top */}
-        <div
-          className="absolute top-0 left-8 right-8 h-px rounded-full"
-          style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.95), transparent)" }}
-        />
 
         <div className="w-full flex flex-col">
           <AnimatePresence mode="wait">
