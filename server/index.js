@@ -1052,7 +1052,7 @@ app.get("/api/settings", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const prefix = `${orgId}:`;
-    const { data, error } = await supabase.from("app_settings").select("key, value").order("key");
+    const { data, error } = await supabase.from("app_settings").select("key, value").like("key", `${prefix}%`).order("key");
     if (error) throw error;
     const settings = {};
     for (const row of data || []) {
@@ -4405,6 +4405,14 @@ app.get("/api/webhooks/facebook", (req, res) => {
 });
 
 app.post("/api/webhooks/facebook", async (req, res) => {
+  const signature = req.headers["x-hub-signature-256"];
+  if (process.env.META_APP_SECRET && signature && req.rawBody) {
+    const expected = "sha256=" + crypto.createHmac("sha256", process.env.META_APP_SECRET).update(req.rawBody).digest("hex");
+    if (signature !== expected) {
+      console.warn("[Webhook/FB] HMAC signature mismatch — rejecting");
+      return res.sendStatus(403);
+    }
+  }
   const supabase = getServiceSupabase();
   const body = req.body || {};
   res.sendStatus(200); // always ack immediately
@@ -4482,6 +4490,14 @@ app.get("/api/webhooks/whatsapp", (req, res) => {
 });
 
 app.post("/api/webhooks/whatsapp", async (req, res) => {
+  const signature = req.headers["x-hub-signature-256"];
+  if (process.env.META_APP_SECRET && signature && req.rawBody) {
+    const expected = "sha256=" + crypto.createHmac("sha256", process.env.META_APP_SECRET).update(req.rawBody).digest("hex");
+    if (signature !== expected) {
+      console.warn("[Webhook/WA] HMAC signature mismatch — rejecting");
+      return res.sendStatus(403);
+    }
+  }
   const supabase = getServiceSupabase();
   const body = req.body || {};
   res.sendStatus(200);
@@ -4992,19 +5008,19 @@ CREATE TABLE IF NOT EXISTS public.orders (
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
-  CREATE POLICY "Authenticated users can view all orders" ON public.orders FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "Authenticated users can view all orders" ON public.orders FOR SELECT TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 DO $$ BEGIN
-  CREATE POLICY "Authenticated users can insert orders" ON public.orders FOR INSERT TO authenticated WITH CHECK (true);
+  CREATE POLICY "Authenticated users can insert orders" ON public.orders FOR INSERT TO authenticated WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 DO $$ BEGIN
-  CREATE POLICY "Authenticated users can update orders" ON public.orders FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "Authenticated users can update orders" ON public.orders FOR UPDATE TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 DO $$ BEGIN
-  CREATE POLICY "Authenticated users can delete orders" ON public.orders FOR DELETE TO authenticated USING (true);
+  CREATE POLICY "Authenticated users can delete orders" ON public.orders FOR DELETE TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -5121,7 +5137,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 DO $$ BEGIN
-  CREATE POLICY "auth_users_products" ON public.products TO authenticated USING (true) WITH CHECK (true);
+  CREATE POLICY "auth_users_products" ON public.products FOR ALL TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text)) WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 `;
@@ -5678,6 +5694,16 @@ app.get("/api/db-setup-sql", async (req, res) => {
 // Run DB setup via Supabase Management API
 app.post("/api/db-setup", async (req, res) => {
   try {
+    const { user } = await getUser(getToken(req)).catch(() => ({ user: null }));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (roleRow?.role !== "admin") return res.status(403).json({ error: "Forbidden — admin only" });
+
     const supabaseUrl = process.env.SUPABASE_URL || "";
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
     const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
