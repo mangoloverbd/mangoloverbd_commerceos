@@ -419,7 +419,7 @@ export default function SocialInbox({ platform }: Props) {
                           <div className={cn(
                             "rounded-2xl px-3.5 py-1.5",
                             msg.sender === "bot"
-                              ? "bg-[#1a2b4a] text-white"
+                              ? "bg-[#2563eb] text-white"
                               : "border border-black/[0.08] bg-white text-foreground"
                           )}>
                             <span className="flex items-center gap-1 text-sm leading-5"><PhImage size={13} /> Image</span>
@@ -429,7 +429,7 @@ export default function SocialInbox({ platform }: Props) {
                           <div className={cn(
                             "rounded-2xl px-3.5 py-1.5 transition-colors",
                             msg.sender === "bot"
-                              ? "bg-[#1a2b4a] text-white"
+                              ? "bg-[#2563eb] text-white"
                               : "border border-black/[0.08] bg-white text-foreground"
                           )}>
                             <p className="text-sm leading-5 whitespace-pre-wrap break-words">{msg.content}</p>
