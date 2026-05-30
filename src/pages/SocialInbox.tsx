@@ -370,17 +370,20 @@ export default function SocialInbox({ platform }: Props) {
                 </p>
               </div>
               {/* AI / Human toggle */}
-              <div className="flex items-center gap-2">
-                <span className={cn("text-[10px] font-semibold uppercase tracking-wide", pausedAi ? "text-amber-600" : "text-black/40")}>
-                  {pausedAi ? "Human" : "AI"}
+              <div className="flex items-center gap-1.5">
+                <span className={cn("text-[9px] font-semibold tracking-wide transition-colors", !pausedAi ? "text-black" : "text-black/30")}>
+                  AI
                 </span>
                 <Switch
                   checked={!pausedAi}
-                  onCheckedChange={(checked) => { if (!togglingAi) toggleAi(); }}
+                  onCheckedChange={() => { if (!togglingAi) toggleAi(); }}
                   disabled={togglingAi}
-                  className="data-[state=checked]:bg-black data-[state=unchecked]:bg-amber-400"
+                  className="h-[18px] w-8 data-[state=checked]:bg-black data-[state=unchecked]:bg-amber-400"
+                  thumbClassName="h-3.5 w-3.5 data-[state=checked]:translate-x-3.5"
                 />
-                <Robot size={14} weight="fill" className={cn("transition-opacity", pausedAi ? "opacity-30" : "opacity-100")} />
+                <span className={cn("text-[9px] font-semibold tracking-wide transition-colors", pausedAi ? "text-amber-600" : "text-black/30")}>
+                  Human
+                </span>
               </div>
             </div>
 
