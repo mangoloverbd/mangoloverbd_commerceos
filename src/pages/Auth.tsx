@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Eye, EyeOff, ShieldCheck, MailCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ParticleBackground } from "@/components/ui/particle-background";
 
 type Mode = "signin" | "signup";
 const rememberedEmailKey = "seraphine:remembered-email";
@@ -170,7 +171,8 @@ export default function Auth() {
   const smooth = { ease: [0.22, 1, 0.36, 1] as const };
 
   return (
-    <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-[#DEDEDE]">
+    <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-black">
+      <ParticleBackground />
 
       {/* Glass card */}
       <div className="relative z-10 flex items-center mx-4">
@@ -178,10 +180,12 @@ export default function Auth() {
         className="relative w-[400px] rounded-2xl px-8 py-6"
         layout
         style={{
-          background: "#ffffff",
-          border: "1.5px solid rgba(0,0,0,0.06)",
+          background: "rgba(255, 255, 255, 0.08)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid rgba(255, 255, 255, 0.12)",
           borderRadius: "20px",
-          boxShadow: "0 0 0 4px rgba(0,0,0,0.015), 0 0 0 1px rgba(0,0,0,0.04)",
+          boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 8px 40px rgba(0,0,0,0.4)",
         }}
         initial={{ opacity: 0, y: 32, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -201,27 +205,27 @@ export default function Auth() {
                 className="w-full flex flex-col items-center text-center space-y-6"
               >
                 <div className="h-16 w-16 rounded-2xl flex items-center justify-center"
-                  style={{ background: "rgba(0,0,0,0.05)", border: "1px solid rgba(0,0,0,0.08)" }}>
-                  <MailCheck className="w-7 h-7 text-black" />
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  <MailCheck className="w-7 h-7 text-white" />
                 </div>
                 <div className="space-y-2">
-                  <h2 className="text-2xl font-bold tracking-tight text-black">Check your email</h2>
-                  <p className="text-sm text-black/70 font-light leading-relaxed">
+                  <h2 className="text-2xl font-bold tracking-tight text-white">Check your email</h2>
+                  <p className="text-sm text-white/70 font-light leading-relaxed">
                     We sent a confirmation link to<br />
-                    <span className="font-semibold text-black">{email}</span>
+                    <span className="font-semibold text-white">{email}</span>
                   </p>
                 </div>
                 <div className="w-full rounded-xl p-4 text-left space-y-1"
-                  style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-black/50">Next steps</p>
-                  <p className="text-xs text-black/50 leading-relaxed">
-                    Open the email and click <span className="font-semibold text-black">Confirm your mail</span>. You'll be signed in automatically and redirected to set up your workspace.
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Next steps</p>
+                  <p className="text-xs text-white/50 leading-relaxed">
+                    Open the email and click <span className="font-semibold text-white">Confirm your mail</span>. You'll be signed in automatically and redirected to set up your workspace.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => switchMode("signin")}
-                  className="text-[10px] font-bold uppercase tracking-[0.2em] text-black/40 hover:text-black transition-colors"
+                  className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors"
                 >
                   Back to sign in
                 </button>
@@ -255,13 +259,13 @@ export default function Auth() {
                       />
                     </div>
                     <h1
-                      className="text-[32px] font-semibold leading-[1.08] tracking-normal text-black drop-shadow-sm"
+                      className="text-[32px] font-semibold leading-[1.08] tracking-normal text-white drop-shadow-sm"
                       style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif" }}
                     >
                       {mode === "signin" ? "Sign In or Join Now!" : "Create your account"}
                     </h1>
                     <p
-                      className="text-[15px] font-normal leading-6 tracking-normal text-black/70"
+                      className="text-[15px] font-normal leading-6 tracking-normal text-white/70"
                       style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif" }}
                     >
                       {mode === "signin"
@@ -273,7 +277,7 @@ export default function Auth() {
 
                 {/* Mode tabs */}
                 <div className="mb-6 grid w-full grid-cols-2 gap-2 py-2"
-                  style={{ borderTop: "1px solid rgba(0,0,0,0.06)", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                  style={{ borderTop: "1px solid rgba(255,255,255,0.08)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
                   {(["signin", "signup"] as Mode[]).map((m) => (
                     <button
                       key={m}
@@ -281,12 +285,12 @@ export default function Auth() {
                       onClick={() => switchMode(m)}
                       className={`h-9 rounded-lg text-[8px] font-medium uppercase tracking-[0.3em] transition-all duration-200 ${
                         mode === m
-                          ? "text-black"
-                          : "text-black/35 hover:text-black/60"
+                          ? "text-white"
+                          : "text-white/35 hover:text-white/60"
                       }`}
                       style={mode === m ? {
-                        background: "rgba(0,0,0,0.05)",
-                        border: "1px solid rgba(0,0,0,0.08)",
+                        background: "rgba(255,255,255,0.1)",
+                        border: "1px solid rgba(255,255,255,0.1)",
                       } : {
                         background: "transparent",
                         border: "1px solid transparent",
@@ -301,7 +305,7 @@ export default function Auth() {
                 <form onSubmit={handleSubmit} className="space-y-4 w-full">
                   {/* Email */}
                   <div className="space-y-2">
-                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-black/50">
+                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-white/50">
                       Email Address
                     </label>
                     <Input
@@ -309,10 +313,10 @@ export default function Auth() {
                       placeholder="name@company.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="h-12 rounded-xl text-sm text-black placeholder:text-black/30 border-0 focus-visible:ring-1 focus-visible:ring-black/20 focus-visible:outline-none transition-all"
+                      className="h-12 rounded-xl text-sm text-white placeholder:text-white/30 border-0 focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:outline-none transition-all"
                       style={{
-                        background: "rgba(0,0,0,0.03)",
-                        border: "1px solid rgba(0,0,0,0.08)",
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.1)",
                       }}
                       required
                     />
@@ -320,7 +324,7 @@ export default function Auth() {
 
                   {/* Password */}
                   <div className="space-y-2">
-                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-black/50">
+                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-white/50">
                       Password
                     </label>
                     <div className="relative">
@@ -329,17 +333,17 @@ export default function Auth() {
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="h-12 rounded-xl pr-12 text-sm text-black placeholder:text-black/30 border-0 focus-visible:ring-1 focus-visible:ring-black/20 focus-visible:outline-none transition-all"
+                        className="h-12 rounded-xl pr-12 text-sm text-white placeholder:text-white/30 border-0 focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:outline-none transition-all"
                         style={{
-                          background: "rgba(255,255,255,0.08)",
-                          border: "1px solid rgba(255,120,120,0.25)",
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid rgba(255,255,255,0.1)",
                         }}
                         required
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-black/30 hover:text-black/60 transition-colors"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -357,15 +361,15 @@ export default function Auth() {
                         className="overflow-hidden"
                       >
                         <div className="flex items-center justify-between pt-3">
-                          <label className="flex cursor-pointer select-none items-center gap-2 text-[9px] font-medium uppercase tracking-[0.2em] text-black/45 transition-colors hover:text-black">
+                          <label className="flex cursor-pointer select-none items-center gap-2 text-[9px] font-medium uppercase tracking-[0.2em] text-white/45 transition-colors hover:text-white">
                             <Checkbox
                               checked={rememberMe}
                               onCheckedChange={(checked) => setRememberMe(checked === true)}
-                              className="h-3.5 w-3.5 rounded border-black/10 data-[state=checked]:border-red-400 data-[state=checked]:bg-red-500 data-[state=checked]:text-black [&_svg]:h-3 [&_svg]:w-3"
+                              className="h-3.5 w-3.5 rounded border-white/20 data-[state=checked]:border-red-400 data-[state=checked]:bg-red-500 data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3"
                             />
                             Remember me
                           </label>
-                          <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-black/25">
+                          <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-white/25">
                             Secure
                           </span>
                         </div>
@@ -383,7 +387,7 @@ export default function Auth() {
                         transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                         className="overflow-hidden space-y-2"
                       >
-                        <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-black/50">
+                        <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-white/50">
                           Confirm Password
                         </label>
                         <div className="relative">
@@ -392,17 +396,17 @@ export default function Auth() {
                             placeholder="••••••••"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="h-12 rounded-xl pr-12 text-sm text-black placeholder:text-black/30 border-0 focus-visible:ring-1 focus-visible:ring-black/20 focus-visible:outline-none transition-all"
+                            className="h-12 rounded-xl pr-12 text-sm text-white placeholder:text-white/30 border-0 focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:outline-none transition-all"
                             style={{
-                              background: "rgba(255,255,255,0.08)",
-                              border: "1px solid rgba(255,120,120,0.25)",
+                              background: "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.1)",
                             }}
                             required={mode === "signup"}
                           />
                           <button
                             type="button"
                             onClick={() => setShowConfirm(!showConfirm)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-black/30 hover:text-black/60 transition-colors"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
                           >
                             {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
@@ -416,7 +420,7 @@ export default function Auth() {
                     <Button
                       type="submit"
                       disabled={loading}
-                      className="w-full"
+                      className="w-full bg-black text-white hover:bg-black/90"
                     >
                       {loading
                         ? mode === "signin"
@@ -431,14 +435,14 @@ export default function Auth() {
 
                 {/* Footer */}
                 <div className="mt-6 text-center space-y-2 w-full">
-                  <p className="text-xs text-black/60">
+                  <p className="text-xs text-white/60">
                     {mode === "signin" ? (
                       <>
                         Don&apos;t have an account?{" "}
                         <button
                           type="button"
                           onClick={() => switchMode("signup")}
-                          className="font-semibold text-black hover:text-black/50 underline underline-offset-2 transition-colors"
+                          className="font-semibold text-white hover:text-white/50 underline underline-offset-2 transition-colors"
                         >
                           Sign up
                         </button>
@@ -449,14 +453,14 @@ export default function Auth() {
                         <button
                           type="button"
                           onClick={() => switchMode("signin")}
-                          className="font-semibold text-black hover:text-black/50 underline underline-offset-2 transition-colors"
+                          className="font-semibold text-white hover:text-white/50 underline underline-offset-2 transition-colors"
                         >
                           Sign in
                         </button>
                       </>
                     )}
                   </p>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-black/30">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-white/30">
                     Secure Authentication
                   </p>
                 </div>
