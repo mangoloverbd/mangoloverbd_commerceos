@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Eye, EyeOff, ShieldCheck, MailCheck } from "lucide-react";
+import { RiUserFill } from "@remixicon/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ParticleBackground } from "@/components/ui/particle-background";
 
@@ -168,308 +172,230 @@ export default function Auth() {
     }
   };
 
-  const smooth = { ease: [0.22, 1, 0.36, 1] as const };
-
   return (
     <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-black">
       <ParticleBackground />
 
-      {/* Glass card */}
-      <div className="relative z-10 flex items-center mx-4">
-      <motion.div
-        className="relative w-[400px] rounded-2xl px-8 py-6"
-        layout
-        style={{
-          background: "rgba(255, 255, 255, 0.08)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          border: "1px solid rgba(255, 255, 255, 0.12)",
-          borderRadius: "20px",
-          boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 8px 40px rgba(0,0,0,0.4)",
-        }}
-        initial={{ opacity: 0, y: 32, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.8, ...smooth }}
-      >
-
-        <div className="w-full flex flex-col">
-          <AnimatePresence mode="wait">
-            {/* ── Email confirmation screen ── */}
-            {emailSent ? (
-              <motion.div
-                key="email-sent"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }}
-                transition={{ duration: 0.45, ...smooth }}
-                className="w-full flex flex-col items-center text-center space-y-6"
-              >
-                <div className="h-16 w-16 rounded-2xl flex items-center justify-center"
-                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <MailCheck className="w-7 h-7 text-white" />
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-bold tracking-tight text-white">Check your email</h2>
-                  <p className="text-sm text-white/70 font-light leading-relaxed">
-                    We sent a confirmation link to<br />
-                    <span className="font-semibold text-white">{email}</span>
-                  </p>
-                </div>
-                <div className="w-full rounded-xl p-4 text-left space-y-1"
-                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Next steps</p>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Open the email and click <span className="font-semibold text-white">Confirm your mail</span>. You'll be signed in automatically and redirected to set up your workspace.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => switchMode("signin")}
-                  className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors"
-                >
-                  Back to sign in
-                </button>
-              </motion.div>
-            ) : (
-              /* ── Auth form ── */
-              <motion.div
-                key="form"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="w-full flex flex-col"
-              >
-                {/* Headline */}
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={mode}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.35, ...smooth }}
-                    className="mb-6 space-y-1 text-center w-full"
-                  >
-                    {/* Favicon logo */}
-                    <div className="flex justify-center mb-4">
-                      <img
-                        src="/favicon.svg"
-                        alt="Seraphine logo"
-                        className="w-12 h-12"
-                      />
-                    </div>
-                    <h1
-                      className="text-[32px] font-semibold leading-[1.08] tracking-normal text-white drop-shadow-sm"
-                      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif" }}
-                    >
-                      {mode === "signin" ? "Sign In or Join Now!" : "Create your account"}
-                    </h1>
-                    <p
-                      className="text-[15px] font-normal leading-6 tracking-normal text-white/70"
-                      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif" }}
-                    >
-                      {mode === "signin"
-                        ? "Login or create your Arc Lab account."
-                        : "Sign up to get started with Arc Lab Technology."}
-                    </p>
-                  </motion.div>
-                </AnimatePresence>
-
-                {/* Mode tabs */}
-                <div className="mb-6 grid w-full grid-cols-2 gap-2 py-2"
-                  style={{ borderTop: "1px solid rgba(255,255,255,0.08)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                  {(["signin", "signup"] as Mode[]).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => switchMode(m)}
-                      className={`h-9 rounded-lg text-[8px] font-medium uppercase tracking-[0.3em] transition-all duration-200 ${
-                        mode === m
-                          ? "text-white"
-                          : "text-white/35 hover:text-white/60"
-                      }`}
-                      style={mode === m ? {
-                        background: "rgba(255,255,255,0.1)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                      } : {
-                        background: "transparent",
-                        border: "1px solid transparent",
-                      }}
-                    >
-                      {m === "signin" ? "Sign In" : "Sign Up"}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="space-y-4 w-full">
-                  {/* Email */}
+      <div className="relative z-10 mx-4">
+        <AnimatePresence mode="wait">
+          {emailSent ? (
+            <motion.div
+              key="email-sent"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Card className="flex w-full max-w-[440px] shadow-none flex-col gap-6 p-5 md:p-8 bg-white/[0.03] backdrop-blur-xl border-white/10">
+                <div className="w-full flex flex-col items-center text-center space-y-6">
+                  <div className="h-16 w-16 rounded-2xl flex items-center justify-center bg-white/[0.06] border border-white/10">
+                    <MailCheck className="w-7 h-7 text-white" />
+                  </div>
                   <div className="space-y-2">
-                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-white/50">
-                      Email Address
-                    </label>
-                    <Input
-                      type="email"
-                      placeholder="name@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="h-12 rounded-xl text-sm text-white placeholder:text-white/30 border-0 focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:outline-none transition-all"
-                      style={{
-                        background: "rgba(255,255,255,0.06)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                      }}
-                      required
-                    />
+                    <h2 className="text-2xl font-bold tracking-tight text-white">Check your email</h2>
+                    <p className="text-sm text-white/70 font-light leading-relaxed">
+                      We sent a confirmation link to<br />
+                      <span className="font-semibold text-white">{email}</span>
+                    </p>
+                  </div>
+                  <div className="w-full rounded-xl p-4 text-left space-y-1 bg-white/[0.06] border border-white/10">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">Next steps</p>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      Open the email and click <span className="font-semibold text-white">Confirm your mail</span>. You'll be signed in automatically and redirected to set up your workspace.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => switchMode("signin")}
+                    className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors"
+                  >
+                    Back to sign in
+                  </button>
+                </div>
+              </Card>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="form"
+              initial={{ opacity: 0, y: 32, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Card className="flex w-full max-w-[440px] shadow-none flex-col gap-6 p-5 md:p-8 bg-white/[0.03] backdrop-blur-xl border-white/10">
+                <CardHeader className="flex flex-col items-center gap-2 p-0">
+                  {/* Avatar circle */}
+                  <div className="relative flex size-[68px] shrink-0 items-center justify-center rounded-full backdrop-blur-xl md:size-24 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-neutral-500 before:to-transparent before:opacity-10">
+                    <div className="relative z-10 flex size-12 items-center justify-center rounded-full bg-white/10 shadow-xs ring-1 ring-inset ring-white/20 md:size-16">
+                      <RiUserFill className="size-6 text-white/60 md:size-8" />
+                    </div>
                   </div>
 
-                  {/* Password */}
-                  <div className="space-y-2">
-                    <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-white/50">
-                      Password
-                    </label>
-                    <div className="relative">
+                  <div className="flex flex-col space-y-1.5 text-center">
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={mode}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <CardTitle className="md:text-xl font-medium text-white">
+                          {mode === "signin" ? "Sign in to your account" : "Create your account"}
+                        </CardTitle>
+                        <CardDescription className="tracking-[-0.006em] text-white/50 mt-1.5">
+                          {mode === "signin"
+                            ? "Enter your credentials to access your account."
+                            : "Sign up to get started with Arc Lab Technology."}
+                        </CardDescription>
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+                </CardHeader>
+
+                <Separator className="bg-white/10" />
+
+                <CardContent className="p-0">
+                  {/* Mode tabs */}
+                  <div className="mb-5 grid w-full grid-cols-2 gap-2">
+                    {(["signin", "signup"] as Mode[]).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => switchMode(m)}
+                        className={`h-9 rounded-lg text-[11px] font-medium uppercase tracking-widest transition-all ${
+                          mode === m
+                            ? "bg-white/10 text-white ring-1 ring-white/20"
+                            : "text-white/40 hover:text-white/60"
+                        }`}
+                      >
+                        {m === "signin" ? "Sign In" : "Sign Up"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2.5">
+                      <Label htmlFor="email" className="text-white/70">Email</Label>
                       <Input
-                        type={showPassword ? "text" : "password"}
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="h-12 rounded-xl pr-12 text-sm text-white placeholder:text-white/30 border-0 focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:outline-none transition-all"
-                        style={{
-                          background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                        }}
+                        id="email"
+                        type="email"
+                        placeholder="Enter your email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="rounded-lg bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/30"
                         required
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
                     </div>
-                  </div>
 
-                  {/* Remember me — signin only */}
-                  <AnimatePresence initial={false}>
+                    <div className="flex flex-col gap-2.5">
+                      <Label htmlFor="password" className="text-white/70">Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          className="pe-9 rounded-lg bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/30"
+                          placeholder="Password"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                        />
+                        <button
+                          className="text-white/40 hover:text-white/70 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-colors"
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Confirm password — signup only */}
+                    <AnimatePresence initial={false}>
+                      {mode === "signup" && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="flex flex-col gap-2.5">
+                            <Label htmlFor="confirm-password" className="text-white/70">Confirm Password</Label>
+                            <div className="relative">
+                              <Input
+                                id="confirm-password"
+                                className="pe-9 rounded-lg bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 focus-visible:ring-white/30"
+                                placeholder="Confirm password"
+                                type={showConfirm ? "text" : "password"}
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                required={mode === "signup"}
+                              />
+                              <button
+                                className="text-white/40 hover:text-white/70 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-colors"
+                                type="button"
+                                onClick={() => setShowConfirm(!showConfirm)}
+                              >
+                                {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Remember me — signin only */}
                     {mode === "signin" && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-                        className="overflow-hidden"
-                      >
-                        <div className="flex items-center justify-between pt-3">
-                          <label className="flex cursor-pointer select-none items-center gap-2 text-[9px] font-medium uppercase tracking-[0.2em] text-white/45 transition-colors hover:text-white">
-                            <Checkbox
-                              checked={rememberMe}
-                              onCheckedChange={(checked) => setRememberMe(checked === true)}
-                              className="h-3.5 w-3.5 rounded border-white/20 data-[state=checked]:border-red-400 data-[state=checked]:bg-red-500 data-[state=checked]:text-white [&_svg]:h-3 [&_svg]:w-3"
-                            />
-                            Remember me
-                          </label>
-                          <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-white/25">
-                            Secure
-                          </span>
-                        </div>
-                      </motion.div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="keep-me-logged-in"
+                          checked={rememberMe}
+                          onCheckedChange={(checked) => setRememberMe(checked === true)}
+                          className="border-white/20 data-[state=checked]:bg-white data-[state=checked]:text-black"
+                        />
+                        <Label htmlFor="keep-me-logged-in" className="cursor-pointer text-white/60 text-sm">
+                          Keep me logged in
+                        </Label>
+                      </div>
                     )}
-                  </AnimatePresence>
 
-                  {/* Confirm password — signup only */}
-                  <AnimatePresence initial={false}>
-                    {mode === "signup" && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                        className="overflow-hidden space-y-2"
-                      >
-                        <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-white/50">
-                          Confirm Password
-                        </label>
-                        <div className="relative">
-                          <Input
-                            type={showConfirm ? "text" : "password"}
-                            placeholder="••••••••"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="h-12 rounded-xl pr-12 text-sm text-white placeholder:text-white/30 border-0 focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:outline-none transition-all"
-                            style={{
-                              background: "rgba(255,255,255,0.06)",
-                              border: "1px solid rgba(255,255,255,0.1)",
-                            }}
-                            required={mode === "signup"}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirm(!showConfirm)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-                          >
-                            {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Submit */}
-                  <div className="pt-2">
                     <Button
                       type="submit"
                       disabled={loading}
-                      className="w-full bg-black text-white hover:bg-black/90"
+                      className="w-full bg-white text-black hover:bg-white/90 font-medium"
                     >
                       {loading
-                        ? mode === "signin"
-                          ? "Signing In..."
-                          : "Creating..."
-                        : mode === "signin"
-                          ? "Sign In"
-                          : "Create Account"}
+                        ? mode === "signin" ? "Signing In..." : "Creating..."
+                        : mode === "signin" ? "Continue" : "Create Account"}
                     </Button>
+                  </form>
+
+                  {/* Footer links */}
+                  <div className="mt-5 text-center">
+                    <p className="text-sm text-white/50">
+                      {mode === "signin" ? (
+                        <>
+                          Don&apos;t have an account?{" "}
+                          <button type="button" onClick={() => switchMode("signup")} className="font-medium text-white hover:text-white/80 underline underline-offset-2">
+                            Sign up
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          Already have an account?{" "}
+                          <button type="button" onClick={() => switchMode("signin")} className="font-medium text-white hover:text-white/80 underline underline-offset-2">
+                            Sign in
+                          </button>
+                        </>
+                      )}
+                    </p>
                   </div>
-                </form>
-
-                {/* Footer */}
-                <div className="mt-6 text-center space-y-2 w-full">
-                  <p className="text-xs text-white/60">
-                    {mode === "signin" ? (
-                      <>
-                        Don&apos;t have an account?{" "}
-                        <button
-                          type="button"
-                          onClick={() => switchMode("signup")}
-                          className="font-semibold text-white hover:text-white/50 underline underline-offset-2 transition-colors"
-                        >
-                          Sign up
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        Already have an account?{" "}
-                        <button
-                          type="button"
-                          onClick={() => switchMode("signin")}
-                          className="font-semibold text-white hover:text-white/50 underline underline-offset-2 transition-colors"
-                        >
-                          Sign in
-                        </button>
-                      </>
-                    )}
-                  </p>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-white/30">
-                    Secure Authentication
-                  </p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </motion.div>
-
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
