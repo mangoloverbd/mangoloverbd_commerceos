@@ -16,6 +16,7 @@ import {
   Trash,
   PaperPlaneRight,
 } from "@phosphor-icons/react";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
 type Platform = "facebook" | "instagram" | "whatsapp";
@@ -369,19 +370,18 @@ export default function SocialInbox({ platform }: Props) {
                 </p>
               </div>
               {/* AI / Human toggle */}
-              <button
-                onClick={toggleAi}
-                disabled={togglingAi}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition-all",
-                  pausedAi
-                    ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
-                    : "bg-black/[0.04] text-black/60 ring-1 ring-black/[0.08] hover:bg-black/[0.08]"
-                )}
-              >
-                {pausedAi ? <User size={10} weight="fill" /> : <Robot size={10} />}
-                {pausedAi ? "Human" : "AI"}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className={cn("text-[10px] font-semibold uppercase tracking-wide", pausedAi ? "text-amber-600" : "text-black/40")}>
+                  {pausedAi ? "Human" : "AI"}
+                </span>
+                <Switch
+                  checked={!pausedAi}
+                  onCheckedChange={(checked) => { if (!togglingAi) toggleAi(); }}
+                  disabled={togglingAi}
+                  className="data-[state=checked]:bg-black data-[state=unchecked]:bg-amber-400"
+                />
+                <Robot size={14} weight="fill" className={cn("transition-opacity", pausedAi ? "opacity-30" : "opacity-100")} />
+              </div>
             </div>
 
             {/* Messages */}
@@ -476,18 +476,11 @@ export default function SocialInbox({ platform }: Props) {
                 </div>
               ) : (
                 <div className="relative rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08]">
-                  <div className="px-3.5 pt-3 pb-0">
-                    <p className="text-[13px] leading-[1.6] text-muted-foreground">
+                  <div className="px-3.5 py-3">
+                    <p className="text-[13px] leading-[1.6] text-muted-foreground flex items-center gap-1.5">
+                      <Robot size={13} className="text-black/40" />
                       AI bot responds automatically
                     </p>
-                  </div>
-                  <div className="flex items-center justify-end px-2 pb-2 pt-1">
-                    <button
-                      onClick={toggleAi}
-                      className="flex h-8 items-center gap-1.5 rounded-full bg-amber-50 px-3 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100 transition-all"
-                    >
-                      <User size={10} weight="fill" /> Take over
-                    </button>
                   </div>
                 </div>
               )}
