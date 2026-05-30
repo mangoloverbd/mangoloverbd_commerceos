@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Eye, EyeOff, ShieldCheck, MailCheck } from "lucide-react";
 import { RiUserFill } from "@remixicon/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ParticleBackground } from "@/components/ui/particle-background";
+import { Sparkles } from "@/components/ui/sparkles";
 
 type Mode = "signin" | "signup";
 const rememberedEmailKey = "seraphine:remembered-email";
@@ -174,7 +174,16 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-black">
-      <ParticleBackground />
+      {/* Sparkles background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_bottom_center,#8350e8,transparent_70%)] before:opacity-40" />
+        <div className="absolute -left-1/2 top-1/2 aspect-[1/0.7] z-10 w-[200%] rounded-[100%] border-t border-white/20 bg-black" />
+        <Sparkles
+          density={1200}
+          className="absolute inset-0 h-full w-full [mask-image:radial-gradient(50%_50%,white,transparent_85%)]"
+          color="#ffffff"
+        />
+      </div>
 
       <div className="relative z-10 mx-4">
         <AnimatePresence mode="wait">
@@ -186,7 +195,7 @@ export default function Auth() {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Card className="flex w-full max-w-[440px] shadow-none flex-col gap-6 p-5 md:p-8 bg-white/[0.03] backdrop-blur-xl border-white/10">
+              <Card className="flex w-full max-w-[480px] shadow-none flex-col gap-6 p-6 md:p-10 bg-white/[0.03] backdrop-blur-xl border-white/10">
                 <div className="w-full flex flex-col items-center text-center space-y-6">
                   <div className="h-16 w-16 rounded-2xl flex items-center justify-center bg-white/[0.06] border border-white/10">
                     <MailCheck className="w-7 h-7 text-white" />
@@ -222,7 +231,7 @@ export default function Auth() {
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Card className="flex w-full max-w-[440px] shadow-none flex-col gap-6 p-5 md:p-8 bg-white/[0.03] backdrop-blur-xl border-white/10">
+              <Card className="flex w-full max-w-[480px] shadow-none flex-col gap-6 p-6 md:p-10 bg-white/[0.03] backdrop-blur-xl border-white/10">
                 <CardHeader className="flex flex-col items-center gap-2 p-0">
                   {/* Avatar circle */}
                   <div className="relative flex size-[68px] shrink-0 items-center justify-center rounded-full backdrop-blur-xl md:size-24 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-b before:from-neutral-500 before:to-transparent before:opacity-10">
@@ -363,7 +372,7 @@ export default function Auth() {
                     <Button
                       type="submit"
                       disabled={loading}
-                      className="w-full bg-white text-black hover:bg-white/90 font-medium"
+                      className="w-full bg-black text-white hover:bg-black/90 font-medium"
                     >
                       {loading
                         ? mode === "signin" ? "Signing In..." : "Creating..."
