@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Button7 } from "@/components/ui/button-7";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Eye, EyeOff, ShieldCheck, MailCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -413,20 +413,19 @@ export default function Auth() {
 
                   {/* Submit */}
                   <div className="pt-2">
-                    <Button7
+                    <Button
                       type="submit"
                       disabled={loading}
-                      fullWidth
-                      label={
-                        loading
-                          ? mode === "signin"
-                            ? "Signing In..."
-                            : "Creating..."
-                          : mode === "signin"
-                            ? "Sign In"
-                            : "Create Account"
-                      }
-                    />
+                      className="w-full"
+                    >
+                      {loading
+                        ? mode === "signin"
+                          ? "Signing In..."
+                          : "Creating..."
+                        : mode === "signin"
+                          ? "Sign In"
+                          : "Create Account"}
+                    </Button>
                   </div>
                 </form>
 
