@@ -270,7 +270,7 @@ export default function Auth() {
                     placeholder="name@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full h-12 bg-transparent border-0 border-b border-white/[0.08] text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-0"
+                    className="w-full h-[52px] bg-transparent border border-white/[0.12] rounded-none text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-4"
                     required
                   />
                 </div>
@@ -284,7 +284,7 @@ export default function Auth() {
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full h-12 bg-transparent border-0 border-b border-white/[0.08] text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-0 pr-9"
+                      className="w-full h-[52px] bg-transparent border border-white/[0.12] rounded-none text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-4 pr-9"
                       required
                     />
                     <button
@@ -316,7 +316,7 @@ export default function Auth() {
                             type={showConfirm ? "text" : "password"}
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full h-12 bg-transparent border-0 border-b border-white/[0.08] text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-0 pr-9"
+                            className="w-full h-[52px] bg-transparent border border-white/[0.12] rounded-none text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-4 pr-9"
                             required={mode === "signup"}
                           />
                           <button
