@@ -288,7 +288,7 @@ export default function Auth() {
                       required
                     />
                     <button
-                      className="text-white/15 hover:text-white/40 absolute inset-y-0 end-0 flex items-center transition-colors duration-300"
+                      className="text-white/20 hover:text-white/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                     >
@@ -320,7 +320,7 @@ export default function Auth() {
                             required={mode === "signup"}
                           />
                           <button
-                            className="text-white/15 hover:text-white/40 absolute inset-y-0 end-0 flex items-center transition-colors duration-300"
+                            className="text-white/20 hover:text-white/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
                             type="button"
                             onClick={() => setShowConfirm(!showConfirm)}
                           >
@@ -339,7 +339,7 @@ export default function Auth() {
                       id="keep-me-logged-in"
                       checked={rememberMe}
                       onCheckedChange={(checked) => setRememberMe(checked === true)}
-                      className="border-white/15 data-[state=checked]:bg-white/80 data-[state=checked]:text-black h-3 w-3 rounded-sm"
+                      className="border-white/20 data-[state=checked]:bg-[#c9a96e] data-[state=checked]:border-[#c9a96e] data-[state=checked]:text-black h-3.5 w-3.5 rounded-none"
                     />
                     <label htmlFor="keep-me-logged-in" className="cursor-pointer text-white/25 text-[11px] tracking-wide">
                       Remember me
