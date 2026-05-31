@@ -1,15 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Eye, EyeOff, ShieldCheck, MailCheck } from "lucide-react";
-import { RiUserFill } from "@remixicon/react";
+import { Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "@/components/ui/sparkles";
 
@@ -173,230 +167,218 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-[#0a0a0a]">
-      {/* Sparkles background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.03),transparent_50%)]" />
+    <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden bg-[#050505]">
+      {/* Subtle ambient glow */}
+      <div className="absolute inset-0">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[radial-gradient(ellipse,rgba(255,255,255,0.015),transparent_70%)]" />
         <Sparkles
-          density={400}
-          size={0.8}
-          speed={0.3}
-          opacity={0.4}
+          density={200}
+          size={0.5}
+          speed={0.15}
+          opacity={0.25}
           className="absolute inset-0 h-full w-full"
           color="#ffffff"
         />
       </div>
 
-      <div className="relative z-10 mx-4">
+      <div className="relative z-10 w-full max-w-[420px] mx-6">
         <AnimatePresence mode="wait">
           {emailSent ? (
             <motion.div
               key="email-sent"
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              className="flex flex-col items-center text-center space-y-10"
             >
-              <Card className="flex w-full max-w-[460px] flex-col gap-6 p-8 md:p-10 bg-[#111111] border-[#222] shadow-2xl shadow-black/50">
-                <div className="w-full flex flex-col items-center text-center space-y-6">
-                  <div className="h-16 w-16 rounded-2xl flex items-center justify-center bg-white/[0.04] border border-white/[0.08]">
-                    <MailCheck className="w-7 h-7 text-white/80" />
-                  </div>
-                  <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold tracking-[-0.02em] text-white">Check your email</h2>
-                    <p className="text-sm text-white/50 font-light leading-relaxed">
-                      We sent a confirmation link to<br />
-                      <span className="font-medium text-white">{email}</span>
-                    </p>
-                  </div>
-                  <div className="w-full rounded-xl p-4 text-left space-y-1 bg-white/[0.03] border border-white/[0.06]">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-white/30">Next steps</p>
-                    <p className="text-xs text-white/50 leading-relaxed">
-                      Open the email and click <span className="font-medium text-white/80">Confirm your mail</span>. You'll be signed in automatically.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => switchMode("signin")}
-                    className="text-[9px] font-semibold uppercase tracking-[0.25em] text-white/30 hover:text-white/60 transition-colors"
-                  >
-                    Back to sign in
-                  </button>
-                </div>
-              </Card>
+              <div className="space-y-4">
+                <MailCheck className="w-8 h-8 text-white/60 mx-auto" strokeWidth={1.2} />
+                <h2 className="text-[28px] font-light tracking-[-0.04em] text-white">Check your inbox</h2>
+                <p className="text-[13px] text-white/35 font-light leading-relaxed max-w-[300px] mx-auto">
+                  We sent a link to <span className="text-white/70">{email}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => switchMode("signin")}
+                className="text-[10px] uppercase tracking-[0.3em] text-white/25 hover:text-white/50 transition-colors duration-500"
+              >
+                Return to sign in
+              </button>
             </motion.div>
           ) : (
             <motion.div
               key="form"
-              initial={{ opacity: 0, y: 32, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+              className="flex flex-col"
             >
-              <Card className="flex w-full max-w-[460px] flex-col gap-5 p-8 md:p-10 bg-[#111111] border-[#222] shadow-2xl shadow-black/50">
-                <CardHeader className="flex flex-col items-center gap-3 p-0">
-                  <div className="flex flex-col space-y-1 text-center">
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={mode}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <CardTitle className="text-[22px] font-semibold tracking-[-0.03em] text-white">
-                          {mode === "signin" ? "Welcome back" : "Create account"}
-                        </CardTitle>
-                        <CardDescription className="text-[13px] text-white/40 mt-1 tracking-[-0.01em]">
-                          {mode === "signin"
-                            ? "Enter your credentials to continue."
-                            : "Sign up to get started."}
-                        </CardDescription>
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                </CardHeader>
-
-                <Separator className="bg-white/[0.06]" />
-
-                <CardContent className="p-0">
-                  {/* Mode tabs */}
-                  <div className="mb-5 grid w-full grid-cols-2 gap-1 rounded-lg bg-white/[0.03] p-1">
-                    {(["signin", "signup"] as Mode[]).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => switchMode(m)}
-                        className={`h-8 rounded-md text-[11px] font-medium tracking-wide transition-all ${
-                          mode === m
-                            ? "bg-white/[0.08] text-white shadow-sm"
-                            : "text-white/35 hover:text-white/60"
-                        }`}
-                      >
-                        {m === "signin" ? "Sign In" : "Sign Up"}
-                      </button>
-                    ))}
-                  </div>
-
-                  <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="email" className="text-[11px] font-medium text-white/50 uppercase tracking-[0.1em]">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="name@company.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="h-11 rounded-lg bg-white/[0.04] border-white/[0.08] text-white placeholder:text-white/25 focus-visible:ring-1 focus-visible:ring-white/20 focus-visible:border-white/20"
-                        required
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="password" className="text-[11px] font-medium text-white/50 uppercase tracking-[0.1em]">Password</Label>
-                      <div className="relative">
-                        <Input
-                          id="password"
-                          className="h-11 pe-9 rounded-lg bg-white/[0.04] border-white/[0.08] text-white placeholder:text-white/25 focus-visible:ring-1 focus-visible:ring-white/20 focus-visible:border-white/20"
-                          placeholder="Enter password"
-                          type={showPassword ? "text" : "password"}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                        />
-                        <button
-                          className="text-white/25 hover:text-white/50 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-colors"
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Confirm password — signup only */}
-                    <AnimatePresence initial={false}>
-                      {mode === "signup" && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.3 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="confirm-password" className="text-[11px] font-medium text-white/50 uppercase tracking-[0.1em]">Confirm Password</Label>
-                            <div className="relative">
-                              <Input
-                                id="confirm-password"
-                                className="h-11 pe-9 rounded-lg bg-white/[0.04] border-white/[0.08] text-white placeholder:text-white/25 focus-visible:ring-1 focus-visible:ring-white/20 focus-visible:border-white/20"
-                                placeholder="Confirm password"
-                                type={showConfirm ? "text" : "password"}
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                required={mode === "signup"}
-                              />
-                              <button
-                                className="text-white/25 hover:text-white/50 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-colors"
-                                type="button"
-                                onClick={() => setShowConfirm(!showConfirm)}
-                              >
-                                {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* Remember me — signin only */}
-                    {mode === "signin" && (
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id="keep-me-logged-in"
-                          checked={rememberMe}
-                          onCheckedChange={(checked) => setRememberMe(checked === true)}
-                          className="border-white/20 data-[state=checked]:bg-white data-[state=checked]:text-black h-3.5 w-3.5"
-                        />
-                        <Label htmlFor="keep-me-logged-in" className="cursor-pointer text-white/40 text-[12px]">
-                          Keep me logged in
-                        </Label>
-                      </div>
-                    )}
-
-                    <Button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full h-11 bg-white text-[#0a0a0a] hover:bg-white/90 font-semibold text-[13px] tracking-[-0.01em] rounded-lg mt-1"
+              {/* Header — no card, just floating content */}
+              <div className="text-center mb-12">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={mode}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.4 }}
+                  >
+                    <h1
+                      className="text-[32px] font-extralight tracking-[-0.04em] text-white mb-2"
+                      style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
                     >
-                      {loading
-                        ? mode === "signin" ? "Signing In..." : "Creating..."
-                        : mode === "signin" ? "Continue" : "Create Account"}
-                    </Button>
-                  </form>
-
-                  {/* Footer links */}
-                  <div className="mt-5 text-center">
-                    <p className="text-[12px] text-white/30">
-                      {mode === "signin" ? (
-                        <>
-                          Don&apos;t have an account?{" "}
-                          <button type="button" onClick={() => switchMode("signup")} className="font-medium text-white/60 hover:text-white underline underline-offset-2 transition-colors">
-                            Sign up
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          Already have an account?{" "}
-                          <button type="button" onClick={() => switchMode("signin")} className="font-medium text-white/60 hover:text-white underline underline-offset-2 transition-colors">
-                            Sign in
-                          </button>
-                        </>
-                      )}
+                      {mode === "signin" ? "Welcome" : "Begin"}
+                    </h1>
+                    <p className="text-[12px] text-white/30 tracking-[0.15em] uppercase font-light">
+                      {mode === "signin" ? "Sign in to continue" : "Create your account"}
                     </p>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              {/* Thin gold accent line */}
+              <div className="w-8 h-px bg-gradient-to-r from-transparent via-[#c9a96e] to-transparent mx-auto mb-10" />
+
+              {/* Mode switcher — text only, no box */}
+              <div className="flex justify-center gap-8 mb-10">
+                {(["signin", "signup"] as Mode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => switchMode(m)}
+                    className={`text-[10px] uppercase tracking-[0.25em] transition-all duration-500 pb-2 border-b ${
+                      mode === m
+                        ? "text-white/80 border-white/30"
+                        : "text-white/20 border-transparent hover:text-white/40"
+                    }`}
+                  >
+                    {m === "signin" ? "Sign In" : "Sign Up"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="email" className="text-[10px] text-white/25 uppercase tracking-[0.2em] font-light">Email</label>
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="name@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full h-12 bg-transparent border-0 border-b border-white/[0.08] text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-0"
+                    required
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="password" className="text-[10px] text-white/25 uppercase tracking-[0.2em] font-light">Password</label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      placeholder="Enter password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full h-12 bg-transparent border-0 border-b border-white/[0.08] text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-0 pr-9"
+                      required
+                    />
+                    <button
+                      className="text-white/15 hover:text-white/40 absolute inset-y-0 end-0 flex items-center transition-colors duration-300"
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff size={14} strokeWidth={1.2} /> : <Eye size={14} strokeWidth={1.2} />}
+                    </button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+
+                {/* Confirm password — signup only */}
+                <AnimatePresence initial={false}>
+                  {mode === "signup" && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                      className="overflow-hidden"
+                    >
+                      <div className="flex flex-col gap-2">
+                        <label htmlFor="confirm-password" className="text-[10px] text-white/25 uppercase tracking-[0.2em] font-light">Confirm</label>
+                        <div className="relative">
+                          <input
+                            id="confirm-password"
+                            placeholder="Re-enter password"
+                            type={showConfirm ? "text" : "password"}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="w-full h-12 bg-transparent border-0 border-b border-white/[0.08] text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-0 pr-9"
+                            required={mode === "signup"}
+                          />
+                          <button
+                            className="text-white/15 hover:text-white/40 absolute inset-y-0 end-0 flex items-center transition-colors duration-300"
+                            type="button"
+                            onClick={() => setShowConfirm(!showConfirm)}
+                          >
+                            {showConfirm ? <EyeOff size={14} strokeWidth={1.2} /> : <Eye size={14} strokeWidth={1.2} />}
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Remember me */}
+                {mode === "signin" && (
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <Checkbox
+                      id="keep-me-logged-in"
+                      checked={rememberMe}
+                      onCheckedChange={(checked) => setRememberMe(checked === true)}
+                      className="border-white/15 data-[state=checked]:bg-white/80 data-[state=checked]:text-black h-3 w-3 rounded-sm"
+                    />
+                    <label htmlFor="keep-me-logged-in" className="cursor-pointer text-white/25 text-[11px] tracking-wide">
+                      Remember me
+                    </label>
+                  </div>
+                )}
+
+                {/* CTA */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-[52px] mt-4 border border-white/[0.12] rounded-none text-[11px] uppercase tracking-[0.3em] text-white/80 font-light hover:bg-white/[0.04] hover:border-white/25 disabled:opacity-30 transition-all duration-500"
+                >
+                  {loading
+                    ? mode === "signin" ? "Authenticating..." : "Creating..."
+                    : mode === "signin" ? "Continue" : "Create Account"}
+                </button>
+              </form>
+
+              {/* Footer */}
+              <div className="mt-10 text-center">
+                <p className="text-[11px] text-white/20 tracking-wide">
+                  {mode === "signin" ? (
+                    <>
+                      New here?{" "}
+                      <button type="button" onClick={() => switchMode("signup")} className="text-white/40 hover:text-white/70 transition-colors duration-500">
+                        Create account
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      Have an account?{" "}
+                      <button type="button" onClick={() => switchMode("signin")} className="text-white/40 hover:text-white/70 transition-colors duration-500">
+                        Sign in
+                      </button>
+                    </>
+                  )}
+                </p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
