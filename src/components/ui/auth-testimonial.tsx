@@ -61,7 +61,7 @@ export function AuthTestimonial() {
     >
       {/* Large background number */}
       <motion.div
-        className="absolute -left-4 top-1/2 -translate-y-1/2 text-[20rem] font-bold text-white/[0.02] select-none pointer-events-none leading-none tracking-tighter"
+        className="absolute -left-4 top-1/2 -translate-y-1/2 text-[20rem] font-bold text-black/[0.03] select-none pointer-events-none leading-none tracking-tighter"
         style={{ x: numberX, y: numberY }}
       >
         <AnimatePresence mode="wait">
@@ -90,8 +90,8 @@ export function AuthTestimonial() {
             transition={{ duration: 0.4 }}
             className="mb-8"
           >
-            <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.2em] uppercase text-white/30">
-              <span className="w-1 h-1 rounded-full bg-[#c9a96e]" />
+            <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.2em] uppercase text-black/35">
+              <span className="w-1 h-1 rounded-full bg-black/30" />
               {current.company}
             </span>
           </motion.div>
@@ -102,7 +102,7 @@ export function AuthTestimonial() {
           <AnimatePresence mode="wait">
             <motion.blockquote
               key={activeIndex}
-              className="text-[28px] lg:text-[34px] font-extralight text-white/90 leading-[1.2] tracking-[-0.03em]"
+              className="text-[28px] lg:text-[34px] font-extralight text-black/85 leading-[1.2] tracking-[-0.03em]"
               style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
               initial="hidden"
               animate="visible"
@@ -139,10 +139,10 @@ export function AuthTestimonial() {
             transition={{ duration: 0.4, delay: 0.2 }}
             className="flex items-center gap-3"
           >
-            <div className="w-6 h-px bg-[#c9a96e]/50" />
+            <div className="w-6 h-px bg-black/20" />
             <div>
-              <p className="text-[13px] font-light text-white/70">{current.author}</p>
-              <p className="text-[11px] text-white/30">{current.role}</p>
+              <p className="text-[13px] font-light text-black/70">{current.author}</p>
+              <p className="text-[11px] text-black/35">{current.role}</p>
             </div>
           </motion.div>
         </AnimatePresence>
@@ -154,7 +154,7 @@ export function AuthTestimonial() {
               key={i}
               onClick={() => setActiveIndex(i)}
               className={`h-px transition-all duration-700 ${
-                i === activeIndex ? "w-8 bg-[#c9a96e]" : "w-4 bg-white/10 hover:bg-white/20"
+                i === activeIndex ? "w-8 bg-black/40" : "w-4 bg-black/10 hover:bg-black/20"
               }`}
             />
           ))}

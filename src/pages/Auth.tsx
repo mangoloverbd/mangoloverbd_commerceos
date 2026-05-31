@@ -168,33 +168,30 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen w-full relative flex overflow-hidden bg-[#050505]">
+    <div className="min-h-screen w-full relative flex overflow-hidden bg-[#FAFAF8]">
       {/* Left panel — testimonial */}
-      <div className="hidden lg:flex lg:w-1/2 relative">
+      <div className="hidden lg:flex lg:w-1/2 relative bg-[#f5f5f3]">
         {/* Sparkles on left panel */}
         <div className="absolute inset-0">
           <Sparkles
-            density={150}
+            density={100}
             size={0.4}
             speed={0.1}
-            opacity={0.2}
+            opacity={0.15}
             className="absolute inset-0 h-full w-full"
-            color="#ffffff"
+            color="#000000"
           />
         </div>
         <div className="relative z-10 w-full">
           <AuthTestimonial />
         </div>
         {/* Right edge divider */}
-        <div className="absolute right-0 top-[15%] bottom-[15%] w-px bg-gradient-to-b from-transparent via-white/[0.06] to-transparent" />
+        <div className="absolute right-0 top-[15%] bottom-[15%] w-px bg-gradient-to-b from-transparent via-black/[0.06] to-transparent" />
       </div>
 
       {/* Right panel — auth form */}
       <div className="flex-1 flex items-center justify-center relative">
-        {/* Subtle ambient glow */}
-        <div className="absolute inset-0">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-[radial-gradient(ellipse,rgba(255,255,255,0.015),transparent_70%)]" />
-        </div>
+        <div className="absolute inset-0" />
 
         <div className="relative z-10 w-full max-w-[380px] mx-8">
           <AnimatePresence mode="wait">
@@ -208,16 +205,16 @@ export default function Auth() {
                 className="flex flex-col items-center text-center space-y-10"
               >
                 <div className="space-y-4">
-                  <MailCheck className="w-8 h-8 text-white/60 mx-auto" strokeWidth={1.2} />
-                  <h2 className="text-[28px] font-light tracking-[-0.04em] text-white">Check your inbox</h2>
-                  <p className="text-[13px] text-white/35 font-light leading-relaxed max-w-[300px] mx-auto">
-                    We sent a link to <span className="text-white/70">{email}</span>
+                  <MailCheck className="w-8 h-8 text-black/50 mx-auto" strokeWidth={1.2} />
+                  <h2 className="text-[28px] font-light tracking-[-0.04em] text-black">Check your inbox</h2>
+                  <p className="text-[13px] text-black/40 font-light leading-relaxed max-w-[300px] mx-auto">
+                    We sent a link to <span className="text-black/70">{email}</span>
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => switchMode("signin")}
-                  className="text-[10px] uppercase tracking-[0.3em] text-white/25 hover:text-white/50 transition-colors duration-500"
+                  className="text-[10px] uppercase tracking-[0.3em] text-black/25 hover:text-black/50 transition-colors duration-500"
                 >
                   Return to sign in
                 </button>
@@ -242,12 +239,12 @@ export default function Auth() {
                       transition={{ duration: 0.4 }}
                     >
                       <h1
-                        className="text-[32px] font-extralight tracking-[-0.04em] text-white mb-2"
+                        className="text-[32px] font-extralight tracking-[-0.04em] text-black mb-2"
                         style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
                       >
                         {mode === "signin" ? "Welcome" : "Begin"}
                       </h1>
-                      <p className="text-[12px] text-white/30 tracking-[0.15em] uppercase font-light">
+                      <p className="text-[12px] text-black/30 tracking-[0.15em] uppercase font-light">
                         {mode === "signin" ? "Sign in to continue" : "Create your account"}
                       </p>
                     </motion.div>
@@ -266,8 +263,8 @@ export default function Auth() {
                       onClick={() => switchMode(m)}
                       className={`text-[10px] uppercase tracking-[0.25em] transition-all duration-500 pb-2 border-b ${
                         mode === m
-                          ? "text-white/80 border-white/30"
-                          : "text-white/20 border-transparent hover:text-white/40"
+                          ? "text-black/80 border-black/30"
+                          : "text-black/20 border-transparent hover:text-black/40"
                       }`}
                     >
                       {m === "signin" ? "Sign In" : "Sign Up"}
@@ -278,20 +275,20 @@ export default function Auth() {
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="flex flex-col gap-6">
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="email" className="text-[10px] text-white/25 uppercase tracking-[0.2em] font-light">Email</label>
+                    <label htmlFor="email" className="text-[10px] text-black/35 uppercase tracking-[0.2em] font-light">Email</label>
                     <input
                       id="email"
                       type="email"
                       placeholder="name@company.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full h-[52px] bg-transparent border border-white/[0.12] rounded-none text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-4"
+                      className="w-full h-[52px] bg-transparent border border-black/[0.1] rounded-none text-[14px] text-black font-light placeholder:text-black/25 focus:outline-none focus:border-black/25 transition-colors duration-500 px-4"
                       required
                     />
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="password" className="text-[10px] text-white/25 uppercase tracking-[0.2em] font-light">Password</label>
+                    <label htmlFor="password" className="text-[10px] text-black/35 uppercase tracking-[0.2em] font-light">Password</label>
                     <div className="relative">
                       <input
                         id="password"
@@ -299,11 +296,11 @@ export default function Auth() {
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full h-[52px] bg-transparent border border-white/[0.12] rounded-none text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-4 pr-9"
+                        className="w-full h-[52px] bg-transparent border border-black/[0.1] rounded-none text-[14px] text-black font-light placeholder:text-black/25 focus:outline-none focus:border-black/25 transition-colors duration-500 px-4 pr-9"
                         required
                       />
                       <button
-                        className="text-white/20 hover:text-white/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
+                        className="text-black/20 hover:text-black/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                       >
@@ -323,7 +320,7 @@ export default function Auth() {
                         className="overflow-hidden"
                       >
                         <div className="flex flex-col gap-2">
-                          <label htmlFor="confirm-password" className="text-[10px] text-white/25 uppercase tracking-[0.2em] font-light">Confirm</label>
+                          <label htmlFor="confirm-password" className="text-[10px] text-black/35 uppercase tracking-[0.2em] font-light">Confirm</label>
                           <div className="relative">
                             <input
                               id="confirm-password"
@@ -331,11 +328,11 @@ export default function Auth() {
                               type={showConfirm ? "text" : "password"}
                               value={confirmPassword}
                               onChange={(e) => setConfirmPassword(e.target.value)}
-                              className="w-full h-[52px] bg-transparent border border-white/[0.12] rounded-none text-[14px] text-white font-light placeholder:text-white/15 focus:outline-none focus:border-white/25 transition-colors duration-500 px-4 pr-9"
+                              className="w-full h-[52px] bg-transparent border border-black/[0.1] rounded-none text-[14px] text-black font-light placeholder:text-black/25 focus:outline-none focus:border-black/25 transition-colors duration-500 px-4 pr-9"
                               required={mode === "signup"}
                             />
                             <button
-                              className="text-white/20 hover:text-white/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
+                              className="text-black/20 hover:text-black/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
                             >
@@ -354,9 +351,9 @@ export default function Auth() {
                         id="keep-me-logged-in"
                         checked={rememberMe}
                         onCheckedChange={(checked) => setRememberMe(checked === true)}
-                        className="border-white/20 data-[state=checked]:bg-[#c9a96e] data-[state=checked]:border-[#c9a96e] data-[state=checked]:text-black h-3.5 w-3.5 rounded-none"
+                        className="border-black/15 data-[state=checked]:bg-black data-[state=checked]:border-black data-[state=checked]:text-white h-3.5 w-3.5 rounded-none"
                       />
-                      <label htmlFor="keep-me-logged-in" className="cursor-pointer text-white/25 text-[11px] tracking-wide">
+                      <label htmlFor="keep-me-logged-in" className="cursor-pointer text-black/35 text-[11px] tracking-wide">
                         Remember me
                       </label>
                     </div>
@@ -366,7 +363,7 @@ export default function Auth() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full h-[52px] mt-4 border border-white/[0.12] rounded-none text-[11px] uppercase tracking-[0.3em] text-white/80 font-light hover:bg-white/[0.04] hover:border-white/25 disabled:opacity-30 transition-all duration-500"
+                    className="w-full h-[52px] mt-4 bg-black text-white rounded-none text-[11px] uppercase tracking-[0.3em] font-light hover:bg-black/85 disabled:opacity-30 transition-all duration-500"
                   >
                     {loading
                       ? mode === "signin" ? "Authenticating..." : "Creating..."
@@ -376,18 +373,18 @@ export default function Auth() {
 
                 {/* Footer */}
                 <div className="mt-10 text-center">
-                  <p className="text-[11px] text-white/20 tracking-wide">
+                  <p className="text-[11px] text-black/30 tracking-wide">
                     {mode === "signin" ? (
                       <>
                         New here?{" "}
-                        <button type="button" onClick={() => switchMode("signup")} className="text-white/40 hover:text-white/70 transition-colors duration-500">
+                        <button type="button" onClick={() => switchMode("signup")} className="text-black/50 hover:text-black transition-colors duration-500">
                           Create account
                         </button>
                       </>
                     ) : (
                       <>
                         Have an account?{" "}
-                        <button type="button" onClick={() => switchMode("signin")} className="text-white/40 hover:text-white/70 transition-colors duration-500">
+                        <button type="button" onClick={() => switchMode("signin")} className="text-black/50 hover:text-black transition-colors duration-500">
                           Sign in
                         </button>
                       </>
