@@ -100,7 +100,7 @@ export function TextScramble({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <span className={cn("relative font-mono text-lg tracking-widest uppercase", textClassName)}>
+      <span className={cn("relative font-mono text-lg tracking-widest", textClassName)}>
         {displayText.split("").map((char, i) => (
           <span
             key={`${char}-${i}`}
