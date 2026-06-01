@@ -51,7 +51,7 @@ function SidebarScrambleLabel({ text, active, animateSignal }: { text: string; a
             glow={false}
             className="min-w-0"
             textClassName={cn(
-                "block truncate font-sf-text text-[12.5px] font-medium uppercase tracking-normal",
+                "block truncate font-sf-text text-[12.5px] font-medium capitalize tracking-normal",
                 active && "font-medium"
             )}
             charClassName={active ? "text-[#222]" : "text-current"}
@@ -84,7 +84,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                 >
                     {/* Section label */}
                     {!isCollapsed && section.label && (
-                        <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 font-sf-text text-[11px] font-medium uppercase tracking-normal text-[#4a4a4a]">
+                        <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 font-sf-text text-[11px] font-medium capitalize tracking-normal text-[#4a4a4a]">
                             {section.label}
                         </SidebarGroupLabel>
                     )}
@@ -154,7 +154,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 <span className={cn(navIconFrame)}>
                                                     {route.icon}
                                                 </span>
-                                                <span className="flex-1 truncate font-sf-text text-[12.5px] font-medium uppercase tracking-normal">
+                                                <span className="flex-1 truncate font-sf-text text-[12.5px] font-medium capitalize tracking-normal">
                                                     {route.title}
                                                 </span>
                                                 <Lock size={11} className="shrink-0 ml-auto opacity-60" />
@@ -229,7 +229,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                     underline={false}
                                                                                     glow={false}
                                                                                     className="min-w-0"
-                                                                                    textClassName="block truncate font-sf-text text-[11.5px] font-medium uppercase tracking-normal"
+                                                                                    textClassName="block truncate font-sf-text text-[11.5px] font-medium capitalize tracking-normal"
                                                                                     charClassName={subActive ? "text-[#222]" : "text-current"}
                                                                                     scrambledClassName="scale-105 text-[#222]"
                                                                                 />
