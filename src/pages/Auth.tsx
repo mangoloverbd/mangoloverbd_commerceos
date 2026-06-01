@@ -229,24 +229,26 @@ export default function Auth() {
                 transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
                 className="flex flex-col"
               >
-                {/* Header — no card, just floating content */}
+                {/* Header */}
                 <div className="text-center mb-12">
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={mode}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.4 }}
-                    >
-                      <h1 className="text-[32px] font-bold tracking-[-0.02em] text-black mb-2">
-                        {mode === "signin" ? "Welcome" : "Begin"}
-                      </h1>
-                      <p className="text-[12px] text-black/40 tracking-[0.15em] uppercase">
-                        {mode === "signin" ? "Sign in to continue" : "Create your account"}
-                      </p>
-                    </motion.div>
-                  </AnimatePresence>
+                  <motion.h1
+                    key={`title-${mode}`}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className="text-[32px] font-bold tracking-[-0.02em] text-black mb-2"
+                  >
+                    {mode === "signin" ? "Welcome" : "Begin"}
+                  </motion.h1>
+                  <motion.p
+                    key={`subtitle-${mode}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3, delay: 0.05 }}
+                    className="text-[12px] text-black/40 tracking-[0.15em] uppercase"
+                  >
+                    {mode === "signin" ? "Sign in to continue" : "Create your account"}
+                  </motion.p>
                 </div>
 
                 {/* Thin gold accent line */}
@@ -343,19 +345,29 @@ export default function Auth() {
                   </AnimatePresence>
 
                   {/* Remember me */}
-                  {mode === "signin" && (
-                    <div className="flex items-center gap-2.5 pt-1">
-                      <Checkbox
-                        id="keep-me-logged-in"
-                        checked={rememberMe}
-                        onCheckedChange={(checked) => setRememberMe(checked === true)}
-                        className="border-black/15 data-[state=checked]:bg-black data-[state=checked]:border-black data-[state=checked]:text-white h-3.5 w-3.5 rounded-none"
-                      />
-                      <label htmlFor="keep-me-logged-in" className="cursor-pointer text-black/40 text-[11px] font-medium tracking-wide">
-                        Remember me
-                      </label>
-                    </div>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {mode === "signin" && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex items-center gap-2.5 pt-1">
+                          <Checkbox
+                            id="keep-me-logged-in"
+                            checked={rememberMe}
+                            onCheckedChange={(checked) => setRememberMe(checked === true)}
+                            className="border-black/15 data-[state=checked]:bg-black data-[state=checked]:border-black data-[state=checked]:text-white h-3.5 w-3.5 rounded-none"
+                          />
+                          <label htmlFor="keep-me-logged-in" className="cursor-pointer text-black/40 text-[11px] font-medium tracking-wide">
+                            Remember me
+                          </label>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* CTA */}
                   <Button
@@ -371,7 +383,13 @@ export default function Auth() {
                 </form>
 
                 {/* Footer */}
-                <div className="mt-10 text-center">
+                <motion.div
+                  key={`footer-${mode}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                  className="mt-10 text-center"
+                >
                   <p className="text-[12px] text-black/35">
                     {mode === "signin" ? (
                       <>
@@ -389,7 +407,7 @@ export default function Auth() {
                       </>
                     )}
                   </p>
-                </div>
+                </motion.div>
               </motion.div>
             )}
           </AnimatePresence>
