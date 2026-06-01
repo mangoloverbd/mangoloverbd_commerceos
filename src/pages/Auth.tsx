@@ -207,15 +207,15 @@ export default function Auth() {
               >
                 <div className="space-y-4">
                   <MailCheck className="w-8 h-8 text-black/50 mx-auto" strokeWidth={1.2} />
-                  <h2 className="text-[28px] font-light tracking-[-0.04em] text-black">Check your inbox</h2>
-                  <p className="text-[13px] text-black/40 font-light leading-relaxed max-w-[300px] mx-auto">
-                    We sent a link to <span className="text-black/70">{email}</span>
+                  <h2 className="text-[28px] font-bold tracking-[-0.02em] text-black">Check your inbox</h2>
+                  <p className="text-[13px] text-black/40 leading-relaxed max-w-[300px] mx-auto">
+                    We sent a link to <span className="text-black font-bold">{email}</span>
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => switchMode("signin")}
-                  className="text-[10px] uppercase tracking-[0.3em] text-black/25 hover:text-black/50 transition-colors duration-500"
+                  className="text-[11px] uppercase tracking-[0.25em] text-black/30 font-bold hover:text-black/60 transition-colors duration-300"
                 >
                   Return to sign in
                 </button>
@@ -239,13 +239,10 @@ export default function Auth() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.4 }}
                     >
-                      <h1
-                        className="text-[32px] font-extralight tracking-[-0.04em] text-black mb-2"
-                        style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-                      >
+                      <h1 className="text-[32px] font-bold tracking-[-0.02em] text-black mb-2">
                         {mode === "signin" ? "Welcome" : "Begin"}
                       </h1>
-                      <p className="text-[12px] text-black/30 tracking-[0.15em] uppercase font-light">
+                      <p className="text-[12px] text-black/40 tracking-[0.15em] uppercase">
                         {mode === "signin" ? "Sign in to continue" : "Create your account"}
                       </p>
                     </motion.div>
@@ -262,10 +259,10 @@ export default function Auth() {
                       key={m}
                       type="button"
                       onClick={() => switchMode(m)}
-                      className={`text-[10px] uppercase tracking-[0.25em] transition-all duration-500 pb-2 border-b ${
+                      className={`text-[11px] uppercase tracking-[0.25em] transition-all duration-500 pb-2 border-b ${
                         mode === m
-                          ? "text-black/80 border-black/30"
-                          : "text-black/20 border-transparent hover:text-black/40"
+                          ? "text-black font-bold border-black/40"
+                          : "text-black/25 border-transparent hover:text-black/40"
                       }`}
                     >
                       {m === "signin" ? "Sign In" : "Sign Up"}
@@ -276,7 +273,7 @@ export default function Auth() {
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="flex flex-col gap-6">
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="email" className="text-[10px] text-black/35 uppercase tracking-[0.2em] font-light">Email</label>
+                    <label htmlFor="email" className="text-[11px] text-black/50 font-bold uppercase tracking-[0.15em]">Email</label>
                     <input
                       id="email"
                       type="email"
@@ -289,7 +286,7 @@ export default function Auth() {
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="password" className="text-[10px] text-black/35 uppercase tracking-[0.2em] font-light">Password</label>
+                    <label htmlFor="password" className="text-[11px] text-black/50 font-bold uppercase tracking-[0.15em]">Password</label>
                     <div className="relative">
                       <input
                         id="password"
@@ -321,7 +318,7 @@ export default function Auth() {
                         className="overflow-hidden"
                       >
                         <div className="flex flex-col gap-2">
-                          <label htmlFor="confirm-password" className="text-[10px] text-black/35 uppercase tracking-[0.2em] font-light">Confirm</label>
+                          <label htmlFor="confirm-password" className="text-[11px] text-black/50 font-bold uppercase tracking-[0.15em]">Confirm</label>
                           <div className="relative">
                             <input
                               id="confirm-password"
@@ -354,7 +351,7 @@ export default function Auth() {
                         onCheckedChange={(checked) => setRememberMe(checked === true)}
                         className="border-black/15 data-[state=checked]:bg-black data-[state=checked]:border-black data-[state=checked]:text-white h-3.5 w-3.5 rounded-none"
                       />
-                      <label htmlFor="keep-me-logged-in" className="cursor-pointer text-black/35 text-[11px] tracking-wide">
+                      <label htmlFor="keep-me-logged-in" className="cursor-pointer text-black/40 text-[11px] font-medium tracking-wide">
                         Remember me
                       </label>
                     </div>
@@ -375,18 +372,18 @@ export default function Auth() {
 
                 {/* Footer */}
                 <div className="mt-10 text-center">
-                  <p className="text-[11px] text-black/30 tracking-wide">
+                  <p className="text-[12px] text-black/35">
                     {mode === "signin" ? (
                       <>
                         New here?{" "}
-                        <button type="button" onClick={() => switchMode("signup")} className="text-black/50 hover:text-black transition-colors duration-500">
+                        <button type="button" onClick={() => switchMode("signup")} className="text-black font-bold hover:text-black/70 transition-colors duration-300">
                           Create account
                         </button>
                       </>
                     ) : (
                       <>
                         Have an account?{" "}
-                        <button type="button" onClick={() => switchMode("signin")} className="text-black/50 hover:text-black transition-colors duration-500">
+                        <button type="button" onClick={() => switchMode("signin")} className="text-black font-bold hover:text-black/70 transition-colors duration-300">
                           Sign in
                         </button>
                       </>
