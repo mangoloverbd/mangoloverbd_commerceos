@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { TextureButton } from "@/components/ui/texture-button";
+import {
+  TextureCardContent,
+  TextureCardFooter,
+  TextureCardHeader,
+  TextureCardStyled,
+  TextureCardTitle,
+  TextureSeparator,
+} from "@/components/ui/texture-card";
 import { toast } from "sonner";
-import { Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, MailCheck, Merge, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "@/components/ui/sparkles";
 import { AuthTestimonial } from "@/components/ui/auth-testimonial";
@@ -172,7 +182,6 @@ export default function Auth() {
     <div className="min-h-screen w-full relative flex overflow-hidden bg-[#FAFAF8]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
       {/* Left panel — testimonial */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-[#f5f5f3]">
-        {/* Sparkles on left panel */}
         <div className="absolute inset-0">
           <Sparkles
             density={100}
@@ -186,15 +195,12 @@ export default function Auth() {
         <div className="relative z-10 w-full">
           <AuthTestimonial />
         </div>
-        {/* Right edge divider */}
         <div className="absolute right-0 top-[15%] bottom-[15%] w-px bg-gradient-to-b from-transparent via-black/[0.06] to-transparent" />
       </div>
 
-      {/* Right panel — auth form */}
+      {/* Right panel — texture card auth form */}
       <div className="flex-1 flex items-center justify-center relative">
-        <div className="absolute inset-0" />
-
-        <div className="relative z-10 w-full max-w-[380px] mx-8">
+        <div className="relative z-10 w-full max-w-[420px] mx-6">
           <AnimatePresence mode="wait">
             {emailSent ? (
               <motion.div
@@ -227,169 +233,180 @@ export default function Auth() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-                className="flex flex-col"
               >
-                {/* Header — no card, just floating content */}
-                <div className="text-center mb-12">
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={mode}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.4 }}
-                    >
-                      <h1 className="text-[32px] font-bold tracking-[-0.02em] text-black mb-2">
-                        {mode === "signin" ? "Welcome" : "Begin"}
-                      </h1>
-                      <p className="text-[12px] text-black/40 tracking-[0.15em] uppercase">
-                        {mode === "signin" ? "Sign in to continue" : "Create your account"}
-                      </p>
-                    </motion.div>
-                  </AnimatePresence>
-                </div>
-
-                {/* Thin gold accent line */}
-                <div className="w-8 h-px bg-gradient-to-r from-transparent via-[#c9a96e] to-transparent mx-auto mb-10" />
-
-                {/* Mode switcher — text only, no box */}
-                <div className="flex justify-center gap-8 mb-10">
-                  {(["signin", "signup"] as Mode[]).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => switchMode(m)}
-                      className={`text-[11px] uppercase tracking-[0.25em] transition-all duration-500 pb-2 border-b ${
-                        mode === m
-                          ? "text-black font-bold border-black/40"
-                          : "text-black/25 border-transparent hover:text-black/40"
-                      }`}
-                    >
-                      {m === "signin" ? "Sign In" : "Sign Up"}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="email" className="text-[11px] text-black/50 font-bold uppercase tracking-[0.15em]">Email</label>
-                    <input
-                      id="email"
-                      type="email"
-                      placeholder="name@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full h-[44px] bg-white border border-black/[0.12] rounded-[10px] text-[14px] text-black placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-[#0171E3]/20 focus:border-[#0171E3]/40 transition-all duration-200 px-4"
-                      required
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="password" className="text-[11px] text-black/50 font-bold uppercase tracking-[0.15em]">Password</label>
-                    <div className="relative">
-                      <input
-                        id="password"
-                        placeholder="Enter password"
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full h-[44px] bg-white border border-black/[0.12] rounded-[10px] text-[14px] text-black placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-[#0171E3]/20 focus:border-[#0171E3]/40 transition-all duration-200 px-4 pr-11"
-                        required
-                      />
-                      <button
-                        className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-200"
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff size={16} strokeWidth={1.5} /> : <Eye size={16} strokeWidth={1.5} />}
-                      </button>
+                <TextureCardStyled>
+                  <TextureCardHeader className="flex flex-col gap-1 items-center justify-center p-6">
+                    <div className="p-3 bg-neutral-950 rounded-full mb-3">
+                      <Merge className="h-7 w-7 stroke-neutral-200" />
                     </div>
-                  </div>
-
-                  {/* Confirm password — signup only */}
-                  <AnimatePresence initial={false}>
-                    {mode === "signup" && (
+                    <AnimatePresence mode="wait">
                       <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                        className="overflow-hidden"
+                        key={mode}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="text-center"
                       >
-                        <div className="flex flex-col gap-2">
-                          <label htmlFor="confirm-password" className="text-[11px] text-black/50 font-bold uppercase tracking-[0.15em]">Confirm</label>
-                          <div className="relative">
-                            <input
-                              id="confirm-password"
-                              placeholder="Re-enter password"
-                              type={showConfirm ? "text" : "password"}
-                              value={confirmPassword}
-                              onChange={(e) => setConfirmPassword(e.target.value)}
-                              className="w-full h-[44px] bg-white border border-black/[0.12] rounded-[10px] text-[14px] text-black placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-[#0171E3]/20 focus:border-[#0171E3]/40 transition-all duration-200 px-4 pr-11"
-                              required={mode === "signup"}
-                            />
-                            <button
-                              className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-200"
-                              type="button"
-                              onClick={() => setShowConfirm(!showConfirm)}
-                            >
-                              {showConfirm ? <EyeOff size={16} strokeWidth={1.5} /> : <Eye size={16} strokeWidth={1.5} />}
-                            </button>
-                          </div>
-                        </div>
+                        <TextureCardTitle>
+                          {mode === "signin" ? "Welcome back" : "Create your account"}
+                        </TextureCardTitle>
+                        <p className="text-sm text-neutral-500 mt-1">
+                          {mode === "signin"
+                            ? "Sign in to continue to your workspace."
+                            : "Welcome! Please fill in the details to get started."}
+                        </p>
                       </motion.div>
-                    )}
-                  </AnimatePresence>
+                    </AnimatePresence>
+                  </TextureCardHeader>
 
-                  {/* Remember me */}
-                  {mode === "signin" && (
-                    <div className="flex items-center gap-2.5 pt-1">
-                      <Checkbox
-                        id="keep-me-logged-in"
-                        checked={rememberMe}
-                        onCheckedChange={(checked) => setRememberMe(checked === true)}
-                        className="border-black/15 data-[state=checked]:bg-black data-[state=checked]:border-black data-[state=checked]:text-white h-3.5 w-3.5 rounded-none"
-                      />
-                      <label htmlFor="keep-me-logged-in" className="cursor-pointer text-black/40 text-[11px] font-medium tracking-wide">
-                        Remember me
-                      </label>
+                  <TextureSeparator />
+
+                  <TextureCardContent className="pt-6">
+                    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                      <div>
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="name@company.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                          className="w-full px-4 py-2 rounded-md border border-neutral-300 bg-white/80 placeholder-neutral-400"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="password">Password</Label>
+                        <div className="relative">
+                          <Input
+                            id="password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Enter password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            className="w-full px-4 py-2 pr-10 rounded-md border border-neutral-300 bg-white/80 placeholder-neutral-400"
+                          />
+                          <button
+                            className="text-neutral-400 hover:text-neutral-600 absolute top-1/2 -translate-y-1/2 right-3 transition-colors"
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <AnimatePresence initial={false}>
+                        {mode === "signup" && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <div>
+                              <Label htmlFor="confirm-password">Confirm Password</Label>
+                              <div className="relative">
+                                <Input
+                                  id="confirm-password"
+                                  type={showConfirm ? "text" : "password"}
+                                  placeholder="Re-enter password"
+                                  value={confirmPassword}
+                                  onChange={(e) => setConfirmPassword(e.target.value)}
+                                  required={mode === "signup"}
+                                  className="w-full px-4 py-2 pr-10 rounded-md border border-neutral-300 bg-white/80 placeholder-neutral-400"
+                                />
+                                <button
+                                  className="text-neutral-400 hover:text-neutral-600 absolute top-1/2 -translate-y-1/2 right-3 transition-colors"
+                                  type="button"
+                                  onClick={() => setShowConfirm(!showConfirm)}
+                                >
+                                  {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {mode === "signin" && (
+                        <div className="flex items-center gap-2.5">
+                          <Checkbox
+                            id="keep-me-logged-in"
+                            checked={rememberMe}
+                            onCheckedChange={(checked) => setRememberMe(checked === true)}
+                            className="border-neutral-300 data-[state=checked]:bg-black data-[state=checked]:border-black data-[state=checked]:text-white h-4 w-4 rounded"
+                          />
+                          <label htmlFor="keep-me-logged-in" className="cursor-pointer text-sm text-neutral-500">
+                            Remember me
+                          </label>
+                        </div>
+                      )}
+                    </form>
+                  </TextureCardContent>
+
+                  <TextureSeparator />
+
+                  <TextureCardFooter className="border-b rounded-b-sm pt-4">
+                    <TextureButton
+                      variant="accent"
+                      className="w-full"
+                      onClick={handleSubmit as unknown as React.MouseEventHandler}
+                      disabled={loading}
+                    >
+                      <div className="flex gap-1 items-center justify-center">
+                        {loading
+                          ? mode === "signin" ? "Authenticating..." : "Creating..."
+                          : mode === "signin" ? "Continue" : "Create Account"}
+                        {!loading && <ArrowRight className="h-4 w-4 text-neutral-50 mt-[1px]" />}
+                      </div>
+                    </TextureButton>
+                  </TextureCardFooter>
+
+                  <div className="bg-stone-100 pt-px rounded-b-[20px] overflow-hidden">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="py-3 px-2">
+                        <div className="text-center text-sm text-neutral-600">
+                          {mode === "signin" ? (
+                            <>
+                              Don't have an account?{" "}
+                              <button
+                                type="button"
+                                onClick={() => switchMode("signup")}
+                                className="text-black font-semibold hover:underline"
+                              >
+                                Sign up
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              Already have an account?{" "}
+                              <button
+                                type="button"
+                                onClick={() => switchMode("signin")}
+                                className="text-black font-semibold hover:underline"
+                              >
+                                Sign in
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-
-                  {/* CTA */}
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full mt-4 bg-black text-white border-black hover:bg-black/85"
-                    size="lg"
-                  >
-                    {loading
-                      ? mode === "signin" ? "Authenticating..." : "Creating..."
-                      : mode === "signin" ? "Continue" : "Create Account"}
-                  </Button>
-                </form>
-
-                {/* Footer */}
-                <div className="mt-10 text-center">
-                  <p className="text-[12px] text-black/35">
-                    {mode === "signin" ? (
-                      <>
-                        New here?{" "}
-                        <button type="button" onClick={() => switchMode("signup")} className="text-black font-bold hover:text-black/70 transition-colors duration-300">
-                          Create account
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        Have an account?{" "}
-                        <button type="button" onClick={() => switchMode("signin")} className="text-black font-bold hover:text-black/70 transition-colors duration-300">
-                          Sign in
-                        </button>
-                      </>
-                    )}
-                  </p>
-                </div>
+                    <TextureSeparator />
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="py-2 px-2">
+                        <div className="text-center text-xs text-neutral-400">
+                          Secured by Supabase
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TextureCardStyled>
               </motion.div>
             )}
           </AnimatePresence>
