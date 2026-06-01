@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react";
@@ -168,7 +169,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen w-full relative flex overflow-hidden bg-[#FAFAF8]">
+    <div className="min-h-screen w-full relative flex overflow-hidden bg-[#FAFAF8]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
       {/* Left panel — testimonial */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-[#f5f5f3]">
         {/* Sparkles on left panel */}
@@ -282,7 +283,7 @@ export default function Auth() {
                       placeholder="name@company.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full h-[52px] bg-transparent border border-black/[0.1] rounded-none text-[14px] text-black font-light placeholder:text-black/25 focus:outline-none focus:border-black/25 transition-colors duration-500 px-4"
+                      className="w-full h-[44px] bg-white border border-black/[0.12] rounded-[10px] text-[14px] text-black placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-[#0171E3]/20 focus:border-[#0171E3]/40 transition-all duration-200 px-4"
                       required
                     />
                   </div>
@@ -296,15 +297,15 @@ export default function Auth() {
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full h-[52px] bg-transparent border border-black/[0.1] rounded-none text-[14px] text-black font-light placeholder:text-black/25 focus:outline-none focus:border-black/25 transition-colors duration-500 px-4 pr-9"
+                        className="w-full h-[44px] bg-white border border-black/[0.12] rounded-[10px] text-[14px] text-black placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-[#0171E3]/20 focus:border-[#0171E3]/40 transition-all duration-200 px-4 pr-11"
                         required
                       />
                       <button
-                        className="text-black/20 hover:text-black/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
+                        className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-200"
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                       >
-                        {showPassword ? <EyeOff size={14} strokeWidth={1.2} /> : <Eye size={14} strokeWidth={1.2} />}
+                        {showPassword ? <EyeOff size={16} strokeWidth={1.5} /> : <Eye size={16} strokeWidth={1.5} />}
                       </button>
                     </div>
                   </div>
@@ -328,15 +329,15 @@ export default function Auth() {
                               type={showConfirm ? "text" : "password"}
                               value={confirmPassword}
                               onChange={(e) => setConfirmPassword(e.target.value)}
-                              className="w-full h-[52px] bg-transparent border border-black/[0.1] rounded-none text-[14px] text-black font-light placeholder:text-black/25 focus:outline-none focus:border-black/25 transition-colors duration-500 px-4 pr-9"
+                              className="w-full h-[44px] bg-white border border-black/[0.12] rounded-[10px] text-[14px] text-black placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-[#0171E3]/20 focus:border-[#0171E3]/40 transition-all duration-200 px-4 pr-11"
                               required={mode === "signup"}
                             />
                             <button
-                              className="text-black/20 hover:text-black/50 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-300"
+                              className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-200"
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
                             >
-                              {showConfirm ? <EyeOff size={14} strokeWidth={1.2} /> : <Eye size={14} strokeWidth={1.2} />}
+                              {showConfirm ? <EyeOff size={16} strokeWidth={1.5} /> : <Eye size={16} strokeWidth={1.5} />}
                             </button>
                           </div>
                         </div>
@@ -360,15 +361,16 @@ export default function Auth() {
                   )}
 
                   {/* CTA */}
-                  <button
+                  <Button
                     type="submit"
                     disabled={loading}
-                    className="w-full h-[52px] mt-4 bg-black text-white rounded-none text-[11px] uppercase tracking-[0.3em] font-light hover:bg-black/85 disabled:opacity-30 transition-all duration-500"
+                    className="w-full mt-4"
+                    size="lg"
                   >
                     {loading
                       ? mode === "signin" ? "Authenticating..." : "Creating..."
                       : mode === "signin" ? "Continue" : "Create Account"}
-                  </button>
+                  </Button>
                 </form>
 
                 {/* Footer */}
