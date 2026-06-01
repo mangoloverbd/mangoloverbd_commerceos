@@ -361,7 +361,7 @@ export default function Auth() {
                   <Button
                     type="submit"
                     disabled={loading}
-                    className="w-full mt-4"
+                    className="w-full mt-4 bg-black text-white border-black hover:bg-black/85"
                     size="lg"
                   >
                     {loading
