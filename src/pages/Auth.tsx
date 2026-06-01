@@ -231,24 +231,12 @@ export default function Auth() {
               >
                 {/* Header */}
                 <div className="text-center mb-12">
-                  <motion.h1
-                    key={`title-${mode}`}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                    className="text-[32px] font-bold tracking-[-0.02em] text-black mb-2"
-                  >
+                  <h1 className="text-[32px] font-bold tracking-[-0.02em] text-black mb-2">
                     {mode === "signin" ? "Welcome" : "Begin"}
-                  </motion.h1>
-                  <motion.p
-                    key={`subtitle-${mode}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3, delay: 0.05 }}
-                    className="text-[12px] text-black/40 tracking-[0.15em] uppercase"
-                  >
+                  </h1>
+                  <p className="text-[12px] text-black/40 tracking-[0.15em] uppercase">
                     {mode === "signin" ? "Sign in to continue" : "Create your account"}
-                  </motion.p>
+                  </p>
                 </div>
 
                 {/* Thin gold accent line */}
@@ -313,10 +301,10 @@ export default function Auth() {
                   <AnimatePresence initial={false}>
                     {mode === "signup" && (
                       <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                        animate={{ opacity: 1, height: "auto", marginTop: 0 }}
+                        exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                        transition={{ duration: 0.25, ease: "easeInOut" }}
                         className="overflow-hidden"
                       >
                         <div className="flex flex-col gap-2">
@@ -351,7 +339,7 @@ export default function Auth() {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.25, ease: "easeInOut" }}
                         className="overflow-hidden"
                       >
                         <div className="flex items-center gap-2.5 pt-1">
@@ -383,13 +371,7 @@ export default function Auth() {
                 </form>
 
                 {/* Footer */}
-                <motion.div
-                  key={`footer-${mode}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3, delay: 0.1 }}
-                  className="mt-10 text-center"
-                >
+                <div className="mt-10 text-center">
                   <p className="text-[12px] text-black/35">
                     {mode === "signin" ? (
                       <>
@@ -407,7 +389,7 @@ export default function Auth() {
                       </>
                     )}
                   </p>
-                </motion.div>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
