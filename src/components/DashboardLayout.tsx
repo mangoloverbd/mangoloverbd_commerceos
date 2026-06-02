@@ -111,7 +111,7 @@ export function DashboardLayout() {
                                     <div className="p-1.5">
                                         <DropdownMenuItem asChild>
                                             <Link to="/settings" className="flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 text-[12px] font-medium text-foreground/80 hover:bg-black/[0.04] hover:text-foreground transition-colors">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+                                                <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-[15px] w-[15px] shrink-0" />
                                                 Settings
                                             </Link>
                                         </DropdownMenuItem>

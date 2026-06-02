@@ -31,7 +31,6 @@ import {
 
 } from "lucide-react";
 import { Logo } from "./logo";
-import { AppleSettingsIcon } from "./ui/apple-settings-icon";
 import { SidebarAlerts } from "./ui/sidebar-alerts";
 import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
@@ -228,7 +227,7 @@ export function AppSidebar() {
                         )}
                         title="Settings"
                     >
-                        <AppleSettingsIcon className="h-[17px] w-[17px] shrink-0" />
+                        <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-[17px] w-[17px] shrink-0" />
                         {!isCollapsed && (
                             <span className="text-[12px] font-medium text-[#333]">Settings</span>
                         )}
