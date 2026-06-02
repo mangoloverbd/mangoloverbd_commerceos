@@ -141,9 +141,10 @@ export function AppSidebar() {
                     {!isCollapsed && (
                         <Link
                             to="/"
-                            className="flex min-w-0 items-baseline gap-1.5 text-[#111] transition-opacity hover:opacity-70"
+                            className="flex min-w-0 items-center gap-2 text-[#111] transition-opacity hover:opacity-70"
                             aria-label="Arc Lab Suite"
                         >
+                            <Logo className="h-6 w-6 rounded-md shrink-0" />
                             <span className="text-[15px] font-semibold leading-none tracking-normal">
                                 Arc Lab
                             </span>
