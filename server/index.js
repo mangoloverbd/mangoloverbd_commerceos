@@ -5044,14 +5044,15 @@ app.post("/api/social/reply", async (req, res) => {
 
     // Resolve channel credentials for sending
     if (platform === "whatsapp") {
-      // Find the WhatsApp account for this org
+      // Find the WhatsApp account for this org that has a phone_number_id
       const { data: waAccount } = await supabase
         .from("meta_whatsapp_accounts")
         .select("phone_number_id, encrypted_access_token")
         .eq("org_id", orgId)
+        .not("phone_number_id", "is", null)
         .limit(1)
         .maybeSingle();
-      if (!waAccount) return res.status(400).json({ error: "No WhatsApp account connected" });
+      if (!waAccount) return res.status(400).json({ error: "No WhatsApp account connected with a phone number. Please reconnect WhatsApp in Settings." });
       const token = waAccount.encrypted_access_token ? decryptToken(waAccount.encrypted_access_token) : "";
       console.log("[Social Reply] WhatsApp send:", { phoneNumberId: waAccount.phone_number_id, recipientId, hasToken: !!token });
       await sendWhatsAppMessage({ phoneNumberId: waAccount.phone_number_id, token, recipientId, text: text.trim() });
