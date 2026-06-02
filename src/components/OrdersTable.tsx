@@ -1209,7 +1209,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                       ) : (
                         (() => {
                           const rawStatus = (order.courier_status || "").toLowerCase().trim();
-                          const isInitialState = !rawStatus || rawStatus === "pending";
+                          const isInitialState = !rawStatus || rawStatus === "in_review";
                           const id = order.consignment_id || order.tracking_code;
 
                           if (isInitialState) {

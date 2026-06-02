@@ -3439,7 +3439,7 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
           continue;
         }
         const statusData = await statusRes.json();
-        const newStatus = statusData?.consignment?.delivery_status || statusData?.delivery_status;
+        const newStatus = statusData?.delivery_status;
         if (!newStatus) {
           console.log(`[Steadfast Refresh] No delivery_status in response for cid=${sfPollId}:`, JSON.stringify(statusData).slice(0, 200));
           continue;
