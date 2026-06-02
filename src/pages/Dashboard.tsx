@@ -541,8 +541,10 @@ export default function Dashboard() {
   const handleStatusUpdate = (orderId: string, newStatus: string) =>
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
 
-  const handleOrderUpdate = (updatedOrder: Order) =>
+  const handleOrderUpdate = (updatedOrder: Order) => {
     setOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o)));
+    fetchAnalytics(dateRange);
+  };
 
   const filteredOrders = useMemo(() => {
     if (!debouncedSearch.trim()) return orders;
