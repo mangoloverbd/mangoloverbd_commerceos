@@ -312,12 +312,13 @@ function FraudCell({ order, isChecking, onCheck }: {
 function EditableTotalCell({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: (updatedOrder: Order) => void }) {
   const [editing, setEditing] = useState(false);
   const total = (order.price || 0) + (order.delivery_rate || 0);
-  const [value, setValue] = useState(String(total));
   const [saving, setSaving] = useState(false);
 
-  const handleSave = async () => {
-    const newTotal = parseFloat(value) || 0;
-    if (newTotal === total) { setEditing(false); return; }
+  const handleBlur = async (e: React.FocusEvent<HTMLSpanElement>) => {
+    setEditing(false);
+    const raw = e.currentTarget.textContent?.replace(/[^0-9.]/g, "") || "0";
+    const newTotal = parseFloat(raw) || 0;
+    if (newTotal === total) return;
     setSaving(true);
     try {
       const res = await apiFetch(`/api/orders/${order.id}`, {
@@ -329,39 +330,33 @@ function EditableTotalCell({ order, onOrderUpdate }: { order: Order; onOrderUpda
       if (!res.ok) throw new Error(data.error || "Failed to update total");
       if (onOrderUpdate) onOrderUpdate(data.order || { ...order, price: newTotal - (order.delivery_rate || 0) });
       toast.success("Total updated");
-    } catch (error) {
+    } catch {
       toast.error("Failed to update total");
     } finally {
       setSaving(false);
-      setEditing(false);
     }
   };
 
-  if (editing) {
-    return (
-      <div className="flex items-center justify-end gap-1">
-        <span className="text-sm text-muted-foreground">৳</span>
-        <input
-          type="number"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }}
-          onBlur={handleSave}
-          autoFocus
-          disabled={saving}
-          className="w-20 h-7 text-sm font-medium text-right border border-black/10 rounded-md px-2 outline-none focus:ring-1 focus:ring-black/20 tabular-nums"
-        />
-      </div>
-    );
-  }
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+    if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+    if (e.key === "Escape") { e.currentTarget.textContent = `৳${total.toLocaleString()}`; setEditing(false); e.currentTarget.blur(); }
+  };
 
   return (
-    <button
-      onClick={() => { setValue(String(total)); setEditing(true); }}
-      className="font-medium text-sm tabular-nums hover:underline hover:underline-offset-2 cursor-pointer transition-colors"
+    <span
+      contentEditable
+      suppressContentEditableWarning
+      onFocus={() => setEditing(true)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className={cn(
+        "font-medium text-sm tabular-nums cursor-text outline-none transition-all",
+        editing ? "underline underline-offset-4 decoration-black/30" : "hover:underline hover:underline-offset-4 hover:decoration-black/20",
+        saving && "opacity-50 pointer-events-none"
+      )}
     >
       ৳{total.toLocaleString()}
-    </button>
+    </span>
   );
 }
 
