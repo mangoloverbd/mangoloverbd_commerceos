@@ -4178,8 +4178,11 @@ async function getWhatsAppMediaDataUrl(mediaId, token) {
 }
 
 async function sendWhatsAppMessage({ phoneNumberId, token, recipientId, text }) {
-  if (!phoneNumberId || !token || !recipientId || !text) return;
-  await metaGraph(`/${phoneNumberId}/messages`, {
+  if (!phoneNumberId || !token || !recipientId || !text) {
+    console.error("[WhatsApp Send] missing params:", { hasPhoneNumberId: !!phoneNumberId, hasToken: !!token, hasRecipientId: !!recipientId, hasText: !!text });
+    throw new Error(`WhatsApp send failed: missing ${!phoneNumberId ? "phoneNumberId" : !token ? "access token" : !recipientId ? "recipient" : "text"}`);
+  }
+  const result = await metaGraph(`/${phoneNumberId}/messages`, {
     method: "POST",
     token,
     body: {
@@ -4189,6 +4192,8 @@ async function sendWhatsAppMessage({ phoneNumberId, token, recipientId, text }) 
       text: { body: text.slice(0, 4000), preview_url: true },
     },
   });
+  console.log("[WhatsApp Send] success:", { phoneNumberId, recipientId: recipientId.slice(0, 6) + "...", messageId: result?.messages?.[0]?.id });
+  return result;
 }
 
 // ─── Unified message handler ──────────────────────────────────────────────────
@@ -5048,6 +5053,7 @@ app.post("/api/social/reply", async (req, res) => {
         .maybeSingle();
       if (!waAccount) return res.status(400).json({ error: "No WhatsApp account connected" });
       const token = waAccount.encrypted_access_token ? decryptToken(waAccount.encrypted_access_token) : "";
+      console.log("[Social Reply] WhatsApp send:", { phoneNumberId: waAccount.phone_number_id, recipientId, hasToken: !!token });
       await sendWhatsAppMessage({ phoneNumberId: waAccount.phone_number_id, token, recipientId, text: text.trim() });
     } else {
       // Facebook or Instagram — use meta_pages
