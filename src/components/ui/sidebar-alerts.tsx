@@ -249,8 +249,8 @@ export function SidebarAlerts() {
     stackPosition: (i - safeIndex + cards.length) % cards.length,
   }));
 
-  const CARD_H = 72;
-  const PEEK = 8; // px each card peeks above
+  const CARD_H = 52;
+  const PEEK = 6; // px each card peeks above
   const containerH = CARD_H + (cards.length - 1) * PEEK;
   const activeCard = cards[safeIndex];
   const todayLabel = new Intl.DateTimeFormat("en-US", {
@@ -312,58 +312,35 @@ export function SidebarAlerts() {
               )}
               style={{ height: CARD_H }}
             >
-              <div className="flex h-full items-center justify-between gap-2.5 px-3 py-2.5">
+              <div className="flex h-full items-center justify-between gap-2 px-3 py-1.5">
                 <div className="min-w-0 flex-1">
                   <SidebarTextEffect
                     as="span"
                     per="word"
                     className={cn(
-                      "inline-block whitespace-nowrap border-b-2 border-dotted pb-0.5 font-sf-display text-[13px] font-semibold leading-none",
-                      isPending ? "border-amber-700/25 text-amber-900" : "border-blue-700/25 text-blue-900"
+                      "inline-block whitespace-nowrap font-sf-display text-[11px] font-medium leading-none",
+                      isPending ? "text-amber-700" : "text-blue-700"
                     )}
                   >
-                    Fulfillment Queue
+                    {isPending ? "Needs follow-up" : "Ready for courier"}
                   </SidebarTextEffect>
                   <SidebarTextEffect
                     as="p"
                     per="char"
                     delay={0.18}
                     className={cn(
-                      "mt-1.5 font-sf-display text-[20px] font-semibold leading-none tracking-tight tabular-nums",
+                      "mt-1 font-sf-display text-[16px] font-semibold leading-none tracking-tight tabular-nums",
                       isPending ? "text-amber-900" : "text-blue-900"
                     )}
                   >
                     {`${card.count} ${card.count === 1 ? "order" : "orders"}`}
                   </SidebarTextEffect>
-                  {isTop && (
-                    <SidebarTextEffect
-                      as="p"
-                      per="word"
-                      delay={0.28}
-                      className={cn("mt-0.5 truncate text-[10px] font-medium leading-tight", isPending ? "text-amber-600" : "text-blue-600")}
-                    >
-                      {isPending ? "Needs follow-up" : "Ready for courier"}
-                    </SidebarTextEffect>
-                  )}
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <div className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-lg",
-                    isPending ? "bg-amber-100" : "bg-blue-100"
-                  )}>
-                    <img src={AI_CHAT_ICON_URL} alt="" className="h-4 w-4 object-contain opacity-80" />
-                  </div>
-                  <SidebarTextEffect
-                    as="span"
-                    per="char"
-                    delay={0.1}
-                    className={cn(
-                      "whitespace-nowrap text-[8px] font-medium tabular-nums",
-                      isPending ? "text-amber-500" : "text-blue-500"
-                    )}
-                  >
-                    {todayLabel}
-                  </SidebarTextEffect>
+                <div className={cn(
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
+                  isPending ? "bg-amber-100" : "bg-blue-100"
+                )}>
+                  <img src={AI_CHAT_ICON_URL} alt="" className="h-3.5 w-3.5 object-contain opacity-80" />
                 </div>
               </div>
             </motion.div>
