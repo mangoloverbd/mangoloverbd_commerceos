@@ -505,9 +505,9 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
           </div>
         </div>
       ));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending to courier:", error);
-      console.error("Error sending to courier:", error);
+      const errMsg = error?.message || "Failed to send order";
       toast.custom((t) => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
           <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
@@ -515,7 +515,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Error</span>
-            <span className="text-sm font-bold text-black">Failed to send order</span>
+            <span className="text-sm font-bold text-black">{errMsg}</span>
           </div>
         </div>
       ));
@@ -563,8 +563,9 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
           </div>
         </div>
       ));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending to Pathao:", error);
+      const errMsg = error?.message || "Failed to send order";
       toast.custom((t) => (
         <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
           <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
@@ -572,7 +573,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-black">Pathao Error</span>
-            <span className="text-sm font-bold text-black">Failed to send order</span>
+            <span className="text-sm font-bold text-black">{errMsg}</span>
           </div>
         </div>
       ));

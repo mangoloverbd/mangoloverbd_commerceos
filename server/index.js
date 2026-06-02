@@ -3212,7 +3212,7 @@ app.post("/api/send-to-courier", async (req, res) => {
       recipient_name: order.customer_name || "Customer",
       recipient_phone: cleanedPhone,
       recipient_address: order.address || "No address provided",
-      cod_amount: order.price || 0,
+      cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
       note: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
     };
 
@@ -3279,7 +3279,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
       special_instruction: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
       item_quantity: order.quantity || 1,
       item_weight: 0.5,
-      amount_to_collect: order.price || 0,
+      amount_to_collect: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
     };
 
     const pathaoRes = await fetch("https://api-hermes.pathao.com/aladdin/api/v1/orders", {
