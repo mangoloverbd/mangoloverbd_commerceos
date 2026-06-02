@@ -3224,8 +3224,10 @@ app.post("/api/send-to-courier", async (req, res) => {
     const sfData = await sfRes.json();
 
     if (sfData.status !== 200) {
-      await supabase.from("orders").update({ courier_message: sfData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
-      return res.status(400).json({ error: sfData.message || "Steadfast rejected the order", details: sfData });
+      const sfError = sfData.message || (sfData.errors ? JSON.stringify(sfData.errors) : "Steadfast rejected the order");
+      console.error("[Steadfast] create_order rejected:", JSON.stringify(sfData));
+      await supabase.from("orders").update({ courier_message: sfError }).eq("id", orderId).eq("org_id", orgId);
+      return res.status(400).json({ error: sfError, details: sfData });
     }
 
     const consignment = sfData.consignment;
