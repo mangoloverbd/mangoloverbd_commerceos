@@ -4586,15 +4586,30 @@ async function fetchInstagramMediaUrl(mediaId, pageToken) {
 }
 
 async function fetchMetaUserName(senderId, pageToken, platform = "facebook") {
-  if (!pageToken) { console.log(`[MetaUserName] no token for ${senderId}`); return null; }
+  if (!pageToken) return null;
   try {
-    const fields = platform === "instagram" ? "name,username" : "first_name,last_name,name";
-    const data = await metaGraph(`/${senderId}`, { token: pageToken, params: { fields } });
-    const name = data?.name || [data?.first_name, data?.last_name].filter(Boolean).join(" ") || data?.username || null;
-    console.log(`[MetaUserName] ${platform} ${senderId} → ${name || "null"}`);
-    return name;
+    if (platform === "instagram") {
+      const data = await metaGraph(`/${senderId}`, { token: pageToken, params: { fields: "name,username" } });
+      return data?.name || data?.username || null;
+    }
+    // Facebook Messenger: try the user profile endpoint
+    const data = await metaGraph(`/${senderId}`, { token: pageToken, params: { fields: "first_name,last_name" } });
+    const name = [data?.first_name, data?.last_name].filter(Boolean).join(" ");
+    if (name) return name;
+    return null;
   } catch (err) {
-    console.log(`[MetaUserName] failed for ${senderId}: ${err?.message?.slice(0, 100)}`);
+    // Fallback: try the conversations API to get participant name
+    if (platform === "facebook") {
+      try {
+        const convData = await metaGraph(`/me/conversations`, {
+          token: pageToken,
+          params: { fields: "participants", user_id: senderId },
+        });
+        const participants = convData?.data?.[0]?.participants?.data || [];
+        const sender = participants.find((p) => p.id === senderId);
+        if (sender?.name) return sender.name;
+      } catch { /* ignore */ }
+    }
     return null;
   }
 }
