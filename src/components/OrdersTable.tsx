@@ -666,7 +666,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       if (data?.fraudError) {
         // Show the real error from the API so the user can diagnose it
         toast.custom(() => (
-          <div className="flex items-center gap-2.5 rounded-xl bg-[#FAFAF8] border border-black/[0.04] px-3 py-2 shadow-sm max-w-[300px]">
+          <div className="flex items-center gap-2.5 rounded-xl bg-[#FAFAF8] border border-black/[0.04] px-3 py-2 shadow-sm w-fit">
             <div className="h-7 w-7 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
               <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
             </div>
