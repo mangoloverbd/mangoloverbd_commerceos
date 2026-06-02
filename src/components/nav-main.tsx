@@ -129,7 +129,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 className={cn(
                                                     "mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all",
                                                     isActive
-                                                        ? "bg-black/[0.07] text-blue-600"
+                                                        ? "bg-white border border-black/[0.1] shadow-sm text-blue-600"
                                                         : "text-[#6f6f6f] hover:bg-black/5 hover:text-blue-600"
                                                 )}
                                             >
@@ -183,7 +183,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             className={cn(
                                                                 "group/nav-button h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
                                                                 isActive
-                                                                    ? "bg-black/[0.07] text-[#222]"
+                                                                    ? "bg-white border border-black/[0.1] shadow-sm text-[#222]"
                                                                     : "text-[#333] hover:bg-black/5 hover:text-[#111]"
                                                             )}
                                                         >
@@ -209,7 +209,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                             className={cn(
                                                                                 "h-6 rounded-md font-sf-text text-[11.5px] font-medium tracking-normal transition-all",
                                                                                 subActive
-                                                                                    ? "bg-black/[0.07] text-[#222]"
+                                                                                    ? "bg-white border border-black/[0.1] shadow-sm text-[#222]"
                                                                                     : "text-[#333] hover:bg-black/5 hover:text-[#111]"
                                                                             )}
                                                                         >
@@ -251,7 +251,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     className={cn(
                                                         "h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
                                                        isActive
-                                                           ? "bg-black/[0.07] text-[#222]"
+                                                           ? "bg-white border border-black/[0.1] shadow-sm text-[#222]"
                                                            : "text-[#333] hover:bg-black/5 hover:text-[#111]"
                                                     )}
                                                 >
