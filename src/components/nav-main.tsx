@@ -18,10 +18,9 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronRight, Lock } from "lucide-react";
-import { ReactNode, useState } from "react";
+import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { TextScramble } from "@/components/ui/text-scramble";
 
 export interface Route {
     id: string;
@@ -41,22 +40,14 @@ export interface NavSection {
     routes: Route[];
 }
 
-function SidebarScrambleLabel({ text, active, animateSignal }: { text: string; active?: boolean; animateSignal?: number }) {
+function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
     return (
-        <TextScramble
-            text={text}
-            passive
-            animateSignal={animateSignal}
-            underline={false}
-            glow={false}
-            className="min-w-0"
-            textClassName={cn(
-                "block truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal",
-                active && "font-medium"
-            )}
-            charClassName={active ? "text-[#0c6fff]" : "text-current"}
-            scrambledClassName="scale-105 text-[#222]"
-        />
+        <span className={cn(
+            "block truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal min-w-0",
+            active ? "text-[#0c6fff]" : "text-current"
+        )}>
+            {text}
+        </span>
     );
 }
 
@@ -73,10 +64,6 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
     const location = useLocation();
-    const [scrambleSignals, setScrambleSignals] = useState<Record<string, number>>({});
-    const triggerScramble = (key: string) => {
-        setScrambleSignals((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
-    };
 
     return (
         <>
@@ -194,7 +181,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                                 {route.icon}
                                                             </span>
-                                                            <SidebarScrambleLabel text={route.title} active={isActive} animateSignal={scrambleSignals[route.id]} />
+                                                            <SidebarLabel text={route.title} active={isActive} />
                                                             <ChevronRight className="ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                                         </SidebarMenuButton>
                                                     </CollapsibleTrigger>
@@ -216,7 +203,6 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                             <Link
                                                                                 to={sub.link}
                                                                                 className="group/nav-link flex items-center gap-2"
-                                                                                onMouseEnter={() => triggerScramble(`${route.id}:${sub.link}`)}
                                                                             >
                                                                                 {sub.icon && (
                                                                                     <span className={cn(
@@ -225,17 +211,12 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                         subActive ? "text-[#0c6fff]" : "text-current"
                                                                                     )} style={subActive ? activeIconStyle : inactiveIconStyle}>{sub.icon}</span>
                                                                                 )}
-                                                                                <TextScramble
-                                                                                    text={sub.title}
-                                                                                    passive
-                                                                                    animateSignal={scrambleSignals[`${route.id}:${sub.link}`]}
-                                                                                    underline={false}
-                                                                                    glow={false}
-                                                                                    className="min-w-0"
-                                                                                    textClassName="block truncate font-sf-text text-[11.5px] font-medium normal-case tracking-normal"
-                                                                                    charClassName={subActive ? "text-[#0c6fff]" : "text-current"}
-                                                                                    scrambledClassName="scale-105 text-[#222]"
-                                                                                />
+                                                                                <span className={cn(
+                                                                                    "block truncate font-sf-text text-[11.5px] font-medium normal-case tracking-normal min-w-0",
+                                                                                    subActive ? "text-[#0c6fff]" : "text-current"
+                                                                                )}>
+                                                                                    {sub.title}
+                                                                                </span>
                                                                             </Link>
                                                                         </SidebarMenuSubButton>
                                                                     </SidebarMenuSubItem>
@@ -258,7 +239,6 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     <Link
                                                         to={route.link}
                                                         className="group/nav-link flex items-center gap-2"
-                                                        onMouseEnter={() => triggerScramble(route.id)}
                                                     >
                                                         <span className={cn(
                                                             navIconFrame,
@@ -267,7 +247,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                         )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                             {route.icon}
                                                         </span>
-                                                        <SidebarScrambleLabel text={route.title} active={isActive} animateSignal={scrambleSignals[route.id]} />
+                                                        <SidebarLabel text={route.title} active={isActive} />
                                                     </Link>
                                                 </SidebarMenuButton>
                                             )}
