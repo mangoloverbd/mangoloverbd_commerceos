@@ -4609,11 +4609,16 @@ async function handleMetaMessagingEvent({ supabase, objectType, entry, messaging
   if (!senderId || !recipientId) return;
   if (!text && !attachment && !messaging.message) return;
 
-  console.log(`[${platform.toUpperCase()}] incoming senderId=${senderId} recipientId=${recipientId} text="${text?.slice(0,50)}" attachment_type=${attachment?.type || "none"}`);
+  console.log(`[${platform.toUpperCase()}] incoming senderId=${senderId} recipientId=${recipientId} entry.id=${entry.id} text="${text?.slice(0,50)}" attachment_type=${attachment?.type || "none"}`);
 
-  const channel = await findMetaChannelByRecipient(supabase, recipientId, platform);
+  let channel = await findMetaChannelByRecipient(supabase, recipientId, platform);
+  // Fallback: for Instagram, the recipientId (IGSID) may differ from the stored instagram_account_id.
+  // Try entry.id which is often the Instagram Business Account ID or page ID.
+  if (!channel?.org_id && entry.id && entry.id !== recipientId) {
+    channel = await findMetaChannelByRecipient(supabase, entry.id, platform);
+  }
   if (!channel?.org_id) {
-    console.log(`[${platform.toUpperCase()}] unmatched channel for recipientId=${recipientId}`);
+    console.log(`[${platform.toUpperCase()}] unmatched channel for recipientId=${recipientId} entry.id=${entry.id}`);
     await upsertMetaWebhookEvent(supabase, { objectType, platform, pageId: recipientId, senderId, eventType: "unmatched_message", payload: messaging });
     return;
   }
