@@ -163,9 +163,7 @@ export function AppSidebar() {
                             isCollapsed ? "justify-center w-full" : "hidden"
                         )}
                     >
-                        <div className="shrink-0 h-7 w-7 rounded-lg bg-black/[0.06] flex items-center justify-center group-hover:bg-black/10 transition-colors">
-                            <Logo className="h-4 w-4" />
-                        </div>
+                        <Logo className="h-7 w-7 rounded-lg" />
                         {!isCollapsed && (
                             <div className="min-w-0 flex-1">
                                 {orgLoading ? (
