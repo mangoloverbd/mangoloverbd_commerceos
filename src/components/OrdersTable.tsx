@@ -1121,7 +1121,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                     </Tooltip>
                   </TableCell>
                   <TableCell className="text-right py-3 pr-4 tabular-nums">
-                    <span className="font-medium text-sm">৳{(order.price || 0).toLocaleString()}</span>
+                    <span className="font-medium text-sm">৳{((order.price || 0) + (order.delivery_rate || 0)).toLocaleString()}</span>
                   </TableCell>
                   <TableCell className="text-center py-3">
                     <div className="flex items-center justify-center gap-2">
