@@ -3030,7 +3030,7 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
     if (processedOrders.length > 0) {
       const { error: upsertErr } = await supabase
         .from("orders")
-        .upsert(processedOrders, { onConflict: "shopify_order_id", ignoreDuplicates: false });
+        .upsert(processedOrders, { onConflict: "org_id,shopify_order_id", ignoreDuplicates: false });
       if (upsertErr) {
         console.error("[Shopify Sync] upsert error:", upsertErr.message);
         return res.status(500).json({ error: "Failed to save orders", details: upsertErr.message });
