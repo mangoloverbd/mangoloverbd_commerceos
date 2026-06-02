@@ -2035,12 +2035,13 @@ app.get("/api/analytics", async (req, res) => {
 
     // price = total_price from Shopify (subtotal + shipping − discounts) = what the customer pays.
     // delivery_rate = shipping component (kept separately for the Shipping card display).
-    // Revenue matches Shopify "Total Sales" exactly.
+    // Revenue = total sales (price + delivery_rate per order)
     let revenue = 0;
     let shipping = 0;
     for (const o of orders || []) {
-      const orderRevenue = parseFloat(o.price || 0);
+      const orderPrice = parseFloat(o.price || 0);
       const orderShipping = parseFloat(o.delivery_rate || 0);
+      const orderRevenue = orderPrice + orderShipping;
       revenue += orderRevenue;
       shipping += orderShipping;
       const parts = dhakaParts(o.created_at);
