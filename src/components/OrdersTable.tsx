@@ -967,12 +967,12 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                 {selectedIds.size === orders.length && orders.length > 0 && <Check className="w-3 h-3 text-white" />}
               </div>
             </TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Order ID</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Buyer</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Order ID</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Customer</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Risk</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Ship To</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Items</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Order Total</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Ship To</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Items</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-right pr-4">Total</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Order State</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center pr-4">Fulfillment</TableHead>
           </TableRow>
