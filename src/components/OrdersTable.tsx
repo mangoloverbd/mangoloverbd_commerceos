@@ -343,19 +343,21 @@ function EditableTotalCell({ order, onOrderUpdate }: { order: Order; onOrderUpda
   };
 
   return (
-    <span
-      contentEditable
-      suppressContentEditableWarning
-      onFocus={() => setEditing(true)}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      className={cn(
-        "font-medium text-sm tabular-nums cursor-text outline-none transition-all",
-        editing ? "underline underline-offset-4 decoration-black/30" : "hover:underline hover:underline-offset-4 hover:decoration-black/20",
-        saving && "opacity-50 pointer-events-none"
-      )}
-    >
-      ৳{total.toLocaleString()}
+    <span className={cn("font-medium text-sm tabular-nums inline-flex items-center gap-0", saving && "opacity-50 pointer-events-none")}>
+      <span className="select-none">৳</span>
+      <span
+        contentEditable
+        suppressContentEditableWarning
+        onFocus={() => setEditing(true)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className={cn(
+          "outline-none cursor-text transition-all",
+          editing ? "underline underline-offset-4 decoration-black/30" : "hover:underline hover:underline-offset-4 hover:decoration-black/20"
+        )}
+      >
+        {total.toLocaleString()}
+      </span>
     </span>
   );
 }
