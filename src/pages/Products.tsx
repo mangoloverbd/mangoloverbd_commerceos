@@ -821,11 +821,14 @@ export default function Products() {
                 {(isAdmin
                   ? ["", "Product", "Variants", "Price", "Cost", "Margin", ""]
                   : ["", "Product", "Variants", "Price", "Margin", ""]
-                ).map((h, i) => (
-                  <div key={i} className={cn("px-4 py-2.5", i === 0 && "pl-5")}>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-black/40">{h}</span>
-                  </div>
-                ))}
+                ).map((h, i, arr) => {
+                  const isNumeric = ["Price", "Cost", "Margin"].includes(h);
+                  return (
+                    <div key={i} className={cn("px-4 py-2.5", i === 0 && "pl-5", isNumeric && "text-center")}>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-black/40">{h}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               <AnimatePresence>
@@ -849,7 +852,7 @@ export default function Products() {
                     >
                       {/* Row */}
                       <div className={cn(
-                        "group grid items-start border-b border-black/[0.04] transition-colors last:border-0 hover:bg-black/[0.015]",
+                        "group grid items-start border-b border-black/[0.08] transition-colors hover:bg-black/[0.015]",
                         GRID, isAdding && "bg-black/[0.01]"
                       )}>
 
@@ -907,8 +910,8 @@ export default function Products() {
                           />
                         </div>
 
-                        {/* Price — top-aligned to match column header */}
-                        <div className="px-4 pt-4 pb-3">
+                        {/* Price — centered under column header */}
+                        <div className="px-4 pt-4 pb-3 text-center">
                           <span
                             data-testid={`text-selling-price-${product.id}`}
                             className="font-mono text-[13px] tabular-nums text-black"
@@ -917,9 +920,9 @@ export default function Products() {
                           </span>
                         </div>
 
-                        {/* COG — admin editable, top-aligned */}
+                        {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
-                          <div className="flex items-start gap-1.5 px-4 pt-4 pb-3">
+                          <div className="flex items-start justify-center gap-1.5 px-4 pt-4 pb-3">
                             <div className="relative flex-1">
                               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
                               <input
@@ -948,8 +951,8 @@ export default function Products() {
                           </div>
                         )}
 
-                        {/* Margin — top-aligned */}
-                        <div className="px-4 pt-4 pb-3">
+                        {/* Margin — centered under column header */}
+                        <div className="px-4 pt-4 pb-3 text-center">
                           <span
                             data-testid={`text-margin-${product.id}`}
                             className={cn("text-[13px] tabular-nums font-medium",
