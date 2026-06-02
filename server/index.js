@@ -1335,6 +1335,7 @@ async function subscribeMetaPage(pageId, pageToken) {
           "messaging_referrals",
           "message_deliveries",
           "message_reads",
+          "instagram_manage_messages",
         ],
       },
     });
