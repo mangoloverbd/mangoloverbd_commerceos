@@ -4586,12 +4586,15 @@ async function fetchInstagramMediaUrl(mediaId, pageToken) {
 }
 
 async function fetchMetaUserName(senderId, pageToken, platform = "facebook") {
-  if (!pageToken) return null;
+  if (!pageToken) { console.log(`[MetaUserName] no token for ${senderId}`); return null; }
   try {
-    const fields = platform === "instagram" ? "name,username" : "name";
-    const data = await metaGraph(senderId, { token: pageToken, params: { fields } });
-    return data?.name || data?.username || null;
-  } catch {
+    const fields = platform === "instagram" ? "name,username" : "first_name,last_name,name";
+    const data = await metaGraph(`/${senderId}`, { token: pageToken, params: { fields } });
+    const name = data?.name || [data?.first_name, data?.last_name].filter(Boolean).join(" ") || data?.username || null;
+    console.log(`[MetaUserName] ${platform} ${senderId} → ${name || "null"}`);
+    return name;
+  } catch (err) {
+    console.log(`[MetaUserName] failed for ${senderId}: ${err?.message?.slice(0, 100)}`);
     return null;
   }
 }
