@@ -10,19 +10,10 @@ import {
     useSidebar,
 } from "@/components/ui/sidebar";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -35,8 +26,6 @@ import {
     TrendingUp,
 
     HelpCircle,
-    LogOut,
-    ChevronsUpDown,
     Send,
     Lightbulb,
 
@@ -47,7 +36,6 @@ import { SidebarAlerts } from "./ui/sidebar-alerts";
 import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useAuth } from "@/hooks/useAuth";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Link } from "react-router-dom";
 
@@ -55,7 +43,6 @@ export function AppSidebar() {
     const { state, toggleSidebar } = useSidebar();
     const isCollapsed = state === "collapsed";
     const { isAdmin } = useUserRole();
-    const { signOut, user } = useAuth();
     const { orgName, isLoading: orgLoading } = useOrgName();
 
     const iconCls = "shrink-0 transition-colors";
@@ -140,33 +127,12 @@ export function AppSidebar() {
             ],
         };
 
-        const administration: NavSection = {
-            label: "System",
-            routes: [
-                {
-                    id: "settings",
-                    title: "Settings",
-                    icon: <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-[17px] w-[17px] shrink-0" />,
-                    link: "/settings",
-                },
-            ],
-        };
-
         const sections = [product];
         sections.push(workspace);
         sections.push(socialInbox);
-        sections.push(administration);
         return sections;
     }, [isAdmin]);
 
-    // Derive initials for avatar
-    const displayName = orgName || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Account";
-    const initials = displayName
-        .split(" ")
-        .map((w: string) => w[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2);
 
     return (
         <Sidebar collapsible="icon" className="border-r-0 bg-[#dedede]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
@@ -252,88 +218,21 @@ export function AppSidebar() {
             <SidebarFooter className="border-t-0 p-1.5">
                 {!isCollapsed && <SidebarAlerts />}
 
-
-                {/* User row */}
-                <div className={cn("p-2", isCollapsed && "flex justify-center")}>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            {!isCollapsed ? (
-                                <button className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-black/5 transition-colors outline-none group">
-                                    <Avatar className="h-7 w-7 shrink-0 rounded-lg">
-                                        <AvatarFallback className="rounded-lg bg-black/10 text-[#333] text-[10px] font-semibold">
-                                            {initials}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex-1 min-w-0 text-left">
-                                        {orgLoading ? (
-                                            <div className="h-2.5 w-20 rounded bg-sidebar-foreground/10 animate-pulse" />
-                                        ) : (
-                                            <p className="truncate text-[12px] font-medium leading-tight tracking-[0.01em] text-[#333]">
-                                                {displayName}
-                                            </p>
-                                        )}
-                                        <p className="mt-0.5 truncate text-[10px] font-normal leading-tight tracking-[0.01em] text-[#8a8a8a]">
-                                            {user?.email ?? ""}
-                                        </p>
-                                    </div>
-                                    <ChevronsUpDown size={12} className="shrink-0 text-[#888] group-hover:text-[#444] transition-colors" />
-                                </button>
-                            ) : (
-                                <button
-                                    className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-black/5 transition-colors outline-none"
-                                    title="Account"
-                                >
-                                    <Avatar className="h-7 w-7 rounded-lg">
-                                        <AvatarFallback className="rounded-lg bg-black/10 text-[#333] text-[10px] font-semibold">
-                                            {initials}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                </button>
-                            )}
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                            side="right"
-                            align="end"
-                            sideOffset={8}
-                            className="w-60 rounded-xl border border-black/[0.08] bg-white p-0 shadow-xl shadow-black/[0.08]"
-                        >
-                            {/* Profile header */}
-                            <div className="px-4 pt-4 pb-3 border-b border-black/[0.06]">
-                                <div className="flex items-center gap-3">
-                                    <Avatar className="h-9 w-9 rounded-xl shrink-0">
-                                        <AvatarFallback className="rounded-xl bg-black text-white text-[11px] font-bold tracking-wide">
-                                            {initials}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[12px] font-semibold text-foreground truncate leading-tight">{displayName}</p>
-                                        <p className="text-[10px] text-muted-foreground font-normal truncate mt-0.5 leading-tight">{user?.email ?? ""}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Menu items */}
-                            <div className="p-1.5">
-                                {isAdmin && (
-                                    <DropdownMenuItem asChild>
-                                        <Link to="/settings" className="flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 text-[12px] font-medium text-foreground/80 hover:bg-black/[0.04] hover:text-foreground transition-colors">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
-                                            Settings
-                                        </Link>
-                                    </DropdownMenuItem>
-                                )}
-
-                                <DropdownMenuItem
-                                    onClick={() => signOut()}
-                                    className="flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 text-[12px] font-medium text-red-500 hover:bg-red-50 hover:text-red-600 focus:bg-red-50 focus:text-red-600 transition-colors mt-0.5"
-                                    data-testid="button-sign-out"
-                                >
-                                    <LogOut size={13} className="shrink-0" />
-                                    Sign Out
-                                </DropdownMenuItem>
-                            </div>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                {/* Settings button */}
+                <div className={cn("px-2 pb-1", isCollapsed && "flex justify-center px-0")}>
+                    <Link
+                        to="/settings"
+                        className={cn(
+                            "flex items-center gap-2.5 rounded-xl transition-colors hover:bg-black/5",
+                            isCollapsed ? "h-8 w-8 justify-center" : "w-full px-2.5 py-2"
+                        )}
+                        title="Settings"
+                    >
+                        <AppleSettingsIcon className="h-[17px] w-[17px] shrink-0" />
+                        {!isCollapsed && (
+                            <span className="text-[12px] font-medium text-[#333]">Settings</span>
+                        )}
+                    </Link>
                 </div>
 
                 {/* Copyright */}
