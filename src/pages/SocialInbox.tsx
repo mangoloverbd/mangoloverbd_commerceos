@@ -105,7 +105,7 @@ export default function SocialInbox({ platform }: Props) {
         .then((r) => r.json())
         .then((d) => setConversations(d.conversations || []))
         .catch(() => {});
-    }, 5000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [platform]);
 
@@ -133,7 +133,7 @@ export default function SocialInbox({ platform }: Props) {
           setPausedAi(d.paused_ai || false);
         })
         .catch(() => {});
-    }, 4000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [selectedId]);
 
