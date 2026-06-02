@@ -675,7 +675,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
               <p className="text-[10px] text-black/50 break-words leading-snug">{data.fraudError}</p>
             </div>
           </div>
-        ), { duration: 10000, className: "!p-0 !rounded-xl !min-w-0 !max-w-fit" });
+        ), { duration: 10000, className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
         return;
       }
 
