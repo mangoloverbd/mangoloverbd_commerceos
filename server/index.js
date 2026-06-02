@@ -2173,10 +2173,10 @@ app.get("/api/analytics", async (req, res) => {
       }
     } catch { /* ignore – no products yet */ }
 
-    // Net Profit = Revenue − Ad Spend − Shipping − COG
+    // Net Profit = Revenue − Ad Spend − COG
     const shippingCost = parseFloat(shipping.toFixed(2));
     const profit = adSpend !== null
-      ? revenue - adSpend - shippingCost - totalCog
+      ? revenue - adSpend - totalCog
       : null;
     const cogRatioForSeries = revenue > 0 ? totalCog / revenue : 0;
     for (const bucket of seriesBuckets) {
@@ -2184,7 +2184,7 @@ app.get("/api/analytics", async (req, res) => {
       bucket.shipping = parseFloat(bucket.shipping.toFixed(2));
       bucket.totalCog = parseFloat((bucket.revenue * cogRatioForSeries).toFixed(2));
       bucket.profit = adSpend !== null
-        ? parseFloat((bucket.revenue - bucket.shipping - bucket.totalCog - bucket.adSpend).toFixed(2))
+        ? parseFloat((bucket.revenue - bucket.totalCog - bucket.adSpend).toFixed(2))
         : null;
     }
 
