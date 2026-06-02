@@ -3206,7 +3206,7 @@ app.post("/api/send-to-courier", async (req, res) => {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
-    const invoice = `ORD-${order.order_number || order.id.slice(-8).toUpperCase()}`;
+    const invoice = `ORD-${(order.order_number || order.id.slice(-8)).replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase()}`;
     const payload = {
       invoice,
       recipient_name: order.customer_name || "Customer",
