@@ -225,11 +225,11 @@ export function AppSidebar() {
                             "flex items-center gap-2.5 rounded-xl transition-colors hover:bg-black/5",
                             isCollapsed ? "h-8 w-8 justify-center" : "w-full px-2.5 py-2"
                         )}
-                        title="Settings"
+                        title="System Settings"
                     >
                         <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-[17px] w-[17px] shrink-0" />
                         {!isCollapsed && (
-                            <span className="text-[12px] font-medium text-[#333]">Settings</span>
+                            <span className="text-[12px] font-medium text-[#333]">System Settings</span>
                         )}
                     </Link>
                 </div>

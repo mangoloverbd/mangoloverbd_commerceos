@@ -24,7 +24,7 @@ const routeTitles: Record<string, string> = {
     "/inbox/instagram": "Instagram",
     "/inbox/whatsapp": "WhatsApp",
     "/inbox/orders": "Inbox Orders",
-    "/settings": "Settings",
+    "/settings": "System Settings",
 };
 
 function getRouteTitle(pathname: string) {
@@ -112,7 +112,7 @@ export function DashboardLayout() {
                                         <DropdownMenuItem asChild>
                                             <Link to="/settings" className="flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 text-[12px] font-medium text-foreground/80 hover:bg-black/[0.04] hover:text-foreground transition-colors">
                                                 <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-[15px] w-[15px] shrink-0" />
-                                                Settings
+                                                System Settings
                                             </Link>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
