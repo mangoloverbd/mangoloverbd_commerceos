@@ -99,6 +99,14 @@ export default function SocialInbox({ platform }: Props) {
       .then((d) => setConversations(d.conversations || []))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    const interval = setInterval(() => {
+      apiFetch(`/api/social/conversations/${platform}`)
+        .then((r) => r.json())
+        .then((d) => setConversations(d.conversations || []))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
   }, [platform]);
 
   useEffect(() => {
@@ -116,6 +124,17 @@ export default function SocialInbox({ platform }: Props) {
       })
       .catch(() => {})
       .finally(() => setMsgLoading(false));
+
+    const interval = setInterval(() => {
+      apiFetch(`/api/social/messages/${selectedId}`)
+        .then((r) => r.json())
+        .then((d) => {
+          setMessages(d.messages || []);
+          setPausedAi(d.paused_ai || false);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(interval);
   }, [selectedId]);
 
   useEffect(() => {
