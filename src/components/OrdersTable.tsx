@@ -666,14 +666,15 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       if (data?.fraudError) {
         // Show the real error from the API so the user can diagnose it
         toast.custom(() => (
-          <div className="bg-white border border-black/5 shadow-2xl rounded-xl px-2.5 py-2 flex items-start gap-2 max-w-[320px]">
-            <div className="h-6 w-6 rounded-md bg-red-500/10 flex items-center justify-center shrink-0 mt-px">
-              <AlertTriangle className="w-3 h-3 text-red-500" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[8px] font-bold uppercase tracking-widest text-black/60">FraudShield Error</span>
-              <span className="text-[11px] font-semibold text-black leading-tight">Fraud check failed</span>
-              <span className="text-[10px] text-black/70 break-words leading-tight">{data.fraudError}</span>
+          <div className="w-[320px] overflow-hidden rounded-2xl bg-gradient-to-br from-red-50 to-white border border-red-100/80 shadow-lg shadow-red-500/5">
+            <div className="flex items-center gap-3 px-4 py-3">
+              <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-red-900">Fraud check failed</p>
+                <p className="text-[11px] text-red-600/80 mt-0.5 break-words leading-snug">{data.fraudError}</p>
+              </div>
             </div>
           </div>
         ), { duration: 10000 });
