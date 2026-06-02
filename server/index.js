@@ -3419,6 +3419,7 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
 
     if (!activeOrders.length) return res.json({ updated: 0 });
 
+    console.log(`[Steadfast Refresh] Polling ${activeOrders.length} active orders for org=${orgId}`);
     let updated = 0;
     for (const order of activeOrders) {
       try {
@@ -3433,10 +3434,16 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
             },
           }
         );
-        if (!statusRes.ok) continue;
+        if (!statusRes.ok) {
+          console.log(`[Steadfast Refresh] API returned ${statusRes.status} for cid=${sfPollId}`);
+          continue;
+        }
         const statusData = await statusRes.json();
-        const newStatus = statusData?.delivery_status;
-        if (!newStatus) continue;
+        const newStatus = statusData?.consignment?.delivery_status || statusData?.delivery_status;
+        if (!newStatus) {
+          console.log(`[Steadfast Refresh] No delivery_status in response for cid=${sfPollId}:`, JSON.stringify(statusData).slice(0, 200));
+          continue;
+        }
 
         const normalizedStatus = newStatus.toLowerCase();
         if (normalizedStatus === (order.courier_status || "").toLowerCase()) continue;
@@ -3454,10 +3461,14 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
           patch.status = "cancelled";
         }
 
+        console.log(`[Steadfast Refresh] Order ${order.id} cid=${sfPollId}: ${order.courier_status} → ${newStatus}`);
         await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
         updated++;
-      } catch { /* skip */ }
+      } catch (err) {
+        console.error(`[Steadfast Refresh] Error polling cid=${order.consignment_id}:`, err.message);
+      }
     }
+    console.log(`[Steadfast Refresh] Done. Updated ${updated}/${activeOrders.length} orders.`);
     return res.json({ updated, total: activeOrders.length });
   } catch (e) {
     return res.status(500).json({ error: e.message });
