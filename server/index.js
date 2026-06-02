@@ -1083,6 +1083,158 @@ app.post("/api/settings", async (req, res) => {
   }
 });
 
+// ─── Shopify OAuth ──────────────────────────────────────────────────────────
+
+const SHOPIFY_SCOPES = "read_orders,read_products,read_customers";
+
+function shopifyRedirectUri() {
+  return process.env.SHOPIFY_REDIRECT_URI || "https://suite.arclabtechnology.com/api/auth/shopify/callback";
+}
+
+function signShopifyState(payload) {
+  const secret = process.env.SHOPIFY_CLIENT_SECRET;
+  if (!secret) throw new Error("Missing SHOPIFY_CLIENT_SECRET env var");
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(encoded).digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function verifyShopifyState(state) {
+  const secret = process.env.SHOPIFY_CLIENT_SECRET;
+  if (!secret) throw new Error("Missing SHOPIFY_CLIENT_SECRET env var");
+  const raw = String(state || "");
+  const dotIdx = raw.lastIndexOf(".");
+  if (dotIdx === -1) throw new Error("Invalid OAuth state: missing separator");
+  const encoded = raw.slice(0, dotIdx);
+  const signature = raw.slice(dotIdx + 1);
+  if (!encoded || !signature) throw new Error("Invalid OAuth state: empty parts");
+  const expected = crypto.createHmac("sha256", secret).update(encoded).digest("base64url");
+  const sigBuf = Buffer.from(signature.padEnd(expected.length, " "));
+  const expBuf = Buffer.from(expected.padEnd(signature.length, " "));
+  if (!crypto.timingSafeEqual(sigBuf, expBuf)) {
+    throw new Error("Invalid OAuth state: signature mismatch");
+  }
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  } catch {
+    throw new Error("Invalid OAuth state: malformed payload");
+  }
+  if (!payload.ts || Date.now() - payload.ts > 15 * 60 * 1000) {
+    throw new Error("OAuth state expired — please try connecting again");
+  }
+  return payload;
+}
+
+function verifyShopifyHmac(query) {
+  const secret = process.env.SHOPIFY_CLIENT_SECRET;
+  if (!secret) throw new Error("Missing SHOPIFY_CLIENT_SECRET env var");
+  const { hmac, ...params } = query;
+  if (!hmac) return false;
+  const sorted = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&");
+  const computed = crypto.createHmac("sha256", secret).update(sorted).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(hmac));
+}
+
+app.post("/api/auth/shopify/init", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!process.env.SHOPIFY_CLIENT_ID || !process.env.SHOPIFY_CLIENT_SECRET) {
+      return res.status(500).json({ error: "Missing SHOPIFY_CLIENT_ID or SHOPIFY_CLIENT_SECRET env vars" });
+    }
+    const { shop } = req.body;
+    if (!shop) return res.status(400).json({ error: "Missing shop parameter" });
+    const cleanShop = shop.replace(/^https?:\/\//, "").replace(/\/$/, "").trim();
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$/.test(cleanShop)) {
+      return res.status(400).json({ error: "Invalid shop domain. Expected format: yourstore.myshopify.com" });
+    }
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const state = signShopifyState({ orgId, userId: user.id, shop: cleanShop, ts: Date.now(), nonce: crypto.randomUUID() });
+    const url = `https://${cleanShop}/admin/oauth/authorize?client_id=${process.env.SHOPIFY_CLIENT_ID}&scope=${SHOPIFY_SCOPES}&redirect_uri=${encodeURIComponent(shopifyRedirectUri())}&state=${state}`;
+    return res.json({ url });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/auth/shopify/callback", async (req, res) => {
+  try {
+    const { code, hmac, shop, state } = req.query;
+    if (!code || !shop || !state) {
+      return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("Missing OAuth parameters"));
+    }
+    if (!verifyShopifyHmac(req.query)) {
+      return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("HMAC verification failed"));
+    }
+    const { orgId, shop: expectedShop } = verifyShopifyState(state);
+    if (shop !== expectedShop) {
+      return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("Shop mismatch"));
+    }
+    const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: process.env.SHOPIFY_CLIENT_ID,
+        client_secret: process.env.SHOPIFY_CLIENT_SECRET,
+        code,
+      }),
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.access_token) {
+      const msg = tokenData.error_description || tokenData.error || "Token exchange failed";
+      return res.redirect("/settings?shopify=error&message=" + encodeURIComponent(msg));
+    }
+    await saveOrgSettings(orgId, {
+      shopify_store_url: shop,
+      shopify_admin_api_token: tokenData.access_token,
+      shopify_oauth_connected: "true",
+      shopify_connected_scope: tokenData.scope || SHOPIFY_SCOPES,
+    });
+    return res.redirect("/settings?shopify=connected");
+  } catch (err) {
+    console.error("[Shopify OAuth] callback failed:", errorMessage(err));
+    return res.redirect("/settings?shopify=error&message=" + encodeURIComponent(errorMessage(err)));
+  }
+});
+
+app.get("/api/auth/shopify/status", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["shopify_store_url", "shopify_admin_api_token", "shopify_oauth_connected"]);
+    const connected = !!(cfg.shopify_store_url && cfg.shopify_admin_api_token);
+    return res.json({
+      connected,
+      shop: cfg.shopify_store_url || null,
+      oauth: cfg.shopify_oauth_connected === "true",
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.post("/api/auth/shopify/disconnect", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    await saveOrgSettings(orgId, {
+      shopify_store_url: "",
+      shopify_admin_api_token: "",
+      shopify_oauth_connected: "",
+      shopify_connected_scope: "",
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 // ─── Integration Test Endpoints ──────────────────────────────────────────────
 
 // Test Facebook Ads connection server-side so the token never appears in a browser URL

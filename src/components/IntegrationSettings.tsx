@@ -914,6 +914,258 @@ function FieldRow({ field, value, onChange }: { field: FieldDef; value: string; 
   );
 }
 
+function ShopifyDetailView({
+  section,
+  settings,
+  onSave,
+  onBack,
+}: {
+  section: SectionDef;
+  settings: Settings;
+  onSave: (patch: Settings) => Promise<void>;
+  onBack: () => void;
+}) {
+  const [shopUrl, setShopUrl] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [status, setStatus] = useState<{ connected: boolean; shop: string | null; oauth: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const Icon = section.icon;
+
+  const refresh = () => {
+    setLoading(true);
+    apiFetch("/api/auth/shopify/status")
+      .then((r) => r.json())
+      .then((d) => setStatus(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("shopify") === "connected") {
+      toast.success("Shopify store connected");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("shopify") === "error") {
+      toast.error(params.get("message") || "Shopify connection failed");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  const connect = async () => {
+    const shop = shopUrl.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    if (!shop) {
+      toast.error("Please enter your store URL");
+      return;
+    }
+    const domain = shop.includes(".myshopify.com") ? shop : `${shop}.myshopify.com`;
+    setConnecting(true);
+    try {
+      const res = await apiFetch("/api/auth/shopify/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop: domain }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start Shopify OAuth");
+      window.location.href = data.url;
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to connect Shopify");
+      setConnecting(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm("Disconnect Shopify? Your synced orders will be preserved.")) return;
+    setDisconnecting(true);
+    try {
+      const res = await apiFetch("/api/auth/shopify/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to disconnect");
+      toast.success("Shopify disconnected");
+      refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to disconnect");
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.16 }}
+      className="space-y-6"
+    >
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-[13px] font-medium text-black/40 hover:text-black transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Integrations
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className={cn("shrink-0 flex items-center justify-center rounded-[10px] h-10 w-10", section.color)}>
+          <Icon className="h-5 w-5 text-white" strokeWidth={1.8} />
+        </div>
+        <div>
+          <h2 className="text-[17px] font-semibold text-black tracking-tight">{section.label}</h2>
+          <p className="text-[12px] text-black/40">{section.description}</p>
+        </div>
+        <span className={cn(
+          "ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium",
+          status?.connected ? "bg-emerald-100 text-emerald-700" : "bg-black/[0.06] text-black/40"
+        )}>
+          {loading ? "..." : status?.connected ? "Connected" : "Not connected"}
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Spinner className="h-5 w-5 text-black/30" />
+        </div>
+      ) : status?.connected ? (
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-5">
+            <div className="flex items-center gap-3">
+              <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <div>
+                <p className="text-[13px] font-medium text-black">{status.shop}</p>
+                <p className="text-[11px] text-black/40">
+                  {status.oauth ? "Connected via OAuth" : "Connected via manual token"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={disconnect}
+            disabled={disconnecting}
+            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-red-200 bg-white px-4 text-[13px] font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-30"
+          >
+            {disconnecting ? <Spinner size="sm" /> : <Unplug className="h-3.5 w-3.5" />}
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-5 space-y-4">
+            <div>
+              <p className="text-[13px] font-medium text-black mb-1">Connect your Shopify store</p>
+              <p className="text-[12px] text-black/40">One-click connection — no API tokens needed.</p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={shopUrl}
+                onChange={(e) => setShopUrl(e.target.value)}
+                placeholder="yourstore.myshopify.com"
+                onKeyDown={(e) => e.key === "Enter" && connect()}
+                className="h-10 flex-1 rounded-[10px] border border-black/[0.08] bg-black/[0.03] px-3 font-mono text-[13px] text-black outline-none transition-colors placeholder:font-sans placeholder:text-black/25 focus:border-black/20 focus:ring-1 focus:ring-black/10"
+              />
+              <button
+                onClick={connect}
+                disabled={connecting}
+                className="flex h-10 items-center gap-1.5 rounded-[10px] bg-[#96BF48] px-5 text-[13px] font-medium text-white transition-colors hover:bg-[#7ea33c] disabled:opacity-50"
+              >
+                {connecting ? <Spinner size="sm" /> : <Link2 className="h-3.5 w-3.5" />}
+                Connect
+              </button>
+            </div>
+            <p className="text-[11px] text-black/30">
+              You'll be redirected to Shopify to approve access. Only read permissions are requested.
+            </p>
+          </div>
+
+          <div>
+            <button
+              onClick={() => setShowManual((v) => !v)}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-black/35 hover:text-black/60 transition-colors"
+            >
+              <ChevronDown className={cn("h-3 w-3 transition-transform", showManual && "rotate-180")} />
+              Advanced: manual token entry
+            </button>
+            {showManual && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-3"
+              >
+                <ManualShopifyFields section={section} settings={settings} onSave={onSave} />
+              </motion.div>
+            )}
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function ManualShopifyFields({
+  section,
+  settings,
+  onSave,
+}: {
+  section: SectionDef;
+  settings: Settings;
+  onSave: (patch: Settings) => Promise<void>;
+}) {
+  const [values, setValues] = useState<Settings>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const init: Settings = {};
+    for (const f of section.fields) init[f.key] = settings[f.key] || "";
+    setValues(init);
+  }, [settings, section]);
+
+  const isDirty = section.fields.some((f) => values[f.key] !== (settings[f.key] || ""));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(values);
+      toast.success("Shopify credentials saved");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+      {section.fields.map((f) => (
+        <div key={f.key} className="px-5 py-4">
+          <FieldRow
+            field={f}
+            value={values[f.key] || ""}
+            onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
+          />
+        </div>
+      ))}
+      <div className="px-5 py-4">
+        <button
+          onClick={handleSave}
+          disabled={saving || !isDirty}
+          className="flex h-9 items-center gap-1.5 rounded-[10px] bg-black px-4 text-[13px] font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
+        >
+          {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DetailView({
   section,
   settings,
@@ -1232,13 +1484,23 @@ export function IntegrationSettings() {
   return (
     <AnimatePresence mode="wait">
       {selected ? (
-        <DetailView
-          key={selected.id}
-          section={selected}
-          settings={settings}
-          onSave={handleSave}
-          onBack={() => setSelected(null)}
-        />
+        selected.id === "shopify" ? (
+          <ShopifyDetailView
+            key={selected.id}
+            section={selected}
+            settings={settings}
+            onSave={handleSave}
+            onBack={() => setSelected(null)}
+          />
+        ) : (
+          <DetailView
+            key={selected.id}
+            section={selected}
+            settings={settings}
+            onSave={handleSave}
+            onBack={() => setSelected(null)}
+          />
+        )
       ) : (
         <motion.div
           key="list"
