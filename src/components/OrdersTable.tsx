@@ -309,6 +309,62 @@ function FraudCell({ order, isChecking, onCheck }: {
   );
 }
 
+function EditableTotalCell({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: (updatedOrder: Order) => void }) {
+  const [editing, setEditing] = useState(false);
+  const total = (order.price || 0) + (order.delivery_rate || 0);
+  const [value, setValue] = useState(String(total));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const newTotal = parseFloat(value) || 0;
+    if (newTotal === total) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price: newTotal - (order.delivery_rate || 0) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update total");
+      if (onOrderUpdate) onOrderUpdate(data.order || { ...order, price: newTotal - (order.delivery_rate || 0) });
+      toast.success("Total updated");
+    } catch (error) {
+      toast.error("Failed to update total");
+    } finally {
+      setSaving(false);
+      setEditing(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <span className="text-sm text-muted-foreground">৳</span>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }}
+          onBlur={handleSave}
+          autoFocus
+          disabled={saving}
+          className="w-20 h-7 text-sm font-medium text-right border border-black/10 rounded-md px-2 outline-none focus:ring-1 focus:ring-black/20 tabular-nums"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setValue(String(total)); setEditing(true); }}
+      className="font-medium text-sm tabular-nums hover:underline hover:underline-offset-2 cursor-pointer transition-colors"
+    >
+      ৳{total.toLocaleString()}
+    </button>
+  );
+}
+
 function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: (updatedOrder: Order) => void }) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState(order.notes || "");
@@ -1122,7 +1178,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                     </Tooltip>
                   </TableCell>
                   <TableCell className="text-right py-3 pr-4 tabular-nums">
-                    <span className="font-medium text-sm">৳{((order.price || 0) + (order.delivery_rate || 0)).toLocaleString()}</span>
+                    <EditableTotalCell order={order} onOrderUpdate={onOrderUpdate} />
                   </TableCell>
                   <TableCell className="text-center py-3">
                     <div className="flex items-center justify-center gap-2">
