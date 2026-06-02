@@ -1083,7 +1083,7 @@ app.post("/api/settings", async (req, res) => {
   }
 });
 
-// ─── Shopify OAuth ──────────────────────────────────────────────────────────
+// ─── Shopify OAuth (per-tenant credentials) ────────────────────────────────
 
 const SHOPIFY_SCOPES = "read_orders,read_products,read_customers";
 
@@ -1091,17 +1091,13 @@ function shopifyRedirectUri() {
   return process.env.SHOPIFY_REDIRECT_URI || "https://suite.arclabtechnology.com/api/auth/shopify/callback";
 }
 
-function signShopifyState(payload) {
-  const secret = process.env.SHOPIFY_CLIENT_SECRET;
-  if (!secret) throw new Error("Missing SHOPIFY_CLIENT_SECRET env var");
+function signShopifyState(payload, secret) {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = crypto.createHmac("sha256", secret).update(encoded).digest("base64url");
   return `${encoded}.${signature}`;
 }
 
-function verifyShopifyState(state) {
-  const secret = process.env.SHOPIFY_CLIENT_SECRET;
-  if (!secret) throw new Error("Missing SHOPIFY_CLIENT_SECRET env var");
+function verifyShopifyState(state, secret) {
   const raw = String(state || "");
   const dotIdx = raw.lastIndexOf(".");
   if (dotIdx === -1) throw new Error("Invalid OAuth state: missing separator");
@@ -1126,9 +1122,7 @@ function verifyShopifyState(state) {
   return payload;
 }
 
-function verifyShopifyHmac(query) {
-  const secret = process.env.SHOPIFY_CLIENT_SECRET;
-  if (!secret) throw new Error("Missing SHOPIFY_CLIENT_SECRET env var");
+function verifyShopifyHmac(query, secret) {
   const { hmac, ...params } = query;
   if (!hmac) return false;
   const sorted = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&");
@@ -1140,19 +1134,21 @@ app.post("/api/auth/shopify/init", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!process.env.SHOPIFY_CLIENT_ID || !process.env.SHOPIFY_CLIENT_SECRET) {
-      return res.status(500).json({ error: "Missing SHOPIFY_CLIENT_ID or SHOPIFY_CLIENT_SECRET env vars" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["shopify_store_url", "shopify_client_id", "shopify_client_secret"]);
+    if (!cfg.shopify_store_url || !cfg.shopify_client_id || !cfg.shopify_client_secret) {
+      return res.status(400).json({ error: "Please save your Shopify Store URL, Client ID, and Client Secret first" });
     }
-    const { shop } = req.body;
-    if (!shop) return res.status(400).json({ error: "Missing shop parameter" });
-    const cleanShop = shop.replace(/^https?:\/\//, "").replace(/\/$/, "").trim();
+    const cleanShop = cfg.shopify_store_url.replace(/^https?:\/\//, "").replace(/\/$/, "").trim();
     if (!/^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$/.test(cleanShop)) {
       return res.status(400).json({ error: "Invalid shop domain. Expected format: yourstore.myshopify.com" });
     }
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const state = signShopifyState({ orgId, userId: user.id, shop: cleanShop, ts: Date.now(), nonce: crypto.randomUUID() });
-    const url = `https://${cleanShop}/admin/oauth/authorize?client_id=${process.env.SHOPIFY_CLIENT_ID}&scope=${SHOPIFY_SCOPES}&redirect_uri=${encodeURIComponent(shopifyRedirectUri())}&state=${state}`;
+    const state = signShopifyState(
+      { orgId, userId: user.id, shop: cleanShop, ts: Date.now(), nonce: crypto.randomUUID() },
+      cfg.shopify_client_secret
+    );
+    const url = `https://${cleanShop}/admin/oauth/authorize?client_id=${cfg.shopify_client_id}&scope=${SHOPIFY_SCOPES}&redirect_uri=${encodeURIComponent(shopifyRedirectUri())}&state=${state}`;
     return res.json({ url });
   } catch (err) {
     return sendError(res, err);
@@ -1165,19 +1161,36 @@ app.get("/api/auth/shopify/callback", async (req, res) => {
     if (!code || !shop || !state) {
       return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("Missing OAuth parameters"));
     }
-    if (!verifyShopifyHmac(req.query)) {
+    // Decode state to get orgId, then load that org's client_secret for verification
+    let statePayload;
+    try {
+      const dotIdx = String(state).lastIndexOf(".");
+      const encoded = String(state).slice(0, dotIdx);
+      statePayload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    } catch {
+      return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("Invalid OAuth state"));
+    }
+    const orgId = statePayload.orgId;
+    if (!orgId) {
+      return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("Missing org in state"));
+    }
+    const cfg = await getOrgSettings(orgId, ["shopify_client_id", "shopify_client_secret"]);
+    if (!cfg.shopify_client_id || !cfg.shopify_client_secret) {
+      return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("Shopify credentials not found"));
+    }
+    if (!verifyShopifyHmac(req.query, cfg.shopify_client_secret)) {
       return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("HMAC verification failed"));
     }
-    const { orgId, shop: expectedShop } = verifyShopifyState(state);
-    if (shop !== expectedShop) {
+    const verified = verifyShopifyState(state, cfg.shopify_client_secret);
+    if (shop !== verified.shop) {
       return res.redirect("/settings?shopify=error&message=" + encodeURIComponent("Shop mismatch"));
     }
     const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_id: process.env.SHOPIFY_CLIENT_ID,
-        client_secret: process.env.SHOPIFY_CLIENT_SECRET,
+        client_id: cfg.shopify_client_id,
+        client_secret: cfg.shopify_client_secret,
         code,
       }),
     });
@@ -1187,7 +1200,6 @@ app.get("/api/auth/shopify/callback", async (req, res) => {
       return res.redirect("/settings?shopify=error&message=" + encodeURIComponent(msg));
     }
     await saveOrgSettings(orgId, {
-      shopify_store_url: shop,
       shopify_admin_api_token: tokenData.access_token,
       shopify_oauth_connected: "true",
       shopify_connected_scope: tokenData.scope || SHOPIFY_SCOPES,
@@ -1206,7 +1218,7 @@ app.get("/api/auth/shopify/status", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const cfg = await getOrgSettings(orgId, ["shopify_store_url", "shopify_admin_api_token", "shopify_oauth_connected"]);
-    const connected = !!(cfg.shopify_store_url && cfg.shopify_admin_api_token);
+    const connected = !!(cfg.shopify_store_url && cfg.shopify_admin_api_token && cfg.shopify_oauth_connected === "true");
     return res.json({
       connected,
       shop: cfg.shopify_store_url || null,
@@ -1224,7 +1236,6 @@ app.post("/api/auth/shopify/disconnect", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     await saveOrgSettings(orgId, {
-      shopify_store_url: "",
       shopify_admin_api_token: "",
       shopify_oauth_connected: "",
       shopify_connected_scope: "",

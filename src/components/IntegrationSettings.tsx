@@ -107,7 +107,8 @@ const SECTIONS: SectionDef[] = [
     color: "bg-[#96BF48]",
     fields: [
       { key: "shopify_store_url", label: "Store URL", placeholder: "yourstore.myshopify.com", hint: "Domain without https://" },
-      { key: "shopify_admin_api_token", label: "Admin API Token", placeholder: "shpat_xxxxxxxxxxxxxxxxxxxxxxxx", secret: true, hint: "Shopify Admin → Apps → Develop apps → API credentials" },
+      { key: "shopify_client_id", label: "Client ID", placeholder: "Your app's API key", hint: "Shopify Admin → Settings → Apps → Develop apps → Your app → API credentials" },
+      { key: "shopify_client_secret", label: "Client Secret", placeholder: "Your app's API secret key", secret: true, hint: "Same page as Client ID — click 'Show once' to reveal" },
     ],
   },
   {
@@ -925,10 +926,10 @@ function ShopifyDetailView({
   onSave: (patch: Settings) => Promise<void>;
   onBack: () => void;
 }) {
-  const [shopUrl, setShopUrl] = useState("");
+  const [values, setValues] = useState<Settings>({});
+  const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [showManual, setShowManual] = useState(false);
   const [status, setStatus] = useState<{ connected: boolean; shop: string | null; oauth: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const Icon = section.icon;
@@ -955,19 +956,33 @@ function ShopifyDetailView({
     }
   }, []);
 
-  const connect = async () => {
-    const shop = shopUrl.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
-    if (!shop) {
-      toast.error("Please enter your store URL");
-      return;
+  useEffect(() => {
+    const init: Settings = {};
+    for (const f of section.fields) init[f.key] = settings[f.key] || "";
+    setValues(init);
+  }, [settings, section]);
+
+  const isDirty = section.fields.some((f) => values[f.key] !== (settings[f.key] || ""));
+  const hasCredentials = !!(settings.shopify_store_url && settings.shopify_client_id && settings.shopify_client_secret);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(values);
+      toast.success("Shopify credentials saved");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save");
+    } finally {
+      setSaving(false);
     }
-    const domain = shop.includes(".myshopify.com") ? shop : `${shop}.myshopify.com`;
+  };
+
+  const connect = async () => {
     setConnecting(true);
     try {
       const res = await apiFetch("/api/auth/shopify/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shop: domain }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start Shopify OAuth");
@@ -1039,9 +1054,7 @@ function ShopifyDetailView({
               <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
               <div>
                 <p className="text-[13px] font-medium text-black">{status.shop}</p>
-                <p className="text-[11px] text-black/40">
-                  {status.oauth ? "Connected via OAuth" : "Connected via manual token"}
-                </p>
+                <p className="text-[11px] text-black/40">Connected via OAuth</p>
               </div>
             </div>
           </div>
@@ -1056,113 +1069,64 @@ function ShopifyDetailView({
         </div>
       ) : (
         <div className="space-y-5">
-          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-5 space-y-4">
-            <div>
-              <p className="text-[13px] font-medium text-black mb-1">Connect your Shopify store</p>
-              <p className="text-[12px] text-black/40">One-click connection — no API tokens needed.</p>
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={shopUrl}
-                onChange={(e) => setShopUrl(e.target.value)}
-                placeholder="yourstore.myshopify.com"
-                onKeyDown={(e) => e.key === "Enter" && connect()}
-                className="h-10 flex-1 rounded-[10px] border border-black/[0.08] bg-black/[0.03] px-3 font-mono text-[13px] text-black outline-none transition-colors placeholder:font-sans placeholder:text-black/25 focus:border-black/20 focus:ring-1 focus:ring-black/10"
-              />
-              <button
-                onClick={connect}
-                disabled={connecting}
-                className="flex h-10 items-center gap-1.5 rounded-[10px] bg-[#96BF48] px-5 text-[13px] font-medium text-white transition-colors hover:bg-[#7ea33c] disabled:opacity-50"
-              >
-                {connecting ? <Spinner size="sm" /> : <Link2 className="h-3.5 w-3.5" />}
-                Connect
-              </button>
-            </div>
+          {/* Setup instructions */}
+          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-5 space-y-3">
+            <p className="text-[13px] font-medium text-black">Setup Instructions</p>
+            <ol className="text-[12px] text-black/60 space-y-1.5 list-decimal list-inside">
+              <li>Go to your Shopify Admin → <span className="font-medium text-black/80">Settings → Apps and sales channels</span></li>
+              <li>Click <span className="font-medium text-black/80">Develop apps</span> → Create an app</li>
+              <li>Name it anything (e.g. "Seraphine")</li>
+              <li>Go to <span className="font-medium text-black/80">Configuration</span> → Admin API access scopes → select <span className="font-mono text-[11px] bg-black/[0.04] px-1 rounded">read_orders</span>, <span className="font-mono text-[11px] bg-black/[0.04] px-1 rounded">read_products</span>, <span className="font-mono text-[11px] bg-black/[0.04] px-1 rounded">read_customers</span></li>
+              <li>Save, then go to <span className="font-medium text-black/80">API credentials</span> tab</li>
+              <li>Copy the <span className="font-medium text-black/80">Client ID</span> and <span className="font-medium text-black/80">Client secret</span> below</li>
+            </ol>
             <p className="text-[11px] text-black/30">
-              You'll be redirected to Shopify to approve access. Only read permissions are requested.
+              Redirect URL to add in your Shopify app: <span className="font-mono select-all">https://suite.arclabtechnology.com/api/auth/shopify/callback</span>
             </p>
           </div>
 
-          <div>
-            <button
-              onClick={() => setShowManual((v) => !v)}
-              className="flex items-center gap-1.5 text-[12px] font-medium text-black/35 hover:text-black/60 transition-colors"
-            >
-              <ChevronDown className={cn("h-3 w-3 transition-transform", showManual && "rotate-180")} />
-              Advanced: manual token entry
-            </button>
-            {showManual && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-3"
-              >
-                <ManualShopifyFields section={section} settings={settings} onSave={onSave} />
-              </motion.div>
-            )}
+          {/* Credentials form */}
+          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+            {section.fields.map((f) => (
+              <div key={f.key} className="px-5 py-4">
+                <FieldRow
+                  field={f}
+                  value={values[f.key] || ""}
+                  onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
+                />
+              </div>
+            ))}
           </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving || !isDirty}
+              className="flex h-9 items-center gap-1.5 rounded-[10px] bg-black px-4 text-[13px] font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
+            >
+              {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
+              Save
+            </button>
+
+            <button
+              onClick={connect}
+              disabled={connecting || !hasCredentials}
+              className="flex h-9 items-center gap-1.5 rounded-[10px] bg-[#96BF48] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#7ea33c] disabled:opacity-30"
+            >
+              {connecting ? <Spinner size="sm" /> : <Link2 className="h-3.5 w-3.5" />}
+              Connect Store
+            </button>
+          </div>
+
+          {!hasCredentials && (
+            <p className="text-[11px] text-black/30">
+              Save your credentials first, then click Connect Store to authorize.
+            </p>
+          )}
         </div>
       )}
     </motion.div>
-  );
-}
-
-function ManualShopifyFields({
-  section,
-  settings,
-  onSave,
-}: {
-  section: SectionDef;
-  settings: Settings;
-  onSave: (patch: Settings) => Promise<void>;
-}) {
-  const [values, setValues] = useState<Settings>({});
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const init: Settings = {};
-    for (const f of section.fields) init[f.key] = settings[f.key] || "";
-    setValues(init);
-  }, [settings, section]);
-
-  const isDirty = section.fields.some((f) => values[f.key] !== (settings[f.key] || ""));
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await onSave(values);
-      toast.success("Shopify credentials saved");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4 overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
-      {section.fields.map((f) => (
-        <div key={f.key} className="px-5 py-4">
-          <FieldRow
-            field={f}
-            value={values[f.key] || ""}
-            onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
-          />
-        </div>
-      ))}
-      <div className="px-5 py-4">
-        <button
-          onClick={handleSave}
-          disabled={saving || !isDirty}
-          className="flex h-9 items-center gap-1.5 rounded-[10px] bg-black px-4 text-[13px] font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
-        >
-          {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
-          Save
-        </button>
-      </div>
-    </div>
   );
 }
 
