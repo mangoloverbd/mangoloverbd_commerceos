@@ -1272,21 +1272,6 @@ app.post("/api/settings/test-facebook", async (req, res) => {
   }
 });
 
-// Test FraudShield connection server-side
-app.post("/api/settings/test-fraudshield", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const cfg = await getOrgSettings(orgId, ["fraudshield_api_key"]);
-    const apiKey = cfg["fraudshield_api_key"];
-    if (!apiKey) return res.status(400).json({ error: "FraudShield API key not configured" });
-    return res.json({ success: true, message: "API key configured" });
-  } catch (err) {
-    return res.status(500).json({ error: "An internal error occurred" });
-  }
-});
 
 // ─── Meta Business OAuth + Asset Sync ───────────────────────────────────────
 
@@ -3545,9 +3530,8 @@ app.post("/api/check-fraud", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const cfg = await getOrgSettings(orgId, ["fraudshield_api_key"]);
-    const fraudShieldApiKey = cfg["fraudshield_api_key"];
-    if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured" });
+    const fraudShieldApiKey = process.env.FRAUDSHIELD_API_KEY;
+    if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
     if (orderId) {
       const { data: order, error: fetchError } = await supabase
@@ -3635,9 +3619,8 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
     const { phone: rawPhone } = parseInboxOrderNotes(order.notes);
     if (!rawPhone) return res.status(400).json({ error: "No phone number found in this order's notes" });
 
-    const cfg = await getOrgSettings(orgId, ["fraudshield_api_key"]);
-    const fraudShieldApiKey = cfg["fraudshield_api_key"];
-    if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured" });
+    const fraudShieldApiKey = process.env.FRAUDSHIELD_API_KEY;
+    if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
     const { fraudData, errorMessage } = await checkFraudStatus(rawPhone, fraudShieldApiKey);
     const dataToStore = fraudData ?? { _error: errorMessage ?? "Unknown error" };

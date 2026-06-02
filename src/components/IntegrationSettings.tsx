@@ -53,13 +53,6 @@ function WhatsAppIcon({ className }: { className?: string }) {
   );
 }
 
-function FraudShieldIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 14l-3-3 1.41-1.41L11 12.17l4.59-4.58L17 9l-6 6z"/>
-    </svg>
-  );
-}
 
 // Steadfast & Pathao use image logos rendered on coloured backgrounds
 function SteadfastIcon({ className }: { className?: string }) {
@@ -153,17 +146,6 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
-    id: "fraudshield",
-    label: "FraudShield",
-    icon: FraudShieldIcon,
-    description: "Customer fraud detection",
-    color: "bg-[#16A34A]",
-    fields: [
-      { key: "fraudshield_api_key", label: "API Key", placeholder: "Your FraudShield API key", secret: true, hint: "From fraudshield.bd dashboard" },
-    ],
-    testKey: "fraudshield",
-  },
-  {
     id: "facebook-messenger",
     label: "Facebook Messenger",
     icon: MessengerIcon,
@@ -216,7 +198,6 @@ const GROUPS = [
   { label: "Commerce", ids: ["shopify"] },
   { label: "Marketing", ids: ["facebook"] },
   { label: "Courier", ids: ["steadfast", "pathao"] },
-  { label: "Security", ids: ["fraudshield"] },
   { label: "Social", ids: ["facebook-messenger", "instagram-dm", "whatsapp-business"] },
 ];
 
@@ -1174,9 +1155,7 @@ function DetailView({
     setTesting(true);
     setTestStatus("idle");
     try {
-      const endpoint = section.testKey === "fraudshield"
-        ? "/api/settings/test-fraudshield"
-        : "/api/settings/test-facebook";
+      const endpoint = "/api/settings/test-facebook";
       const res = await apiFetch(endpoint, { method: "POST" });
       const data = await res.json();
       if (!res.ok || data?.error) {
