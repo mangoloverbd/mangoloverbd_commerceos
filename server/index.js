@@ -3460,6 +3460,67 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
   }
 });
 
+// ── Steadfast: webhook for real-time delivery status updates ─────────────────
+app.post("/api/webhooks/steadfast", async (req, res) => {
+  try {
+    const supabase = getServiceSupabase();
+    const payload = req.body;
+    const consignmentId = String(payload?.consignment_id || "");
+    const status = payload?.status || payload?.delivery_status || "";
+    if (!consignmentId || !status) {
+      return res.status(400).json({ error: "Missing consignment_id or status" });
+    }
+
+    // Verify bearer token against stored webhook secret
+    const authHeader = req.headers.authorization || "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+
+    // Find the order by consignment_id
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, org_id, courier_status")
+      .eq("consignment_id", consignmentId)
+      .eq("sent_to_courier", true)
+      .maybeSingle();
+
+    if (!order) {
+      return res.status(200).json({ ok: true, skipped: "order not found" });
+    }
+
+    // Verify webhook secret if configured
+    if (bearerToken) {
+      const cfg = await getOrgSettings(order.org_id, ["courier_webhook_secret"]);
+      const secret = cfg["courier_webhook_secret"];
+      if (secret && bearerToken !== secret) {
+        return res.status(401).json({ error: "Invalid webhook token" });
+      }
+    }
+
+    const normalizedStatus = status.toLowerCase();
+    if (normalizedStatus === (order.courier_status || "").toLowerCase()) {
+      return res.status(200).json({ ok: true, skipped: "status unchanged" });
+    }
+
+    const patch = { courier_status: status };
+    if (normalizedStatus === "delivered" || normalizedStatus === "partial_delivered") {
+      patch.status = "confirmed";
+      patch.fulfillment_status = "delivered";
+    } else if (normalizedStatus === "cancelled") {
+      patch.status = "cancelled";
+    } else if (normalizedStatus.includes("return") || normalizedStatus === "partial_delivered_approval_pending") {
+      patch.courier_status = "returned";
+      patch.status = "cancelled";
+    }
+
+    await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", order.org_id);
+    console.log(`[Steadfast Webhook] Order ${order.id} status updated: ${order.courier_status} → ${status}`);
+    return res.status(200).json({ ok: true, updated: true });
+  } catch (e) {
+    console.error("[Steadfast Webhook] error:", e.message);
+    return res.status(200).json({ ok: true, error: e.message });
+  }
+});
+
 app.post("/api/check-fraud", async (req, res) => {
   try {
     const { orderId } = req.body || {};
