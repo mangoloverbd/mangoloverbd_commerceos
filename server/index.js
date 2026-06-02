@@ -1335,7 +1335,6 @@ async function subscribeMetaPage(pageId, pageToken) {
           "messaging_referrals",
           "message_deliveries",
           "message_reads",
-          "instagram_manage_messages",
         ],
       },
     });
@@ -1665,9 +1664,13 @@ app.post("/api/meta/resubscribe-pages", async (req, res) => {
     }
 
     const succeeded = results.filter((r) => r.subscribed).length;
+    const errors = results.filter((r) => !r.subscribed).map((r) => `${r.pageId}: ${r.error}`);
+    console.log("[Meta Resubscribe] results:", JSON.stringify(results));
     return res.json({
-      success: true,
-      message: `Re-subscribed ${succeeded}/${pages.length} pages with Instagram DM fields.`,
+      success: succeeded > 0,
+      message: succeeded > 0
+        ? `Re-subscribed ${succeeded}/${pages.length} pages with Instagram DM fields.`
+        : `Failed to subscribe all ${pages.length} pages. ${errors[0] || "Check page tokens."}`,
       results,
     });
   } catch (err) {
