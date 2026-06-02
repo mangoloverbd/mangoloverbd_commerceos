@@ -54,7 +54,7 @@ function SidebarScrambleLabel({ text, active, animateSignal }: { text: string; a
                 "block truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal",
                 active && "font-medium"
             )}
-            charClassName={active ? "text-[#222]" : "text-current"}
+            charClassName={active ? "text-[#0c6fff]" : "text-current"}
             scrambledClassName="scale-105 text-[#222]"
         />
     );
@@ -230,7 +230,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                     glow={false}
                                                                                     className="min-w-0"
                                                                                     textClassName="block truncate font-sf-text text-[11.5px] font-medium normal-case tracking-normal"
-                                                                                    charClassName={subActive ? "text-[#222]" : "text-current"}
+                                                                                    charClassName={subActive ? "text-[#0c6fff]" : "text-current"}
                                                                                     scrambledClassName="scale-105 text-[#222]"
                                                                                 />
                                                                             </Link>
