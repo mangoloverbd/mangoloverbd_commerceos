@@ -63,6 +63,9 @@ function SidebarScrambleLabel({ text, active, animateSignal }: { text: string; a
 const navIconFrame =
     "flex h-[17px] w-[17px] shrink-0 items-center justify-center [&>img]:h-[17px] [&>img]:w-[17px] [&>img]:object-contain [&>svg]:h-[17px] [&>svg]:w-[17px]";
 
+const activeIconStyle = { "--fillg": "#0c6fff" } as React.CSSProperties;
+const inactiveIconStyle = { "--fillg": "#000000" } as React.CSSProperties;
+
 const navIconMotion =
     "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#0c6fff] group-hover/nav-button:-translate-y-0.5 group-hover/nav-button:-rotate-6 group-hover/nav-button:scale-125 group-hover/nav-button:text-[#0c6fff]";
 
@@ -134,7 +137,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     <span className={cn(
                                                         navIconFrame,
                                                         "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#0c6fff]"
-                                                    )}>
+                                                    )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                         {route.icon}
                                                     </span>
                                                 </Link>
@@ -188,7 +191,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                 navIconFrame,
                                                                 navIconMotion,
                                                                 isActive ? "text-[#0c6fff]" : "text-[#333]"
-                                                            )}>
+                                                            )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                                 {route.icon}
                                                             </span>
                                                             <SidebarScrambleLabel text={route.title} active={isActive} animateSignal={scrambleSignals[route.id]} />
@@ -220,7 +223,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                         navIconFrame,
                                                                                         navIconMotion,
                                                                                         subActive ? "text-[#0c6fff]" : "text-current"
-                                                                                    )}>{sub.icon}</span>
+                                                                                    )} style={subActive ? activeIconStyle : inactiveIconStyle}>{sub.icon}</span>
                                                                                 )}
                                                                                 <TextScramble
                                                                                     text={sub.title}
@@ -261,7 +264,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             navIconFrame,
                                                             navIconMotion,
                                                             isActive ? "text-[#0c6fff]" : "text-[#333]"
-                                                        )}>
+                                                        )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                             {route.icon}
                                                         </span>
                                                         <SidebarScrambleLabel text={route.title} active={isActive} animateSignal={scrambleSignals[route.id]} />
