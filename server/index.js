@@ -2917,6 +2917,133 @@ ${studioSchemaInstruction}`;
   }
 });
 
+// ─── Shopify Order Sync ─────────────────────────────────────────────────────
+
+app.post("/api/fetch-shopify-orders", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["shopify_store_url", "shopify_admin_api_token"]);
+    if (!cfg.shopify_store_url || !cfg.shopify_admin_api_token) {
+      return res.status(400).json({ error: "Shopify not connected. Go to Settings → Shopify to connect your store." });
+    }
+    const cleanShop = cfg.shopify_store_url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const shopifyRes = await fetch(
+      `https://${cleanShop}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc`,
+      { headers: { "X-Shopify-Access-Token": cfg.shopify_admin_api_token, "Content-Type": "application/json" } }
+    );
+    if (!shopifyRes.ok) {
+      const errText = await shopifyRes.text();
+      console.error(`[Shopify Sync] API error ${shopifyRes.status}:`, errText.slice(0, 300));
+      return res.status(shopifyRes.status).json({ error: "Failed to fetch orders from Shopify", details: errText.slice(0, 200) });
+    }
+    const shopifyData = await shopifyRes.json();
+    const orders = shopifyData.orders || [];
+
+    // Fetch existing orders to preserve fraud data
+    const { data: existingOrders } = await supabase
+      .from("orders")
+      .select("shopify_order_id, fraud_checked, fraud_data, delivery_rate")
+      .eq("org_id", orgId);
+    const existingMap = new Map((existingOrders || []).map((o) => [o.shopify_order_id, o]));
+
+    const processedOrders = orders.map((order) => {
+      // Phone extraction
+      let phone = order.shipping_address?.phone || order.customer?.phone || "";
+      if (!phone && order.note_attributes) {
+        const phoneAttr = order.note_attributes.find((a) =>
+          a.name.toLowerCase().includes("phone") || a.name.toLowerCase().includes("tel") || a.name.toLowerCase().includes("mobile")
+        );
+        if (phoneAttr) phone = phoneAttr.value;
+      }
+      if (phone) {
+        let p = phone.replace(/\D/g, "");
+        if (p.startsWith("880")) p = p.slice(3);
+        if (p.length === 10 && p.startsWith("1")) p = "0" + p;
+        phone = p;
+      }
+
+      // Address
+      const addr = order.shipping_address || order.customer?.default_address;
+      let addressParts = [addr?.address1, addr?.city, addr?.province, addr?.country, addr?.zip].filter(Boolean);
+      if (addressParts.length <= 1 && order.note_attributes) {
+        const noteAddr = [];
+        const addrFields = ["address", "shipping address", "delivery address", "street", "road", "house", "flat"];
+        const cityFields = ["city", "town", "district", "thana", "upazila", "area"];
+        for (const attr of order.note_attributes) {
+          const n = attr.name.toLowerCase();
+          const v = attr.value?.trim();
+          if (!v) continue;
+          if ([...addrFields, ...cityFields].some((f) => n.includes(f))) noteAddr.push(v);
+        }
+        if (noteAddr.length > 0) {
+          if (addr?.country) noteAddr.push(addr.country);
+          addressParts = noteAddr;
+        }
+      }
+      const address = addressParts.join(", ");
+
+      // Customer name
+      let customerName = "";
+      if (order.shipping_address?.name) customerName = order.shipping_address.name;
+      else if (order.shipping_address?.first_name || order.shipping_address?.last_name) customerName = `${order.shipping_address.first_name || ""} ${order.shipping_address.last_name || ""}`.trim();
+      else if (order.billing_address?.name) customerName = order.billing_address.name;
+      else if (order.billing_address?.first_name || order.billing_address?.last_name) customerName = `${order.billing_address.first_name || ""} ${order.billing_address.last_name || ""}`.trim();
+      else if (order.customer?.first_name || order.customer?.last_name) customerName = `${order.customer.first_name || ""} ${order.customer.last_name || ""}`.trim();
+      else if (order.customer?.default_address?.name) customerName = order.customer.default_address.name;
+      if (!customerName && order.note_attributes) {
+        const nameAttr = order.note_attributes.find((a) => a.name.toLowerCase().includes("name") && !a.name.toLowerCase().includes("phone"));
+        if (nameAttr) customerName = nameAttr.value;
+      }
+
+      // Line items
+      const lineItems = order.line_items || [];
+      const product = lineItems.map((i) => `${i.quantity || 1}x ${i.name}`).join(", ");
+      const quantity = lineItems.reduce((acc, i) => acc + (i.quantity || 0), 0);
+
+      // Prices
+      const subtotalPrice = parseFloat(order.subtotal_price) || 0;
+      const shippingPrice = parseFloat(order.total_shipping_price_set?.shop_money?.amount || "0");
+
+      // Preserve existing fraud data
+      const existing = existingMap.get(order.id);
+
+      return {
+        shopify_order_id: order.id,
+        order_number: order.name || `#${order.order_number}`,
+        customer_name: customerName,
+        phone,
+        address,
+        product,
+        quantity,
+        price: subtotalPrice,
+        delivery_rate: shippingPrice,
+        fulfillment_status: order.fulfillment_status || null,
+        fraud_checked: existing?.fraud_checked || false,
+        fraud_data: existing?.fraud_data || null,
+        org_id: orgId,
+      };
+    });
+
+    if (processedOrders.length > 0) {
+      const { error: upsertErr } = await supabase
+        .from("orders")
+        .upsert(processedOrders, { onConflict: "shopify_order_id", ignoreDuplicates: false });
+      if (upsertErr) {
+        console.error("[Shopify Sync] upsert error:", upsertErr.message);
+        return res.status(500).json({ error: "Failed to save orders", details: upsertErr.message });
+      }
+    }
+
+    return res.json({ success: true, synced: processedOrders.length });
+  } catch (err) {
+    console.error("[Shopify Sync] error:", errorMessage(err));
+    return sendError(res, err);
+  }
+});
+
 app.get("/api/orders", async (req, res) => {
   try {
     const token = getToken(req);
