@@ -1209,15 +1209,8 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                       ) : (
                         (() => {
                           const rawStatus = (order.courier_status || "").toLowerCase().trim();
-                          const hasRealStatus = rawStatus !== "" 
-                            && rawStatus !== "pending" 
-                            && rawStatus !== "in_review"
-                            && rawStatus !== "pickup_requested"
-                            && rawStatus !== "pickup requested";
-                          const id = order.consignment_id || order.tracking_code;
-
-                          if (!hasRealStatus) {
-                            // No update from courier yet — show the tracking ID
+                          if (!rawStatus) {
+                            const id = order.consignment_id || order.tracking_code;
                             return (
                               <PopButton color="sky" size="sm" className="cursor-default gap-1.5 text-[10px] font-bold tracking-widest uppercase w-36 justify-center">
                                 <span className="opacity-70">ID</span>
@@ -1225,7 +1218,6 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                               </PopButton>
                             );
                           }
-                          // Courier has updated — show the status button
                           return getCourierStatusBadge(order);
                         })()
                       )}
