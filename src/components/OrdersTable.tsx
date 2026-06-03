@@ -666,43 +666,43 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       if (data?.fraudError) {
         // Show the real error from the API so the user can diagnose it
         toast.custom(() => (
-          <div className="flex items-center gap-2.5 px-3 py-2">
-            <div className="h-7 w-7 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+          <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
+            <div className="h-9 w-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-medium text-black">Fraud check failed</p>
-              <p className="text-[10px] text-black/50 break-words leading-snug">{data.fraudError}</p>
+              <p className="text-[13px] font-medium text-black">Fraud check failed</p>
+              <p className="text-[11px] text-black/50 mt-0.5 break-words leading-snug">{data.fraudError}</p>
             </div>
           </div>
-        ), { duration: 10000, className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
+        ), { duration: 10000, className: "!p-1 !rounded-xl" });
         return;
       }
 
       toast.custom(() => (
-        <div className="flex items-center gap-2.5 px-3 py-2">
-          <div className="h-7 w-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+        <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
+          <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-medium text-black">Order #{order.order_number} verified</p>
-            <p className="text-[10px] text-black/50">Fraud analysis complete</p>
+            <p className="text-[13px] font-medium text-black">Order #{order.order_number} verified</p>
+            <p className="text-[11px] text-black/50 mt-0.5">Fraud analysis complete</p>
           </div>
         </div>
-      ), { className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
+      ), { className: "!p-1 !rounded-xl" });
     } catch (error) {
       console.error("Error checking fraud:", error);
       toast.custom(() => (
-        <div className="flex items-center gap-2.5 px-3 py-2">
-          <div className="h-7 w-7 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+        <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
+          <div className="h-9 w-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-medium text-black">Fraud check failed</p>
-            <p className="text-[10px] text-black/50">Could not verify order</p>
+            <p className="text-[13px] font-medium text-black">Fraud check failed</p>
+            <p className="text-[11px] text-black/50 mt-0.5">Could not verify order</p>
           </div>
         </div>
-      ), { className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
+      ), { className: "!p-1 !rounded-xl" });
     } finally {
       setCheckingFraudIds((prev) => {
         const next = new Set(prev);
@@ -746,17 +746,17 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       }
 
       if (successCount > 0) {
-        toast.custom((t) => (
-          <div className="flex items-center gap-2.5 px-3 py-2">
-            <div className="h-7 w-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+        toast.custom(() => (
+          <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
+            <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-medium text-black">{successCount} orders verified</p>
-              <p className="text-[10px] text-black/50">Bulk fraud analysis complete</p>
+              <p className="text-[13px] font-medium text-black">{successCount} orders verified</p>
+              <p className="text-[11px] text-black/50 mt-0.5">Bulk fraud analysis complete</p>
             </div>
           </div>
-        ), { className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
+        ), { className: "!p-1 !rounded-xl" });
       }
       setSelectedIds(new Set());
     } finally {

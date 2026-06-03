@@ -333,7 +333,7 @@ function FinanceMetric({
             initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="flex min-h-[58px] items-center justify-between gap-3"
+            className="flex min-h-[58px] items-end justify-between gap-3"
           >
             <div className="min-w-0">
               <DashboardTextEffect
