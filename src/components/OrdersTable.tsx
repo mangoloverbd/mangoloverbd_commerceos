@@ -1017,11 +1017,21 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
               <div
                 onClick={toggleSelectAll}
                 className={cn(
-                  "w-4 h-4 rounded border border-black/10 flex items-center justify-center cursor-pointer transition-all",
-                  selectedIds.size === orders.length && orders.length > 0 ? "bg-black border-black" : "bg-white hover:border-black/30"
+                  "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200",
+                  selectedIds.size === orders.length && orders.length > 0
+                    ? "bg-black border-black"
+                    : selectedIds.size > 0
+                      ? "bg-black border-black"
+                      : "border-black/20 bg-white hover:border-black/40"
                 )}
               >
-                {selectedIds.size === orders.length && orders.length > 0 && <Check className="w-3 h-3 text-white" />}
+                {selectedIds.size === orders.length && orders.length > 0 ? (
+                  <Check className="w-3 h-3 text-white" />
+                ) : selectedIds.size > 0 ? (
+                  <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none">
+                    <path d="M3 6H9" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                ) : null}
               </div>
             </TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Order ID</TableHead>
@@ -1042,19 +1052,34 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                 <TableRow
                   key={order.id}
                   className={cn(
-                    "border-b border-black/[0.02] hover:bg-black/[0.01] transition-colors group relative",
-                    selectedIds.has(order.id) && "bg-black/[0.015]"
+                    "border-b border-black/[0.02] transition-all duration-200 group relative",
+                    selectedIds.has(order.id)
+                      ? "bg-blue-50/60 hover:bg-blue-50/80"
+                      : "hover:bg-black/[0.015]"
                   )}
                 >
                   <TableCell className="w-10 py-3 pl-4">
                     <div
                       onClick={() => toggleSelectOrder(order.id)}
                       className={cn(
-                        "w-4 h-4 rounded border border-black/10 flex items-center justify-center cursor-pointer transition-all",
-                        selectedIds.has(order.id) ? "bg-black border-black shadow-sm" : "bg-white group-hover:border-black/30"
+                        "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200",
+                        selectedIds.has(order.id)
+                          ? "bg-black border-black scale-105 shadow-sm"
+                          : "border-black/20 bg-white hover:border-black/40 active:scale-95"
                       )}
                     >
-                      {selectedIds.has(order.id) && <Check className="w-3 h-3 text-white" />}
+                      {selectedIds.has(order.id) && (
+                        <motion.svg
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                          viewBox="0 0 12 12"
+                          className="w-3 h-3"
+                          fill="none"
+                        >
+                          <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </motion.svg>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="py-3">
