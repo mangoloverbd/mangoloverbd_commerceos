@@ -1052,7 +1052,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                 <TableRow
                   key={order.id}
                   className={cn(
-                    "border-b border-black/[0.02] transition-all duration-200 group relative",
+                    "border-b border-[#F1F1F2] transition-all duration-200 group relative",
                     selectedIds.has(order.id)
                       ? "bg-blue-50/60 hover:bg-blue-50/80"
                       : "hover:bg-black/[0.015]"
