@@ -3298,10 +3298,10 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
     const shopifyData = await shopifyRes.json();
     const orders = shopifyData.orders || [];
 
-    // Fetch existing orders to preserve fraud data
+    // Fetch existing orders to preserve fraud data and manual edits
     const { data: existingOrders } = await supabase
       .from("orders")
-      .select("shopify_order_id, fraud_checked, fraud_data, delivery_rate")
+      .select("shopify_order_id, fraud_checked, fraud_data, delivery_rate, price")
       .eq("org_id", orgId);
     const existingMap = new Map((existingOrders || []).map((o) => [o.shopify_order_id, o]));
 
@@ -3366,6 +3366,11 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
       // Preserve existing fraud data
       const existing = existingMap.get(order.id);
 
+      // Preserve manually-edited price: if existing price differs from Shopify's subtotal, keep it
+      const preservedPrice = existing?.price != null && existing.price !== subtotalPrice
+        ? existing.price
+        : subtotalPrice;
+
       return {
         shopify_order_id: order.id,
         order_number: order.name || `#${order.order_number}`,
@@ -3374,7 +3379,7 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
         address,
         product,
         quantity,
-        price: subtotalPrice,
+        price: preservedPrice,
         delivery_rate: shippingPrice,
         fulfillment_status: order.fulfillment_status || null,
         fraud_checked: existing?.fraud_checked || false,
