@@ -4,7 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { CreditCard, Receipt, TrendingUp, Crown } from "lucide-react";
 
 type Section = "plan" | "usage" | "payment" | "invoices";

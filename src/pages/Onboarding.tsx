@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function Onboarding() {

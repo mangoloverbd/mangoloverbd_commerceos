@@ -15,6 +15,7 @@
     "start": "NODE_ENV=production node server/index.js"
   },
   "dependencies": {
+    "@ark-ui/react": "^5.37.0",
     "@base-ui/react": "^1.5.0",
     "@hookform/resolvers": "^3.10.0",
     "@mendable/firecrawl-js": "^4.25.0",

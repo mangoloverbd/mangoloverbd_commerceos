@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import {
   UserPlus, Trash2, Users, Copy, Check,
   Crown, Eye, EyeOff, ShieldCheck, Lock,

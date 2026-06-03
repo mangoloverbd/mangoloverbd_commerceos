@@ -3,7 +3,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { OrdersTable } from "@/components/OrdersTable";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import {
   RefreshCw, ShieldCheck, Search, AlertTriangle,
   Info, CalendarDays, ChevronDown,

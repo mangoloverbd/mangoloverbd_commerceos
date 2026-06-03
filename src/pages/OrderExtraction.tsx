@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion } from "framer-motion";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

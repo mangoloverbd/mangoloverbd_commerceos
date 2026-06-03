@@ -6,7 +6,7 @@ import { ChevronDown, Copy, Check, RefreshCw, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { AnimatedText } from "@/components/ui/animated-text";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 const FRAMEWORKS = [
   {

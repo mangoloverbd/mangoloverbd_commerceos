@@ -5,7 +5,7 @@ import { TeamManagement } from "@/components/TeamManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
 import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";

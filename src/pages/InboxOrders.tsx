@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PopButton } from "@/components/ui/pop-button";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { format } from "date-fns";
 import {
   MagnifyingGlass, ShoppingBag, Package, NotePencil, Truck,
