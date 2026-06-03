@@ -134,7 +134,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
         animate={{ opacity: 1, x: 0, scale: 1 }}
         exit={{ opacity: 0, x: 24, scale: 0.96 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="rounded-xl bg-white border border-gray-200 shadow-lg overflow-hidden"
+        className="rounded-xl bg-white border border-gray-200 shadow-lg overflow-hidden min-w-[320px]"
       >
         {item.render(item.id)}
       </motion.div>
