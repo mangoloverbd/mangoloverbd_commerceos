@@ -1019,9 +1019,9 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                 className={cn(
                   "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200",
                   selectedIds.size === orders.length && orders.length > 0
-                    ? "bg-black border-black"
+                    ? "bg-[#0285F7] border-[#0285F7]"
                     : selectedIds.size > 0
-                      ? "bg-black border-black"
+                      ? "bg-[#0285F7] border-[#0285F7]"
                       : "border-black/20 bg-white hover:border-black/40"
                 )}
               >
@@ -1064,7 +1064,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                       className={cn(
                         "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200",
                         selectedIds.has(order.id)
-                          ? "bg-black border-black scale-105 shadow-sm"
+                          ? "bg-[#0285F7] border-[#0285F7] scale-105 shadow-sm"
                           : "border-black/20 bg-white hover:border-black/40 active:scale-95"
                       )}
                     >
