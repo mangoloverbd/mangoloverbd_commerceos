@@ -542,8 +542,19 @@ export default function Dashboard() {
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
 
   const handleOrderUpdate = (updatedOrder: Order) => {
-    setOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o)));
-    fetchAnalytics(dateRange);
+    setOrders((prev) => {
+      const oldOrder = prev.find((o) => o.id === updatedOrder.id);
+      // Only refresh analytics if fields that affect revenue/costs changed
+      const needsAnalyticsRefresh = oldOrder && (
+        oldOrder.price !== updatedOrder.price ||
+        oldOrder.delivery_rate !== updatedOrder.delivery_rate ||
+        oldOrder.quantity !== updatedOrder.quantity
+      );
+      if (needsAnalyticsRefresh) {
+        fetchAnalytics(dateRange);
+      }
+      return prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o));
+    });
   };
 
   const filteredOrders = useMemo(() => {
