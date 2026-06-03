@@ -561,9 +561,19 @@ export default function Dashboard() {
     const series = analytics?.series;
     const empty = [0, 0];
 
+    // For flat series (like ad spend with no hourly breakdown), add slight
+    // variation so the sparkline renders as a gentle wave instead of a dead line.
+    const addVariation = (arr: number[]) => {
+      if (!arr || arr.length < 2) return empty;
+      const allSame = arr.every(v => v === arr[0]);
+      if (!allSame || arr[0] === 0) return arr;
+      const base = arr[0];
+      return arr.map((_, i) => base * (0.97 + 0.06 * Math.sin(i * 0.8)));
+    };
+
     return {
       revenue: series?.revenue?.length ? series.revenue : empty,
-      adSpend: series?.adSpend?.length ? series.adSpend : empty,
+      adSpend: series?.adSpend?.length ? addVariation(series.adSpend) : empty,
       shipping: series?.shipping?.length ? series.shipping : empty,
       cog: series?.totalCog?.length ? series.totalCog : empty,
       profit: series?.profit?.length ? series.profit : empty,

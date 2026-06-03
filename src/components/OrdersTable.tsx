@@ -680,32 +680,29 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       }
 
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-5 h-5 text-blue-500" />
+        <div className="flex items-center gap-2.5 px-3 py-2">
+          <div className="h-7 w-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Fraud Analysis</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">Order {order.order_number}</span>
-              <span className="text-xs text-black font-medium">Verified</span>
-            </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-medium text-black">Order #{order.order_number} verified</p>
+            <p className="text-[10px] text-black/50">Fraud analysis complete</p>
           </div>
         </div>
-      ));
+      ), { className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
     } catch (error) {
       console.error("Error checking fraud:", error);
-      toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+      toast.custom(() => (
+        <div className="flex items-center gap-2.5 px-3 py-2">
+          <div className="h-7 w-7 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Analysis Failed</span>
-            <span className="text-sm font-bold text-black">Check fraud status failed</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-medium text-black">Fraud check failed</p>
+            <p className="text-[10px] text-black/50">Could not verify order</p>
           </div>
         </div>
-      ));
+      ), { className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
     } finally {
       setCheckingFraudIds((prev) => {
         const next = new Set(prev);
@@ -750,19 +747,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
 
       if (successCount > 0) {
         toast.custom((t) => (
-          <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-            <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5 text-blue-500" />
+          <div className="flex items-center gap-2.5 px-3 py-2">
+            <div className="h-7 w-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-black">Bulk Analysis</span>
-              <div className="flex items-baseline gap-1">
-                <span className="text-sm font-bold text-black">{successCount} Orders</span>
-                <span className="text-xs text-black font-medium">Verified Successfully</span>
-              </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-medium text-black">{successCount} orders verified</p>
+              <p className="text-[10px] text-black/50">Bulk fraud analysis complete</p>
             </div>
           </div>
-        ));
+        ), { className: "!p-1.5 !rounded-xl !min-w-0 !max-w-fit" });
       }
       setSelectedIds(new Set());
     } finally {
