@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -136,17 +137,19 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
     if (planId === currentPlan?.id) return;
     setSwitching(planId);
     try {
-      const res = await apiFetch("/api/billing/plan", {
+      const res = await apiFetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId }),
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Failed to switch plan");
+        throw new Error(err.error || "Failed to start checkout");
       }
-      toast.success(`Switched to ${PLANS.find(p => p.id === planId)?.name} plan.`);
-      onRefresh();
+      const { url } = await res.json();
+      if (url) {
+        window.location.href = url;
+      }
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -300,6 +303,28 @@ function UsageSection({ usage }: { usage: UsageData | null }) {
 }
 
 function PaymentSection() {
+  const [loading, setLoading] = useState(false);
+
+  const openPortal = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to open portal");
+      }
+      const { url } = await res.json();
+      if (url) window.location.href = url;
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -314,18 +339,22 @@ function PaymentSection() {
               <CreditCard className="h-4 w-4 text-black/40" strokeWidth={1.5} />
             </div>
             <div>
-              <p className="text-[13px] font-medium text-black/40">No payment method added</p>
-              <p className="text-[11px] text-black/30 mt-0.5">Add a card or mobile wallet to activate billing.</p>
+              <p className="text-[13px] font-medium text-black">Manage via Stripe</p>
+              <p className="text-[11px] text-black/40 mt-0.5">Update your card, view invoices, or cancel your subscription.</p>
             </div>
           </div>
-          <button className="h-8 px-4 rounded-lg bg-black text-white text-[12px] font-medium hover:bg-black/85 transition-colors">
-            Add Method
+          <button
+            onClick={openPortal}
+            disabled={loading}
+            className="h-8 px-4 rounded-lg bg-black text-white text-[12px] font-medium hover:bg-black/85 transition-colors disabled:opacity-50"
+          >
+            {loading ? <Spinner size="sm" className="mx-auto" /> : "Manage Billing"}
           </button>
         </div>
 
         <div className="px-5 py-4">
           <p className="text-[11px] text-black/40">
-            Supported: Visa, Mastercard, bKash, Nagad, Rocket (via SSLCommerz). Payment processor integration coming soon.
+            Powered by Stripe. Supports Visa, Mastercard, and other international payment methods.
           </p>
         </div>
       </div>
@@ -393,11 +422,19 @@ function InvoiceSection({ invoices }: { invoices: Invoice[] }) {
 }
 
 export default function Billing() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [section, setSection] = useState<Section>("plan");
   const [plan, setPlan] = useState<PlanInfo | null>(null);
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (searchParams.get("session_id")) {
+      toast.success("Subscription activated! Your plan is now active.");
+      setSearchParams({}, { replace: true });
+    }
+  }, []);
 
   const fetchBilling = async () => {
     try {

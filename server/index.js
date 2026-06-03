@@ -9,6 +9,7 @@ import { readFile } from "fs/promises";
 import pg from "pg";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
+import Stripe from "stripe";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -108,6 +109,19 @@ function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
 const rateLimitAI   = makeRateLimitMiddleware(rlAI,   "user");
 const rateLimitAuth = makeRateLimitMiddleware(rlAuth,  "ip");
 const rateLimitAPI  = makeRateLimitMiddleware(rlAPI,   "user");
+
+// ─── Stripe ─────────────────────────────────────────────────────────────────
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+const STRIPE_PRICE_MAP = {
+  starter: "price_1TeARSA5T00t4EO71W7svkrN",
+  growth: "price_1TeARSA5T00t4EO79vEi4zBY",
+  pro: "price_1TeARSA5T00t4EO7pgBtMKgH",
+  enterprise: "price_1TeARTA5T00t4EO7c3f1thOz",
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -518,6 +532,7 @@ app.get("/api/config", (req, res) => {
   res.json({
     supabaseUrl: process.env.SUPABASE_URL || "",
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
+    stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
   });
 });
 
@@ -1243,6 +1258,194 @@ app.get("/api/billing/invoices", async (req, res) => {
     return res.json({ invoices });
   } catch (err) {
     return sendError(res, err);
+  }
+});
+
+// ─── Stripe Billing ─────────────────────────────────────────────────────────
+
+app.post("/api/billing/checkout", async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const { planId } = req.body;
+    if (!planId || !STRIPE_PRICE_MAP[planId]) {
+      return res.status(400).json({ error: "Invalid plan" });
+    }
+
+    const settings = await getOrgSettings(orgId, ["stripe_customer_id"]);
+    let customerId = settings.stripe_customer_id;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: { org_id: orgId },
+      });
+      customerId = customer.id;
+      await saveOrgSettings(orgId, { stripe_customer_id: customerId });
+    }
+
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      client_reference_id: orgId,
+      mode: "subscription",
+      line_items: [{ price: STRIPE_PRICE_MAP[planId], quantity: 1 }],
+      success_url: `${baseUrl}/billing?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/billing`,
+      metadata: { org_id: orgId, plan_id: planId },
+      subscription_data: { metadata: { org_id: orgId, plan_id: planId } },
+    });
+
+    return res.json({ url: session.url });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.post("/api/billing/portal", async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const settings = await getOrgSettings(orgId, ["stripe_customer_id"]);
+    if (!settings.stripe_customer_id) {
+      return res.status(400).json({ error: "No billing account yet. Subscribe to a plan first." });
+    }
+
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: settings.stripe_customer_id,
+      return_url: `${baseUrl}/billing`,
+    });
+
+    return res.json({ url: session.url });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.post("/api/webhooks/stripe", async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).end();
+    const sig = req.headers["stripe-signature"];
+    if (!sig || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return res.status(400).json({ error: "Missing signature" });
+    }
+
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.error("[Stripe] Webhook signature verification failed:", err.message);
+      return res.status(400).json({ error: "Invalid signature" });
+    }
+
+    const supabase = getServiceSupabase();
+
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const orgId = session.metadata?.org_id || session.client_reference_id;
+        const planId = session.metadata?.plan_id;
+        if (orgId && planId) {
+          const now = new Date().toISOString();
+          const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          await saveOrgSettings(orgId, {
+            billing_plan: planId,
+            billing_started_at: now,
+            billing_renews_at: renewsAt,
+            billing_status: "active",
+            stripe_customer_id: session.customer,
+            stripe_subscription_id: session.subscription,
+          });
+        }
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const sub = event.data.object;
+        const orgId = sub.metadata?.org_id;
+        if (orgId) {
+          const priceId = sub.items?.data?.[0]?.price?.id;
+          const planId = Object.entries(STRIPE_PRICE_MAP).find(([, v]) => v === priceId)?.[0];
+          const updates = { billing_status: sub.status };
+          if (planId) updates.billing_plan = planId;
+          if (sub.current_period_end) {
+            updates.billing_renews_at = new Date(sub.current_period_end * 1000).toISOString();
+          }
+          await saveOrgSettings(orgId, updates);
+        }
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const sub = event.data.object;
+        const orgId = sub.metadata?.org_id;
+        if (orgId) {
+          await saveOrgSettings(orgId, {
+            billing_status: "canceled",
+            stripe_subscription_id: "",
+          });
+        }
+        break;
+      }
+
+      case "invoice.paid": {
+        const invoice = event.data.object;
+        const customerId = invoice.customer;
+        const { data: settingsRows } = await supabase
+          .from("app_settings")
+          .select("key, value")
+          .like("key", "%:stripe_customer_id")
+          .eq("value", customerId)
+          .maybeSingle();
+        const orgId = settingsRows?.key?.split(":")[0];
+        if (orgId) {
+          const existingSettings = await getOrgSettings(orgId, ["billing_invoices"]);
+          let invoices = [];
+          try { invoices = JSON.parse(existingSettings.billing_invoices || "[]"); } catch {}
+          invoices.unshift({
+            id: invoice.id,
+            date: new Date(invoice.created * 1000).toISOString(),
+            amount: Math.round(invoice.amount_paid / 100),
+            status: "paid",
+            url: invoice.hosted_invoice_url || "",
+          });
+          await saveOrgSettings(orgId, { billing_invoices: JSON.stringify(invoices.slice(0, 50)) });
+        }
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        const invoice = event.data.object;
+        const customerId = invoice.customer;
+        const { data: settingsRows } = await supabase
+          .from("app_settings")
+          .select("key, value")
+          .like("key", "%:stripe_customer_id")
+          .eq("value", customerId)
+          .maybeSingle();
+        const orgId = settingsRows?.key?.split(":")[0];
+        if (orgId) {
+          await saveOrgSettings(orgId, { billing_status: "past_due" });
+        }
+        break;
+      }
+    }
+
+    return res.json({ received: true });
+  } catch (err) {
+    console.error("[Stripe] Webhook error:", err);
+    return res.status(500).json({ error: "Webhook handler error" });
   }
 });
 
