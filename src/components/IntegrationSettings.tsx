@@ -1056,7 +1056,7 @@ function ShopifyDetailView({
             <ol className="text-[12px] text-black/60 space-y-1.5 list-decimal list-inside">
               <li>Go to your Shopify Admin → <span className="font-medium text-black/80">Settings → Apps and sales channels</span></li>
               <li>Click <span className="font-medium text-black/80">Develop apps</span> → Create an app</li>
-              <li>Name it anything (e.g. "Seraphine")</li>
+              <li>Name it anything (e.g. "Your Store Name")</li>
               <li>Go to <span className="font-medium text-black/80">Configuration</span> → Admin API access scopes → select <span className="font-mono text-[11px] bg-black/[0.04] px-1 rounded">read_orders</span>, <span className="font-mono text-[11px] bg-black/[0.04] px-1 rounded">read_products</span>, <span className="font-mono text-[11px] bg-black/[0.04] px-1 rounded">read_customers</span></li>
               <li>Save, then go to <span className="font-medium text-black/80">API credentials</span> tab</li>
               <li>Copy the <span className="font-medium text-black/80">Client ID</span> and <span className="font-medium text-black/80">Client secret</span> below</li>
