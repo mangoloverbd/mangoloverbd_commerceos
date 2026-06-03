@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { TeamManagement } from "@/components/TeamManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
 import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Building2, Puzzle, Lock } from "lucide-react";
+import { MessengerLogo, InstagramLogo, WhatsappLogo } from "@phosphor-icons/react";
 
 type Section = "workspace" | "integrations";
 
@@ -24,6 +26,118 @@ function SaveIcon({ className }: { className?: string }) {
       <path d="M3 17.9808V12.7075C3 9.07416 3 7.25748 4.09835 6.12874C5.1967 5 6.96447 5 10.5 5C14.0355 5 15.8033 5 16.9017 6.12874C18 7.25748 18 9.07416 18 12.7075V17.9808C18 20.2867 18 21.4396 17.2755 21.8523C15.8724 22.6514 13.2405 19.9852 11.9906 19.1824C11.2657 18.7168 10.9033 18.484 10.5 18.484C10.0967 18.484 9.73425 18.7168 9.00938 19.1824C7.7595 19.9852 5.12763 22.6514 3.72454 21.8523C3 21.4396 3 20.2867 3 17.9808Z" />
       <path d="M9 2H11C15.714 2 18.0711 2 19.5355 3.46447C21 4.92893 21 7.28595 21 12V18" />
     </svg>
+  );
+}
+
+const AI_CHANNELS = [
+  { id: "facebook", label: "Facebook Messenger", icon: MessengerLogo },
+  { id: "instagram", label: "Instagram DMs", icon: InstagramLogo },
+  { id: "whatsapp", label: "WhatsApp", icon: WhatsappLogo },
+] as const;
+
+function AIAutoReplySection() {
+  const [loading, setLoading] = useState(true);
+  const [enabled, setEnabled] = useState(false);
+  const [channels, setChannels] = useState<string[]>([]);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/meta/status");
+      if (res.ok) {
+        const data = await res.json();
+        setEnabled(data.aiAutomation?.enabled ?? false);
+        setChannels(data.aiAutomation?.channels ?? []);
+      }
+    } catch {
+      // silently fail — section just won't show toggles
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  const patchAI = async (body: { enabled?: boolean; channels?: string[] }) => {
+    setSaving(body.enabled !== undefined ? "master" : body.channels?.[0] || null);
+    try {
+      const res = await apiFetch("/api/meta/ai-automation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to update");
+      if (body.enabled !== undefined) setEnabled(body.enabled);
+      if (body.channels !== undefined) setChannels(body.channels);
+      toast.success("AI auto-reply updated");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const toggleChannel = (ch: string) => {
+    const next = channels.includes(ch)
+      ? channels.filter((c) => c !== ch)
+      : [...channels, ch];
+    patchAI({ channels: next });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Spinner className="h-4 w-4 text-black/30" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-[17px] font-semibold text-black tracking-tight">AI Auto-Reply</h2>
+        <p className="mt-0.5 text-[13px] text-black/45">Control AI responses for each social channel.</p>
+      </div>
+      <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+        {/* Master toggle */}
+        <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-black">Enable AI Auto-Reply</p>
+            <p className="text-[11px] text-black/40 mt-0.5">Master switch — turns off AI replies on all channels when disabled.</p>
+          </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(v) => patchAI({ enabled: v })}
+            disabled={saving !== null}
+            className="shrink-0"
+          />
+        </div>
+
+        {/* Per-channel toggles */}
+        {AI_CHANNELS.map(({ id, label, icon: Icon }) => (
+          <div
+            key={id}
+            className={cn(
+              "flex items-center justify-between gap-4 px-5 py-4 transition-opacity",
+              !enabled && "opacity-40 pointer-events-none"
+            )}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <Icon weight="light" size={18} className="shrink-0 text-black/60" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-black">{label}</p>
+              </div>
+            </div>
+            <Switch
+              checked={channels.includes(id)}
+              onCheckedChange={() => toggleChannel(id)}
+              disabled={saving !== null || !enabled}
+              className="shrink-0"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -101,6 +215,8 @@ function WorkspaceSection() {
         </div>
         <TeamManagement />
       </div>
+
+      <AIAutoReplySection />
     </div>
   );
 }
