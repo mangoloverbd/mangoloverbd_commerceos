@@ -1266,7 +1266,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                       ) : (
                         (() => {
                           const rawStatus = (order.courier_status || "").toLowerCase().trim();
-                          const isInitialState = !rawStatus || rawStatus === "in_review";
+                          const isInitialState = !rawStatus || rawStatus === "in_review" || rawStatus === "pending";
                           const id = order.consignment_id || order.tracking_code;
 
                           if (isInitialState) {
