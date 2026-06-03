@@ -946,8 +946,8 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       // Transit
       "in transit":                         { label: "In Transit",        color: "indigo" },
       "in_transit":                         { label: "In Transit",        color: "indigo" },
-      "in the way to delivery hub":         { label: "Way to Delivery Hub", color: "indigo" },
-      "in_the_way_to_delivery_hub":         { label: "Way to Delivery Hub", color: "indigo" },
+      "on the way to delivery hub":          { label: "To Delivery Hub", color: "indigo" },
+      "on_the_way_to_delivery_hub":         { label: "To Delivery Hub", color: "indigo" },
       // Out for delivery — Steadfast uses various names for this
       "dispatched":                         { label: "Out for Delivery",  color: "violet" },
       "on_the_way":                         { label: "Out for Delivery",  color: "violet" },
