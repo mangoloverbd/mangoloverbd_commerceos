@@ -134,6 +134,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 10, scale: 0.95 }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+        className="rounded-2xl bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_4px_6px_-1px_rgba(0,0,0,0.07),0_10px_24px_-4px_rgba(0,0,0,0.10),0_1px_0_rgba(255,255,255,0.9)_inset] overflow-hidden"
       >
         {item.render(item.id)}
       </motion.div>
