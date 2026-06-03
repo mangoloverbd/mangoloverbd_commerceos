@@ -45,50 +45,92 @@ const PLANS = [
   {
     id: "starter",
     name: "Starter",
+    subtitle: "Solo sellers, 1-3 orders/day",
     price: 1499,
     features: [
-      "1 team member",
-      "500 orders/mo",
-      "1 social platform",
-      "300 AI inbox replies",
-      "50 AI order captures",
+      { category: "Team", value: "1 member" },
+      { category: "Orders", value: "500/mo" },
+      { category: "Courier", value: "1 courier (Steadfast or Pathao)" },
+      { category: "Fraud Checks", value: "50/mo" },
+      { category: "Social Inbox", value: "1 platform" },
+      { category: "AI Inbox Replies", value: "300/mo" },
+      { category: "AI Order Capture", value: "50/mo" },
+      { category: "AI Extractions", value: "100/mo" },
+      { category: "AI Analysis", value: "5 runs/mo" },
+      { category: "Products", value: "50" },
+      { category: "Brand Doc", value: "500 words" },
+      { category: "Auto-reply", value: "Manual trigger" },
+      { category: "Dashboard", value: "Basic (weekly)" },
+      { category: "Support", value: "Email (48hr)" },
     ],
   },
   {
     id: "growth",
     name: "Growth",
+    subtitle: "Growing sellers, 5-15 orders/day",
     price: 3499,
     features: [
-      "3 team members",
-      "2,000 orders/mo",
-      "2 social platforms",
-      "1,500 AI inbox replies",
-      "300 AI order captures",
+      { category: "Team", value: "3 members" },
+      { category: "Orders", value: "2,000/mo" },
+      { category: "Courier", value: "All (Steadfast + Pathao)" },
+      { category: "Fraud Checks", value: "300/mo" },
+      { category: "Social Inbox", value: "2 platforms" },
+      { category: "AI Inbox Replies", value: "1,500/mo" },
+      { category: "AI Order Capture", value: "300/mo" },
+      { category: "AI Extractions", value: "500/mo" },
+      { category: "AI Analysis", value: "20 runs/mo" },
+      { category: "Products", value: "200" },
+      { category: "Brand Doc", value: "2,000 words" },
+      { category: "Auto-reply", value: "Business hours" },
+      { category: "Dashboard", value: "Full (daily + weekly)" },
+      { category: "Support", value: "Email (24hr) + WhatsApp" },
     ],
   },
   {
     id: "pro",
     name: "Pro",
+    subtitle: "Established brands, 30-60 orders/day",
     price: 7999,
     popular: true,
     features: [
-      "10 team members",
-      "10,000 orders/mo",
-      "All social platforms",
-      "7,000 AI inbox replies",
-      "1,500 AI order captures",
+      { category: "Team", value: "10 members" },
+      { category: "Orders", value: "10,000/mo" },
+      { category: "Courier", value: "All + bulk dispatch" },
+      { category: "Fraud Checks", value: "1,500/mo" },
+      { category: "Social Inbox", value: "All 3 platforms" },
+      { category: "AI Inbox Replies", value: "7,000/mo" },
+      { category: "AI Order Capture", value: "1,500/mo" },
+      { category: "AI Extractions", value: "2,000/mo" },
+      { category: "AI Analysis", value: "100 runs/mo" },
+      { category: "Products", value: "1,000" },
+      { category: "Brand Doc", value: "Full + catalog context" },
+      { category: "Auto-reply", value: "24/7 auto-reply" },
+      { category: "Premium AI", value: "200 GPT-4o replies/mo" },
+      { category: "Dashboard", value: "Full + export (CSV/PDF)" },
+      { category: "Support", value: "Priority WhatsApp (4hr)" },
     ],
   },
   {
     id: "enterprise",
     name: "Enterprise",
+    subtitle: "Large operations, 100+ orders/day",
     price: 14999,
     features: [
-      "Unlimited members",
-      "Unlimited orders",
-      "All platforms + priority",
-      "30,000 AI inbox replies",
-      "Unlimited order captures",
+      { category: "Team", value: "Unlimited" },
+      { category: "Orders", value: "Unlimited" },
+      { category: "Courier", value: "All + custom courier API" },
+      { category: "Fraud Checks", value: "Unlimited" },
+      { category: "Social Inbox", value: "All + multi-page" },
+      { category: "AI Inbox Replies", value: "30,000/mo" },
+      { category: "AI Order Capture", value: "Unlimited" },
+      { category: "AI Extractions", value: "10,000/mo" },
+      { category: "AI Analysis", value: "Unlimited" },
+      { category: "Products", value: "Unlimited" },
+      { category: "Brand Doc", value: "Full + custom training" },
+      { category: "Auto-reply", value: "24/7 + escalation rules" },
+      { category: "Premium AI", value: "1,000 GPT-4o replies/mo" },
+      { category: "Dashboard", value: "Full + API access" },
+      { category: "Support", value: "Dedicated manager + phone" },
     ],
   },
 ];
@@ -181,50 +223,57 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
               <div
                 key={plan.id}
                 className={cn(
-                  "relative overflow-hidden rounded-[14px] border bg-white p-5 transition-all",
+                  "relative overflow-hidden rounded-[14px] border bg-white flex flex-col transition-all",
                   isCurrent
                     ? "border-black ring-1 ring-black/10"
                     : "border-black/[0.08] hover:border-black/20"
                 )}
               >
-                {plan.popular && (
-                  <span className="absolute top-3 right-3 text-[9px] font-semibold uppercase tracking-widest bg-black text-white px-2 py-0.5 rounded-full">
-                    Popular
-                  </span>
-                )}
-                <p className="text-[13px] font-semibold text-black">{plan.name}</p>
-                <p className="mt-1.5">
-                  <span className="text-[24px] font-light text-black tabular-nums">৳{plan.price.toLocaleString()}</span>
-                  <span className="text-[11px] text-black/40 ml-1">/month</span>
-                </p>
-                <ul className="mt-4 space-y-1.5">
-                  {plan.features.map((f) => (
-                    <li key={f} className="text-[11px] text-black/60 flex items-start gap-1.5">
-                      <span className="text-emerald-500 mt-px">•</span>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  onClick={() => handleSwitch(plan.id)}
-                  disabled={isCurrent || switching !== null}
-                  className={cn(
-                    "mt-5 w-full h-8 rounded-lg text-[12px] font-medium transition-all",
-                    isCurrent
-                      ? "bg-black/[0.05] text-black/40 cursor-default"
-                      : "bg-black text-white hover:bg-black/85 disabled:opacity-50"
+                <div className="p-5 pb-3">
+                  {plan.popular && (
+                    <span className="absolute top-3 right-3 text-[9px] font-semibold uppercase tracking-widest bg-black text-white px-2 py-0.5 rounded-full">
+                      Popular
+                    </span>
                   )}
-                >
-                  {switching === plan.id ? (
-                    <Spinner size="sm" className="mx-auto" />
-                  ) : isCurrent ? (
-                    "Current Plan"
-                  ) : (
-                    currentPlan && PLANS.findIndex(p => p.id === plan.id) < PLANS.findIndex(p => p.id === currentPlan.id)
-                      ? "Downgrade"
-                      : "Upgrade"
-                  )}
-                </button>
+                  <p className="text-[13px] font-semibold text-black">{plan.name}</p>
+                  <p className="text-[10px] text-black/40 mt-0.5">{plan.subtitle}</p>
+                  <p className="mt-2">
+                    <span className="text-[24px] font-light text-black tabular-nums">৳{plan.price.toLocaleString()}</span>
+                    <span className="text-[11px] text-black/40 ml-1">/month</span>
+                  </p>
+                </div>
+                <div className="flex-1 px-5 pb-4">
+                  <div className="border-t border-black/[0.06] pt-3 space-y-1.5">
+                    {plan.features.map((f) => (
+                      <div key={f.category} className="flex items-start justify-between gap-2">
+                        <span className="text-[10px] text-black/45 shrink-0">{f.category}</span>
+                        <span className="text-[10px] font-medium text-black text-right">{f.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="px-5 pb-5">
+                  <button
+                    onClick={() => handleSwitch(plan.id)}
+                    disabled={isCurrent || switching !== null}
+                    className={cn(
+                      "w-full h-8 rounded-lg text-[12px] font-medium transition-all",
+                      isCurrent
+                        ? "bg-black/[0.05] text-black/40 cursor-default"
+                        : "bg-black text-white hover:bg-black/85 disabled:opacity-50"
+                    )}
+                  >
+                    {switching === plan.id ? (
+                      <Spinner size="sm" className="mx-auto" />
+                    ) : isCurrent ? (
+                      "Current Plan"
+                    ) : (
+                      currentPlan && PLANS.findIndex(p => p.id === plan.id) < PLANS.findIndex(p => p.id === currentPlan.id)
+                        ? "Downgrade"
+                        : "Upgrade"
+                    )}
+                  </button>
+                </div>
               </div>
             );
           })}
