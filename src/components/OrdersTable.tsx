@@ -137,6 +137,17 @@ interface OrdersTableProps {
   onOrderUpdate?: (updatedOrder: Order) => void;
 }
 
+function SearchRiskIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <g clipPath="url(#clip0_risk)">
+        <path d="M10.6101 19.6599C15.5901 19.6599 19.6201 15.6299 19.6201 10.6499C19.6201 5.66989 15.5901 1.63989 10.6101 1.63989C5.6301 1.63989 1.6001 5.66989 1.6001 10.6499C1.6001 15.6299 5.6301 19.6599 10.6101 19.6599Z"/>
+        <path d="M22.3101 19.02C22.0501 18.29 21.3201 17.78 20.3201 17.63C19.5401 17.5 18.8201 17.72 18.3301 18.21C17.8401 18.71 17.6301 19.44 17.7601 20.23C18.0101 21.72 18.8101 22.16 19.2601 22.29C19.3901 22.33 19.5501 22.36 19.7501 22.36C20.2401 22.36 20.9101 22.16 21.6401 21.36C22.3201 20.61 22.5701 19.75 22.3101 19.02Z"/>
+      </g>
+    </svg>
+  );
+}
+
 function FraudCell({ order, isChecking, onCheck }: {
   order: Order;
   isChecking: boolean;
@@ -147,7 +158,7 @@ function FraudCell({ order, isChecking, onCheck }: {
   const rawFraudData = order.fraud_data as (Record<string, unknown> & { _error?: string }) | null;
   const hasError = order.fraud_checked && (!rawFraudData || rawFraudData._error);
 
-  let RiskIcon: typeof ShieldCheck = Search;
+  let RiskIcon: React.ComponentType<{ className?: string }> = SearchRiskIcon;
   let riskColor = "text-muted-foreground/30";
   let riskBgColor = "";
   let riskLabel = "";
