@@ -680,16 +680,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       }
 
       toast.custom(() => (
-        <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
+        <div className="flex items-center gap-3 px-4 py-3">
           <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
           </div>
-          <div className="flex-1 min-w-0">
+          <div>
             <p className="text-[13px] font-medium text-black">Order #{order.order_number} verified</p>
             <p className="text-[11px] text-black/50 mt-0.5">Fraud analysis complete</p>
           </div>
         </div>
-      ), { className: "!p-1 !rounded-xl" });
+      ), { className: "!p-1 !rounded-xl !min-w-0 !w-fit" });
     } catch (error) {
       console.error("Error checking fraud:", error);
       toast.custom(() => (
