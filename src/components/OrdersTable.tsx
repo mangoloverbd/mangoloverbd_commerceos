@@ -226,7 +226,7 @@ function FraudCell({ order, isChecking, onCheck }: {
             </span>
           </>
         ) : (
-          <Search className="h-3.5 w-3.5 text-muted-foreground/25" />
+          <SearchRiskIcon className="h-3.5 w-3.5 text-muted-foreground/25" />
         )}
       </button>
 
