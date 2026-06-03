@@ -1083,6 +1083,169 @@ app.post("/api/settings", async (req, res) => {
   }
 });
 
+// ─── Billing ─────────────────────────────────────────────────────────────────
+
+async function incrementUsage(orgId, metric) {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const settings = await getOrgSettings(orgId, [`usage_${metric}`, "usage_period"]);
+  const storedPeriod = settings.usage_period || "";
+  let count = parseInt(settings[`usage_${metric}`] || "0", 10);
+  if (storedPeriod !== currentMonth) {
+    count = 0;
+    await saveOrgSettings(orgId, { usage_period: currentMonth, [`usage_${metric}`]: "1" });
+    return 1;
+  }
+  count += 1;
+  await saveOrgSettings(orgId, { [`usage_${metric}`]: String(count) });
+  return count;
+}
+
+const PLAN_LIMITS = {
+  starter:    { aiInboxReplies: 300,   aiOrderCaptures: 50,   aiExtractions: 100,   fraudChecks: 50 },
+  growth:     { aiInboxReplies: 1500,  aiOrderCaptures: 300,  aiExtractions: 500,   fraudChecks: 300 },
+  pro:        { aiInboxReplies: 7000,  aiOrderCaptures: 1500, aiExtractions: 2000,  fraudChecks: 1500 },
+  enterprise: { aiInboxReplies: 30000, aiOrderCaptures: 99999, aiExtractions: 10000, fraudChecks: 99999 },
+};
+
+const PLAN_PRICES = { starter: 1499, growth: 3499, pro: 7999, enterprise: 14999 };
+
+app.get("/api/billing/plan", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const settings = await getOrgSettings(orgId, ["billing_plan", "billing_started_at", "billing_renews_at", "billing_status"]);
+    const planId = settings.billing_plan || "growth";
+    const plan = {
+      id: planId,
+      name: planId.charAt(0).toUpperCase() + planId.slice(1),
+      price: PLAN_PRICES[planId] || 3499,
+      interval: "monthly",
+      status: settings.billing_status || "active",
+      startedAt: settings.billing_started_at || new Date().toISOString(),
+      renewsAt: settings.billing_renews_at || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    return res.json({ plan });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.post("/api/billing/plan", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const { planId } = req.body;
+    if (!planId || !PLAN_LIMITS[planId]) {
+      return res.status(400).json({ error: "Invalid plan. Must be one of: starter, growth, pro, enterprise" });
+    }
+
+    const now = new Date().toISOString();
+    const renewsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    await saveOrgSettings(orgId, {
+      billing_plan: planId,
+      billing_started_at: now,
+      billing_renews_at: renewsAt,
+      billing_status: "active",
+    });
+
+    return res.json({ success: true, plan: { id: planId, price: PLAN_PRICES[planId], renewsAt } });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/billing/usage", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const settings = await getOrgSettings(orgId, [
+      "billing_plan",
+      "usage_ai_inbox_replies",
+      "usage_ai_order_captures",
+      "usage_ai_extractions",
+      "usage_fraud_checks",
+      "usage_period",
+    ]);
+
+    const planId = settings.billing_plan || "growth";
+    const limits = PLAN_LIMITS[planId] || PLAN_LIMITS.growth;
+
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const storedPeriod = settings.usage_period || "";
+
+    // Reset counts if the period has changed (new month)
+    let aiInboxReplies = parseInt(settings.usage_ai_inbox_replies || "0", 10);
+    let aiOrderCaptures = parseInt(settings.usage_ai_order_captures || "0", 10);
+    let aiExtractions = parseInt(settings.usage_ai_extractions || "0", 10);
+    let fraudChecks = parseInt(settings.usage_fraud_checks || "0", 10);
+
+    if (storedPeriod !== currentMonth) {
+      aiInboxReplies = 0;
+      aiOrderCaptures = 0;
+      aiExtractions = 0;
+      fraudChecks = 0;
+      await saveOrgSettings(orgId, {
+        usage_ai_inbox_replies: "0",
+        usage_ai_order_captures: "0",
+        usage_ai_extractions: "0",
+        usage_fraud_checks: "0",
+        usage_period: currentMonth,
+      });
+    }
+
+    const monthStart = new Date(`${currentMonth}-01`);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    monthEnd.setDate(0);
+    const periodLabel = `${monthStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — ${monthEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
+
+    return res.json({
+      usage: {
+        aiInboxReplies: { used: aiInboxReplies, limit: limits.aiInboxReplies },
+        aiOrderCaptures: { used: aiOrderCaptures, limit: limits.aiOrderCaptures },
+        aiExtractions: { used: aiExtractions, limit: limits.aiExtractions },
+        fraudChecks: { used: fraudChecks, limit: limits.fraudChecks },
+        period: periodLabel,
+      },
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/billing/invoices", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const settings = await getOrgSettings(orgId, ["billing_invoices"]);
+    let invoices = [];
+    try {
+      invoices = JSON.parse(settings.billing_invoices || "[]");
+    } catch { /* empty */ }
+
+    return res.json({ invoices });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 // ─── Shopify OAuth (per-tenant credentials) ────────────────────────────────
 
 const SHOPIFY_SCOPES = "read_orders,read_products,read_customers";
@@ -3530,6 +3693,7 @@ app.post("/api/check-fraud", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    incrementUsage(orgId, "fraud_checks").catch(() => {});
     const fraudShieldApiKey = process.env.FRAUDSHIELD_API_KEY;
     if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
@@ -3613,6 +3777,7 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    incrementUsage(orgId, "fraud_checks").catch(() => {});
     const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
 
@@ -4287,6 +4452,9 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   let reply = aiResult.reply;
   const orderData = aiResult.order;
 
+  // Track AI inbox reply usage
+  incrementUsage(orgId, "ai_inbox_replies").catch(() => {});
+
   // 5. Save order if GPT confirmed it has all fields
   if (orderData) {
     try {
@@ -4299,6 +4467,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
         order: orderData,
       });
       if (saved && !saved.duplicate) {
+        incrementUsage(orgId, "ai_order_captures").catch(() => {});
         const shortId = saved.order.id.slice(-6).toUpperCase();
         reply = `Your order has been placed! Order ID: IO-${shortId}. Total: ৳${Number(saved.order.total_price || 0).toLocaleString("en-US")}. We'll be in touch soon.`;
       }
@@ -5967,6 +6136,9 @@ app.post("/api/extract-order-from-text", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    incrementUsage(orgId, "ai_extractions").catch(() => {});
 
     const { orderText } = req.body;
     if (!orderText || typeof orderText !== "string" || !orderText.trim()) {

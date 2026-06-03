@@ -216,6 +216,23 @@ export function AppSidebar() {
             <SidebarFooter className="border-t-0 p-1.5">
                 {!isCollapsed && <SidebarAlerts />}
 
+                {/* Billing button */}
+                <div className={cn("px-2 pb-0.5", isCollapsed && "flex justify-center px-0")}>
+                    <Link
+                        to="/billing"
+                        className={cn(
+                            "flex items-center gap-2.5 rounded-xl transition-colors hover:bg-black/5",
+                            isCollapsed ? "h-8 w-8 justify-center" : "w-full px-2.5 py-2"
+                        )}
+                        title="Billing & Plan"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                        {!isCollapsed && (
+                            <span className="text-[12px] font-medium text-[#333]">Billing & Plan</span>
+                        )}
+                    </Link>
+                </div>
+
                 {/* Settings button */}
                 <div className={cn("px-2 pb-1", isCollapsed && "flex justify-center px-0")}>
                     <Link
