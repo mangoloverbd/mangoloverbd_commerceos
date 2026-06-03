@@ -3287,7 +3287,7 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
     }
     const cleanShop = cfg.shopify_store_url.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const shopifyRes = await fetch(
-      `https://${cleanShop}/admin/api/2025-04/orders.json?status=any&limit=250&order=created_at+desc`,
+      `https://${cleanShop}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc`,
       { headers: { "X-Shopify-Access-Token": cfg.shopify_admin_api_token, "Content-Type": "application/json" } }
     );
     if (!shopifyRes.ok) {
