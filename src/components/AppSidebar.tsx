@@ -217,7 +217,7 @@ export function AppSidebar() {
                 {!isCollapsed && <SidebarAlerts />}
 
                 {/* Billing button */}
-                <div className={cn("px-2 pb-0.5", isCollapsed && "flex justify-center px-0")}>
+                <div className={cn("px-2", isCollapsed && "flex justify-center px-0")}>
                     <Link
                         to="/billing"
                         className={cn(
@@ -226,7 +226,7 @@ export function AppSidebar() {
                         )}
                         title="Billing & Plan"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                        <svg width="17" height="17" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0"><g clipPath="url(#clip0_billing)"><path d="M15.012 1.5C14.177 1.5 13.5 3.51472 13.5 6H15.012C15.7407 6 16.105 6 16.3306 5.74841C16.5562 5.49682 16.5169 5.1655 16.4384 4.50286C16.2311 2.75357 15.6707 1.5 15.012 1.5Z" stroke="#555" strokeWidth="1.125"/><path d="M13.5 6.0407V13.9843C13.5 15.1181 13.5 15.685 13.1535 15.9081C12.5873 16.2728 11.7121 15.5081 11.2718 15.2305C10.9081 15.0011 10.7263 14.8864 10.5244 14.8798C10.3063 14.8726 10.1212 14.9826 9.72817 15.2305L8.295 16.1343C7.90838 16.378 7.7151 16.5 7.5 16.5C7.28491 16.5 7.09159 16.378 6.705 16.1343L5.27185 15.2305C4.90811 15.0011 4.72624 14.8864 4.5244 14.8798C4.30629 14.8726 4.1212 14.9826 3.72815 15.2305C3.28796 15.5081 2.41265 16.2728 1.84646 15.9081C1.5 15.685 1.5 15.1181 1.5 13.9843V6.0407C1.5 3.90019 1.5 2.82994 2.15901 2.16497C2.81802 1.5 3.87868 1.5 6 1.5H15" stroke="#555" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round"/><path d="M4.5 4.5H10.5" stroke="#555" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round"/><path d="M6 7.5H4.5" stroke="#555" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round"/></g></svg>
                         {!isCollapsed && (
                             <span className="text-[12px] font-medium text-[#333]">Billing & Plan</span>
                         )}
@@ -234,7 +234,7 @@ export function AppSidebar() {
                 </div>
 
                 {/* Settings button */}
-                <div className={cn("px-2 pb-1", isCollapsed && "flex justify-center px-0")}>
+                <div className={cn("px-2", isCollapsed && "flex justify-center px-0")}>
                     <Link
                         to="/settings"
                         className={cn(
