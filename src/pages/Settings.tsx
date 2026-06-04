@@ -30,9 +30,9 @@ function SaveIcon({ className }: { className?: string }) {
 }
 
 const AI_CHANNELS = [
-  { id: "facebook", label: "Facebook Messenger", icon: MessengerLogo },
-  { id: "instagram", label: "Instagram DMs", icon: InstagramLogo },
   { id: "whatsapp", label: "WhatsApp", icon: WhatsappLogo },
+  { id: "instagram", label: "Instagram DMs", icon: InstagramLogo },
+  { id: "facebook", label: "Facebook Messenger", icon: MessengerLogo },
 ] as const;
 
 function AIAutoReplySection() {
