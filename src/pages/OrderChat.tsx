@@ -186,7 +186,7 @@ export default function OrderChat() {
   };
 
   const [imageMode, setImageMode] = useState(false);
-  const [imageSize, setImageSize] = useState("1024x1024");
+  const [imageSize, setImageSize] = useState("auto");
 
   const buildPrompt = (text: string) => {
     if (!files.length) return text;
@@ -215,7 +215,7 @@ export default function OrderChat() {
     setIsLoading(true);
 
     try {
-      const body: Record<string, string> = { prompt: msg, size: imageSize, quality: "high" };
+      const body: Record<string, string> = { prompt: msg, size: imageSize, quality: "medium" };
       if (imageFiles[0]?.content) body.image = imageFiles[0].content;
 
       const resp = await apiFetch("/api/generate-image", {
@@ -375,6 +375,7 @@ export default function OrderChat() {
                   onChange={(event) => setImageSize(event.target.value)}
                   className="h-7 appearance-none rounded-full border-0 bg-transparent py-0 pl-2 pr-6 text-[13px] font-semibold text-foreground/75 outline-none transition-colors hover:bg-black/[0.055] hover:text-foreground"
                 >
+                  <option value="auto">Auto</option>
                   <option value="1024x1024">Square</option>
                   <option value="1536x1024">Landscape</option>
                   <option value="1024x1536">Portrait</option>
@@ -516,8 +517,8 @@ export default function OrderChat() {
                         <div className="prose prose-sm max-w-none text-foreground/80 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_code]:bg-black/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
                           {msg.image && (
-                            <div className="mt-3 relative group">
-                              <img src={msg.image} alt="Generated" className="rounded-xl max-w-full max-h-[400px] border border-black/10" />
+                            <div className="mt-3 relative group inline-block">
+                              <img src={msg.image} alt="Generated" className="rounded-xl max-h-[500px] w-auto border border-black/10 block" />
                               <a
                                 href={msg.image}
                                 download="generated-image.png"

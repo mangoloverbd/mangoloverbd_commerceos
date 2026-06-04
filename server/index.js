@@ -2964,7 +2964,7 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
 
-    const { prompt, image, size = "1024x1024", quality = "high" } = req.body || {};
+    const { prompt, image, size = "auto", quality = "medium" } = req.body || {};
     if (!prompt) return res.status(400).json({ error: "prompt is required" });
 
     const validSizes = ["1024x1024", "1536x1024", "1024x1536", "auto"];
