@@ -4213,7 +4213,7 @@ async function prepareOpenAiImageRef(url = "", authToken = "") {
 // This prevents stale order-collection state from bleeding into a new conversation.
 
 async function getRecentConversationHistory(supabase, conversationId, limit = 20) {
-  if (!conversationId) return "";
+  if (!conversationId) return { history: "", isNewSession: false, priorSessionHistory: "" };
   const { data, error } = await supabase
     .from("social_messages")
     .select("sender, content, image_url, message_type, created_at")
@@ -4222,34 +4222,68 @@ async function getRecentConversationHistory(supabase, conversationId, limit = 20
     .limit(limit);
   if (error) {
     console.warn("[Meta AI] history lookup failed:", errorMessage(error));
-    return "";
+    return { history: "", isNewSession: false, priorSessionHistory: "" };
   }
   const messages = (data || []).reverse();
-  if (!messages.length) return "";
+  if (!messages.length) return { history: "", isNewSession: false, priorSessionHistory: "" };
 
   // Find the start of the current session — walk backwards from the latest
   // message and stop when we hit a gap of more than 30 minutes between messages.
   const SESSION_GAP_MS = 30 * 60 * 1000; // 30 minutes
   const sessionMessages = [];
+  let sessionBoundaryIdx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (sessionMessages.length === 0) {
       sessionMessages.unshift(messages[i]);
     } else {
       const newerTs = new Date(sessionMessages[0].created_at).getTime();
       const olderTs = new Date(messages[i].created_at).getTime();
-      if (newerTs - olderTs > SESSION_GAP_MS) break; // session boundary
+      if (newerTs - olderTs > SESSION_GAP_MS) { sessionBoundaryIdx = i; break; }
       sessionMessages.unshift(messages[i]);
     }
   }
 
-  return sessionMessages
-    .map((m) => {
-      const who = m.sender === "bot" ? "assistant" : "customer";
-      const img = m.image_url ? " [image]" : "";
-      const body = String(m.content || "").trim() || `[${m.message_type || "message"}]`;
-      return `${who}${img}: ${body}`.slice(0, 900);
-    })
-    .join("\n");
+  const formatMessages = (msgs) => msgs.map((m) => {
+    const who = m.sender === "bot" ? "assistant" : "customer";
+    const img = m.image_url ? " [image]" : "";
+    const body = String(m.content || "").trim() || `[${m.message_type || "message"}]`;
+    return `${who}${img}: ${body}`.slice(0, 900);
+  }).join("\n");
+
+  const isNewSession = sessionBoundaryIdx >= 0 && sessionMessages.length <= 2;
+  const priorSessionMessages = sessionBoundaryIdx >= 0 ? messages.slice(0, sessionBoundaryIdx + 1) : [];
+
+  return {
+    history: formatMessages(sessionMessages),
+    isNewSession,
+    priorSessionHistory: formatMessages(priorSessionMessages),
+  };
+}
+
+// ─── Conversation summary generation ─────────────────────────────────────────
+
+async function generateConversationSummary(conversationHistory, existingSummary = "") {
+  if (!process.env.OPENAI_API_KEY || !conversationHistory) return existingSummary || "";
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        max_tokens: 300,
+        messages: [
+          { role: "system", content: `You summarize customer conversations for a Bangladeshi e-commerce shop. Create a concise summary that captures: customer preferences, products discussed, orders placed (with details), complaints, delivery info, and any important context for future interactions. Keep it under 200 words. Write in English.${existingSummary ? `\n\nPREVIOUS SUMMARY:\n${existingSummary}` : ""}` },
+          { role: "user", content: `Summarize this conversation session:\n${conversationHistory}` },
+        ],
+      }),
+    });
+    if (!response.ok) return existingSummary || "";
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() || existingSummary || "";
+  } catch {
+    return existingSummary || "";
+  }
 }
 
 // ─── Delivery charge inference ────────────────────────────────────────────────
@@ -4282,7 +4316,7 @@ function parseInboxOrderNotes(notes = "") {
 // This eliminates all heuristic intent detection. GPT decides when the order
 // is complete, not a regex.
 
-async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrls, imageUrl, platformToken = "" }) {
+async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrls, imageUrl, platformToken = "", existingOrder = null, aiSummary = "" }) {
   // Support both old imageUrl (single) and new imageUrls (array)
   const allImageUrls = Array.isArray(imageUrls) && imageUrls.length > 0
     ? imageUrls
@@ -4322,6 +4356,9 @@ RULES:
 - Once you have ALL FIVE fields confirmed, set order to the populated object. Do not set order until every field is present and confirmed.
 - Never invent prices, discounts, or delivery promises not in the catalog or brand knowledge base.
 - IMPORTANT: If the customer sends a simple greeting (Hi, Hello, Hey, Assalamualaikum, etc.) with NO prior context in the conversation history shown, treat it as the START of a new conversation. Greet them naturally and ask how you can help. Do NOT continue any previous order collection or assume they want to order something specific.
+- PRICING: unit_price must be the price PER SINGLE ITEM from the catalog. If a customer asks "980 takai koita glass?" they are asking how many items they get for 980 — answer based on catalog price. Do NOT set unit_price to the total package price. Example: if catalog price is 490/item and customer orders 2, unit_price=490, quantity=2.
+- CONFIRMED TOTAL: When you confirm the order, calculate confirmed_total = (unit_price × quantity) + delivery charge. Use 80 for Dhaka, 120 for outside Dhaka. Always state the total clearly to the customer before confirming.
+- ORDER EDITS: If an existing order was already placed in this conversation (shown in EXISTING ORDER below) and the customer wants to change items, quantity, address, or other details, set order_action to "edit" and include the updated fields. Only set order_action to "edit" when the customer clearly wants to modify their existing order.
 
 CATALOG (name, price, availability, variants where applicable):
 ${JSON.stringify(catalog).slice(0, 12000)}
@@ -4329,10 +4366,11 @@ ${JSON.stringify(catalog).slice(0, 12000)}
 RESPONSE FORMAT — return ONLY valid JSON, no prose, no markdown:
 {
   "reply": "<your message to the customer>",
-  "order": null
+  "order": null,
+  "order_action": null
 }
 
-Or when all order fields are collected:
+Or when all order fields are collected (new order):
 {
   "reply": "<confirmation message>",
   "order": {
@@ -4341,13 +4379,36 @@ Or when all order fields are collected:
     "address": "",
     "product_name": "",
     "quantity": 1,
-    "unit_price": 0
-  }
+    "unit_price": 0,
+    "confirmed_total": 0
+  },
+  "order_action": "create"
+}
+
+Or when customer wants to edit their existing order:
+{
+  "reply": "<update confirmation message>",
+  "order": {
+    "customer_name": "",
+    "phone": "",
+    "address": "",
+    "product_name": "",
+    "quantity": 1,
+    "unit_price": 0,
+    "confirmed_total": 0
+  },
+  "order_action": "edit"
 }`;
 
   // Build message array — add ALL customer images to the vision context
   const userContent = [];
-  userContent.push({ type: "text", text: `CONVERSATION SO FAR:\n${conversationHistory || "(start of conversation)"}\n\nCUSTOMER MESSAGE:\n${customerMessage || "(no text, image only)"}` });
+  const summaryContext = aiSummary
+    ? `\n\nPRIOR CONVERSATION SUMMARY (from previous sessions with this customer):\n${aiSummary}`
+    : "";
+  const existingOrderContext = existingOrder
+    ? `\n\nEXISTING ORDER (already placed in this conversation — customer may want to edit it):\nOrder ID: ${existingOrder.id}\nItems: ${JSON.stringify(existingOrder.items)}\nTotal: ৳${existingOrder.total_price}\nStatus: ${existingOrder.status}`
+    : "";
+  userContent.push({ type: "text", text: `${summaryContext}\n\nCONVERSATION SO FAR:\n${conversationHistory || "(start of conversation)"}${existingOrderContext}\n\nCUSTOMER MESSAGE:\n${customerMessage || "(no text, image only)"}` });
 
   // Fetch and add all images (max 5 to stay within token limits)
   const imagesToProcess = allImageUrls.slice(0, 5);
@@ -4399,6 +4460,7 @@ Or when all order fields are collected:
 
   const reply = String(parsed?.reply || "").trim() || null;
   const orderRaw = parsed?.order;
+  const orderAction = parsed?.order_action || "create";
 
   // Validate order has all required fields
   let order = null;
@@ -4419,10 +4481,11 @@ Or when all order fields are collected:
       product_name: String(orderRaw.product_name).trim(),
       quantity: Math.max(1, Number.parseInt(orderRaw.quantity, 10) || 1),
       unit_price: Number(orderRaw.unit_price),
+      confirmed_total: Number(orderRaw.confirmed_total) > 0 ? Number(orderRaw.confirmed_total) : null,
     };
   }
 
-  return { reply, order };
+  return { reply, order, orderAction };
 }
 
 // ─── Save confirmed order to social_inbox_orders ──────────────────────────────
@@ -4635,11 +4698,24 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     }
   }
 
-  // 3. Load context
-  const [conversationHistory, products] = await Promise.all([
+  // 3. Load context + check for existing orders in this conversation
+  const [historyResult, products, existingOrdersResult] = await Promise.all([
     getRecentConversationHistory(supabase, conversation.id, 20),
     getMetaReplyProductContext(orgId),
+    supabase.from("social_inbox_orders").select("id, items, total_price, status, delivery_rate, notes").eq("conversation_id", conversation.id).eq("org_id", orgId).order("created_at", { ascending: false }).limit(1),
   ]);
+  const { history: conversationHistory, isNewSession, priorSessionHistory } = historyResult;
+  const existingOrder = existingOrdersResult.data?.[0] || null;
+  const aiSummary = conversation.ai_summary || "";
+
+  // If this is a new session and we have prior messages, update the summary
+  if (isNewSession && priorSessionHistory) {
+    generateConversationSummary(priorSessionHistory, aiSummary).then((newSummary) => {
+      if (newSummary && newSummary !== aiSummary) {
+        supabase.from("social_conversations").update({ ai_summary: newSummary }).eq("id", conversation.id).eq("org_id", orgId).then(() => {});
+      }
+    }).catch(() => {});
+  }
 
   const brandDoc = settings.brand_doc || "";
 
@@ -4651,7 +4727,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
 
   let aiResult;
   try {
-    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrls: allImageUrls, platformToken });
+    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrls: allImageUrls, platformToken, existingOrder, aiSummary });
   } catch (err) {
     console.error("[Meta AI] GPT call failed:", errorMessage(err));
     return;
@@ -4659,25 +4735,64 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
 
   let reply = aiResult.reply;
   const orderData = aiResult.order;
+  const orderAction = aiResult.orderAction || "create";
 
   // Track AI inbox reply usage
   incrementUsage(orgId, "ai_inbox_replies").catch(() => {});
 
-  // 5. Save order if GPT confirmed it has all fields
+  // 5. Save or edit order if GPT confirmed it has all fields
   if (orderData) {
     try {
       await syncOrderFieldsFromAIResult({ supabase, orgId, conversation, order: orderData });
-      const saved = await saveMetaInboxOrder({
-        supabase, orgId, platform,
-        conversation,
-        contactId: senderId,
-        contactName: contactName || senderId,
-        order: orderData,
-      });
-      if (saved && !saved.duplicate) {
-        incrementUsage(orgId, "ai_order_captures").catch(() => {});
-        const shortId = saved.order.id.slice(-6).toUpperCase();
-        reply = `Your order has been placed! Order ID: IO-${shortId}. Total: ৳${Number(saved.order.total_price || 0).toLocaleString("en-US")}. We'll be in touch soon.`;
+
+      if (orderAction === "edit" && existingOrder) {
+        // Update existing order
+        const deliveryRate = inferDeliveryCharge(orderData.address);
+        const totalPrice = Number(orderData.confirmed_total) > 0
+          ? Number(orderData.confirmed_total)
+          : orderData.unit_price * orderData.quantity + deliveryRate;
+        const phone = normalizeBdPhone(orderData.phone) || orderData.phone;
+        const notes = [
+          `Phone: ${phone}`,
+          `Address: ${orderData.address}`,
+          `Source: ${platform} AI auto-capture (edited)`,
+        ].join("\n");
+
+        const { data: updated, error: updateErr } = await supabase
+          .from("social_inbox_orders")
+          .update({
+            contact_name: orderData.customer_name,
+            items: [{ product: orderData.product_name, quantity: orderData.quantity, unit_price: orderData.unit_price }],
+            notes,
+            total_price: totalPrice,
+            delivery_rate: deliveryRate,
+          })
+          .eq("id", existingOrder.id)
+          .eq("org_id", orgId)
+          .select("*")
+          .single();
+
+        if (updateErr) {
+          console.error("[Meta AI] order edit failed:", updateErr.message);
+        } else {
+          const shortId = updated.id.slice(-6).toUpperCase();
+          reply = reply || `Your order IO-${shortId} has been updated! New total: ৳${Number(updated.total_price || 0).toLocaleString("en-US")}.`;
+          console.log("[Meta AI] order edited:", updated.id);
+        }
+      } else {
+        // Create new order
+        const saved = await saveMetaInboxOrder({
+          supabase, orgId, platform,
+          conversation,
+          contactId: senderId,
+          contactName: contactName || senderId,
+          order: orderData,
+        });
+        if (saved && !saved.duplicate) {
+          incrementUsage(orgId, "ai_order_captures").catch(() => {});
+          const shortId = saved.order.id.slice(-6).toUpperCase();
+          reply = `Your order has been placed! Order ID: IO-${shortId}. Total: ৳${Number(saved.order.total_price || 0).toLocaleString("en-US")}. We'll be in touch soon.`;
+        }
       }
     } catch (err) {
       console.error("[Meta AI] order save failed:", errorMessage(err));
@@ -4722,6 +4837,16 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     content: reply,
     messageType: "text",
   });
+
+  // 8. Update conversation summary after order events (create/edit)
+  if (orderData) {
+    const fullHistory = conversationHistory + `\nassistant: ${reply}`;
+    generateConversationSummary(fullHistory, aiSummary).then((newSummary) => {
+      if (newSummary && newSummary !== aiSummary) {
+        supabase.from("social_conversations").update({ ai_summary: newSummary }).eq("id", conversation.id).eq("org_id", orgId).then(() => {});
+      }
+    }).catch(() => {});
+  }
 }
 
 // ─── Order capture: pre-filter + stateful field tracking ─────────────────────
@@ -4919,12 +5044,13 @@ async function processOrderFieldsFromMessage({ supabase, orgId, platform, conver
 async function syncOrderFieldsFromAIResult({ supabase, orgId, conversation, order }) {
   if (!order) return;
   await updateConversationOrderFields(supabase, conversation.id, orgId, {
-    customer_name: order.customer_name || null,
-    phone:         order.phone || null,
-    address:       order.address || null,
-    product_name:  order.product_name || null,
-    quantity:      order.quantity || null,
-    unit_price:    order.unit_price || null,
+    customer_name:  order.customer_name || null,
+    phone:          order.phone || null,
+    address:        order.address || null,
+    product_name:   order.product_name || null,
+    quantity:       order.quantity || null,
+    unit_price:     order.unit_price || null,
+    confirmed_total: order.confirmed_total || null,
   });
 }
 
@@ -5545,7 +5671,7 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["status", "notes", "sent_to_courier", "consignment_id", "tracking_code", "courier_status", "courier_message", "fraud_checked", "fraud_data", "delivery_rate"];
+    const allowed = ["status", "notes", "sent_to_courier", "consignment_id", "tracking_code", "courier_status", "courier_message", "fraud_checked", "fraud_data", "delivery_rate", "items", "total_price", "contact_name"];
     const update = {};
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) update[key] = req.body[key];
@@ -6662,6 +6788,7 @@ ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS fraud_data JSONB
 ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS delivery_rate NUMERIC;
 ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS order_fields JSONB DEFAULT '{}';
 ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS paused_ai BOOLEAN DEFAULT false;
+ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS ai_summary TEXT DEFAULT '';
     `;
 
     await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
