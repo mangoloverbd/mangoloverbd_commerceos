@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "@/components/ui/sparkles";
 import { AuthTestimonial } from "@/components/ui/auth-testimonial";
 import { supabase } from "@/integrations/supabase/client";
+import { Logo } from "@/components/logo";
 
 type Mode = "signin" | "signup";
 const rememberedEmailKey = "seraphine:remembered-email";
@@ -230,11 +231,17 @@ export default function Auth() {
                 transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
                 className="flex flex-col items-center w-full"
               >
-                {/* Logo */}
-                <div className="mb-10">
-                  <h1 className="text-[32px] font-bold tracking-[-0.03em] text-black">
-                    Seraphine
-                  </h1>
+                {/* Logo — matches sidebar header */}
+                <div className="mb-10 flex items-center gap-2.5">
+                  <Logo className="h-8 w-8 rounded-lg" />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-black leading-none">
+                      Seraphine
+                    </p>
+                    <p className="text-[10px] text-black/40 mt-0.5 leading-none">
+                      Arc Lab Technology
+                    </p>
+                  </div>
                 </div>
 
                 {/* Card container */}
