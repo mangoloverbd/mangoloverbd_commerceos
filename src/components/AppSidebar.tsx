@@ -57,16 +57,16 @@ export function AppSidebar() {
                     link: "/",
                 },
                 {
-                    id: "order-extraction",
-                    title: "Extraction",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_3111_22255)"><path d="M22.0001 8.5C22.0001 11.76 19.6001 14.45 16.4801 14.92V14.86C16.1701 10.98 13.0201 7.83 9.11008 7.52H9.08008C9.55008 4.4 12.2401 2 15.5001 2C19.0901 2 22.0001 4.91 22.0001 8.5Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M14.98 14.98C14.73 11.81 12.19 9.27 9.02 9.02C8.85 9.01 8.67 9 8.5 9C4.91 9 2 11.91 2 15.5C2 19.09 4.91 22 8.5 22C12.09 22 15 19.09 15 15.5C15 15.33 14.99 15.15 14.98 14.98ZM9.38 16.38L8.5 18L7.62 16.38L6 15.5L7.62 14.62L8.5 13L9.38 14.62L11 15.5L9.38 16.38Z" fill="white" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_3111_22255"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
-                    link: "/order-extraction",
-                },
-                {
                     id: "products",
                     title: "Products",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_4418_8364)"><path d="M11.75 7H11H7C4.24 7 2 9.24 2 12V17C2 19.76 4.24 22 7 22H12C14.76 22 17 19.76 17 17V13V12.25C17 9.35 14.65 7 11.75 7Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M21.8799 6.33033C22.4045 8.88991 21.1621 11.2123 19.159 12.306C18.8514 12.4739 18.4999 12.2343 18.4999 11.8838V11.7503C18.4999 8.31033 15.6899 5.50033 12.2499 5.50033H12.1164C11.7659 5.50033 11.5263 5.14879 11.6942 4.84119C12.7879 2.8381 15.1103 1.59574 17.6699 2.12033C19.7599 2.55033 21.4499 4.24033 21.8799 6.33033Z" fill="white" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_4418_8364"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
                     link: "/products",
+                },
+                {
+                    id: "order-extraction",
+                    title: "Extraction",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_3111_22255)"><path d="M22.0001 8.5C22.0001 11.76 19.6001 14.45 16.4801 14.92V14.86C16.1701 10.98 13.0201 7.83 9.11008 7.52H9.08008C9.55008 4.4 12.2401 2 15.5001 2C19.0901 2 22.0001 4.91 22.0001 8.5Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M14.98 14.98C14.73 11.81 12.19 9.27 9.02 9.02C8.85 9.01 8.67 9 8.5 9C4.91 9 2 11.91 2 15.5C2 19.09 4.91 22 8.5 22C12.09 22 15 19.09 15 15.5C15 15.33 14.99 15.15 14.98 14.98ZM9.38 16.38L8.5 18L7.62 16.38L6 15.5L7.62 14.62L8.5 13L9.38 14.62L11 15.5L9.38 16.38Z" fill="white" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_3111_22255"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
+                    link: "/order-extraction",
                 },
             ],
         };
