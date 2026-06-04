@@ -4358,7 +4358,8 @@ RULES:
 - IMPORTANT: If the customer sends a simple greeting (Hi, Hello, Hey, Assalamualaikum, etc.) with NO prior context in the conversation history shown, treat it as the START of a new conversation. Greet them naturally and ask how you can help. Do NOT continue any previous order collection or assume they want to order something specific.
 - PRICING: unit_price must be the price PER SINGLE ITEM from the catalog. If a customer asks "980 takai koita glass?" they are asking how many items they get for 980 — answer based on catalog price. Do NOT set unit_price to the total package price. Example: if catalog price is 490/item and customer orders 2, unit_price=490, quantity=2.
 - CONFIRMED TOTAL: When you confirm the order, calculate confirmed_total = (unit_price × quantity) + delivery charge. Use 80 for Dhaka, 120 for outside Dhaka. Always state the total clearly to the customer before confirming.
-- ORDER EDITS: If an existing order was already placed in this conversation (shown in EXISTING ORDER below) and the customer wants to change items, quantity, address, or other details, set order_action to "edit" and include the updated fields. Only set order_action to "edit" when the customer clearly wants to modify their existing order.
+- ORDER EDITS: If an existing order was already placed in this conversation (shown in EXISTING ORDER below) and the customer wants to change items, add items, change quantity, address, or other details, set order_action to "edit" and include ALL items (existing + new) in the updated order. IMPORTANT: There is only ONE delivery charge per order regardless of how many items. When adding items to an existing order, confirmed_total = (sum of all item prices × their quantities) + ONE delivery charge. Do NOT add delivery charge per item or per edit.
+- ORDER CANCEL: If the customer wants to cancel their existing order, set order_action to "cancel" with the existing order fields. Confirm cancellation with the customer before setting cancel.
 
 CATALOG (name, price, availability, variants where applicable):
 ${JSON.stringify(catalog).slice(0, 12000)}
@@ -4385,19 +4386,28 @@ Or when all order fields are collected (new order):
   "order_action": "create"
 }
 
-Or when customer wants to edit their existing order:
+Or when customer wants to edit their existing order (add/change items):
 {
   "reply": "<update confirmation message>",
   "order": {
     "customer_name": "",
     "phone": "",
     "address": "",
-    "product_name": "",
+    "product_name": "item1, item2",
     "quantity": 1,
     "unit_price": 0,
-    "confirmed_total": 0
+    "confirmed_total": 0,
+    "items": [{"product": "item1", "quantity": 1, "unit_price": 100}, {"product": "item2", "quantity": 2, "unit_price": 200}]
   },
   "order_action": "edit"
+}
+Note: For edits with multiple items, use the "items" array. confirmed_total = sum of (each item's unit_price × quantity) + ONE delivery charge.
+
+Or when customer wants to cancel:
+{
+  "reply": "<cancellation confirmation>",
+  "order": null,
+  "order_action": "cancel"
 }`;
 
   // Build message array — add ALL customer images to the vision context
@@ -4482,6 +4492,7 @@ Or when customer wants to edit their existing order:
       quantity: Math.max(1, Number.parseInt(orderRaw.quantity, 10) || 1),
       unit_price: Number(orderRaw.unit_price),
       confirmed_total: Number(orderRaw.confirmed_total) > 0 ? Number(orderRaw.confirmed_total) : null,
+      items: Array.isArray(orderRaw.items) && orderRaw.items.length > 0 ? orderRaw.items : null,
     };
   }
 
@@ -4740,17 +4751,38 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   // Track AI inbox reply usage
   incrementUsage(orgId, "ai_inbox_replies").catch(() => {});
 
-  // 5. Save or edit order if GPT confirmed it has all fields
-  if (orderData) {
+  // 5. Save, edit, or cancel order based on AI action
+  if (orderAction === "cancel" && existingOrder) {
+    try {
+      const { error: cancelErr } = await supabase
+        .from("social_inbox_orders")
+        .update({ status: "cancelled" })
+        .eq("id", existingOrder.id)
+        .eq("org_id", orgId);
+      if (cancelErr) {
+        console.error("[Meta AI] order cancel failed:", cancelErr.message);
+      } else {
+        const shortId = existingOrder.id.slice(-6).toUpperCase();
+        reply = reply || `Your order IO-${shortId} has been cancelled.`;
+        console.log("[Meta AI] order cancelled:", existingOrder.id);
+      }
+    } catch (err) {
+      console.error("[Meta AI] order cancel failed:", errorMessage(err));
+    }
+  } else if (orderData) {
     try {
       await syncOrderFieldsFromAIResult({ supabase, orgId, conversation, order: orderData });
 
       if (orderAction === "edit" && existingOrder) {
-        // Update existing order
+        // Update existing order — use items array if provided, otherwise single item
         const deliveryRate = inferDeliveryCharge(orderData.address);
+        const items = Array.isArray(orderData.items) && orderData.items.length > 0
+          ? orderData.items.map((i) => ({ product: i.product, quantity: Number(i.quantity) || 1, unit_price: Number(i.unit_price) || 0 }))
+          : [{ product: orderData.product_name, quantity: orderData.quantity, unit_price: orderData.unit_price }];
+        const itemsTotal = items.reduce((sum, i) => sum + (i.unit_price * i.quantity), 0);
         const totalPrice = Number(orderData.confirmed_total) > 0
           ? Number(orderData.confirmed_total)
-          : orderData.unit_price * orderData.quantity + deliveryRate;
+          : itemsTotal + deliveryRate;
         const phone = normalizeBdPhone(orderData.phone) || orderData.phone;
         const notes = [
           `Phone: ${phone}`,
@@ -4762,7 +4794,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
           .from("social_inbox_orders")
           .update({
             contact_name: orderData.customer_name,
-            items: [{ product: orderData.product_name, quantity: orderData.quantity, unit_price: orderData.unit_price }],
+            items,
             notes,
             total_price: totalPrice,
             delivery_rate: deliveryRate,
@@ -4838,8 +4870,8 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     messageType: "text",
   });
 
-  // 8. Update conversation summary after order events (create/edit)
-  if (orderData) {
+  // 8. Update conversation summary after order events (create/edit/cancel)
+  if (orderData || orderAction === "cancel") {
     const fullHistory = conversationHistory + `\nassistant: ${reply}`;
     generateConversationSummary(fullHistory, aiSummary).then((newSummary) => {
       if (newSummary && newSummary !== aiSummary) {
