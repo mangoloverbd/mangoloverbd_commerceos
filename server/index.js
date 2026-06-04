@@ -10,6 +10,7 @@ import pg from "pg";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
+import { computeOrderCogs } from "./cog.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -2385,6 +2386,27 @@ app.get("/api/analytics", async (req, res) => {
     }
     const seriesByKey = new Map(seriesBuckets.map((bucket) => [bucket.key, bucket]));
 
+    // Compute COG per order by matching each line item in the order's
+    // `product` string against the org's products catalog. Line items with
+    // no catalog match or with cog=0 contribute 0 (not an estimate).
+    // coverage.set counts priced line items; coverage.total counts all parsed
+    // line items.
+    let totalCog = 0;
+    let cogCoverage = { set: 0, total: 0 };
+    const cogByOrderId = new Map();
+    try {
+      const { data: prods } = await supabase
+        .from("products")
+        .select("id, name, selling_price, cog")
+        .eq("org_id", orgId);
+      const result = computeOrderCogs(orders, prods || []);
+      totalCog = result.totalCog;
+      cogCoverage = result.coverage;
+      for (const [orderId, orderCog] of result.cogByOrderId) {
+        cogByOrderId.set(orderId, orderCog);
+      }
+    } catch { /* ignore – no products yet */ }
+
     // price = total_price from Shopify (subtotal + shipping − discounts) = what the customer pays.
     // delivery_rate = shipping component (kept separately for the Shipping card display).
     // Revenue = total sales (price + delivery_rate per order)
@@ -2394,6 +2416,7 @@ app.get("/api/analytics", async (req, res) => {
       const orderPrice = parseFloat(o.price || 0);
       const orderShipping = parseFloat(o.delivery_rate || 0);
       const orderRevenue = orderPrice + orderShipping;
+      const orderCog = cogByOrderId.get(o.id) || 0;
       revenue += orderRevenue;
       shipping += orderShipping;
       const parts = dhakaParts(o.created_at);
@@ -2401,6 +2424,7 @@ app.get("/api/analytics", async (req, res) => {
       if (bucket) {
         bucket.revenue += orderRevenue;
         bucket.shipping += orderShipping;
+        bucket.totalCog += orderCog;
       }
     }
 
@@ -2493,48 +2517,14 @@ app.get("/api/analytics", async (req, res) => {
       }
     }
 
-    // Estimate COGS from the products catalog stored in app_settings.
-    // Only use products that have BOTH selling_price > 0 AND cog > 0.
-    // We compute the weighted COG ratio across those qualifying products and
-    // scale it to the period revenue.  We also return coverage metadata so
-    // the frontend can show how complete the estimate is.
-    let totalCog = 0;
-    let cogCoverage = { set: 0, total: 0 };
-    try {
-      const { data: prods } = await supabase
-        .from("products")
-        .select("selling_price, cog")
-        .eq("org_id", orgId);
-      if (prods && prods.length > 0) {
-        let sumCog = 0;
-        let sumSelling = 0;
-        cogCoverage.total = prods.length;
-        for (const p of prods) {
-          const sp = parseFloat(p.selling_price || 0);
-          const cg = parseFloat(p.cog || 0);
-          if (cg > 0) cogCoverage.set++;
-          if (sp > 0 && cg > 0) {
-            sumCog += cg;
-            sumSelling += sp;
-          }
-        }
-        if (sumSelling > 0) {
-          const cogRatio = sumCog / sumSelling;
-          totalCog = revenue * cogRatio;
-        }
-      }
-    } catch { /* ignore – no products yet */ }
-
     // Net Profit = Revenue − Ad Spend − Shipping − COG
     const shippingCost = parseFloat(shipping.toFixed(2));
     const profit = adSpend !== null
       ? revenue - adSpend - shippingCost - totalCog
       : null;
-    const cogRatioForSeries = revenue > 0 ? totalCog / revenue : 0;
     for (const bucket of seriesBuckets) {
       bucket.revenue = parseFloat(bucket.revenue.toFixed(2));
       bucket.shipping = parseFloat(bucket.shipping.toFixed(2));
-      bucket.totalCog = parseFloat((bucket.revenue * cogRatioForSeries).toFixed(2));
       bucket.profit = adSpend !== null
         ? parseFloat((bucket.revenue - bucket.totalCog - bucket.adSpend - bucket.shipping).toFixed(2))
         : null;
