@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { RichButton } from "@/components/ui/rich-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/sonner";
 import { Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react";
@@ -236,9 +235,6 @@ export default function Auth() {
                   <Logo className="h-8 w-8 rounded-lg" />
                   <div className="min-w-0">
                     <p className="text-[13px] font-semibold text-black leading-none">
-                      Seraphine
-                    </p>
-                    <p className="text-[10px] text-black/40 mt-0.5 leading-none">
                       Arc Lab Technology
                     </p>
                   </div>
@@ -362,17 +358,15 @@ export default function Auth() {
                     </AnimatePresence>
 
                     {/* CTA */}
-                    <RichButton
+                    <button
                       type="submit"
                       disabled={loading}
-                      color="default"
-                      size="lg"
-                      className="w-full mt-2 h-11 rounded-lg"
+                      className="w-full mt-2 h-11 rounded-lg bg-black text-white text-[14px] font-medium hover:bg-black/90 transition-colors duration-200 disabled:opacity-50 disabled:pointer-events-none"
                     >
                       {loading
                         ? mode === "signin" ? "Authenticating..." : "Creating..."
                         : mode === "signin" ? "Continue" : "Create Account"}
-                    </RichButton>
+                    </button>
                   </form>
 
                   {/* Divider — Or you can sign in with */}
