@@ -196,7 +196,7 @@ export default function Auth() {
       <div className="flex-1 flex flex-col items-center justify-center relative px-8">
         <div className="absolute inset-0" />
 
-        <div className="relative z-10 w-full max-w-[480px] flex flex-col items-center">
+        <div className="relative z-10 w-full max-w-[400px] flex flex-col items-center">
           <AnimatePresence mode="wait">
             {emailSent ? (
               <motion.div
@@ -242,7 +242,7 @@ export default function Auth() {
                 </div>
 
                 {/* Card container */}
-                <div className="w-full bg-white rounded-2xl border border-black/[0.06] shadow-sm p-8 sm:p-10">
+                <div className="w-full bg-white rounded-md border border-black/[0.06] shadow-sm p-8 sm:p-10">
                   {/* Form */}
                   <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                     {/* Email */}
@@ -364,7 +364,7 @@ export default function Auth() {
                       disabled={loading}
                       color="default"
                       size="lg"
-                      className="w-full mt-2 h-11 rounded-lg mx-auto max-w-[85%]"
+                      className="w-full mt-2 h-11 rounded-lg"
                     >
                       {loading
                         ? mode === "signin" ? "Authenticating..." : "Creating..."
