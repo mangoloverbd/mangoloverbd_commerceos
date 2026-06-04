@@ -145,6 +145,7 @@ app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS
 // Parse JSON and simultaneously capture raw body buffer for webhook HMAC verification.
 // Using the verify callback avoids consuming the stream twice.
 app.use(express.json({
+  limit: "20mb",
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
 
@@ -2970,20 +2971,22 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
     const finalSize = validSizes.includes(size) ? size : "1024x1024";
 
     if (image) {
-      // Edit mode: use image input with prompt
+      // Edit mode: use /v1/images/edits with multipart form data
+      const base64Data = image.includes(",") ? image.split(",")[1] : image;
+      const imageBuffer = Buffer.from(base64Data, "base64");
+      const blob = new Blob([imageBuffer], { type: "image/png" });
+      const formData = new FormData();
+      formData.append("image", blob, "input.png");
+      formData.append("prompt", prompt);
+      formData.append("model", "gpt-image-2");
+      formData.append("size", finalSize);
+      formData.append("quality", quality);
+      formData.append("response_format", "b64_json");
+
       const response = await fetch("https://api.openai.com/v1/images/edits", {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: (() => {
-          const formData = new FormData();
-          const imageBuffer = Buffer.from(image.split(",")[1] || image, "base64");
-          formData.append("image", new Blob([imageBuffer], { type: "image/png" }), "input.png");
-          formData.append("prompt", prompt);
-          formData.append("model", "gpt-image-2");
-          formData.append("size", finalSize);
-          formData.append("quality", quality);
-          return formData;
-        })(),
+        body: formData,
       });
       if (!response.ok) {
         const err = await response.text();

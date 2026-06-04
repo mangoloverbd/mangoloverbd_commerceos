@@ -223,14 +223,15 @@ export default function OrderChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
       if (!resp.ok) {
         setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${data.error || "Image generation failed"}` }]);
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: "Here's your generated image:", image: data.image }]);
       }
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Failed to generate image. Please try again." }]);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Network error";
+      setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ Failed to generate image: ${errMsg}` }]);
     } finally {
       setIsLoading(false);
     }
