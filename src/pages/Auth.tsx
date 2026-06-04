@@ -233,12 +233,10 @@ export default function Auth() {
               >
                 {/* Logo — matches sidebar header */}
                 <div className="mb-10 flex items-center gap-2.5">
-                  <Logo className="h-8 w-8 rounded-lg" />
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-black leading-none">
-                      Arc Lab Technology
-                    </p>
-                  </div>
+                  <Logo className="h-7 w-7 rounded-lg" />
+                  <p className="text-[14px] font-semibold text-black leading-none">
+                    Arc Lab Suite
+                  </p>
                 </div>
 
                 {/* Card container */}
@@ -412,7 +410,7 @@ export default function Auth() {
                       <>
                         Don't have an account yet?{" "}
                         <span className="text-black/30 mx-0.5">-</span>{" "}
-                        <button type="button" onClick={() => switchMode("signup")} className="text-black font-semibold hover:text-black/70 transition-colors duration-200">
+                        <button type="button" onClick={() => switchMode("signup")} className="text-black font-semibold underline hover:text-black/70 transition-colors duration-200">
                           Create account
                         </button>
                       </>
@@ -420,7 +418,7 @@ export default function Auth() {
                       <>
                         Already have an account?{" "}
                         <span className="text-black/30 mx-0.5">-</span>{" "}
-                        <button type="button" onClick={() => switchMode("signin")} className="text-black font-semibold hover:text-black/70 transition-colors duration-200">
+                        <button type="button" onClick={() => switchMode("signin")} className="text-black font-semibold underline hover:text-black/70 transition-colors duration-200">
                           Sign in
                         </button>
                       </>
