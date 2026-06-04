@@ -49,23 +49,39 @@ function hasInlineQty(line: string): boolean {
   return /^\d+\s*(x|×)\s+/i.test(line);
 }
 
-function OrderStatusIcon({ status }: { status: "pending" | "confirmed" }) {
-  return status === "confirmed" ? (
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
-      <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21.897 6.63c.32.898-.13 1.513-.998 2.118c-.702.488-1.595 1.017-2.542 1.922c-.928.887-1.834 1.955-2.639 3.006a39 39 0 0 0-2.71 3.99a1.65 1.65 0 0 1-1.446.834a1.66 1.66 0 0 1-1.426-.873c-.748-1.363-1.326-1.901-1.592-2.094c-.737-.537-1.544-.63-1.544-1.8C7 12.776 7.746 12 8.667 12c.658.027 1.262.309 1.789.693c.342.249.705.578 1.082 1.012c.442-.654.975-1.408 1.573-2.189c.868-1.133 1.892-2.35 2.99-3.399c1.08-1.032 2.33-1.998 3.653-2.508c.863-.333 1.822.124 2.143 1.022M4.44 12.076a2.7 2.7 0 0 0-.6-.125l-.141-.006c-.938 0-1.699.783-1.699 1.748c0 .874.623 1.598 1.437 1.728q.042.02.137.087c.27.195.86.737 1.623 2.111c.298.538.851.873 1.453.88a1.67 1.67 0 0 0 1.112-.407M15 5.5c-1.35.515-2.622 1.489-3.723 2.53c-.384.363-.76.746-1.123 1.139" color="currentColor"/>
-    </svg>
-  ) : (
+function OrderStatusIcon({ status }: { status: string }) {
+  if (status === "confirmed") {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
+        <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21.897 6.63c.32.898-.13 1.513-.998 2.118c-.702.488-1.595 1.017-2.542 1.922c-.928.887-1.834 1.955-2.639 3.006a39 39 0 0 0-2.71 3.99a1.65 1.65 0 0 1-1.446.834a1.66 1.66 0 0 1-1.426-.873c-.748-1.363-1.326-1.901-1.592-2.094c-.737-.537-1.544-.63-1.544-1.8C7 12.776 7.746 12 8.667 12c.658.027 1.262.309 1.789.693c.342.249.705.578 1.082 1.012c.442-.654.975-1.408 1.573-2.189c.868-1.133 1.892-2.35 2.99-3.399c1.08-1.032 2.33-1.998 3.653-2.508c.863-.333 1.822.124 2.143 1.022M4.44 12.076a2.7 2.7 0 0 0-.6-.125l-.141-.006c-.938 0-1.699.783-1.699 1.748c0 .874.623 1.598 1.437 1.728q.042.02.137.087c.27.195.86.737 1.623 2.111c.298.538.851.873 1.453.88a1.67 1.67 0 0 0 1.112-.407M15 5.5c-1.35.515-2.622 1.489-3.723 2.53c-.384.363-.76.746-1.123 1.139" color="currentColor"/>
+      </svg>
+    );
+  }
+  if (status === "cancelled") {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" opacity=".2" fill="currentColor" stroke="none"/>
+        <path d="M15 9l-6 6M9 9l6 6"/>
+      </svg>
+    );
+  }
+  // pending
+  return (
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><g fill="currentColor"><path d="M18.75 11a7 7 0 1 1-14 0a7 7 0 0 1 14 0Z" opacity=".2"/><path fillRule="evenodd" d="M10 16a6 6 0 1 0 0-12a6 6 0 0 0 0 12Zm0 1a7 7 0 1 0 0-14a7 7 0 0 0 0 14Z" clipRule="evenodd"/><path fillRule="evenodd" d="M10 6.5a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0V7a.5.5 0 0 1 .5-.5Z" clipRule="evenodd"/><path fillRule="evenodd" d="M13.5 10a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 1 .5.5Z" clipRule="evenodd"/></g></svg>
   );
 }
 
-function orderStatusClasses(status: "pending" | "confirmed", selected = false) {
+function orderStatusClasses(status: string, selected = false) {
   if (status === "confirmed") {
     return selected
       ? "border-emerald-200 bg-emerald-100 text-emerald-700"
       : "border-emerald-200/80 bg-emerald-50 text-emerald-700 shadow-emerald-950/5 hover:border-emerald-300 hover:bg-emerald-100";
   }
-
+  if (status === "cancelled") {
+    return selected
+      ? "border-red-200 bg-red-100 text-red-600"
+      : "border-red-200/80 bg-red-50 text-red-600 shadow-red-950/5 hover:border-red-300 hover:bg-red-100";
+  }
   return selected
     ? "border-amber-200 bg-amber-100 text-amber-700"
     : "border-amber-200/80 bg-amber-50 text-amber-700 shadow-amber-950/5 hover:border-amber-300 hover:bg-amber-100";
@@ -492,8 +508,8 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     }
   });
 
-  const handleStatusToggle = async (order: Order) => {
-    const newStatus = order.status === "confirmed" ? "pending" : "confirmed";
+  const handleStatusChange = async (order: Order, newStatus: string) => {
+    if (order.status === newStatus) return;
 
     // Optimistic update - update UI immediately
     onStatusUpdate(order.id, newStatus);
@@ -1228,21 +1244,19 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                         </PopoverTrigger>
                         <PopoverContent className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="center">
                           <div className="flex flex-col gap-1">
-                            {["pending", "confirmed"].map((st) => (
+                            {["pending", "confirmed", "cancelled"].map((st) => (
                               <button
                                 key={st}
-                                onClick={() => {
-                                  if (order.status !== st) handleStatusToggle(order);
-                                }}
+                                onClick={() => handleStatusChange(order, st)}
                                 className={cn(
                                   "flex h-9 w-full items-center justify-between rounded-xl border px-3 text-left text-xs font-medium capitalize transition-all",
                                   order.status === st
-                                    ? orderStatusClasses(st as "pending" | "confirmed", true)
+                                    ? orderStatusClasses(st, true)
                                     : "border-transparent text-foreground hover:border-black/10 hover:bg-black/[0.04]"
                                 )}
                               >
                                 <span className="flex items-center gap-2">
-                                  <OrderStatusIcon status={st as "pending" | "confirmed"} />
+                                  <OrderStatusIcon status={st} />
                                   {st}
                                 </span>
                                 {order.status === st && <Check className="h-3.5 w-3.5" />}
