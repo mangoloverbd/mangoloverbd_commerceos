@@ -32,6 +32,36 @@ export function buildCogLookup(products) {
   return lookup;
 }
 
+/**
+ * Fuzzy lookup: tries exact match first, then checks if the item name
+ * starts with any catalog product name (handles Shopify variant suffixes
+ * like "Product Name - Color / Size").
+ */
+export function fuzzyLookup(cogByName, itemName) {
+  const key = itemName.toLowerCase();
+  // 1. Exact match
+  const exact = cogByName.get(key);
+  if (exact) return exact;
+  // 2. Strip variant suffix after " - " and try again
+  const dashIdx = key.indexOf(" - ");
+  if (dashIdx > 0) {
+    const base = key.slice(0, dashIdx).trim();
+    const stripped = cogByName.get(base);
+    if (stripped) return stripped;
+  }
+  // 3. Check if any catalog name is a prefix of the item name
+  for (const [catalogName, entry] of cogByName) {
+    if (key.startsWith(catalogName) && key.length > catalogName.length) {
+      // Ensure the match ends at a word boundary (space, dash, paren, slash)
+      const nextChar = key[catalogName.length];
+      if (nextChar === " " || nextChar === "-" || nextChar === "/" || nextChar === "(") {
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
 export function computeOrderCogs(orders, products) {
   const cogByName = buildCogLookup(products);
   const cogByOrderId = new Map();
@@ -44,7 +74,7 @@ export function computeOrderCogs(orders, products) {
     let orderCog = 0;
     for (const item of items) {
       total += 1;
-      const product = cogByName.get(item.name.toLowerCase());
+      const product = fuzzyLookup(cogByName, item.name);
       if (product && product.cog > 0) {
         orderCog += item.qty * product.cog;
         priced += 1;
