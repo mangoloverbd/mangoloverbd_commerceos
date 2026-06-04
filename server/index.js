@@ -2955,6 +2955,78 @@ app.get("/api/sidebar-alerts", async (req, res) => {
   }
 });
 
+// ─── Image generation with GPT Image 2 ──────────────────────────────────────
+
+app.post("/api/generate-image", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+
+    const { prompt, image, size = "1024x1024", quality = "high" } = req.body || {};
+    if (!prompt) return res.status(400).json({ error: "prompt is required" });
+
+    const validSizes = ["1024x1024", "1536x1024", "1024x1536", "auto"];
+    const finalSize = validSizes.includes(size) ? size : "1024x1024";
+
+    if (image) {
+      // Edit mode: use image input with prompt
+      const response = await fetch("https://api.openai.com/v1/images/edits", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: (() => {
+          const formData = new FormData();
+          const imageBuffer = Buffer.from(image.split(",")[1] || image, "base64");
+          formData.append("image", new Blob([imageBuffer], { type: "image/png" }), "input.png");
+          formData.append("prompt", prompt);
+          formData.append("model", "gpt-image-2");
+          formData.append("size", finalSize);
+          formData.append("quality", quality);
+          return formData;
+        })(),
+      });
+      if (!response.ok) {
+        const err = await response.text();
+        console.error("[Image Gen] edit failed:", err);
+        return res.status(response.status).json({ error: `Image generation failed: ${err.slice(0, 200)}` });
+      }
+      const data = await response.json();
+      const b64 = data.data?.[0]?.b64_json;
+      if (!b64) return res.status(500).json({ error: "No image returned" });
+      return res.json({ image: `data:image/png;base64,${b64}` });
+    } else {
+      // Generation mode: text-only prompt
+      const response = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-image-2",
+          prompt,
+          size: finalSize,
+          quality,
+          response_format: "b64_json",
+          n: 1,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.text();
+        console.error("[Image Gen] generation failed:", err);
+        return res.status(response.status).json({ error: `Image generation failed: ${err.slice(0, 200)}` });
+      }
+      const data = await response.json();
+      const b64 = data.data?.[0]?.b64_json;
+      if (!b64) return res.status(500).json({ error: "No image returned" });
+      return res.json({ image: `data:image/png;base64,${b64}` });
+    }
+  } catch (err) {
+    console.error("[Image Gen] error:", errorMessage(err));
+    return res.status(500).json({ error: errorMessage(err) });
+  }
+});
+
 const ORDER_CHAT_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
 
 app.post("/api/order-chat", rateLimitAI, async (req, res) => {

@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
-import { Paperclip, ChevronDown, Mic, ArrowUp, X, FileText } from "lucide-react";
+import { Paperclip, ChevronDown, Mic, ArrowUp, X, FileText, Image as ImageIcon, Download } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { LoadingBreadcrumb } from "@/components/ui/animated-loading-svg-text-shimmer";
 
-type Msg = { role: "user" | "assistant"; content: string };
-type UploadedFile = { name: string; type: string; content: string };
+type Msg = { role: "user" | "assistant"; content: string; image?: string };
+type UploadedFile = { name: string; type: string; content: string; isImage?: boolean; preview?: string };
 
 const openAIModels = [
   { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
@@ -148,11 +148,20 @@ export default function OrderChat() {
     if (!list?.length) return;
     const nextFiles = await Promise.all(
       Array.from(list).map(async (file) => {
+        const isImage = file.type.startsWith("image/");
+        if (isImage) {
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          return { name: file.name, type: file.type, content: base64, isImage: true, preview: base64 };
+        }
         const canRead =
           file.type.startsWith("text/") ||
           /\.(csv|json|txt|md|tsv)$/i.test(file.name);
         const content = canRead ? await file.text().catch(() => "") : "";
-        return { name: file.name, type: file.type || "file", content };
+        return { name: file.name, type: file.type || "file", content, isImage: false };
       })
     );
     setFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
@@ -176,9 +185,14 @@ export default function OrderChat() {
     recognition.start();
   };
 
+  const [imageMode, setImageMode] = useState(false);
+  const [imageSize, setImageSize] = useState("1024x1024");
+
   const buildPrompt = (text: string) => {
     if (!files.length) return text;
-    const fileContext = files
+    const textFiles = files.filter((f) => !f.isImage);
+    if (!textFiles.length) return text;
+    const fileContext = textFiles
       .map((file) => {
         const content = file.content.trim();
         return content
@@ -189,9 +203,46 @@ export default function OrderChat() {
     return `${text}\n\nAttached files:\n${fileContext}`;
   };
 
+  const generateImage = async (text: string) => {
+    const msg = text.trim();
+    if (!msg || isLoading) return;
+
+    const imageFiles = files.filter((f) => f.isImage);
+    const userMsg: Msg = { role: "user", content: msg, image: imageFiles[0]?.preview };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setFiles([]);
+    setIsLoading(true);
+
+    try {
+      const body: Record<string, string> = { prompt: msg, size: imageSize, quality: "high" };
+      if (imageFiles[0]?.content) body.image = imageFiles[0].content;
+
+      const resp = await apiFetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${data.error || "Image generation failed"}` }]);
+      } else {
+        setMessages((prev) => [...prev, { role: "assistant", content: "Here's your generated image:", image: data.image }]);
+      }
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "⚠️ Failed to generate image. Please try again." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const send = async (text: string) => {
     const msg = text.trim();
     if (!msg || isLoading) return;
+
+    if (imageMode) {
+      return generateImage(msg);
+    }
 
     const userMsg: Msg = { role: "user", content: buildPrompt(msg) };
     setMessages((prev) => [...prev, userMsg]);
@@ -204,7 +255,7 @@ export default function OrderChat() {
       assistantSoFar += chunk;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
-        if (last?.role === "assistant") {
+        if (last?.role === "assistant" && !last.image) {
           return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
         }
         return [...prev, { role: "assistant", content: assistantSoFar }];
@@ -213,7 +264,7 @@ export default function OrderChat() {
 
     try {
       await streamChat({
-        messages: [...messages, userMsg],
+        messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
         model,
         onDelta: upsert,
         onDone: () => setIsLoading(false),
@@ -243,7 +294,7 @@ export default function OrderChat() {
                 send(input);
               }
             }}
-            placeholder="Send a message..."
+            placeholder={imageMode ? "Describe the image you want to generate..." : "Send a message..."}
             rows={1}
             className="min-h-[40px] w-full resize-none border-0 bg-transparent p-0 text-[15px] font-medium leading-relaxed text-foreground outline-none placeholder:text-black/35 disabled:opacity-60"
           />
@@ -251,20 +302,33 @@ export default function OrderChat() {
           {files.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {files.map((file, index) => (
-                <span
-                  key={`${file.name}-${index}`}
-                  className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full bg-black/[0.035] px-2.5 py-1 text-xs text-foreground/75"
-                >
-                  <FileText className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{file.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
-                    className="rounded-full p-0.5 text-black/35 hover:bg-black/10 hover:text-black"
+                file.isImage && file.preview ? (
+                  <div key={`${file.name}-${index}`} className="relative group">
+                    <img src={file.preview} alt={file.name} className="h-16 w-16 rounded-lg object-cover border border-black/10" />
+                    <button
+                      type="button"
+                      onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                      className="absolute -top-1 -right-1 rounded-full bg-black/70 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <span
+                    key={`${file.name}-${index}`}
+                    className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full bg-black/[0.035] px-2.5 py-1 text-xs text-foreground/75"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                      className="rounded-full p-0.5 text-black/35 hover:bg-black/10 hover:text-black"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )
               ))}
             </div>
           )}
@@ -276,6 +340,7 @@ export default function OrderChat() {
               ref={fileInputRef}
               type="file"
               multiple
+              accept={imageMode ? "image/*" : undefined}
               className="hidden"
               onChange={(event) => readFiles(event.target.files)}
             />
@@ -288,20 +353,49 @@ export default function OrderChat() {
               Files
             </button>
 
-            <div className="relative">
-              <select
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                className="h-7 appearance-none rounded-full border-0 bg-transparent py-0 pl-2 pr-6 text-[13px] font-semibold text-foreground/75 outline-none transition-colors hover:bg-black/[0.055] hover:text-foreground"
-              >
-                {openAIModels.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
-            </div>
+            <button
+              type="button"
+              onClick={() => setImageMode(!imageMode)}
+              className={cn(
+                "inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold transition-colors",
+                imageMode
+                  ? "bg-violet-100 text-violet-700"
+                  : "text-foreground/75 hover:bg-black/[0.055] hover:text-foreground"
+              )}
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              Image
+            </button>
+
+            {imageMode ? (
+              <div className="relative">
+                <select
+                  value={imageSize}
+                  onChange={(event) => setImageSize(event.target.value)}
+                  className="h-7 appearance-none rounded-full border-0 bg-transparent py-0 pl-2 pr-6 text-[13px] font-semibold text-foreground/75 outline-none transition-colors hover:bg-black/[0.055] hover:text-foreground"
+                >
+                  <option value="1024x1024">Square</option>
+                  <option value="1536x1024">Landscape</option>
+                  <option value="1024x1536">Portrait</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
+              </div>
+            ) : (
+              <div className="relative">
+                <select
+                  value={model}
+                  onChange={(event) => setModel(event.target.value)}
+                  className="h-7 appearance-none rounded-full border-0 bg-transparent py-0 pl-2 pr-6 text-[13px] font-semibold text-foreground/75 outline-none transition-colors hover:bg-black/[0.055] hover:text-foreground"
+                >
+                  {openAIModels.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -420,12 +514,29 @@ export default function OrderChat() {
                       {msg.role === "assistant" ? (
                         <div className="prose prose-sm max-w-none text-foreground/80 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_code]:bg-black/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
+                          {msg.image && (
+                            <div className="mt-3 relative group">
+                              <img src={msg.image} alt="Generated" className="rounded-xl max-w-full max-h-[400px] border border-black/10" />
+                              <a
+                                href={msg.image}
+                                download="generated-image.png"
+                                className="absolute top-2 right-2 rounded-lg bg-black/70 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </div>
+                          )}
                           {streaming && (
                             <span className="inline-block w-[2px] h-[1em] bg-black/50 ml-0.5 align-text-bottom rounded-full animate-[blink_0.85s_step-end_infinite]" />
                           )}
                         </div>
                       ) : (
-                        msg.content
+                        <div>
+                          {msg.content}
+                          {msg.image && (
+                            <img src={msg.image} alt="Uploaded" className="mt-2 rounded-lg max-w-[200px] max-h-[150px] object-cover border border-black/10" />
+                          )}
+                        </div>
                       )}
                     </div>
                   </motion.div>
