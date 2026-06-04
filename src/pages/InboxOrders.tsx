@@ -18,12 +18,13 @@ import { toast } from "@/components/ui/sonner";
 import { format } from "date-fns";
 import {
   MagnifyingGlass, ShoppingBag, Package, NotePencil, Truck,
-  ShieldCheck, ShieldWarning, Warning, Question, FileText, Printer,
+  ShieldCheck, FileText, Printer,
   Trash, Check, MapPin,
 } from "@phosphor-icons/react";
 import {
   FacebookLogo, InstagramLogo, WhatsappLogo,
 } from "@phosphor-icons/react";
+import { AlertTriangle, HelpCircle, ShieldAlert, ShieldCheck as LucideShieldCheck } from "lucide-react";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -199,7 +200,20 @@ function getInboxCourierBadge(order: InboxOrder) {
   );
 }
 
-// ─── FraudCell ────────────────────────────────────────────────────────────────
+// ─── SearchRiskIcon (matches Dashboard) ──────────────────────────────────────
+
+function SearchRiskIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <g clipPath="url(#clip0_risk)">
+        <path d="M10.6101 19.6599C15.5901 19.6599 19.6201 15.6299 19.6201 10.6499C19.6201 5.66989 15.5901 1.63989 10.6101 1.63989C5.6301 1.63989 1.6001 5.66989 1.6001 10.6499C1.6001 15.6299 5.6301 19.6599 10.6101 19.6599Z"/>
+        <path d="M22.3101 19.02C22.0501 18.29 21.3201 17.78 20.3201 17.63C19.5401 17.5 18.8201 17.72 18.3301 18.21C17.8401 18.71 17.6301 19.44 17.7601 20.23C18.0101 21.72 18.8101 22.16 19.2601 22.29C19.3901 22.33 19.5501 22.36 19.7501 22.36C20.2401 22.36 20.9101 22.16 21.6401 21.36C22.3201 20.61 22.5701 19.75 22.3101 19.02Z"/>
+      </g>
+    </svg>
+  );
+}
+
+// ─── FraudCell (matches Dashboard) ───────────────────────────────────────────
 
 function InboxFraudCell({ order, isChecking, onCheck }: {
   order: InboxOrder;
@@ -210,7 +224,7 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
   const rawFraudData = order.fraud_data as (Record<string, unknown> & { _error?: string }) | null;
   const hasError = order.fraud_checked && (!rawFraudData || rawFraudData._error);
 
-  let RiskIcon: React.ElementType = MagnifyingGlass;
+  let RiskIcon: React.ComponentType<{ className?: string }> = SearchRiskIcon;
   let riskColor = "text-muted-foreground/30";
   let riskBgColor = "";
   let riskLabel = "";
@@ -225,22 +239,22 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
     deliveryRate = total_parcels > 0 ? (total_delivered / total_parcels) * 100 : 0;
 
     if (total_parcels === 0) {
-      RiskIcon = Question;
+      RiskIcon = HelpCircle;
       riskColor = "text-muted-foreground";
       riskBgColor = "bg-muted/50";
       riskLabel = "New Customer";
     } else if (deliveryRate >= 70) {
-      RiskIcon = ShieldCheck;
+      RiskIcon = LucideShieldCheck;
       riskColor = "text-emerald-600";
       riskBgColor = "bg-emerald-50";
       riskLabel = "Safe";
     } else if (deliveryRate >= 50) {
-      RiskIcon = Warning;
+      RiskIcon = AlertTriangle;
       riskColor = "text-amber-600";
       riskBgColor = "bg-amber-50";
       riskLabel = "Caution";
     } else {
-      RiskIcon = ShieldWarning;
+      RiskIcon = ShieldAlert;
       riskColor = "text-red-600";
       riskBgColor = "bg-red-50";
       riskLabel = "High Risk";
@@ -268,16 +282,16 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
         {isChecking ? (
           <Spinner className="text-muted-foreground/40" />
         ) : hasError ? (
-          <Warning size={14} weight="light" className="text-destructive/60" />
+          <AlertTriangle className="h-3.5 w-3.5 text-destructive/60" />
         ) : order.fraud_checked ? (
           <>
-            <RiskIcon size={14} weight="light" className={cn("h-3.5 w-3.5", riskColor)} />
+            <RiskIcon className={cn("h-3.5 w-3.5", riskColor)} />
             <span className={cn("text-[10px] font-semibold tabular-nums", riskColor)}>
               {total_parcels > 0 ? `${deliveryRate.toFixed(0)}%` : "N/A"}
             </span>
           </>
         ) : (
-          <MagnifyingGlass size={14} weight="light" className="text-muted-foreground/25" />
+          <SearchRiskIcon className="h-3.5 w-3.5 text-muted-foreground/25" />
         )}
       </button>
 
@@ -296,7 +310,7 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
             <>
               <div className={cn("px-4 py-3 border-b border-border/50", riskBgColor)}>
                 <div className="flex items-center gap-2">
-                  <RiskIcon size={20} weight="light" className={cn(riskColor)} />
+                  <RiskIcon className={cn("h-5 w-5", riskColor)} />
                   <span className={cn("font-semibold", riskColor)}>{riskLabel}</span>
                 </div>
                 {total_parcels > 0 && (
@@ -413,6 +427,62 @@ function InboxNotesPopover({ order, onOrderUpdate }: {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// ─── Editable Total Cell (matches Dashboard) ────────────────────────────────
+
+function InboxEditableTotalCell({ order, onOrderUpdate }: { order: InboxOrder; onOrderUpdate: (updated: InboxOrder) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const total = order.total_price || 0;
+
+  const handleBlur = async (e: React.FocusEvent<HTMLSpanElement>) => {
+    setEditing(false);
+    const raw = e.currentTarget.textContent?.replace(/[^0-9.]/g, "") || "0";
+    const newTotal = parseFloat(raw) || 0;
+    if (newTotal === total) return;
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/social/inbox-orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ total_price: newTotal }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update total");
+      if (data.order) onOrderUpdate(data.order);
+      else onOrderUpdate({ ...order, total_price: newTotal });
+      toast.success("Total updated");
+    } catch {
+      toast.error("Failed to update total");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+    if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+    if (e.key === "Escape") { e.currentTarget.textContent = total.toLocaleString(); setEditing(false); e.currentTarget.blur(); }
+  };
+
+  return (
+    <span className={cn("font-medium text-sm tabular-nums inline-flex items-center gap-0", saving && "opacity-50 pointer-events-none")}>
+      <span className="select-none">৳</span>
+      <span
+        contentEditable
+        suppressContentEditableWarning
+        onFocus={() => setEditing(true)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className={cn(
+          "outline-none cursor-text transition-all",
+          editing ? "underline underline-offset-4 decoration-black/30" : "hover:underline hover:underline-offset-4 hover:decoration-black/20"
+        )}
+      >
+        {total.toLocaleString()}
+      </span>
+    </span>
   );
 }
 
@@ -951,9 +1021,9 @@ export default function InboxOrders() {
                       </Tooltip>
                     </TableCell>
 
-                    {/* Value */}
+                    {/* Value (editable) */}
                     <TableCell className="text-right py-3 pr-4 tabular-nums">
-                      <span className="font-medium text-sm">৳{(order.total_price || 0).toLocaleString()}</span>
+                      <InboxEditableTotalCell order={order} onOrderUpdate={updateLocalOrder} />
                     </TableCell>
 
                     {/* Status + Notes */}
