@@ -597,7 +597,7 @@ export default function Products() {
 
   // Column grid — fixed equal-width numeric columns for visual alignment
   const GRID = isAdmin
-    ? "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_140px_84px_44px]"
+    ? "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_180px_84px_44px]"
     : "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_84px_44px]";
 
   return (
