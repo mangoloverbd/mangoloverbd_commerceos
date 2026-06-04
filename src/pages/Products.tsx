@@ -930,7 +930,7 @@ export default function Products() {
                                 type="number" min={0} value={cogVal}
                                 onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                 onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                className={cn(INPUT_CLS, "h-9 pl-7", isDirty ? "pr-11" : "pr-3")}
+                                className={cn(INPUT_CLS, "h-9 rounded-md pl-7", isDirty ? "pr-10" : "pr-3")}
                               />
                               <AnimatePresence>
                                 {isDirty && (
@@ -941,7 +941,7 @@ export default function Products() {
                                     data-testid={`button-save-metrics-${product.id}`}
                                     onClick={() => saveCog(product)}
                                     disabled={isSaving}
-                                    className="absolute right-0 top-0 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                                    className="absolute right-[3px] top-[3px] flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[4px] bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
                                   >
                                     {isSaving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
                                   </motion.button>
