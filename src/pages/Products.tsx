@@ -597,7 +597,7 @@ export default function Products() {
 
   // Column grid — fixed equal-width numeric columns for visual alignment
   const GRID = isAdmin
-    ? "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_120px_84px_44px]"
+    ? "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_140px_84px_44px]"
     : "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_84px_44px]";
 
   return (
@@ -930,7 +930,7 @@ export default function Products() {
                                 type="number" min={0} value={cogVal}
                                 onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                 onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                className={cn(INPUT_CLS, "h-9 pl-7 pr-11")}
+                                className={cn(INPUT_CLS, "h-9 pl-7", isDirty ? "pr-11" : "pr-3")}
                               />
                               <AnimatePresence>
                                 {isDirty && (
