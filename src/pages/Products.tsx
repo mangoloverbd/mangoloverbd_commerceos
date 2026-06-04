@@ -923,15 +923,17 @@ export default function Products() {
                         {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
                           <div className="px-4 pt-4 pb-3">
-                            <div className="relative flex w-full">
-                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
-                              <input
-                                data-testid={`input-cog-${product.id}`}
-                                type="number" min={0} value={cogVal}
-                                onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
-                                onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                className={cn(INPUT_CLS, "h-9 rounded-md pl-7", isDirty ? "pr-10" : "pr-3")}
-                              />
+                            <div className="flex items-center gap-1.5">
+                              <div className="relative flex-1">
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
+                                <input
+                                  data-testid={`input-cog-${product.id}`}
+                                  type="number" min={0} value={cogVal}
+                                  onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
+                                  onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
+                                  className={cn(INPUT_CLS, "h-9 rounded-md pl-7 pr-3")}
+                                />
+                              </div>
                               <AnimatePresence>
                                 {isDirty && (
                                   <motion.button
@@ -941,7 +943,7 @@ export default function Products() {
                                     data-testid={`button-save-metrics-${product.id}`}
                                     onClick={() => saveCog(product)}
                                     disabled={isSaving}
-                                    className="absolute right-[3px] top-[3px] flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[4px] bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
                                   >
                                     {isSaving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
                                   </motion.button>
