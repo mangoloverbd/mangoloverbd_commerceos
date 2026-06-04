@@ -922,32 +922,32 @@ export default function Products() {
 
                         {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
-                          <div className="flex items-start justify-center gap-1.5 px-4 pt-4 pb-3">
-                            <div className="relative flex-1">
+                          <div className="px-4 pt-4 pb-3">
+                            <div className="relative flex w-full">
                               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
                               <input
                                 data-testid={`input-cog-${product.id}`}
                                 type="number" min={0} value={cogVal}
                                 onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                 onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                className={cn(INPUT_CLS, "h-9 pl-7")}
+                                className={cn(INPUT_CLS, "h-9 pl-7 pr-11")}
                               />
+                              <AnimatePresence>
+                                {isDirty && (
+                                  <motion.button
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.8 }}
+                                    data-testid={`button-save-metrics-${product.id}`}
+                                    onClick={() => saveCog(product)}
+                                    disabled={isSaving}
+                                    className="absolute right-0 top-0 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                                  >
+                                    {isSaving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
+                                  </motion.button>
+                                )}
+                              </AnimatePresence>
                             </div>
-                            <AnimatePresence>
-                              {isDirty && (
-                                <motion.button
-                                  initial={{ opacity: 0, scale: 0.8 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.8 }}
-                                  data-testid={`button-save-metrics-${product.id}`}
-                                  onClick={() => saveCog(product)}
-                                  disabled={isSaving}
-                                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
-                                >
-                                  {isSaving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
-                                </motion.button>
-                              )}
-                            </AnimatePresence>
                           </div>
                         )}
 
