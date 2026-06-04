@@ -2981,8 +2981,6 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
       formData.append("model", "gpt-image-2");
       formData.append("size", finalSize);
       formData.append("quality", quality);
-      formData.append("response_format", "b64_json");
-
       const response = await fetch("https://api.openai.com/v1/images/edits", {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -2995,8 +2993,10 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
       }
       const data = await response.json();
       const b64 = data.data?.[0]?.b64_json;
-      if (!b64) return res.status(500).json({ error: "No image returned" });
-      return res.json({ image: `data:image/png;base64,${b64}` });
+      const url = data.data?.[0]?.url;
+      if (b64) return res.json({ image: `data:image/png;base64,${b64}` });
+      if (url) return res.json({ image: url });
+      return res.status(500).json({ error: "No image returned" });
     } else {
       // Generation mode: text-only prompt
       const response = await fetch("https://api.openai.com/v1/images/generations", {
