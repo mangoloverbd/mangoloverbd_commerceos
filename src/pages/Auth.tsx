@@ -364,7 +364,7 @@ export default function Auth() {
                       disabled={loading}
                       color="default"
                       size="lg"
-                      className="w-full mt-2 h-11 rounded-lg"
+                      className="w-full mt-2 h-11 rounded-lg mx-auto max-w-[85%]"
                     >
                       {loading
                         ? mode === "signin" ? "Authenticating..." : "Creating..."
