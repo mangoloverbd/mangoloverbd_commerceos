@@ -232,13 +232,17 @@ export default function Auth() {
                 className="flex flex-col items-center w-full"
               >
                 {/* Logo — matches sidebar header */}
-                <div className="mb-10 flex items-center gap-2.5">
-                  <Logo className="h-7 w-7 rounded-lg" />
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-black truncate leading-none">
-                      Arc Lab Suite
-                    </p>
-                  </div>
+                <div className="mb-10 flex items-center gap-2">
+                  <Logo className="h-6 w-6 rounded-md shrink-0" />
+                  <span className="text-[15px] font-semibold leading-none tracking-normal text-black">
+                    Arc Lab
+                  </span>
+                  <span
+                    className="text-[17px] font-semibold leading-none tracking-normal text-black"
+                    style={{ fontFamily: "'Pixelify Sans', system-ui, sans-serif" }}
+                  >
+                    Suite
+                  </span>
                 </div>
 
                 {/* Card container */}
