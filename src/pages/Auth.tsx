@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { RichButton } from "@/components/ui/rich-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/sonner";
 import { Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react";
@@ -358,15 +359,17 @@ export default function Auth() {
                     </AnimatePresence>
 
                     {/* CTA */}
-                    <button
+                    <RichButton
                       type="submit"
                       disabled={loading}
-                      className="w-full mt-2 h-11 rounded-lg bg-black text-white text-[14px] font-medium hover:bg-black/90 transition-colors duration-200 disabled:opacity-50 disabled:pointer-events-none"
+                      color="default"
+                      size="lg"
+                      className="w-full mt-2 h-11 rounded-lg"
                     >
                       {loading
                         ? mode === "signin" ? "Authenticating..." : "Creating..."
                         : mode === "signin" ? "Continue" : "Create Account"}
-                    </button>
+                    </RichButton>
                   </form>
 
                   {/* Divider — Or you can sign in with */}
