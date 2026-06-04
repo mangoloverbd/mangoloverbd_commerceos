@@ -2611,6 +2611,20 @@ function extractResponsesText(data) {
   return parts.join("\n");
 }
 
+function extractResponsesImageGeneration(data) {
+  for (const item of data?.output || []) {
+    if (item?.type === "image_generation_call" && item?.result) {
+      return {
+        image: String(item.result).startsWith("data:")
+          ? String(item.result)
+          : `data:image/png;base64,${item.result}`,
+        revisedPrompt: item.revised_prompt || null,
+      };
+    }
+  }
+  return null;
+}
+
 function parseJsonObject(text) {
   if (!text) return null;
   try {
@@ -2969,61 +2983,63 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
 
     const validSizes = ["1024x1024", "1536x1024", "1024x1536", "auto"];
     const finalSize = validSizes.includes(size) ? size : "1024x1024";
+    const validQualities = ["low", "medium", "high", "auto"];
+    const finalQuality = validQualities.includes(quality) ? quality : "medium";
+    const inputContent = [{ type: "input_text", text: String(prompt) }];
 
     if (image) {
-      // Edit mode: use /v1/images/edits with multipart form data
-      const base64Data = image.includes(",") ? image.split(",")[1] : image;
-      const imageBuffer = Buffer.from(base64Data, "base64");
-      const blob = new Blob([imageBuffer], { type: "image/png" });
-      const formData = new FormData();
-      formData.append("image", blob, "input.png");
-      formData.append("prompt", prompt);
-      formData.append("model", "gpt-image-2");
-      formData.append("size", finalSize);
-      formData.append("quality", quality);
-      const response = await fetch("https://api.openai.com/v1/images/edits", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: formData,
+      inputContent.push({
+        type: "input_image",
+        image_url: String(image).startsWith("data:")
+          ? String(image)
+          : `data:image/png;base64,${image}`,
       });
-      if (!response.ok) {
-        const err = await response.text();
-        console.error("[Image Gen] edit failed:", err);
-        return res.status(response.status).json({ error: `Image generation failed: ${err.slice(0, 200)}` });
-      }
-      const data = await response.json();
-      const b64 = data.data?.[0]?.b64_json;
-      const url = data.data?.[0]?.url;
-      if (b64) return res.json({ image: `data:image/png;base64,${b64}` });
-      if (url) return res.json({ image: url });
-      return res.status(500).json({ error: "No image returned" });
-    } else {
-      // Generation mode: text-only prompt
-      const response = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-image-2",
-          prompt,
-          size: finalSize,
-          quality,
-          response_format: "b64_json",
-          n: 1,
-        }),
-      });
-      if (!response.ok) {
-        const err = await response.text();
-        console.error("[Image Gen] generation failed:", err);
-        return res.status(response.status).json({ error: `Image generation failed: ${err.slice(0, 200)}` });
-      }
-      const data = await response.json();
-      const b64 = data.data?.[0]?.b64_json;
-      if (!b64) return res.status(500).json({ error: "No image returned" });
-      return res.json({ image: `data:image/png;base64,${b64}` });
     }
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-5.5",
+        input: [
+          {
+            role: "user",
+            content: inputContent,
+          },
+        ],
+        tools: [
+          {
+            type: "image_generation",
+            size: finalSize,
+            quality: finalQuality,
+            action: image ? "edit" : "generate",
+          },
+        ],
+        tool_choice: { type: "image_generation" },
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.error("[Image Gen] Responses API failed:", response.status, body.slice(0, 300));
+      const message = parseOpenAIError(response.status, body);
+      const statusCode = [401, 403, 429].includes(response.status) ? response.status : 502;
+      return res.status(statusCode).json({ error: message });
+    }
+
+    const data = await response.json();
+    const generated = extractResponsesImageGeneration(data);
+    if (!generated?.image) return res.status(500).json({ error: "No image returned" });
+
+    return res.json({
+      image: generated.image,
+      revisedPrompt: generated.revisedPrompt,
+      model: "gpt-5.5",
+      imageModel: "gpt-image-2",
+    });
   } catch (err) {
     console.error("[Image Gen] error:", errorMessage(err));
     return res.status(500).json({ error: errorMessage(err) });

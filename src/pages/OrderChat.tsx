@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
-import { Paperclip, ChevronDown, Mic, ArrowUp, X, FileText, Image as ImageIcon, Download } from "lucide-react";
+import { ArrowUp, CaretDown, DownloadSimple, FileText, Image as ImageIcon, Microphone, Paperclip, X } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { LoadingBreadcrumb } from "@/components/ui/animated-loading-svg-text-shimmer";
 
-type Msg = { role: "user" | "assistant"; content: string; image?: string };
+type Msg = { role: "user" | "assistant"; content: string; image?: string; revisedPrompt?: string };
 type UploadedFile = { name: string; type: string; content: string; isImage?: boolean; preview?: string };
 
 const openAIModels = [
@@ -227,7 +227,12 @@ export default function OrderChat() {
       if (!resp.ok) {
         setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${data.error || "Image generation failed"}` }]);
       } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: "Here's your generated image:", image: data.image }]);
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: "Generated with GPT-5.5 and the image generation tool.",
+          image: data.image,
+          revisedPrompt: data.revisedPrompt,
+        }]);
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Network error";
@@ -311,7 +316,7 @@ export default function OrderChat() {
                       onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
                       className="absolute -top-1 -right-1 rounded-full bg-black/70 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <X className="h-3 w-3" />
+                      <X weight="light" className="h-3 w-3" />
                     </button>
                   </div>
                 ) : (
@@ -319,14 +324,14 @@ export default function OrderChat() {
                     key={`${file.name}-${index}`}
                     className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full bg-black/[0.035] px-2.5 py-1 text-xs text-foreground/75"
                   >
-                    <FileText className="h-3 w-3 shrink-0" />
+                    <FileText weight="light" className="h-3 w-3 shrink-0" />
                     <span className="truncate">{file.name}</span>
                     <button
                       type="button"
                       onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
                       className="rounded-full p-0.5 text-black/35 hover:bg-black/10 hover:text-black"
                     >
-                      <X className="h-3 w-3" />
+                      <X weight="light" className="h-3 w-3" />
                     </button>
                   </span>
                 )
@@ -350,7 +355,7 @@ export default function OrderChat() {
               onClick={() => fileInputRef.current?.click()}
               className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold text-foreground/75 transition-colors hover:bg-black/[0.055] hover:text-foreground"
             >
-              <Paperclip className="h-3.5 w-3.5" />
+              <Paperclip weight="light" className="h-3.5 w-3.5" />
               Files
             </button>
 
@@ -360,12 +365,13 @@ export default function OrderChat() {
               className={cn(
                 "inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold transition-colors",
                 imageMode
-                  ? "bg-violet-100 text-violet-700"
+                  ? "bg-black text-white"
                   : "text-foreground/75 hover:bg-black/[0.055] hover:text-foreground"
               )}
+              title="Generate or edit images through GPT-5.5 with the image generation tool"
             >
-              <ImageIcon className="h-3.5 w-3.5" />
-              Image
+              <ImageIcon weight="light" className="h-3.5 w-3.5" />
+              {imageMode ? "GPT Image 2" : "Image"}
             </button>
 
             {imageMode ? (
@@ -380,7 +386,7 @@ export default function OrderChat() {
                   <option value="1536x1024">Landscape</option>
                   <option value="1024x1536">Portrait</option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
+                <CaretDown weight="light" className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
               </div>
             ) : (
               <div className="relative">
@@ -395,7 +401,7 @@ export default function OrderChat() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
+                <CaretDown weight="light" className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
               </div>
             )}
           </div>
@@ -413,7 +419,7 @@ export default function OrderChat() {
               )}
               title="Voice input"
             >
-              <Mic className="h-3.5 w-3.5" />
+              <Microphone weight="light" className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -422,7 +428,7 @@ export default function OrderChat() {
               className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.08] text-foreground/55 transition-all hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-black/[0.08] disabled:hover:text-foreground/55"
               title="Send"
             >
-              {isLoading ? <Spinner size="sm" /> : <ArrowUp className="h-4 w-4" />}
+              {isLoading ? <Spinner size="sm" /> : <ArrowUp weight="light" className="h-4 w-4" />}
             </button>
           </div>
         </div>
@@ -524,9 +530,14 @@ export default function OrderChat() {
                                 download="generated-image.png"
                                 className="absolute top-2 right-2 rounded-lg bg-black/70 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
                               >
-                                <Download className="h-4 w-4" />
+                                <DownloadSimple weight="light" className="h-4 w-4" />
                               </a>
                             </div>
+                          )}
+                          {msg.revisedPrompt && (
+                            <p className="mt-2 text-[11px] text-black/40">
+                              Revised prompt: {msg.revisedPrompt}
+                            </p>
                           )}
                           {streaming && (
                             <span className="inline-block w-[2px] h-[1em] bg-black/50 ml-0.5 align-text-bottom rounded-full animate-[blink_0.85s_step-end_infinite]" />
