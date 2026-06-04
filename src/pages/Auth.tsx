@@ -232,11 +232,13 @@ export default function Auth() {
                 className="flex flex-col items-center w-full"
               >
                 {/* Logo — matches sidebar header */}
-                <div className="mb-10 flex items-center gap-2">
-                  <Logo className="h-6 w-6 rounded-md" />
-                  <p className="text-[15px] font-semibold text-black leading-none">
-                    Arc Lab Suite
-                  </p>
+                <div className="mb-10 flex items-center gap-2.5">
+                  <Logo className="h-7 w-7 rounded-lg" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-black truncate leading-none">
+                      Arc Lab Suite
+                    </p>
+                  </div>
                 </div>
 
                 {/* Card container */}
