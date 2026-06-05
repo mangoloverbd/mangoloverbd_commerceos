@@ -81,6 +81,14 @@ export default function Onboarding() {
             <p className="text-[13px] text-black/40 mt-2">
               Set up your Arc Lab Suite account.
             </p>
+            <div className="mt-4 w-full rounded-lg bg-emerald-50 border border-emerald-200/60 px-4 py-3 text-center">
+              <p className="text-[13px] font-medium text-emerald-700">
+                Your 7-day free trial is active
+              </p>
+              <p className="text-[11px] text-emerald-600/70 mt-0.5">
+                Full access to the Growth plan — no credit card required.
+              </p>
+            </div>
           </div>
 
           {/* Form */}

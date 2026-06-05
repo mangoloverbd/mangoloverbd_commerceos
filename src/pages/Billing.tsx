@@ -21,9 +21,10 @@ interface PlanInfo {
   name: string;
   price: number;
   interval: "monthly" | "yearly";
-  status: "active" | "trialing" | "past_due" | "canceled";
+  status: "active" | "trialing" | "trial_expired" | "past_due" | "canceled";
   renewsAt: string;
   startedAt: string;
+  trialEndsAt?: string | null;
 }
 
 interface UsageData {
@@ -206,10 +207,24 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
           <h2 className="text-[17px] font-semibold text-black tracking-tight">Current Plan</h2>
           <p className="mt-0.5 text-[13px] text-black/45">
             {currentPlan ? (
-              <>
-                You're on the <span className="font-medium text-black">{currentPlan.name}</span> plan.
-                {currentPlan.renewsAt && ` Renews ${new Date(currentPlan.renewsAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.`}
-              </>
+              currentPlan.status === "trialing" && currentPlan.trialEndsAt ? (
+                (() => {
+                  const daysLeft = Math.max(0, Math.ceil((new Date(currentPlan.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                  return <>
+                    You're on a <span className="font-medium text-black">7-day free trial</span> of the <span className="font-medium text-black">{currentPlan.name}</span> plan.
+                    {daysLeft > 0 ? <> <span className="font-medium text-emerald-600">{daysLeft} day{daysLeft !== 1 ? "s" : ""} remaining.</span></> : <span className="font-medium text-red-600"> Trial expired.</span>}
+                  </>;
+                })()
+              ) : currentPlan.status === "trial_expired" ? (
+                <>
+                  Your free trial has <span className="font-medium text-red-600">expired</span>. Choose a plan below to continue using Arc Lab Suite.
+                </>
+              ) : (
+                <>
+                  You're on the <span className="font-medium text-black">{currentPlan.name}</span> plan.
+                  {currentPlan.renewsAt && ` Renews ${new Date(currentPlan.renewsAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.`}
+                </>
+              )
             ) : (
               "No active plan. Choose one below to get started."
             )}
