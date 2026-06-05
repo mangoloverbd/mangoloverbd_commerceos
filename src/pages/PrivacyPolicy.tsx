@@ -36,7 +36,7 @@ export default function PrivacyPolicy() {
           {/* Introduction */}
           <Section title="1. Introduction">
             <p>
-              Arc Lab Technology ("we", "us", or "our") operates the Seraphine business management
+              Arc Lab Technology ("we", "us", or "our") operates the Arc Lab Suite business management
               platform, accessible at{" "}
               <a href="https://suite.arclabtechnology.com" className="text-black underline underline-offset-2">
                 https://suite.arclabtechnology.com

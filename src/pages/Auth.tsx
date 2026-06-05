@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/logo";
 
 type Mode = "signin" | "signup";
-const rememberedEmailKey = "seraphine:remembered-email";
+const rememberedEmailKey = "arclabsuite:remembered-email";
 
 export default function Auth() {
   const [mode, setMode] = useState<Mode>("signin");

@@ -28,7 +28,7 @@ const routeTitles: Record<string, string> = {
 };
 
 function getRouteTitle(pathname: string) {
-    return routeTitles[pathname] ?? "Seraphine";
+    return routeTitles[pathname] ?? "Arc Lab Suite";
 }
 
 export function DashboardLayout() {
