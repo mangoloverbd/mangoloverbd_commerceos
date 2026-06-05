@@ -56,6 +56,16 @@ export function DashboardLayout() {
         }
     }, [isLoading, orgName, navigate]);
 
+    const needsOnboarding =
+        !isLoading &&
+        orgName === "" &&
+        !sessionStorage.getItem("onboarding_done") &&
+        !sessionStorage.getItem("onboarding_skipped");
+
+    if (isLoading || needsOnboarding) {
+        return <div className="min-h-screen w-full bg-[#FAFAF8]" />;
+    }
+
     return (
         <SidebarProvider defaultOpen={true}>
             <div className="flex min-h-screen w-full bg-[#dedede] text-[#202020]">
