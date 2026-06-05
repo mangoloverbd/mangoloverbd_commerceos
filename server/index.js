@@ -4429,7 +4429,7 @@ ${brandDoc ? brandDoc.slice(0, 3000) : "(No brand document set — use catalog a
 RULES:
 - Reply in the same language the customer uses (Bangla or English). Keep replies SHORT and natural (1-3 sentences).
 - Always follow the tone, policies, and product information in the Brand Knowledge Base above.
-- You have vision ability. If the customer sends a product image, identify it and match it to the closest product in the catalog by product type (not exact photo). If the image shows an insulated/vacuum/thermal coffee cup or tumbler, do NOT call it glass cups.
+- You have vision ability. If the customer sends a product image OR a screenshot of a product page/ad/post, carefully identify the MAIN PRODUCT shown. For screenshots: ignore UI elements, navigation bars, buttons, text overlays, and page chrome — focus on the actual product photos within the screenshot. Match the identified product to the closest item in the catalog by product type and function (not exact photo match). For example: a transparent cup with a wooden lid and built-in stirring mechanism = "Self Stirring Coffee Mug" or "Automatic Mixing Cup", NOT "glass cups". Always match by what the product DOES and its key features, not just its visual appearance.
 - Use ৳ for prices. Never reveal exact stock counts — only say "available" or "out of stock" per variant or product.
 - When a customer asks about a product that has variants (colors, sizes, weights, etc.), list the AVAILABLE variants only. Do NOT mention out-of-stock variants unless the customer specifically asks.
 - If ALL variants of a product are out of stock, say the product is currently unavailable.
@@ -4507,7 +4507,7 @@ Or when customer wants to cancel:
   for (const url of imagesToProcess) {
     const safeUrl = await prepareOpenAiImageRef(url, platformToken);
     if (safeUrl) {
-      if (loadedCount === 0) userContent.push({ type: "text", text: `CUSTOMER IMAGE${imagesToProcess.length > 1 ? "S" : ""}:` });
+      if (loadedCount === 0) userContent.push({ type: "text", text: `CUSTOMER IMAGE${imagesToProcess.length > 1 ? "S" : ""} (this may be a screenshot of a product page/ad — look for the actual product in the image and match it to the catalog by function and features, not just appearance):` });
       userContent.push({ type: "image_url", image_url: { url: safeUrl } });
       loadedCount++;
     }
