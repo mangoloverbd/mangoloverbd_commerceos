@@ -4802,6 +4802,28 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
         return;
       }
     }
+
+    // Reverse race condition: if text contains deictic references ("this", "eita", "eta")
+    // suggesting an image is coming with it, wait 3 seconds then re-check for an image.
+    const textLower = (text || "").toLowerCase();
+    const hasDeicticRef = /\b(eita|এইটা|এটা|eta|this one|this|ata|etar|eita diyen|eta diyen)\b/i.test(textLower);
+    if (hasDeicticRef) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const { data: followUp } = await supabase
+        .from("social_messages")
+        .select("sender, message_type, created_at, image_url")
+        .eq("conversation_id", conversation.id)
+        .eq("sender", "user")
+        .order("created_at", { ascending: false })
+        .limit(3);
+      const recentImage = (followUp || []).find(
+        (m) => m.message_type === "image" && (Date.now() - new Date(m.created_at).getTime()) < 8000
+      );
+      if (recentImage) {
+        console.log(`[${platform.toUpperCase()} AI] skipped: text has deictic ref and image arrived, deferring to image AI call`);
+        return;
+      }
+    }
   }
 
   // 3. Load context + check for existing orders in this conversation
