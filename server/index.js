@@ -4445,10 +4445,10 @@ RULES:
 - PRICING: unit_price must be the price PER SINGLE ITEM from the catalog. If a customer asks "980 takai koita glass?" they are asking how many items they get for 980 — answer based on catalog price. Do NOT set unit_price to the total package price. Example: if catalog price is 490/item and customer orders 2, unit_price=490, quantity=2.
 - CONFIRMED TOTAL: When you confirm the order, calculate confirmed_total = (unit_price × quantity) + delivery charge. Use 80 for Dhaka, 120 for outside Dhaka. Always state the total clearly to the customer before confirming.
 - ORDER EDITS: If an existing order was already placed in this conversation (shown in EXISTING ORDER below) and the customer wants to change items, add items, change quantity, address, or other details:
-  • Do NOT ask for name, phone, or address again — you already have these from the existing order. Just confirm the change and apply it.
-  • If the customer wants to REPLACE an item (e.g., "eita change kore onno ta diyen"), REMOVE the old item and ADD the new one. The final items list should only contain what the customer actually wants.
+  • Do NOT ask for name, phone, or address again — you already have these from the existing order. Just confirm the change and apply it immediately.
+  • If the customer wants to REPLACE an item (e.g., "eita change kore onno ta diyen"), REMOVE the old item and ADD the new one. The final items list should ONLY contain what the customer actually wants after the change.
   • If the customer wants to ADD an item to the existing order, keep existing items AND add the new one.
-  • Set order_action to "edit" with the FINAL correct items list (after applying the change).
+  • Set order_action to "edit". IMPORTANT: In the "order" JSON, you MUST still include customer_name, phone, address, product_name, quantity, and unit_price fields (copy them from the existing order). The system requires these fields to process the edit. Only change the items/product fields — keep name, phone, address the same as the existing order.
   • There is only ONE delivery charge per order regardless of how many items. confirmed_total = (sum of all item prices × their quantities) + ONE delivery charge.
 - ORDER CANCEL: If the customer wants to cancel their existing order, set order_action to "cancel" with the existing order fields. Confirm cancellation with the customer before setting cancel.
 
@@ -4506,9 +4506,13 @@ Or when customer wants to cancel:
   const summaryContext = aiSummary
     ? `\n\nPRIOR CONVERSATION SUMMARY (from previous sessions with this customer):\n${aiSummary}`
     : "";
-  const existingOrderContext = existingOrder
-    ? `\n\nEXISTING ORDER (already placed in this conversation — customer may want to edit it):\nOrder ID: ${existingOrder.id}\nItems: ${JSON.stringify(existingOrder.items)}\nTotal: ৳${existingOrder.total_price}\nStatus: ${existingOrder.status}`
-    : "";
+  let existingOrderContext = "";
+  if (existingOrder) {
+    const notesStr = existingOrder.notes || "";
+    const phoneMatch = notesStr.match(/Phone:\s*([^,\n]+)/i);
+    const addressMatch = notesStr.match(/Address:\s*(.+)/i);
+    existingOrderContext = `\n\nEXISTING ORDER (already placed in this conversation — customer may want to edit it):\nOrder ID: ${existingOrder.id}\nCustomer Name: ${existingOrder.contact_name || "Unknown"}\nPhone: ${phoneMatch?.[1]?.trim() || "Unknown"}\nAddress: ${addressMatch?.[1]?.trim() || "Unknown"}\nItems: ${JSON.stringify(existingOrder.items)}\nTotal: ৳${existingOrder.total_price}\nStatus: ${existingOrder.status}\n\nWhen editing this order, copy the customer_name, phone, and address into the order JSON — do NOT ask the customer for them again.`;
+  }
   userContent.push({ type: "text", text: `${summaryContext}\n\nCONVERSATION SO FAR:\n${conversationHistory || "(start of conversation)"}${existingOrderContext}\n\nCUSTOMER MESSAGE:\n${customerMessage || "(no text, image only)"}` });
 
   // Fetch and add all images (max 5 to stay within token limits)
@@ -4804,7 +4808,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   const [historyResult, products, existingOrdersResult] = await Promise.all([
     getRecentConversationHistory(supabase, conversation.id, 20),
     getMetaReplyProductContext(orgId),
-    supabase.from("social_inbox_orders").select("id, items, total_price, status, delivery_rate, notes").eq("conversation_id", conversation.id).eq("org_id", orgId).order("created_at", { ascending: false }).limit(1),
+    supabase.from("social_inbox_orders").select("id, items, total_price, status, delivery_rate, notes, contact_name").eq("conversation_id", conversation.id).eq("org_id", orgId).order("created_at", { ascending: false }).limit(1),
   ]);
   const { history: conversationHistory, isNewSession, priorSessionHistory } = historyResult;
   const existingOrder = existingOrdersResult.data?.[0] || null;
