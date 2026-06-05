@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
+import { RichButton } from "@/components/ui/rich-button";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 
@@ -566,15 +567,17 @@ function MetaBusinessPanel() {
         <p className="truncate text-[12px] font-medium text-black">{name || key}</p>
         {meta && <p className="truncate text-[10px] text-black/35">{meta}</p>}
       </div>
-      <button
+      <RichButton
         type="button"
         onClick={onDisconnect}
         disabled={busy}
-        className="ml-1 flex h-7 shrink-0 items-center gap-1 rounded-[12px] border border-black bg-black px-2 text-[10px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-50"
+        size="sm"
+        color="default"
+        className="ml-1 shrink-0"
       >
         {busy ? <Spinner size="sm" /> : <Unplug className="h-3 w-3" />}
         Disconnect
-      </button>
+      </RichButton>
     </div>
   );
 
@@ -615,24 +618,26 @@ function MetaBusinessPanel() {
         {loading ? (
           <Spinner size="sm" className="text-black/30" />
         ) : status?.connected ? (
-          <button
+          <RichButton
             onClick={disconnect}
             disabled={disconnecting}
-            className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-3 text-[12px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-50"
+            size="default"
+            color="default"
           >
             {disconnecting ? <Spinner size="sm" /> : <Unplug className="h-3.5 w-3.5" />}
             Disconnect
-          </button>
+          </RichButton>
         ) : (
-          <button
+          <RichButton
             onClick={connect}
             disabled={connecting}
-            className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-3 text-[12px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-50"
+            size="default"
+            color="default"
             data-testid="button-connect-meta-business"
           >
             {connecting ? <Spinner size="sm" /> : <Link2 className="h-3.5 w-3.5" />}
             Connect Meta Business
-          </button>
+          </RichButton>
         )}
       </div>
 
@@ -675,14 +680,15 @@ function MetaBusinessPanel() {
             ))}
             {status.instagramAccounts.length > 0 && (
               <div className="mt-2 px-1">
-                <button
+                <RichButton
                   onClick={resubscribePages}
                   disabled={resubscribingPages}
-                  className="flex items-center gap-1.5 rounded-[12px] border border-black bg-black px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-40"
+                  size="sm"
+                  color="default"
                 >
                   {resubscribingPages ? <Spinner size="sm" /> : <CheckCircle2 className="h-3 w-3" />}
                   Fix Instagram DM subscription
-                </button>
+                </RichButton>
                 <p className="mt-1 text-[10px] text-black/30">
                   Run this once if Instagram DMs aren't appearing in the inbox.
                 </p>
@@ -705,14 +711,15 @@ function MetaBusinessPanel() {
             ))}
             {status.whatsappAccounts.length > 0 && (
               <div className="mt-2 px-1">
-                <button
+                <RichButton
                   onClick={resubscribeWhatsApp}
                   disabled={resubscribing}
-                  className="flex items-center gap-1.5 rounded-[12px] border border-black bg-black px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-40"
+                  size="sm"
+                  color="default"
                 >
                   {resubscribing ? <Spinner size="sm" /> : <CheckCircle2 className="h-3 w-3" />}
                   Fix webhook subscription
-                </button>
+                </RichButton>
               </div>
             )}
           </MetaAssetSection>
@@ -742,18 +749,20 @@ function MetaBusinessPanel() {
             <p className="text-[13px] font-semibold text-black">WhatsApp Business</p>
             <p className="text-[11px] text-black/40">Connect a WhatsApp Cloud API number</p>
           </div>
-          <button
+          <RichButton
             onClick={() => setWaModalOpen(true)}
             disabled={waSignupLoading}
-            className="flex shrink-0 items-center gap-2 rounded-[12px] border border-black bg-black px-4 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-50 ml-3"
+            size="default"
+            color="default"
+            className="shrink-0 ml-3"
           >
             {waSignupLoading ? <Spinner size="sm" /> : (
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-white" xmlns="http://www.w3.org/2000/svg">
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
               </svg>
             )}
             Connect WhatsApp
-          </button>
+          </RichButton>
         </div>
       )}
 
@@ -844,21 +853,23 @@ function MetaBusinessPanel() {
 
               {/* Footer */}
               <div className="flex items-center justify-end gap-2 border-t border-black/[0.07] px-6 py-4">
-                <button
+                <RichButton
                   onClick={() => setWaModalOpen(false)}
-                  className="h-9 rounded-[12px] border border-black bg-black px-4 text-[13px] font-semibold text-white transition-colors hover:bg-black/85"
+                  size="default"
+                  color="default"
                 >
                   Cancel
-                </button>
-                <button
+                </RichButton>
+                <RichButton
                   onClick={() => launchWhatsAppSignup(waMode)}
-                  className="flex h-9 items-center gap-2 rounded-[12px] border border-black bg-black px-5 text-[13px] font-semibold text-white transition-colors hover:bg-black/85"
+                  size="default"
+                  color="default"
                 >
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-white" xmlns="http://www.w3.org/2000/svg">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
                   </svg>
                   {waMode === "direct" ? "Open Business Manager" : "Connect to WhatsApp"}
-                </button>
+                </RichButton>
               </div>
             </motion.div>
           </motion.div>
@@ -1039,14 +1050,15 @@ function ShopifyDetailView({
               </div>
             </div>
           </div>
-          <button
+          <RichButton
             onClick={disconnect}
             disabled={disconnecting}
-            className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-4 text-[13px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-30"
+            size="default"
+            color="default"
           >
             {disconnecting ? <Spinner size="sm" /> : <Unplug className="h-3.5 w-3.5" />}
             Disconnect
-          </button>
+          </RichButton>
         </div>
       ) : (
         <div className="space-y-5">
@@ -1081,23 +1093,25 @@ function ShopifyDetailView({
 
           {/* Actions */}
           <div className="flex items-center gap-3">
-            <button
+            <RichButton
               onClick={handleSave}
               disabled={saving || !isDirty}
-              className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-4 text-[13px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-30"
+              size="default"
+              color="default"
             >
               {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
               Save
-            </button>
+            </RichButton>
 
-            <button
+            <RichButton
               onClick={connect}
               disabled={connecting || !hasCredentials}
-              className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-4 text-[13px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-30"
+              size="default"
+              color="default"
             >
               {connecting ? <Spinner size="sm" /> : <Link2 className="h-3.5 w-3.5" />}
               Connect Store
-            </button>
+            </RichButton>
           </div>
 
           {!hasCredentials && (
@@ -1229,21 +1243,23 @@ function DetailView({
 
       {/* Actions */}
       <div className="flex items-center gap-3">
-        <button
+        <RichButton
           onClick={handleSave}
           disabled={saving || !isDirty}
-          className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-4 text-[13px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-30"
+          size="default"
+          color="default"
           data-testid={`button-save-${section.id}`}
         >
           {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
           Save
-        </button>
+        </RichButton>
 
         {section.testKey && (
-          <button
+          <RichButton
             onClick={handleTest}
             disabled={testing || !isConfigured}
-            className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-4 text-[13px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-30"
+            size="default"
+            color="default"
             data-testid={`button-test-${section.id}`}
           >
             {testing ? <Spinner size="sm" />
@@ -1251,7 +1267,7 @@ function DetailView({
               : testStatus === "error"   ? <XCircle className="h-3.5 w-3.5 text-red-500" />
               : <ShieldCheck className="h-3.5 w-3.5 text-black/40" />}
             Test connection
-          </button>
+          </RichButton>
         )}
 
         {testStatus !== "idle" && (
@@ -1326,15 +1342,16 @@ function BrandDocPanel() {
       )}
 
       <div className="flex items-center gap-3">
-        <button
+        <RichButton
           onClick={handleSave}
           disabled={saving || loading}
-          className="flex h-9 items-center gap-1.5 rounded-[12px] border border-black bg-black px-4 text-[13px] font-semibold text-white transition-colors hover:bg-black/85 disabled:opacity-30"
+          size="default"
+          color="default"
           data-testid="button-save-brand-doc"
         >
           {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
           Save
-        </button>
+        </RichButton>
         {saved && (
           <span className="flex items-center gap-1.5 text-[12px] font-medium text-emerald-600">
             <CheckCircle2 className="h-3.5 w-3.5" />
