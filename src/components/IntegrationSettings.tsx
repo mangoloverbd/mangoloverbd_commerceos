@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { RichButton } from "@/components/ui/rich-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 
@@ -263,6 +264,7 @@ function MetaBusinessPanel() {
   const [waSignupLoading, setWaSignupLoading] = useState(false);
   const [waModalOpen, setWaModalOpen] = useState(false);
   const [waMode, setWaMode] = useState<"new" | "migrate" | "reconnect" | "direct">("new");
+  const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const waConfigRef = useRef<{ appId: string; configId: string } | null>(null);
 
   const refresh = () => {
@@ -294,37 +296,49 @@ function MetaBusinessPanel() {
     }
   };
 
-  const disconnect = async () => {
-    if (!window.confirm("Disconnect Meta Business? Historical inbox messages will be preserved.")) return;
-    setDisconnecting(true);
-    try {
-      const res = await apiFetch("/api/meta/disconnect", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to disconnect Meta");
-      toast.success("Meta Business disconnected");
-      refresh();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to disconnect Meta");
-    } finally {
-      setDisconnecting(false);
-    }
+  const disconnect = () => {
+    setConfirmDialog({
+      title: "Disconnect Meta Business",
+      message: "Historical inbox messages will be preserved.",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setDisconnecting(true);
+        try {
+          const res = await apiFetch("/api/meta/disconnect", { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Failed to disconnect Meta");
+          toast.success("Meta Business disconnected");
+          refresh();
+        } catch (err: any) {
+          toast.error(err?.message || "Failed to disconnect Meta");
+        } finally {
+          setDisconnecting(false);
+        }
+      },
+    });
   };
 
-  const disconnectAsset = async (type: "page" | "instagram" | "whatsapp" | "ad", id: string, label: string) => {
-    if (!window.confirm(`Disconnect ${label}? Historical inbox messages will be preserved.`)) return;
-    const busyKey = `${type}:${id}`;
-    setAssetBusy(busyKey);
-    try {
-      const res = await apiFetch(`/api/meta/assets/${type}/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to disconnect asset");
-      toast.success(`${label} disconnected`);
-      refresh();
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to disconnect asset");
-    } finally {
-      setAssetBusy(null);
-    }
+  const disconnectAsset = (type: "page" | "instagram" | "whatsapp" | "ad", id: string, label: string) => {
+    setConfirmDialog({
+      title: `Disconnect ${label}`,
+      message: "Historical inbox messages will be preserved.",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const busyKey = `${type}:${id}`;
+        setAssetBusy(busyKey);
+        try {
+          const res = await apiFetch(`/api/meta/assets/${type}/${id}`, { method: "DELETE" });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Failed to disconnect asset");
+          toast.success(`${label} disconnected`);
+          refresh();
+        } catch (err: any) {
+          toast.error(err?.message || "Failed to disconnect asset");
+        } finally {
+          setAssetBusy(null);
+        }
+      },
+    });
   };
 
   const toggle = (key: string) => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -875,6 +889,15 @@ function MetaBusinessPanel() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={confirmDialog !== null}
+        title={confirmDialog?.title ?? ""}
+        message={confirmDialog?.message ?? ""}
+        confirmLabel="Disconnect"
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </motion.div>
   );
 }
@@ -924,6 +947,7 @@ function ShopifyDetailView({
   const [disconnecting, setDisconnecting] = useState(false);
   const [status, setStatus] = useState<{ connected: boolean; shop: string | null; oauth: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const Icon = section.icon;
 
   const refresh = () => {
@@ -985,8 +1009,12 @@ function ShopifyDetailView({
     }
   };
 
-  const disconnect = async () => {
-    if (!window.confirm("Disconnect Shopify? Your synced orders will be preserved.")) return;
+  const disconnect = () => {
+    setShowDisconnectConfirm(true);
+  };
+
+  const doDisconnect = async () => {
+    setShowDisconnectConfirm(false);
     setDisconnecting(true);
     try {
       const res = await apiFetch("/api/auth/shopify/disconnect", { method: "POST" });
@@ -1121,6 +1149,15 @@ function ShopifyDetailView({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={showDisconnectConfirm}
+        title="Disconnect Shopify"
+        message="Your synced orders will be preserved."
+        confirmLabel="Disconnect"
+        onConfirm={doDisconnect}
+        onCancel={() => setShowDisconnectConfirm(false)}
+      />
     </motion.div>
   );
 }
