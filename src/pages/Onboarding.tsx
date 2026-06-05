@@ -3,10 +3,10 @@ import { apiFetch } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Input } from "@/components/ui/input";
-import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
+import { RichButton } from "@/components/ui/rich-button";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { Logo } from "@/components/logo";
 
 export default function Onboarding() {
   const [orgName, setOrgName] = useState("");
@@ -51,79 +51,82 @@ export default function Onboarding() {
   const smooth = { ease: [0.22, 1, 0.36, 1] as const };
 
   return (
-    <div className="min-h-screen w-full bg-white flex items-center justify-center px-8 py-16">
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#FAFAF8] px-8 py-16" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
       <motion.div
-        className="w-full max-w-sm flex flex-col items-center"
-        initial={{ opacity: 0, y: 24 }}
+        className="w-full max-w-[430px] flex flex-col items-center"
+        initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.9, ...smooth, delay: 0.1 }}
+        transition={{ duration: 0.9, ...smooth }}
       >
-
-          {/* Heading */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ...smooth }}
-            className="mb-8 space-y-2 text-center w-full"
+        {/* Logo */}
+        <div className="mb-10 flex items-center gap-2">
+          <Logo className="h-6 w-6 rounded-md shrink-0" />
+          <span className="text-[18px] font-semibold leading-none tracking-normal text-black">
+            Arc Lab
+          </span>
+          <span
+            className="text-[20px] font-semibold leading-none tracking-normal text-black"
+            style={{ fontFamily: "'Pixelify Sans', system-ui, sans-serif" }}
           >
-            <h1 className="text-3xl font-bold tracking-tight text-black">
+            Suite
+          </span>
+        </div>
+
+        {/* Card */}
+        <div className="w-full bg-white rounded-md border border-black/[0.06] shadow-sm p-8 sm:p-10">
+          <div className="flex flex-col items-center mb-6">
+            <h1 className="text-[28px] font-bold tracking-[-0.02em] text-black">
               Name your workspace
             </h1>
-            <p className="text-sm text-black font-light">
-              Set up your Arc Lab Corporation account.
+            <p className="text-[13px] text-black/40 mt-2">
+              Set up your Arc Lab Suite account.
             </p>
-          </motion.div>
-
-          {/* Divider tabs — single step indicator matching auth tab row */}
-          <div className="mb-8 w-full border-y border-black/[0.08] py-2 flex items-center justify-center">
-            <span className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">
-              Workspace Setup
-            </span>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5 w-full">
-            <div className="space-y-2">
-              <label className="block text-center text-[9px] font-bold uppercase tracking-[0.25em] text-black">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <label htmlFor="org-name" className="text-[13px] font-semibold text-black">
                 Business Name
               </label>
-              <Input
+              <input
+                id="org-name"
                 autoFocus
                 placeholder="e.g. Arc Lab Corporation"
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
-                className="h-12 bg-[#F8F8F6] border-black/[0.08] focus-visible:ring-1 focus-visible:ring-black focus-visible:border-black rounded-xl text-sm placeholder:text-black/30 transition-all"
+                className="w-full h-[44px] bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4"
                 required
                 data-testid="input-org-name"
               />
             </div>
 
-            <div className="pt-2">
-              <LiquidMetalButton
-                type="submit"
-                disabled={loading || !orgName.trim()}
-                fullWidth
-                label={loading ? "Saving…" : "Continue to Dashboard"}
-              />
-            </div>
+            <RichButton
+              type="submit"
+              disabled={loading || !orgName.trim()}
+              color="default"
+              size="lg"
+              className="w-full mt-2 h-11 rounded-lg"
+            >
+              {loading ? "Saving…" : "Continue to Dashboard"}
+            </RichButton>
           </form>
+        </div>
 
-          {/* Footer */}
-          <div className="mt-8 text-center space-y-3 w-full">
-            <p className="text-xs text-black">
-              <button
-                type="button"
-                onClick={handleSkip}
-                className="font-semibold text-black underline underline-offset-2 hover:text-black/60 transition-colors"
-              >
-                Skip for now
-              </button>
-            </p>
-            <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-black/40">
-              You can update this in Settings
-            </p>
-          </div>
-
+        {/* Footer */}
+        <div className="mt-8 text-center">
+          <p className="text-[13px] text-black/45">
+            <button
+              type="button"
+              onClick={handleSkip}
+              className="text-black font-semibold underline hover:text-black/70 transition-colors duration-200"
+            >
+              Skip for now
+            </button>
+            <span className="text-black/30 mx-2">—</span>
+            <span className="text-black/40">You can update this in Settings</span>
+          </p>
+        </div>
       </motion.div>
     </div>
   );
