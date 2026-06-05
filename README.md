@@ -1,4 +1,4 @@
-# Seraphine
+# Arc Lab Suite
 
 An AI-powered order management and social inbox platform built with React, Vite, TypeScript, and Supabase.
 

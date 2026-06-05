@@ -4,7 +4,7 @@ export function Logo({ className }: { className?: string }) {
     return (
         <img
             src="/logo.png"
-            alt="Seraphine"
+            alt="Arc Lab Suite"
             className={cn("shrink-0", className)}
         />
     );

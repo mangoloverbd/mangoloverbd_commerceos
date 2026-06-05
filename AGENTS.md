@@ -1,4 +1,4 @@
-# AGENTS.md — Seraphine Agent Guide
+# AGENTS.md — Arc Lab Suite Agent Guide
 
 This file is the authoritative guide for AI agents (Codex, OpenCode, etc.) working in this codebase.
 Read it fully before making any changes. The rules in the **AI Agent Rules** section are hard guardrails — follow them without exception.
@@ -7,7 +7,7 @@ Read it fully before making any changes. The rules in the **AI Agent Rules** sec
 
 ## 1. Project Overview
 
-**Seraphine** is a multi-tenant order management SaaS built for Bangladeshi e-commerce businesses. It handles order ingestion, courier dispatch, fraud detection, social inbox management, and P&L analytics.
+**Arc Lab Suite** is a multi-tenant order management SaaS built for Bangladeshi e-commerce businesses. It handles order ingestion, courier dispatch, fraud detection, social inbox management, and P&L analytics.
 
 **Tech stack:**
 - Frontend: React 18 + Vite + TypeScript, Tailwind CSS, shadcn/ui
@@ -276,7 +276,7 @@ All integration credentials are stored in `app_settings` (org-prefixed). They ar
 
 ## 8. Design Language
 
-Seraphine uses a luxury minimalist aesthetic. Follow these conventions precisely — do not introduce new design tokens without discussion.
+Arc Lab Suite uses a luxury minimalist aesthetic. Follow these conventions precisely — do not introduce new design tokens without discussion.
 
 **Background:** `bg-[#FAFAF8]` (warm off-white, not pure white)
 
