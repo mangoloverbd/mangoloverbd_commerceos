@@ -567,6 +567,18 @@ app.post("/api/auth/register", rateLimitAuth, async (req, res) => {
 
     if (roleError) throw roleError;
 
+    // Set up 7-day free trial for new business owner
+    const orgId = newUser.user.id;
+    const trialStarted = new Date().toISOString();
+    const trialEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    await saveOrgSettings(orgId, {
+      billing_plan: "growth",
+      billing_started_at: trialStarted,
+      billing_renews_at: trialEnds,
+      billing_status: "trialing",
+      trial_ends_at: trialEnds,
+    });
+
     return res.json({ success: true, userId: newUser.user.id });
   } catch (err) {
     return sendError(res, err);
@@ -1134,16 +1146,27 @@ app.get("/api/billing/plan", async (req, res) => {
     const { orgId, role } = await getUserOrg(supabase, user.id);
     if (role !== "admin") return res.status(403).json({ error: "Admin only" });
 
-    const settings = await getOrgSettings(orgId, ["billing_plan", "billing_started_at", "billing_renews_at", "billing_status"]);
+    const settings = await getOrgSettings(orgId, ["billing_plan", "billing_started_at", "billing_renews_at", "billing_status", "trial_ends_at"]);
     const planId = settings.billing_plan || "growth";
+
+    // Check if trial has expired
+    let status = settings.billing_status || "active";
+    if (status === "trialing" && settings.trial_ends_at) {
+      const trialEnd = new Date(settings.trial_ends_at).getTime();
+      if (Date.now() > trialEnd) {
+        status = "trial_expired";
+      }
+    }
+
     const plan = {
       id: planId,
       name: planId.charAt(0).toUpperCase() + planId.slice(1),
       price: PLAN_PRICES[planId] || 3499,
       interval: "monthly",
-      status: settings.billing_status || "active",
+      status,
       startedAt: settings.billing_started_at || new Date().toISOString(),
       renewsAt: settings.billing_renews_at || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      trialEndsAt: settings.trial_ends_at || null,
     };
     return res.json({ plan });
   } catch (err) {
