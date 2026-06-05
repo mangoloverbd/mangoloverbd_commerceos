@@ -296,7 +296,7 @@ function InboxFraudCell({ order, isChecking, onCheck }: {
       </button>
 
       {hovered && order.fraud_checked && !isChecking && (
-        <div className="absolute left-full top-0 ml-2 z-[200] w-72 bg-card border border-border shadow-xl rounded-xl overflow-hidden pointer-events-none">
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-[200] w-72 bg-card border border-border shadow-xl rounded-xl overflow-hidden pointer-events-none">
           {hasError ? (
             <div className="p-4 space-y-2">
               <p className="text-[8px] font-medium tracking-[0.25em] text-black uppercase">FraudShield Error</p>
@@ -787,7 +787,7 @@ export default function InboxOrders() {
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="overflow-hidden rounded-2xl border border-black/10 bg-white"
+        className="rounded-2xl border border-black/10 bg-white"
       >
         <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-4 lg:px-6">
           <div className="flex items-center gap-2.5">
@@ -838,7 +838,7 @@ export default function InboxOrders() {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden">
+      <div className="overflow-x-auto overflow-y-visible">
         {isLoading ? (
           <div className="space-y-4 p-8">
             {[...Array(5)].map((_, i) => (
