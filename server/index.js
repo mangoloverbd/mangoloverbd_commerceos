@@ -4592,25 +4592,27 @@ Or when customer wants to cancel:
 
   // Validate order has all required fields
   let order = null;
-  if (
-    orderRaw &&
+  const hasItems = Array.isArray(orderRaw?.items) && orderRaw.items.length > 0;
+  const hasBasicFields = orderRaw &&
     typeof orderRaw === "object" &&
     orderRaw.customer_name?.trim() &&
     orderRaw.phone?.trim() &&
-    orderRaw.address?.trim() &&
-    orderRaw.product_name?.trim() &&
-    Number(orderRaw.quantity) >= 1 &&
-    Number(orderRaw.unit_price) > 0
-  ) {
+    orderRaw.address?.trim();
+  // For multi-item edits, product_name/quantity/unit_price may be summaries — validate from items array instead
+  const hasProductFields = hasItems
+    ? orderRaw.items.every((i) => i.product && Number(i.quantity) >= 1 && Number(i.unit_price) > 0)
+    : (orderRaw?.product_name?.trim() && Number(orderRaw?.quantity) >= 1 && Number(orderRaw?.unit_price) > 0);
+
+  if (hasBasicFields && hasProductFields) {
     order = {
       customer_name: String(orderRaw.customer_name).trim(),
       phone: String(orderRaw.phone).trim(),
       address: String(orderRaw.address).trim(),
-      product_name: String(orderRaw.product_name).trim(),
-      quantity: Math.max(1, Number.parseInt(orderRaw.quantity, 10) || 1),
-      unit_price: Number(orderRaw.unit_price),
+      product_name: String(orderRaw.product_name || orderRaw.items?.map((i) => i.product).join(", ") || "").trim(),
+      quantity: Math.max(1, Number.parseInt(orderRaw.quantity, 10) || orderRaw.items?.reduce((s, i) => s + (Number(i.quantity) || 1), 0) || 1),
+      unit_price: Number(orderRaw.unit_price) > 0 ? Number(orderRaw.unit_price) : (hasItems ? orderRaw.items[0].unit_price : 0),
       confirmed_total: Number(orderRaw.confirmed_total) > 0 ? Number(orderRaw.confirmed_total) : null,
-      items: Array.isArray(orderRaw.items) && orderRaw.items.length > 0 ? orderRaw.items : null,
+      items: hasItems ? orderRaw.items : null,
     };
   }
 
