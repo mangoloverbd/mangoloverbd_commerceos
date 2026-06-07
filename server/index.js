@@ -4432,6 +4432,7 @@ async function runMetaAI({ brandDoc, products, conversationHistory, customerMess
       price: p.price,
       available: p.available,
       url: p.url || null,
+      image_url: p.image_url || null,
     };
     if (p.variants && p.variants.length > 0) {
       // Each variant: readable label + availability + price
@@ -4453,11 +4454,11 @@ RULES:
 - Reply in the same language the customer uses (Bangla or English). Keep replies SHORT and natural (1-3 sentences).
 - Always follow the tone, policies, and product information in the Brand Knowledge Base above.
 - You have vision ability. If the customer sends a product image OR a screenshot of a product page/ad/post, carefully identify the MAIN PRODUCT shown. For screenshots: ignore UI elements, navigation bars, buttons, text overlays, and page chrome — focus on the actual product photos within the screenshot.
-- PRODUCT MATCHING: Match the identified product to the catalog by its FUNCTION and core features, NOT by exact name. Products often have different marketing names but are the same item. Common equivalent names:
-  • "Automatic mixing cup" / "Self Stirring Coffee Mug" / "Electric Stirring Mug" = SAME product (a cup that stirs itself)
+- PRODUCT MATCHING: Match the identified product to the catalog by its FUNCTION and core features, NOT by exact name or visual description. Products often have creative/marketing names that do NOT describe their appearance. For example, a product named "Oil Storage Jar" might look like a decorative gold teapot/kettle — the name is about its PURPOSE (storing oil), not its shape. Similarly:
+  • "Automatic mixing cup" / "Self Stirring Coffee Mug" / "Electric Stirring Mug" = SAME product
   • "Insulated tumbler" / "Vacuum flask" / "Thermal cup" = SAME category
-  • "Salad jar" / "Salad container" / "Fresh salad cup" = SAME product
-  When the product in the image has the same core function as something in the catalog (even if names differ), MATCH it and offer it to the customer. Only say "not available" when the product is a genuinely DIFFERENT type of item that serves a different purpose and nothing in the catalog does the same thing.
+  • A gold/stainless steel kettle-shaped container = could be an "Oil Storage Jar" or "Oil Dispenser"
+  IMPORTANT: Each product in the catalog has an image_url field. If the product in the customer's image could plausibly be ANY item in the catalog (considering that catalog names may be creative/non-literal), lean toward MATCHING rather than rejecting. Only say "not available" when you are highly confident the product is genuinely NOT in the catalog at all — err on the side of matching.
 - Use ৳ for prices. Never reveal exact stock counts — only say "available" or "out of stock" per variant or product.
 - When a customer asks about a product that has variants (colors, sizes, weights, etc.), list the AVAILABLE variants only. Do NOT mention out-of-stock variants unless the customer specifically asks.
 - If ALL variants of a product are out of stock, say the product is currently unavailable.
