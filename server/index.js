@@ -4310,6 +4310,94 @@ async function prepareOpenAiImageRef(url = "", authToken = "") {
   }
 }
 
+// ─── Image Embedding Helpers ─────────────────────────────────────────────────
+
+async function describeProductImage(imageUrl) {
+  if (!imageUrl || !process.env.OPENAI_API_KEY) return null;
+  try {
+    const safeUrl = typeof imageUrl === "string" && imageUrl.startsWith("data:") ? imageUrl : await prepareOpenAiImageRef(imageUrl);
+    if (!safeUrl) return null;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 150,
+        messages: [
+          {
+            role: "system",
+            content: "Describe this product image in 1-2 sentences for search purposes. Focus on: product type, material, color, shape, size, and primary function. Be specific and factual. Do not mention backgrounds or styling.",
+          },
+          {
+            role: "user",
+            content: [{ type: "image_url", image_url: { url: safeUrl } }],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch (err) {
+    console.warn("[Embedding] describeProductImage failed:", err.message);
+    return null;
+  }
+}
+
+async function generateTextEmbedding(text) {
+  if (!text || !process.env.OPENAI_API_KEY) return null;
+  try {
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: text,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.data?.[0]?.embedding || null;
+  } catch (err) {
+    console.warn("[Embedding] generateTextEmbedding failed:", err.message);
+    return null;
+  }
+}
+
+async function generateProductEmbedding(imageUrl) {
+  const description = await describeProductImage(imageUrl);
+  if (!description) return { embedding: null, description: null };
+  const embedding = await generateTextEmbedding(description);
+  return { embedding, description };
+}
+
+async function findSimilarProducts(orgId, embedding, limit = 3, threshold = 0.6) {
+  if (!embedding || !orgId) return [];
+  const supabase = getServiceSupabase();
+  const vectorStr = `[${embedding.join(",")}]`;
+
+  const { data, error } = await supabase.rpc("match_products_by_embedding", {
+    query_embedding: vectorStr,
+    match_org_id: orgId,
+    match_threshold: threshold,
+    match_count: limit,
+  });
+
+  if (error) {
+    console.warn("[Embedding] findSimilarProducts RPC failed:", error.message);
+    return [];
+  }
+  return data || [];
+}
+
 // ─── Conversation history ─────────────────────────────────────────────────────
 // Only include messages from the current session.
 // A "session" ends after 30 minutes of inactivity — if the gap between any two
@@ -4420,7 +4508,7 @@ function parseInboxOrderNotes(notes = "") {
 // This eliminates all heuristic intent detection. GPT decides when the order
 // is complete, not a regex.
 
-async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrls, imageUrl, platformToken = "", existingOrder = null, aiSummary = "" }) {
+async function runMetaAI({ brandDoc, products, conversationHistory, customerMessage, imageUrls, imageUrl, platformToken = "", existingOrder = null, aiSummary = "", embeddingMatches = [] }) {
   // Support both old imageUrl (single) and new imageUrls (array)
   const allImageUrls = Array.isArray(imageUrls) && imageUrls.length > 0
     ? imageUrls
@@ -4478,6 +4566,11 @@ RULES:
 
 CATALOG (name, price, availability, variants where applicable):
 ${JSON.stringify(catalog).slice(0, 12000)}
+${embeddingMatches.length > 0 ? `
+IMAGE MATCH RESULTS (products from our catalog that visually match the customer's image, ranked by similarity):
+${embeddingMatches.map((m, i) => `${i + 1}. ${m.name} — ৳${m.selling_price || "N/A"} (${(m.similarity * 100).toFixed(0)}% match)${m.image_description ? ` [${m.image_description}]` : ""}`).join("\n")}
+
+IMPORTANT: If the customer sent an image, prefer the IMAGE MATCH RESULTS above over guessing from the catalog names. The top match is very likely the correct product. Use it to respond.` : ""}
 
 RESPONSE FORMAT — return ONLY valid JSON, no prose, no markdown:
 {
@@ -4875,15 +4968,37 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
 
   const brandDoc = settings.brand_doc || "";
 
-  // 4. Run GPT-4o — single call handles reply + order detection
-  // Pass page token so Instagram/WhatsApp token-gated image URLs can be fetched
+  // 3b. If customer sent an image, find similar products via embedding search
   const platformToken = platform === "whatsapp"
     ? (channel.encrypted_access_token ? decryptToken(channel.encrypted_access_token) : "")
     : (channel.encrypted_page_access_token ? decryptToken(channel.encrypted_page_access_token) : "");
 
+  let embeddingMatches = [];
+  if (allImageUrls.length > 0) {
+    try {
+      const customerImageUrl = allImageUrls[0];
+      const safeUrl = await prepareOpenAiImageRef(customerImageUrl, platformToken);
+      if (safeUrl) {
+        const description = await describeProductImage(safeUrl);
+        if (description) {
+          const embedding = await generateTextEmbedding(description);
+          if (embedding) {
+            embeddingMatches = await findSimilarProducts(orgId, embedding, 3, 0.6);
+            if (embeddingMatches.length > 0) {
+              console.log(`[${platform.toUpperCase()} AI] Embedding matches: ${embeddingMatches.map((m) => `${m.name} (${(m.similarity * 100).toFixed(1)}%)`).join(", ")}`);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[${platform.toUpperCase()} AI] Embedding search failed:`, err.message);
+    }
+  }
+
+  // 4. Run GPT-4o — single call handles reply + order detection
   let aiResult;
   try {
-    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrls: allImageUrls, platformToken, existingOrder, aiSummary });
+    aiResult = await runMetaAI({ brandDoc, products, conversationHistory, customerMessage: text || "", imageUrls: allImageUrls, platformToken, existingOrder, aiSummary, embeddingMatches });
   } catch (err) {
     console.error("[Meta AI] GPT call failed:", errorMessage(err));
     return;
@@ -6144,6 +6259,45 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- ── Image embedding for product matching ─────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_embedding vector(1536);
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_description TEXT;
+
+CREATE OR REPLACE FUNCTION match_products_by_embedding(
+  query_embedding vector(1536),
+  match_org_id UUID,
+  match_threshold FLOAT DEFAULT 0.75,
+  match_count INT DEFAULT 3
+)
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  selling_price NUMERIC,
+  image_url TEXT,
+  image_description TEXT,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.name,
+    p.selling_price,
+    p.image_url,
+    p.image_description,
+    (1 - (p.image_embedding <=> query_embedding))::FLOAT AS similarity
+  FROM public.products p
+  WHERE p.org_id = match_org_id
+    AND p.image_embedding IS NOT NULL
+    AND 1 - (p.image_embedding <=> query_embedding) > match_threshold
+  ORDER BY p.image_embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
 -- Reload PostgREST schema cache so all new columns are visible immediately
 NOTIFY pgrst, 'reload schema';
 `;
@@ -6448,6 +6602,22 @@ app.post("/api/products/save", async (req, res) => {
     if (variantRows.length > 0) {
       const { error: vErr } = await supabase.from("product_variants").insert(variantRows);
       if (vErr) console.error("[products/save] variant insert error:", vErr.message);
+    }
+
+    // Generate embeddings in background (non-blocking)
+    for (const product of data) {
+      if (product.image_url) {
+        generateProductEmbedding(product.image_url).then(({ embedding, description }) => {
+          if (embedding) {
+            const vectorStr = `[${embedding.join(",")}]`;
+            supabase.from("products").update({ image_embedding: vectorStr, image_description: description })
+              .eq("id", product.id).eq("org_id", orgId).then(({ error: embErr }) => {
+                if (embErr) console.warn(`[Embedding] save failed for ${product.id}:`, embErr.message);
+                else console.log(`[Embedding] generated for product ${product.id}: "${description?.slice(0, 60)}..."`);
+              });
+          }
+        }).catch((err) => console.warn(`[Embedding] generation failed for ${product.id}:`, err.message));
+      }
     }
 
     return res.json({ saved: data.length, variants_saved: variantRows.length, products: data });
@@ -6758,6 +6928,18 @@ app.patch("/api/products/:id", async (req, res) => {
     }
     if (hasStockUpdate) await saveProductStock(orgId, req.params.id, req.body.stock_quantity);
     data = { ...data, stock_quantity: hasStockUpdate ? Math.max(0, parseInt(req.body.stock_quantity, 10) || 0) : 0 };
+
+    // Regenerate embedding if image_url changed
+    if (update.image_url && data.image_url) {
+      generateProductEmbedding(data.image_url).then(({ embedding, description }) => {
+        if (embedding) {
+          const vectorStr = `[${embedding.join(",")}]`;
+          supabase.from("products").update({ image_embedding: vectorStr, image_description: description })
+            .eq("id", data.id).eq("org_id", orgId).then(() => {});
+        }
+      }).catch(() => {});
+    }
+
     return res.json({ success: true, product: data });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -6773,6 +6955,43 @@ app.delete("/api/products/:id", async (req, res) => {
     const { error } = await supabase.from("products").delete().eq("id", req.params.id).eq("org_id", orgId);
     if (error) throw error;
     return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/products/regenerate-embeddings", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const { data: prods, error } = await supabase
+      .from("products")
+      .select("id, image_url")
+      .eq("org_id", orgId)
+      .not("image_url", "is", null);
+
+    if (error) throw error;
+    if (!prods?.length) return res.json({ message: "No products with images found", processed: 0 });
+
+    res.json({ message: `Regenerating embeddings for ${prods.length} products. This runs in the background.`, total: prods.length });
+
+    let count = 0;
+    for (const product of prods) {
+      try {
+        const { embedding, description } = await generateProductEmbedding(product.image_url);
+        if (embedding) {
+          const vectorStr = `[${embedding.join(",")}]`;
+          await supabase.from("products").update({ image_embedding: vectorStr, image_description: description }).eq("id", product.id).eq("org_id", orgId);
+          count++;
+        }
+        await new Promise((r) => setTimeout(r, 350));
+      } catch {}
+    }
+    console.log(`[Embedding Regen] Done: ${count}/${prods.length} for org ${orgId}`);
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -7092,6 +7311,42 @@ async function bootstrapAiProductContext() {
   }
 }
 
+async function backfillProductEmbeddings() {
+  if (!process.env.OPENAI_API_KEY) return;
+  const supabase = getServiceSupabase();
+
+  const { data: products, error } = await supabase
+    .from("products")
+    .select("id, image_url, org_id")
+    .not("image_url", "is", null)
+    .is("image_embedding", null)
+    .limit(50);
+
+  if (error || !products?.length) {
+    if (!error && products?.length === 0) console.log("[Embedding Backfill] All products have embeddings.");
+    return;
+  }
+
+  console.log(`[Embedding Backfill] Processing ${products.length} products without embeddings...`);
+  let count = 0;
+
+  for (const product of products) {
+    try {
+      const { embedding, description } = await generateProductEmbedding(product.image_url);
+      if (embedding) {
+        const vectorStr = `[${embedding.join(",")}]`;
+        await supabase.from("products").update({ image_embedding: vectorStr, image_description: description }).eq("id", product.id);
+        count++;
+      }
+      await new Promise((r) => setTimeout(r, 350));
+    } catch (err) {
+      console.warn(`[Embedding Backfill] Failed for ${product.id}:`, err.message);
+    }
+  }
+
+  console.log(`[Embedding Backfill] Generated ${count}/${products.length} embeddings.`);
+}
+
 // ── Direct Postgres client (bypasses PostgREST entirely) ─────────────────────
 // Prefer a Supabase pooler/full connection string in hosted environments. The
 // direct db.<project>.supabase.co host can resolve to IPv6, which Railway may
@@ -7254,6 +7509,7 @@ if (!process.env.VERCEL) {
         await migrateInboxOrdersTable();
         await migrateMultiTenancy();
         await bootstrapAiProductContext();
+        backfillProductEmbeddings().catch((err) => console.warn("[Embedding Backfill] Error:", err.message));
       });
     };
 
