@@ -4828,11 +4828,13 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
       }
     }
 
-    // Reverse race condition: if text contains deictic references ("this", "eita", "eta")
-    // suggesting an image is coming with it, wait 3 seconds then re-check for an image.
-    const textLower = (text || "").toLowerCase();
-    const hasDeicticRef = /\b(eita|এইটা|এটা|eta|this one|this|ata|etar|eita diyen|eta diyen)\b/i.test(textLower);
-    if (hasDeicticRef) {
+    // Reverse race condition: if text is short (likely accompanies an image) or contains
+    // deictic references, wait 3 seconds then re-check for an image.
+    const textLower = (text || "").toLowerCase().trim();
+    const wordCount = textLower.split(/\s+/).length;
+    const hasDeicticRef = /\b(eita|এইটা|এটা|eta|this one|this|ata|etar|eita diyen|eta diyen|price|dam|দাম|koto|কত|rate|er dam|er price)\b/i.test(textLower);
+    const isShortMessage = wordCount <= 3;
+    if (hasDeicticRef || isShortMessage) {
       await new Promise((r) => setTimeout(r, 3000));
       const { data: followUp } = await supabase
         .from("social_messages")
