@@ -83,7 +83,7 @@ export function AppSidebar() {
                 {
                     id: "order-chat",
                     title: "AI Chat",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_4418_8564)"><path d="M15.59 1.75C12.62 1.75 10.21 4.16 10.21 7.13C10.21 10.1 12.62 12.51 15.59 12.51C18.56 12.51 20.97 10.1 20.97 7.13C20.97 4.16 18.56 1.75 15.59 1.75Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M6.36003 13.0293C4.53003 13.0293 3.03003 14.5193 3.03003 16.3593C3.03003 18.1993 4.52003 19.6893 6.36003 19.6893C8.19003 19.6893 9.69003 18.1993 9.69003 16.3593C9.69003 14.5193 8.19003 13.0293 6.36003 13.0293Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M16.6201 16.6191C15.0701 16.6191 13.8101 17.8791 13.8101 19.4291C13.8101 20.9791 15.0701 22.2391 16.6201 22.2391C18.1701 22.2391 19.4301 20.9791 19.4301 19.4291C19.4301 17.8791 18.1701 16.6191 16.6201 16.6191Z" fill="white" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_4418_8564"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10H4a2 2 0 0 1-2-2v-8C2 6.477 6.477 2 12 2" opacity=".3" style={{fill: 'var(--fillg)'}}/><path fill="currentColor" d="M15 10H9a1 1 0 0 0-.117 1.993L9 12h6a1 1 0 0 0 .117-1.993zm-3 4H9a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2" style={{fill: 'var(--fillg)'}}/></svg>,
                     link: "/order-chat",
                 },
                 {
