@@ -120,9 +120,22 @@ export function AppSidebar() {
             ],
         };
 
+        const logistics: NavSection = {
+            label: "Logistics",
+            routes: [
+                {
+                    id: "returns",
+                    title: "Returns",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 256 256" fill="currentColor" className={iconCls}><path d="M232,128A104,104,0,0,1,77.18,207.47a8,8,0,0,1,5.64-14.94,88,88,0,1,0-34.63-37.73l9.23-6.15a8,8,0,0,1,8.88,13.32l-24,16a8,8,0,0,1-11.62-3.52l-16-32a8,8,0,1,1,14.32-7.12l6.19,12.39A104,104,0,0,1,232,128Z"/></svg>,
+                    link: "/returns",
+                },
+            ],
+        };
+
         const sections = [product];
         sections.push(workspace);
         sections.push(socialInbox);
+        sections.push(logistics);
         return sections;
     }, [isAdmin]);
 

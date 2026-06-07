@@ -19,6 +19,7 @@ import WhatsappInbox from "./pages/WhatsappInbox";
 import InboxOrders from "./pages/InboxOrders";
 import Studio from "./pages/Studio";
 import Billing from "./pages/Billing";
+import Returns from "./pages/Returns";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { Spinner } from "@/components/ui/ios-spinner";
 
@@ -98,6 +99,7 @@ const AppRoutes = () => (
       <Route path="/inbox/orders" element={<InboxOrders />} />
       <Route path="/studio" element={<Studio />} />
       <Route path="/billing" element={<AdminRoute><Billing /></AdminRoute>} />
+      <Route path="/returns" element={<Returns />} />
     </Route>
     <Route
       path="/onboarding"

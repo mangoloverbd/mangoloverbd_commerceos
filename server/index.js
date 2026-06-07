@@ -3829,6 +3829,9 @@ app.post("/api/pathao/refresh-status", async (req, res) => {
         if (normalizedStatus === (order.courier_status || "").toLowerCase()) continue;
 
         const patch = { courier_status: newStatus };
+        if (info?.data?.delivery_fee != null) {
+          patch.courier_fee = Number(info.data.delivery_fee) + Number(info.data.cod_fee || 0);
+        }
         if (normalizedStatus === "delivered") {
           patch.status = "confirmed";
           patch.fulfillment_status = "delivered";
@@ -3994,6 +3997,195 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
   } catch (e) {
     console.error("[Steadfast Webhook] error:", e.message);
     return res.status(200).json({ ok: true, error: e.message });
+  }
+});
+
+// ── Returns ──────────────────────────────────────────────────────────────────
+
+app.get("/api/returns", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { data: mainOrders } = await supabase
+      .from("orders")
+      .select("id, order_number, customer_name, phone, product, price, courier_status, courier_name, courier_fee, consignment_id, return_status, return_reason, return_requested_at, sent_to_courier, created_at")
+      .eq("org_id", orgId)
+      .eq("sent_to_courier", true)
+      .or("courier_status.ilike.%return%,return_status.neq.null,courier_status.eq.cancelled");
+
+    const { data: inboxOrders } = await supabase
+      .from("social_inbox_orders")
+      .select("id, contact_name, items, total_price, courier_status, courier_name, courier_fee, consignment_id, return_status, return_reason, return_requested_at, sent_to_courier, notes, created_at")
+      .eq("org_id", orgId)
+      .eq("sent_to_courier", true)
+      .or("courier_status.ilike.%return%,return_status.neq.null,courier_status.eq.cancelled");
+
+    const returns = [];
+
+    for (const o of (mainOrders || [])) {
+      const cs = (o.courier_status || "").toLowerCase();
+      returns.push({
+        id: o.id,
+        source: "shopify",
+        order_number: o.order_number || o.id.slice(-6).toUpperCase(),
+        customer_name: o.customer_name || "Unknown",
+        phone: o.phone || "",
+        product: o.product || "",
+        cod_amount: o.price || 0,
+        courier_name: o.courier_name || "unknown",
+        courier_status: o.courier_status || "",
+        courier_fee: o.courier_fee || null,
+        consignment_id: o.consignment_id || "",
+        return_status: o.return_status || (cs.includes("return") ? "returned" : "cancelled"),
+        return_reason: o.return_reason || "",
+        return_requested_at: o.return_requested_at || null,
+        created_at: o.created_at,
+      });
+    }
+
+    for (const o of (inboxOrders || [])) {
+      const notesStr = o.notes || "";
+      const phoneMatch = notesStr.match(/Phone:\s*([^,\n]+)/i);
+      const items = o.items || [];
+      const productStr = items.map((i) => `${i.quantity || 1}x ${i.product}`).join(", ");
+      const cs = (o.courier_status || "").toLowerCase();
+      returns.push({
+        id: o.id,
+        source: "inbox",
+        order_number: `IO-${o.id.slice(-6).toUpperCase()}`,
+        customer_name: o.contact_name || "Unknown",
+        phone: phoneMatch?.[1]?.trim() || "",
+        product: productStr,
+        cod_amount: o.total_price || 0,
+        courier_name: o.courier_name || "unknown",
+        courier_status: o.courier_status || "",
+        courier_fee: o.courier_fee || null,
+        consignment_id: o.consignment_id || "",
+        return_status: o.return_status || (cs.includes("return") ? "returned" : "cancelled"),
+        return_reason: o.return_reason || "",
+        return_requested_at: o.return_requested_at || null,
+        created_at: o.created_at,
+      });
+    }
+
+    returns.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const summary = {
+      total: returns.length,
+      totalLostRevenue: returns.reduce((s, r) => s + (r.cod_amount || 0), 0),
+      totalCourierFeesLost: returns.reduce((s, r) => s + (r.courier_fee || 0), 0),
+      pending: returns.filter((r) => r.return_status === "pending").length,
+      processing: returns.filter((r) => ["approved", "processing"].includes(r.return_status)).length,
+      completed: returns.filter((r) => ["completed", "returned"].includes(r.return_status)).length,
+    };
+
+    return res.json({ returns, summary });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/returns/request", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { orderId, source, reason } = req.body;
+    if (!orderId) return res.status(400).json({ error: "orderId required" });
+
+    const table = source === "inbox" ? "social_inbox_orders" : "orders";
+    const { data: order, error: orderErr } = await supabase
+      .from(table)
+      .select("id, consignment_id, courier_name, courier_status, sent_to_courier")
+      .eq("id", orderId)
+      .eq("org_id", orgId)
+      .single();
+
+    if (orderErr || !order) return res.status(404).json({ error: "Order not found" });
+    if (!order.sent_to_courier) return res.status(400).json({ error: "Order not sent to courier yet" });
+    if (!order.consignment_id) return res.status(400).json({ error: "No consignment ID" });
+
+    const courierName = (order.courier_name || "").toLowerCase();
+    let returnResult = null;
+
+    if (courierName === "steadfast" || !courierName) {
+      const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
+      if (!cfg.steadfast_api_key || !cfg.steadfast_secret_key) {
+        return res.status(400).json({ error: "Steadfast not configured" });
+      }
+      const sfRes = await fetch("https://portal.packzy.com/api/v1/create_return_request", {
+        method: "POST",
+        headers: {
+          "Api-Key": cfg.steadfast_api_key,
+          "Secret-Key": cfg.steadfast_secret_key,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ consignment_id: order.consignment_id, reason: reason || "" }),
+      });
+      const sfData = await sfRes.json();
+      if (!sfRes.ok) return res.status(400).json({ error: sfData?.message || "Steadfast return request failed" });
+      returnResult = sfData;
+    } else if (courierName === "pathao") {
+      const accessToken = await getPathaoToken(orgId);
+      const pathaoRes = await fetch(
+        `https://api-hermes.pathao.com/aladdin/api/v1/orders/${order.consignment_id}/cancel`,
+        { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" } }
+      );
+      const pathaoData = await pathaoRes.json();
+      if (!pathaoRes.ok) return res.status(400).json({ error: pathaoData?.message || "Pathao cancel request failed" });
+      returnResult = pathaoData;
+    } else {
+      return res.status(400).json({ error: "Unknown courier" });
+    }
+
+    const now = new Date().toISOString();
+    await supabase.from(table).update({ return_status: "pending", return_reason: reason || null, return_requested_at: now }).eq("id", orderId).eq("org_id", orgId);
+
+    return res.json({ success: true, return_status: "pending", result: returnResult });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/returns/sync", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
+    let synced = 0;
+
+    if (cfg.steadfast_api_key && cfg.steadfast_secret_key) {
+      try {
+        const sfRes = await fetch("https://portal.packzy.com/api/v1/get_return_requests", {
+          headers: { "Api-Key": cfg.steadfast_api_key, "Secret-Key": cfg.steadfast_secret_key, "Content-Type": "application/json" },
+        });
+        if (sfRes.ok) {
+          const sfData = await sfRes.json();
+          const requests = Array.isArray(sfData) ? sfData : (sfData?.data || []);
+          for (const rr of requests) {
+            if (!rr.consignment_id || !rr.status) continue;
+            const { data: updated } = await supabase.from("orders").update({ return_status: rr.status }).eq("consignment_id", String(rr.consignment_id)).eq("org_id", orgId).select("id");
+            if (updated?.length) { synced++; continue; }
+            await supabase.from("social_inbox_orders").update({ return_status: rr.status }).eq("consignment_id", String(rr.consignment_id)).eq("org_id", orgId);
+            synced++;
+          }
+        }
+      } catch (err) {
+        console.warn("[Returns Sync] Steadfast failed:", err.message);
+      }
+    }
+
+    return res.json({ synced });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -6297,6 +6489,17 @@ BEGIN
   LIMIT match_count;
 END;
 $$;
+
+-- ── Return tracking columns ──────────────────────────────────────────────────
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS courier_fee NUMERIC;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS return_requested_at TIMESTAMPTZ;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS return_status TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS return_reason TEXT;
+ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS courier_fee NUMERIC;
+ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS return_requested_at TIMESTAMPTZ;
+ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS return_status TEXT;
+ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS return_reason TEXT;
+ALTER TABLE public.social_inbox_orders ADD COLUMN IF NOT EXISTS courier_name TEXT;
 
 -- Reload PostgREST schema cache so all new columns are visible immediately
 NOTIFY pgrst, 'reload schema';
