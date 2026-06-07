@@ -96,6 +96,20 @@ export default function Returns() {
     }
   };
 
+  const handleBackfillFees = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiFetch("/api/returns/backfill-fees", { method: "POST" });
+      const d = await res.json();
+      toast.success(`Updated ${d.updated || 0} orders with courier fees`);
+      queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
+    } catch {
+      toast.error("Backfill failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleRequestReturn = async (order: ReturnOrder) => {
     setRequestingId(order.id);
     try {
@@ -135,6 +149,10 @@ export default function Returns() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <RichButton onClick={handleBackfillFees} disabled={syncing} size="sm" color="default">
+              {syncing ? <Spinner size="sm" /> : null}
+              Fetch Fees
+            </RichButton>
             <RichButton onClick={handleSync} disabled={syncing} size="sm" color="default">
               {syncing ? <Spinner size="sm" /> : <ArrowCounterClockwise size={12} weight="light" />}
               Sync

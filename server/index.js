@@ -4189,6 +4189,103 @@ app.get("/api/returns/sync", async (req, res) => {
   }
 });
 
+app.post("/api/returns/backfill-fees", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    // Find all orders with courier but no fee recorded
+    const { data: orders } = await supabase
+      .from("orders")
+      .select("id, consignment_id, courier_name")
+      .eq("org_id", orgId)
+      .eq("sent_to_courier", true)
+      .is("courier_fee", null)
+      .not("consignment_id", "is", null);
+
+    if (!orders?.length) return res.json({ updated: 0, message: "No orders missing courier fees" });
+
+    let accessToken = null;
+    const pathaoOrders = orders.filter((o) => (o.courier_name || "").toLowerCase() === "pathao");
+    const steadfastOrders = orders.filter((o) => (o.courier_name || "").toLowerCase() === "steadfast" || !o.courier_name);
+
+    let updated = 0;
+
+    // Backfill Pathao fees from API
+    if (pathaoOrders.length > 0) {
+      try { accessToken = await getPathaoToken(orgId); } catch {}
+    }
+    if (accessToken) {
+      for (const order of pathaoOrders) {
+        try {
+          const infoRes = await fetch(
+            `https://api-hermes.pathao.com/aladdin/api/v1/orders/${order.consignment_id}/info`,
+            { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }
+          );
+          if (!infoRes.ok) continue;
+          const info = await infoRes.json();
+          const fee = Number(info?.data?.delivery_fee || 0) + Number(info?.data?.cod_fee || 0);
+          if (fee > 0) {
+            await supabase.from("orders").update({ courier_fee: fee }).eq("id", order.id).eq("org_id", orgId);
+            updated++;
+          }
+          await new Promise((r) => setTimeout(r, 200));
+        } catch {}
+      }
+    }
+
+    // Backfill Steadfast fees from org setting (configurable flat rate)
+    const cfg = await getOrgSettings(orgId, ["steadfast_delivery_fee"]);
+    const sfFee = Number(cfg.steadfast_delivery_fee) || 0;
+    if (sfFee > 0 && steadfastOrders.length > 0) {
+      for (const order of steadfastOrders) {
+        await supabase.from("orders").update({ courier_fee: sfFee }).eq("id", order.id).eq("org_id", orgId);
+        updated++;
+      }
+    }
+
+    // Also backfill social_inbox_orders
+    const { data: inboxOrders } = await supabase
+      .from("social_inbox_orders")
+      .select("id, consignment_id, courier_name")
+      .eq("org_id", orgId)
+      .eq("sent_to_courier", true)
+      .is("courier_fee", null)
+      .not("consignment_id", "is", null);
+
+    if (inboxOrders?.length && accessToken) {
+      for (const order of inboxOrders) {
+        const cn = (order.courier_name || "").toLowerCase();
+        if (cn === "pathao") {
+          try {
+            const infoRes = await fetch(
+              `https://api-hermes.pathao.com/aladdin/api/v1/orders/${order.consignment_id}/info`,
+              { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }
+            );
+            if (!infoRes.ok) continue;
+            const info = await infoRes.json();
+            const fee = Number(info?.data?.delivery_fee || 0) + Number(info?.data?.cod_fee || 0);
+            if (fee > 0) {
+              await supabase.from("social_inbox_orders").update({ courier_fee: fee }).eq("id", order.id).eq("org_id", orgId);
+              updated++;
+            }
+            await new Promise((r) => setTimeout(r, 200));
+          } catch {}
+        } else if (sfFee > 0) {
+          await supabase.from("social_inbox_orders").update({ courier_fee: sfFee }).eq("id", order.id).eq("org_id", orgId);
+          updated++;
+        }
+      }
+    }
+
+    return res.json({ updated, pathao: pathaoOrders.length, steadfast: steadfastOrders.length, message: sfFee ? `Pathao: fetched from API. Steadfast: used flat rate ৳${sfFee}` : "Pathao: fetched from API. Steadfast: set 'steadfast_delivery_fee' in settings for flat rate." });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/check-fraud", async (req, res) => {
   try {
     const { orderId } = req.body || {};
