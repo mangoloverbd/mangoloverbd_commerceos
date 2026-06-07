@@ -148,19 +148,10 @@ export default function Returns() {
               <p className="text-[11px] text-muted-foreground">Manage courier returns and cancellations</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <RichButton onClick={handleBackfillFees} disabled={syncing} size="sm" color="default">
-              {syncing ? <Spinner size="sm" /> : null}
-              Fetch Fees
-            </RichButton>
-            <RichButton onClick={handleSync} disabled={syncing} size="sm" color="default">
-              {syncing ? <Spinner size="sm" /> : <ArrowCounterClockwise size={12} weight="light" />}
-              Sync
-            </RichButton>
-            <span className="rounded-full bg-black/[0.045] px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
-              {summary.total} total
-            </span>
-          </div>
+          <RichButton onClick={async () => { await handleBackfillFees(); await handleSync(); }} disabled={syncing} size="sm" color="default">
+            {syncing ? <Spinner size="sm" /> : <ArrowCounterClockwise size={12} weight="light" />}
+            Sync
+          </RichButton>
         </div>
 
         {/* Summary Cards */}
