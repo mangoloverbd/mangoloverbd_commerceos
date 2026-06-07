@@ -246,7 +246,7 @@ export function AppSidebar() {
                         title="System Settings"
                     >
                         <span className="flex h-[17px] w-[17px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
-                            <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-[17px] w-[17px] shrink-0" />
+                            <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" className="text-[#333]"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" d="M12 3v2m0 0a7 7 0 0 0-7 7m7-7a7 7 0 0 1 7 7m0 0h2m-2 0a7 7 0 0 1-7 7m0 0v2m0-2a7 7 0 0 1-7-7m0 0H3m4.5-7.794l1 1.732M18.062 8.5l1.732-1M15.5 18.062l1 1.732M5.938 15.5l-1.732 1m0-9l1.732 1M15.5 5.938l1-1.732M18.062 15.5l1.732 1M8.5 18.062l-1 1.732M12 12L7 7.101M12 12l-1.812 6.762M12 12l6.762-1.812"/></svg>
                         </span>
                         {!isCollapsed && (
                             <span className="text-[12.5px] font-medium text-[#333] font-sf-text tracking-normal">System Settings</span>
