@@ -3763,6 +3763,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
 
     const consignment = pathaoData.data;
     const consignmentId = consignment?.consignment_id ? String(consignment.consignment_id) : null;
+    const deliveryFee = consignment?.delivery_fee != null ? Number(consignment.delivery_fee) : null;
     await supabase.from("orders").update({
       sent_to_courier: true,
       consignment_id: consignmentId,
@@ -3770,6 +3771,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
       courier_status: "Pending",
       courier_message: "Sent to Pathao successfully",
       courier_name: "pathao",
+      courier_fee: deliveryFee,
     }).eq("id", orderId).eq("org_id", orgId);
 
     const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
@@ -4206,7 +4208,6 @@ app.post("/api/returns/backfill-fees", async (req, res) => {
 
     if (!orders?.length) return res.json({ updated: 0, message: "No orders missing courier fees" });
 
-    let accessToken = null;
     const pathaoOrders = orders.filter((o) => {
       const cn = (o.courier_name || "").toLowerCase();
       const cm = (o.courier_message || "").toLowerCase();
@@ -4220,38 +4221,21 @@ app.post("/api/returns/backfill-fees", async (req, res) => {
 
     let updated = 0;
 
-    // Backfill Pathao fees from API
-    if (pathaoOrders.length > 0) {
-      try { accessToken = await getPathaoToken(orgId); } catch {}
-    }
-    if (accessToken) {
-      for (const order of pathaoOrders) {
-        if (!order.consignment_id) continue;
-        try {
-          const infoRes = await fetch(
-            `https://api-hermes.pathao.com/aladdin/api/v1/orders/${order.consignment_id}/info`,
-            { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }
-          );
-          if (!infoRes.ok) continue;
-          const info = await infoRes.json();
-          const fee = Number(info?.data?.delivery_fee || 0) + Number(info?.data?.cod_fee || 0);
-          if (fee > 0) {
-            await supabase.from("orders").update({ courier_fee: fee }).eq("id", order.id).eq("org_id", orgId);
-            updated++;
-          }
-          await new Promise((r) => setTimeout(r, 200));
-        } catch {}
-      }
+    // Backfill courier fees using configurable flat rates
+    // Pathao order info API does NOT return delivery_fee — only the create response does.
+    // So for past orders, use flat rate settings.
+    const cfg = await getOrgSettings(orgId, ["steadfast_delivery_fee", "pathao_delivery_fee"]);
+    const sfFee = Number(cfg.steadfast_delivery_fee) || 70;
+    const pathaoFee = Number(cfg.pathao_delivery_fee) || 80;
+
+    for (const order of pathaoOrders) {
+      await supabase.from("orders").update({ courier_fee: pathaoFee }).eq("id", order.id).eq("org_id", orgId);
+      updated++;
     }
 
-    // Backfill Steadfast fees from org setting (configurable flat rate)
-    const cfg = await getOrgSettings(orgId, ["steadfast_delivery_fee"]);
-    const sfFee = Number(cfg.steadfast_delivery_fee) || 0;
-    if (sfFee > 0 && steadfastOrders.length > 0) {
-      for (const order of steadfastOrders) {
-        await supabase.from("orders").update({ courier_fee: sfFee }).eq("id", order.id).eq("org_id", orgId);
-        updated++;
-      }
+    for (const order of steadfastOrders) {
+      await supabase.from("orders").update({ courier_fee: sfFee }).eq("id", order.id).eq("org_id", orgId);
+      updated++;
     }
 
     // Also backfill social_inbox_orders
@@ -4267,29 +4251,13 @@ app.post("/api/returns/backfill-fees", async (req, res) => {
         const cn = (order.courier_name || "").toLowerCase();
         const cm = (order.courier_message || "").toLowerCase();
         const isPathao = cn === "pathao" || (!cn && cm.includes("pathao"));
-        if (isPathao && accessToken && order.consignment_id) {
-          try {
-            const infoRes = await fetch(
-              `https://api-hermes.pathao.com/aladdin/api/v1/orders/${order.consignment_id}/info`,
-              { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } }
-            );
-            if (!infoRes.ok) continue;
-            const info = await infoRes.json();
-            const fee = Number(info?.data?.delivery_fee || 0) + Number(info?.data?.cod_fee || 0);
-            if (fee > 0) {
-              await supabase.from("social_inbox_orders").update({ courier_fee: fee }).eq("id", order.id).eq("org_id", orgId);
-              updated++;
-            }
-            await new Promise((r) => setTimeout(r, 200));
-          } catch {}
-        } else if (sfFee > 0) {
-          await supabase.from("social_inbox_orders").update({ courier_fee: sfFee }).eq("id", order.id).eq("org_id", orgId);
-          updated++;
-        }
+        const fee = isPathao ? pathaoFee : sfFee;
+        await supabase.from("social_inbox_orders").update({ courier_fee: fee }).eq("id", order.id).eq("org_id", orgId);
+        updated++;
       }
     }
 
-    return res.json({ updated, pathao: pathaoOrders.length, steadfast: steadfastOrders.length, message: sfFee ? `Pathao: fetched from API. Steadfast: used flat rate ৳${sfFee}` : "Pathao: fetched from API. Steadfast: set 'steadfast_delivery_fee' in settings for flat rate." });
+    return res.json({ updated, pathao: pathaoOrders.length, steadfast: steadfastOrders.length, message: `Applied flat rates: Pathao ৳${pathaoFee}, Steadfast ৳${sfFee}. Set pathao_delivery_fee / steadfast_delivery_fee in Settings to customize.` });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
