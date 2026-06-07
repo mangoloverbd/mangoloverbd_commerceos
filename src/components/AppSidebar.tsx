@@ -57,6 +57,12 @@ export function AppSidebar() {
                     link: "/",
                 },
                 {
+                    id: "returns",
+                    title: "Returns",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#000000" className={iconCls}><path d="M12 2C6.49 2 2 6.49 2 12C2 17.51 6.49 22 12 22C17.51 22 22 17.51 22 12C22 6.49 17.51 2 12 2ZM13.79 15C14.08 15.29 14.08 15.77 13.79 16.06C13.64 16.21 13.45 16.28 13.26 16.28C13.07 16.28 12.88 16.21 12.73 16.06L9.2 12.53C8.91 12.24 8.91 11.76 9.2 11.47L12.73 7.94C13.02 7.65 13.5 7.65 13.79 7.94C14.08 8.23 14.08 8.71 13.79 9L10.79 12L13.79 15Z" fill="white" style={{fill: 'var(--fillg)'}}/></svg>,
+                    link: "/returns",
+                },
+                {
                     id: "products",
                     title: "Products",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_4418_8364)"><path d="M11.75 7H11H7C4.24 7 2 9.24 2 12V17C2 19.76 4.24 22 7 22H12C14.76 22 17 19.76 17 17V13V12.25C17 9.35 14.65 7 11.75 7Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M21.8799 6.33033C22.4045 8.88991 21.1621 11.2123 19.159 12.306C18.8514 12.4739 18.4999 12.2343 18.4999 11.8838V11.7503C18.4999 8.31033 15.6899 5.50033 12.2499 5.50033H12.1164C11.7659 5.50033 11.5263 5.14879 11.6942 4.84119C12.7879 2.8381 15.1103 1.59574 17.6699 2.12033C19.7599 2.55033 21.4499 4.24033 21.8799 6.33033Z" fill="white" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_4418_8364"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
@@ -120,22 +126,9 @@ export function AppSidebar() {
             ],
         };
 
-        const logistics: NavSection = {
-            label: "Logistics",
-            routes: [
-                {
-                    id: "returns",
-                    title: "Returns",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#000000" className={iconCls}><path d="M12 2C6.49 2 2 6.49 2 12C2 17.51 6.49 22 12 22C17.51 22 22 17.51 22 12C22 6.49 17.51 2 12 2ZM13.79 15C14.08 15.29 14.08 15.77 13.79 16.06C13.64 16.21 13.45 16.28 13.26 16.28C13.07 16.28 12.88 16.21 12.73 16.06L9.2 12.53C8.91 12.24 8.91 11.76 9.2 11.47L12.73 7.94C13.02 7.65 13.5 7.65 13.79 7.94C14.08 8.23 14.08 8.71 13.79 9L10.79 12L13.79 15Z" fill="white" style={{fill: 'var(--fillg)'}}/></svg>,
-                    link: "/returns",
-                },
-            ],
-        };
-
         const sections = [product];
         sections.push(workspace);
         sections.push(socialInbox);
-        sections.push(logistics);
         return sections;
     }, [isAdmin]);
 
