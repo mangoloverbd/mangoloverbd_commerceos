@@ -4199,17 +4199,24 @@ app.post("/api/returns/backfill-fees", async (req, res) => {
     // Find all orders with courier but no fee recorded
     const { data: orders } = await supabase
       .from("orders")
-      .select("id, consignment_id, courier_name")
+      .select("id, consignment_id, courier_name, courier_message")
       .eq("org_id", orgId)
       .eq("sent_to_courier", true)
-      .is("courier_fee", null)
-      .not("consignment_id", "is", null);
+      .is("courier_fee", null);
 
     if (!orders?.length) return res.json({ updated: 0, message: "No orders missing courier fees" });
 
     let accessToken = null;
-    const pathaoOrders = orders.filter((o) => (o.courier_name || "").toLowerCase() === "pathao");
-    const steadfastOrders = orders.filter((o) => (o.courier_name || "").toLowerCase() === "steadfast" || !o.courier_name);
+    const pathaoOrders = orders.filter((o) => {
+      const cn = (o.courier_name || "").toLowerCase();
+      const cm = (o.courier_message || "").toLowerCase();
+      return cn === "pathao" || (!cn && cm.includes("pathao"));
+    });
+    const steadfastOrders = orders.filter((o) => {
+      const cn = (o.courier_name || "").toLowerCase();
+      const cm = (o.courier_message || "").toLowerCase();
+      return cn === "steadfast" || (!cn && !cm.includes("pathao"));
+    });
 
     let updated = 0;
 
@@ -4219,6 +4226,7 @@ app.post("/api/returns/backfill-fees", async (req, res) => {
     }
     if (accessToken) {
       for (const order of pathaoOrders) {
+        if (!order.consignment_id) continue;
         try {
           const infoRes = await fetch(
             `https://api-hermes.pathao.com/aladdin/api/v1/orders/${order.consignment_id}/info`,
@@ -4249,16 +4257,17 @@ app.post("/api/returns/backfill-fees", async (req, res) => {
     // Also backfill social_inbox_orders
     const { data: inboxOrders } = await supabase
       .from("social_inbox_orders")
-      .select("id, consignment_id, courier_name")
+      .select("id, consignment_id, courier_name, courier_message")
       .eq("org_id", orgId)
       .eq("sent_to_courier", true)
-      .is("courier_fee", null)
-      .not("consignment_id", "is", null);
+      .is("courier_fee", null);
 
-    if (inboxOrders?.length && accessToken) {
+    if (inboxOrders?.length) {
       for (const order of inboxOrders) {
         const cn = (order.courier_name || "").toLowerCase();
-        if (cn === "pathao") {
+        const cm = (order.courier_message || "").toLowerCase();
+        const isPathao = cn === "pathao" || (!cn && cm.includes("pathao"));
+        if (isPathao && accessToken && order.consignment_id) {
           try {
             const infoRes = await fetch(
               `https://api-hermes.pathao.com/aladdin/api/v1/orders/${order.consignment_id}/info`,
