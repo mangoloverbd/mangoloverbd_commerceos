@@ -249,7 +249,7 @@ export function SidebarAlerts() {
                   }
                 }
               }}
-              className="absolute left-0 right-0 cursor-pointer select-none overflow-hidden border border-[#e0e0e0] bg-white rounded-[10px]"
+              className="absolute left-0 right-0 cursor-pointer select-none overflow-hidden border border-[#C0C0C0] bg-white rounded-[10px]"
               style={{ height: CARD_H }}
             >
               <div className="flex h-full items-center gap-3 px-4">
