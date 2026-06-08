@@ -43,8 +43,8 @@ export interface NavSection {
 function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
     return (
         <span className={cn(
-            "block truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal min-w-0",
-            active ? "text-[#0c6fff]" : "text-current"
+            "block truncate font-sf-text text-[12.5px] normal-case tracking-normal min-w-0",
+            active ? "font-semibold text-[#1a1a1a]" : "font-medium text-[#999]"
         )}>
             {text}
         </span>
@@ -54,11 +54,11 @@ function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
 const navIconFrame =
     "flex h-[15px] w-[15px] shrink-0 items-center justify-center [&>img]:h-[15px] [&>img]:w-[15px] [&>img]:object-contain [&>svg]:h-[15px] [&>svg]:w-[15px]";
 
-const activeIconStyle = { "--fillg": "#0c6fff" } as React.CSSProperties;
-const inactiveIconStyle = { "--fillg": "#000000" } as React.CSSProperties;
+const activeIconStyle = { "--fillg": "#1a1a1a" } as React.CSSProperties;
+const inactiveIconStyle = { "--fillg": "#999999" } as React.CSSProperties;
 
 const navIconMotion =
-    "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#0c6fff] group-hover/nav-button:-translate-y-0.5 group-hover/nav-button:-rotate-6 group-hover/nav-button:scale-125 group-hover/nav-button:text-[#0c6fff]";
+    "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#1a1a1a] group-hover/nav-button:-translate-y-0.5 group-hover/nav-button:-rotate-6 group-hover/nav-button:scale-125 group-hover/nav-button:text-[#1a1a1a]";
 
 export default function DashboardNavigation({ sections }: { sections: NavSection[] }) {
     const { state } = useSidebar();
@@ -116,14 +116,14 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 className={cn(
                                                     "mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all",
                                                     isActive
-                                                        ? "bg-white border border-[#C0C0C0] rounded-lg text-blue-600"
-                                                        : "text-[#6f6f6f] hover:bg-black/5 hover:text-blue-600"
+                                                        ? "bg-white border border-[#C0C0C0] rounded-lg text-[#1a1a1a]"
+                                                        : "text-[#999] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                 )}
                                             >
                                                 <Link to={route.link} className="group/nav-link flex h-full w-full items-center justify-center">
                                                     <span className={cn(
                                                         navIconFrame,
-                                                        "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#0c6fff]"
+                                                        "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#1a1a1a]"
                                                     )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                         {route.icon}
                                                     </span>
@@ -170,14 +170,14 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             className={cn(
                                                                 "group/nav-button h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
                                                                 isActive
-                                                                    ? "bg-white border border-[#C0C0C0] text-[#222]"
-                                                                    : "text-[#333] hover:bg-black/5 hover:text-[#111]"
+                                                                    ? "bg-white border border-[#C0C0C0] text-[#1a1a1a]"
+                                                                    : "text-[#999] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                             )}
                                                         >
                                                             <span className={cn(
                                                                 navIconFrame,
                                                                 navIconMotion,
-                                                                isActive ? "text-[#0c6fff]" : "text-[#333]"
+                                                                isActive ? "text-[#1a1a1a]" : "text-[#999]"
                                                             )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                                 {route.icon}
                                                             </span>
@@ -196,8 +196,8 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                             className={cn(
                                                                                 "h-6 rounded-md font-sf-text text-[11.5px] font-medium tracking-normal transition-all",
                                                                                 subActive
-                                                                                    ? "bg-white border border-[#C0C0C0] text-[#222]"
-                                                                                    : "text-[#333] hover:bg-black/5 hover:text-[#111]"
+                                                                                    ? "bg-white border border-[#C0C0C0] text-[#1a1a1a]"
+                                                                                    : "text-[#999] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                                             )}
                                                                         >
                                                                             <Link
@@ -208,12 +208,12 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                     <span className={cn(
                                                                                         navIconFrame,
                                                                                         navIconMotion,
-                                                                                        subActive ? "text-[#0c6fff]" : "text-current"
+                                                                                        subActive ? "text-[#1a1a1a]" : "text-current"
                                                                                     )} style={subActive ? activeIconStyle : inactiveIconStyle}>{sub.icon}</span>
                                                                                 )}
                                                                                 <span className={cn(
                                                                                     "block truncate font-sf-text text-[11.5px] font-medium normal-case tracking-normal min-w-0",
-                                                                                    subActive ? "text-[#0c6fff]" : "text-current"
+                                                                                    subActive ? "text-[#1a1a1a]" : "text-current"
                                                                                 )}>
                                                                                     {sub.title}
                                                                                 </span>
@@ -232,8 +232,8 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     className={cn(
                                                         "h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
                                                        isActive
-                                                           ? "bg-white border border-[#C0C0C0] rounded-lg text-[#222]"
-                                                           : "text-[#333] hover:bg-black/5 hover:text-[#111]"
+                                                           ? "bg-white border border-[#C0C0C0] rounded-lg text-[#1a1a1a]"
+                                                           : "text-[#999] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                     )}
                                                 >
                                                     <Link
@@ -243,7 +243,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                         <span className={cn(
                                                             navIconFrame,
                                                             navIconMotion,
-                                                            isActive ? "text-[#0c6fff]" : "text-[#333]"
+                                                            isActive ? "text-[#1a1a1a]" : "text-[#999]"
                                                         )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                             {route.icon}
                                                         </span>
