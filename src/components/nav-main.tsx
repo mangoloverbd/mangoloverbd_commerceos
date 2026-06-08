@@ -52,7 +52,7 @@ function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
 }
 
 const navIconFrame =
-    "flex h-[17px] w-[17px] shrink-0 items-center justify-center [&>img]:h-[17px] [&>img]:w-[17px] [&>img]:object-contain [&>svg]:h-[17px] [&>svg]:w-[17px]";
+    "flex h-[15px] w-[15px] shrink-0 items-center justify-center [&>img]:h-[15px] [&>img]:w-[15px] [&>img]:object-contain [&>svg]:h-[15px] [&>svg]:w-[15px]";
 
 const activeIconStyle = { "--fillg": "#0c6fff" } as React.CSSProperties;
 const inactiveIconStyle = { "--fillg": "#2859c5" } as React.CSSProperties;
