@@ -202,7 +202,7 @@ export function SidebarAlerts() {
     stackPosition: (i - safeIndex + cards.length) % cards.length,
   }));
 
-  const CARD_H = 56;
+  const CARD_H = 64;
   const PEEK = 6; // px each card peeks above
   const containerH = CARD_H + (cards.length - 1) * PEEK;
   const activeCard = cards[safeIndex];
@@ -211,15 +211,17 @@ export function SidebarAlerts() {
     <div className="mb-1.5 px-1">
       {/* Neumorphic container */}
       <div
-        className="rounded-[28px] p-4"
+        ref={stackRef}
         style={{
           background: "#e6e5e2",
           border: "3px solid #cfceca",
+          borderRadius: 28,
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.65), 0 2px 4px rgba(0,0,0,0.08)",
+          padding: 16,
         }}
       >
         {/* Stack */}
-        <div ref={stackRef} className="relative" style={{ height: containerH }}>
+        <div className="relative overflow-hidden" style={{ height: containerH }}>
           {displayCards.map((card) => {
             const isTop = card.stackPosition === 0;
             const pos = card.stackPosition;
@@ -231,12 +233,10 @@ export function SidebarAlerts() {
                 key={card.id}
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{
-                  opacity: 1,
-                  scale: 1 - pos * 0.03,
+                  opacity: isTop ? 1 : 0.6,
+                  scale: 1 - pos * 0.04,
                   top: (cards.length - 1 - pos) * PEEK,
-                  left: 0,
                   zIndex: cards.length - pos,
-                  rotate: 0,
                 }}
                 exit={{ opacity: 0, scale: 0.8, x: -200 }}
                 transition={{ type: "spring", stiffness: 300, damping: 25 }}
@@ -260,17 +260,16 @@ export function SidebarAlerts() {
                     }
                   }
                 }}
-                className="absolute right-0 cursor-pointer select-none transition-shadow rounded-[30px]"
+                className="absolute left-0 right-0 cursor-pointer select-none overflow-hidden"
                 style={{
                   height: CARD_H,
                   background: "#f7f7f6",
                   border: "3px solid #d0cfcc",
-                  boxShadow: isOpen
-                    ? "0 8px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.8)"
-                    : "0 8px 18px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.8)",
+                  borderRadius: 30,
+                  boxShadow: "0 8px 18px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.8)",
                 }}
               >
-                <div className="flex h-full items-center gap-3 px-3.5 py-2.5">
+                <div className="flex h-full items-center gap-3 px-4">
                   {/* Icon */}
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#d0cfcc] bg-white">
                     {isPending
@@ -280,10 +279,10 @@ export function SidebarAlerts() {
                   </div>
                   {/* Text */}
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] text-[#999] leading-tight">
+                    <p className="truncate text-[11px] text-[#999] leading-tight">
                       {isPending ? "Needs follow-up" : "Ready for courier"}
                     </p>
-                    <p className="text-[14px] font-semibold text-[#1a1a1a] leading-tight mt-0.5 tabular-nums">
+                    <p className="truncate text-[14px] font-semibold text-[#1a1a1a] leading-tight mt-0.5 tabular-nums">
                       {card.count} {card.count === 1 ? "order" : "orders"}
                     </p>
                   </div>
