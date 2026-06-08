@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useOrgName } from "@/hooks/useOrgName";
 import { OrdersTable } from "@/components/OrdersTable";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -350,6 +351,7 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
+  const { orgName } = useOrgName();
 
   const fetchAnalytics = useCallback(async (range?: DateRange | null) => {
     setAnalyticsLoading(true);
@@ -630,8 +632,12 @@ export default function Dashboard() {
           </div>
         )}
         <div className={!isAdmin ? "blur-[8px] pointer-events-none select-none" : ""}>
-          {/* Controls row */}
-          <div className="flex items-center justify-end gap-2 mb-3">
+          {/* Header row */}
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[22px] font-bold text-black tracking-tight">
+              Welcome back, {orgName || "there"}
+            </h2>
+            <div className="flex items-center gap-2">
             {!analytics?.fbConfigured && !analyticsLoading && (
               <a
                 href="/settings"
@@ -657,6 +663,7 @@ export default function Dashboard() {
                 ? <Spinner size="sm" />
                 : <RefreshCw className="h-3.5 w-3.5" />}
             </button>
+            </div>
           </div>
 
           {/* Metric cards grid */}
