@@ -312,7 +312,7 @@ function FinanceMetric({
   gradientId?: string;
 }) {
   return (
-    <div className="flex-1 min-w-[160px] rounded-xl border border-[#F3F3F3] bg-white p-4 transition-all hover:border-black/[0.12]">
+    <div className="flex-1 min-w-[160px] rounded-xl border border-[#F3F3F3] bg-white p-4 transition-all hover:border-[#E0E0E0]">
       <AnimatePresence mode="wait">
         {loading ? (
           <motion.div
