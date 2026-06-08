@@ -55,7 +55,7 @@ const navIconFrame =
     "flex h-[15px] w-[15px] shrink-0 items-center justify-center [&>img]:h-[15px] [&>img]:w-[15px] [&>img]:object-contain [&>svg]:h-[15px] [&>svg]:w-[15px]";
 
 const activeIconStyle = { "--fillg": "#0c6fff" } as React.CSSProperties;
-const inactiveIconStyle = { "--fillg": "#2859c5" } as React.CSSProperties;
+const inactiveIconStyle = { "--fillg": "#000000" } as React.CSSProperties;
 
 const navIconMotion =
     "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#0c6fff] group-hover/nav-button:-translate-y-0.5 group-hover/nav-button:-rotate-6 group-hover/nav-button:scale-125 group-hover/nav-button:text-[#0c6fff]";
