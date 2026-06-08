@@ -209,109 +209,97 @@ export function SidebarAlerts() {
 
   return (
     <div className="mb-1.5 px-1">
-      {/* Neumorphic container */}
-      <div
-        ref={stackRef}
-        style={{
-          background: "#e6e5e2",
-          border: "3px solid #cfceca",
-          borderRadius: 28,
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.65), 0 2px 4px rgba(0,0,0,0.08)",
-          padding: 16,
-        }}
-      >
-        {/* Stack */}
-        <div className="relative overflow-hidden" style={{ height: containerH }}>
-          {displayCards.map((card) => {
-            const isTop = card.stackPosition === 0;
-            const pos = card.stackPosition;
-            const isPending = card.type === "stale_pending";
-            const isOpen = openCard === card.id && isTop;
+      {/* Stack */}
+      <div ref={stackRef} className="relative overflow-hidden" style={{ height: containerH }}>
+        {displayCards.map((card) => {
+          const isTop = card.stackPosition === 0;
+          const pos = card.stackPosition;
+          const isPending = card.type === "stale_pending";
+          const isOpen = openCard === card.id && isTop;
 
-            return (
-              <motion.div
-                key={card.id}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{
-                  opacity: isTop ? 1 : 0.6,
-                  scale: 1 - pos * 0.04,
-                  top: (cards.length - 1 - pos) * PEEK,
-                  zIndex: cards.length - pos,
-                }}
-                exit={{ opacity: 0, scale: 0.8, x: -200 }}
-                transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                drag={isTop ? "x" : false}
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.7}
-                onDragStart={() => setIsDragging(true)}
-                onDragEnd={handleDragEnd}
-                whileDrag={{ scale: 1.02, cursor: "grabbing" }}
-                onClick={() => {
-                  if (isDragging) return;
-                  if (!isTop) {
-                    setActiveIndex(cards.findIndex((c) => c.id === card.id));
+          return (
+            <motion.div
+              key={card.id}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{
+                opacity: isTop ? 1 : 0.6,
+                scale: 1 - pos * 0.04,
+                top: (cards.length - 1 - pos) * PEEK,
+                zIndex: cards.length - pos,
+              }}
+              exit={{ opacity: 0, scale: 0.8, x: -200 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              drag={isTop ? "x" : false}
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.7}
+              onDragStart={() => setIsDragging(true)}
+              onDragEnd={handleDragEnd}
+              whileDrag={{ scale: 1.02, cursor: "grabbing" }}
+              onClick={() => {
+                if (isDragging) return;
+                if (!isTop) {
+                  setActiveIndex(cards.findIndex((c) => c.id === card.id));
+                  setOpenCard(null);
+                } else {
+                  if (isOpen) {
                     setOpenCard(null);
                   } else {
-                    if (isOpen) {
-                      setOpenCard(null);
-                    } else {
-                      updateAnchor();
-                      setOpenCard(card.id);
-                    }
+                    updateAnchor();
+                    setOpenCard(card.id);
                   }
-                }}
-                className="absolute left-0 right-0 cursor-pointer select-none overflow-hidden"
-                style={{
-                  height: CARD_H,
-                  background: "#f7f7f6",
-                  border: "3px solid #d0cfcc",
-                  borderRadius: 30,
-                  boxShadow: "0 8px 18px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.8)",
-                }}
-              >
-                <div className="flex h-full items-center gap-3 px-4">
-                  {/* Icon */}
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#d0cfcc] bg-white">
-                    {isPending
-                      ? <Clock className="h-4 w-4 text-amber-500" />
-                      : <Send className="h-4 w-4 text-blue-500" />
-                    }
-                  </div>
-                  {/* Text */}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11px] text-[#999] leading-tight">
-                      {isPending ? "Needs follow-up" : "Ready for courier"}
-                    </p>
-                    <p className="truncate text-[14px] font-semibold text-[#1a1a1a] leading-tight mt-0.5 tabular-nums">
-                      {card.count} {card.count === 1 ? "order" : "orders"}
-                    </p>
-                  </div>
-                  {/* Chevron */}
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#bbb]"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+                }
+              }}
+              className="absolute left-0 right-0 cursor-pointer select-none overflow-hidden"
+              style={{
+                height: CARD_H,
+                background: "#f7f7f6",
+                border: "3px solid #d0cfcc",
+                borderRadius: 30,
+                boxShadow: "0 8px 18px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.8)",
+              }}
+            >
+              <div className="flex h-full items-center gap-3 px-4">
+                {/* Icon */}
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#d0cfcc] bg-white">
+                  {isPending
+                    ? <Clock className="h-4 w-4 text-amber-500" />
+                    : <Send className="h-4 w-4 text-blue-500" />
+                  }
                 </div>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Dot indicators */}
-        {cards.length > 1 && (
-          <div className="mt-3 flex justify-center gap-1.5">
-            {cards.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => { setActiveIndex(i); setOpenCard(null); }}
-                className={cn(
-                  "rounded-full transition-all",
-                  i === safeIndex
-                    ? "h-2 w-4 bg-[#999]"
-                    : "h-2 w-2 bg-[#c0c0c0] hover:bg-[#aaa]"
-                )}
-              />
-            ))}
-          </div>
-        )}
+                {/* Text */}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[11px] text-[#999] leading-tight">
+                    {isPending ? "Needs follow-up" : "Ready for courier"}
+                  </p>
+                  <p className="truncate text-[14px] font-semibold text-[#1a1a1a] leading-tight mt-0.5 tabular-nums">
+                    {card.count} {card.count === 1 ? "order" : "orders"}
+                  </p>
+                </div>
+                {/* Chevron */}
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#bbb]"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
+
+      {/* Dot indicators */}
+      {cards.length > 1 && (
+        <div className="mt-3 flex justify-center gap-1.5">
+          {cards.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => { setActiveIndex(i); setOpenCard(null); }}
+              className={cn(
+                "rounded-full transition-all",
+                i === safeIndex
+                  ? "h-2 w-4 bg-[#999]"
+                  : "h-2 w-2 bg-[#c0c0c0] hover:bg-[#aaa]"
+              )}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Portal detail panel */}
       <AnimatePresence>
