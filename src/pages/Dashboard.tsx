@@ -199,53 +199,32 @@ function fmtBDT(n: number) {
   return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 0 });
 }
 
-function makeSparklinePath(values: number[], width = 94, height = 34) {
-  const series = values.length === 0 ? [0, 0] : values.length === 1 ? [values[0], values[0]] : values;
+
+function MiniBarChart({ values }: { values: number[] }) {
+  const series = values.length === 0 ? [0, 0, 0, 0, 0] : values.slice(-7);
   const max = Math.max(...series, 1);
-  const min = Math.min(...series, 0);
-  const range = Math.max(max - min, 1);
-
-  return series
-    .map((value, index) => {
-      const x = (index / (series.length - 1)) * width;
-      const y = height - ((value - min) / range) * (height - 6) - 3;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-function MiniSparkline({ values, tone = "blue" }: { values: number[]; tone?: "blue" | "green" | "red" | "amber" | "neutral" }) {
-  const stroke = {
-    blue: "#0ea5e9",
-    green: "#059669",
-    red: "#ef4444",
-    amber: "#d97706",
-    neutral: "#737373",
-  }[tone];
-  const path = makeSparklinePath(values);
 
   return (
-    <motion.svg
-      viewBox="0 0 94 34"
-      className="h-8 w-20 shrink-0 overflow-visible"
-      fill="none"
-      preserveAspectRatio="none"
+    <motion.div
+      className="flex items-end gap-[3px] h-8 shrink-0"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.25 }}
+      transition={{ duration: 0.3 }}
       aria-hidden="true"
     >
-      <motion.path
-        d={path}
-        stroke={stroke}
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-      />
-    </motion.svg>
+      {series.map((v, i) => {
+        const h = Math.max(4, (v / max) * 32);
+        return (
+          <motion.div
+            key={i}
+            className="w-[4px] rounded-sm bg-black/70"
+            initial={{ height: 0 }}
+            animate={{ height: h }}
+            transition={{ duration: 0.4, delay: i * 0.05, ease: "easeOut" }}
+          />
+        );
+      })}
+    </motion.div>
   );
 }
 
@@ -302,7 +281,6 @@ function FinanceMetric({
   meta,
   metaClassName,
   values,
-  tone = "blue",
 }: {
   label: string;
   loading: boolean;
@@ -313,7 +291,7 @@ function FinanceMetric({
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
 }) {
   return (
-    <div className="group min-w-[160px] flex-1 px-5 py-2.5 transition-colors hover:bg-black/[0.025]">
+    <div className="flex-1 min-w-[160px] rounded-xl border border-black/[0.08] bg-white p-4 transition-all hover:border-black/[0.15]">
       <AnimatePresence mode="wait">
         {loading ? (
           <motion.div
@@ -321,11 +299,11 @@ function FinanceMetric({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="space-y-2"
+            className="space-y-3"
           >
-            <div className="h-3 w-20 animate-pulse rounded bg-black/10" />
-            <div className="h-6 w-24 animate-pulse rounded bg-black/10" />
-            <div className="h-5 w-full animate-pulse rounded bg-black/10" />
+            <div className="h-3 w-20 animate-pulse rounded bg-black/[0.06]" />
+            <div className="h-7 w-28 animate-pulse rounded bg-black/[0.06]" />
+            <div className="h-3 w-16 animate-pulse rounded bg-black/[0.06]" />
           </motion.div>
         ) : (
           <motion.div
@@ -333,36 +311,24 @@ function FinanceMetric({
             initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="flex min-h-[58px] items-end justify-between gap-3"
           >
-            <div className="min-w-0">
-              <DashboardTextEffect
-                as="span"
-                per="word"
-                className="inline-block whitespace-nowrap border-b-2 border-dotted border-black/25 pb-0.5 font-sf-display text-[14px] font-semibold leading-none text-foreground"
-              >
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/40">
                 {label}
-              </DashboardTextEffect>
-              <DashboardTextEffect
-                as="p"
-                per="char"
-                delay={0.18}
-                className="mt-1.5 font-sf-display text-[21px] font-semibold leading-none tracking-tight text-foreground tabular-nums whitespace-nowrap"
-              >
-                {value}
-              </DashboardTextEffect>
-              {meta && (
-                <DashboardTextEffect
-                  as="p"
-                  per="word"
-                  delay={0.28}
-                  className={cn("mt-0.5 whitespace-nowrap text-[11px] font-medium leading-tight text-muted-foreground", metaClassName)}
-                >
-                  {meta}
-                </DashboardTextEffect>
-              )}
+              </p>
+              <MiniBarChart values={values} />
             </div>
-            <MiniSparkline values={values} tone={tone} />
+            <p className="mt-2 font-sf-display text-[26px] font-bold leading-none tracking-tight text-black tabular-nums">
+              {value}
+            </p>
+            {meta && (
+              <div className="mt-3 flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-black/20"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+                <span className={cn("text-[11px] font-medium text-emerald-600", metaClassName)}>
+                  {meta}
+                </span>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -653,18 +619,48 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="relative overflow-hidden rounded-xl border border-black/10 bg-white"
+        className="relative"
       >
         {/* Blur overlay for non-admins */}
         {!isAdmin && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 256 256" fill="currentColor" className="text-black/20">
               <path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z"/>
             </svg>
           </div>
         )}
         <div className={!isAdmin ? "blur-[8px] pointer-events-none select-none" : ""}>
-          <div className="flex flex-col divide-y divide-black/10 lg:flex-row lg:divide-x lg:divide-y-0">
+          {/* Controls row */}
+          <div className="flex items-center justify-end gap-2 mb-3">
+            {!analytics?.fbConfigured && !analyticsLoading && (
+              <a
+                href="/settings"
+                className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="link-connect-facebook"
+              >
+                <Info className="h-3 w-3" />
+                Connect Facebook Ads
+              </a>
+            )}
+            {analytics?.fbError && (
+              <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
+            )}
+            <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
+            <button
+              onClick={() => fetchAnalytics(dateRange)}
+              disabled={analyticsLoading}
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-30"
+              data-testid="button-refresh-analytics"
+              title="Refresh"
+            >
+              {analyticsLoading
+                ? <Spinner size="sm" />
+                : <RefreshCw className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+
+          {/* Metric cards grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <FinanceMetric
               label="Revenue"
               loading={analyticsLoading}
@@ -672,15 +668,14 @@ export default function Dashboard() {
               meta="↗ Live sales"
               metaClassName="text-emerald-600"
               values={metricSparklines.revenue}
-              tone="blue"
             />
             <FinanceMetric
               label="Ad Spend"
               loading={analyticsLoading}
               value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
               meta={!analytics?.fbConfigured && !analyticsLoading ? "Ads not connected" : "Marketing spend"}
+              metaClassName={!analytics?.fbConfigured ? "text-black/40" : undefined}
               values={metricSparklines.adSpend}
-              tone="amber"
             />
             <FinanceMetric
               label="Shipping"
@@ -688,7 +683,6 @@ export default function Dashboard() {
               value={fmtBDT(analytics?.shipping ?? 0)}
               meta="Delivery cost"
               values={metricSparklines.shipping}
-              tone="neutral"
             />
             <FinanceMetric
               label="Cost of Goods"
@@ -696,50 +690,15 @@ export default function Dashboard() {
               value={fmtBDT(analytics?.totalCog ?? 0)}
               meta={analytics?.cogCoverage ? `${analytics.cogCoverage.set}/${analytics.cogCoverage.total} priced` : "Product cost"}
               values={metricSparklines.cog}
-              tone="neutral"
             />
             <FinanceMetric
               label="Net Profit"
               loading={analyticsLoading}
               value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
               meta={profitMargin != null ? `${analytics?.profit != null && analytics.profit >= 0 ? "↗" : "↘"} ${Math.abs(profitMargin).toFixed(1)}% margin` : "Profit health"}
+              metaClassName={analytics?.profit != null && analytics.profit < 0 ? "text-red-500" : undefined}
               values={metricSparklines.profit}
-              tone={analytics?.profit != null && analytics.profit < 0 ? "red" : "green"}
             />
-            <div className="flex min-w-[168px] flex-col justify-center gap-1.5 px-4 py-2.5">
-              <div className="flex items-center justify-end gap-2">
-                {!analytics?.fbConfigured && !analyticsLoading && (
-                  <a
-                    href="/settings"
-                    className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                    data-testid="link-connect-facebook"
-                  >
-                    <Info className="h-3 w-3" />
-                    Connect Facebook Ads
-                  </a>
-                )}
-                {analytics?.fbError && (
-                  <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
-                )}
-                <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
-                <button
-                  onClick={() => fetchAnalytics(dateRange)}
-                  disabled={analyticsLoading}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-30"
-                  data-testid="button-refresh-analytics"
-                  title="Refresh"
-                >
-                  {analyticsLoading
-                    ? <Spinner size="sm" />
-                    : <RefreshCw className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-            <p className="text-right text-[10px] font-medium text-muted-foreground">
-                <DashboardTextEffect as="span" per="char" delay={0.1}>
-                  {fmtRange(dateRange)}
-                </DashboardTextEffect>
-              </p>
-            </div>
           </div>
         </div>
       </motion.div>
