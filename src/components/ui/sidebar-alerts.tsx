@@ -262,35 +262,19 @@ export function SidebarAlerts() {
   return (
     <div className="mb-1.5 px-1">
       {/* Stack */}
-      <div ref={stackRef} className="relative" style={{ height: containerH }}>
+      <div ref={stackRef} className="relative flex flex-col gap-2">
         {displayCards.map((card) => {
           const isTop = card.stackPosition === 0;
-          const pos = card.stackPosition;
           const isPending = card.type === "stale_pending";
           const isOpen = openCard === card.id && isTop;
 
           return (
             <motion.div
               key={card.id}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{
-                opacity: 1,
-                scale: 1 - pos * 0.03,
-                top: (cards.length - 1 - pos) * PEEK,
-                left: 0,
-                zIndex: cards.length - pos,
-                rotate: 0,
-              }}
-              exit={{ opacity: 0, scale: 0.8, x: -200 }}
-              transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              drag={isTop ? "x" : false}
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.7}
-              onDragStart={() => setIsDragging(true)}
-              onDragEnd={handleDragEnd}
-              whileDrag={{ scale: 1.02, cursor: "grabbing" }}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
               onClick={() => {
-                if (isDragging) return;
                 if (!isTop) {
                   setActiveIndex(cards.findIndex((c) => c.id === card.id));
                   setOpenCard(null);
@@ -304,67 +288,35 @@ export function SidebarAlerts() {
                 }
               }}
               className={cn(
-                "absolute right-0 overflow-hidden rounded-xl border cursor-pointer select-none transition-shadow",
-                isOpen ? "shadow-md" : "shadow-sm",
-                isPending
-                  ? isOpen ? "bg-amber-100 border-amber-300" : "bg-amber-50 border-amber-200"
-                  : isOpen ? "bg-blue-100 border-blue-300" : "bg-blue-50 border-blue-200"
+                "overflow-hidden rounded-xl border border-[#C0C0C0] bg-white/80 cursor-pointer select-none transition-all hover:border-[#aaa]"
               )}
-              style={{ height: CARD_H }}
             >
-              <div className="flex h-full items-center justify-between gap-2 px-3 py-1.5">
-                <div className="min-w-0 flex-1">
-                  <SidebarTextEffect
-                    as="span"
-                    per="word"
-                    className={cn(
-                      "inline-block whitespace-nowrap font-sf-display text-[11px] font-medium leading-none",
-                      isPending ? "text-amber-700" : "text-blue-700"
-                    )}
-                  >
-                    {isPending ? "Needs follow-up" : "Ready for courier"}
-                  </SidebarTextEffect>
-                  <SidebarTextEffect
-                    as="p"
-                    per="char"
-                    delay={0.18}
-                    className={cn(
-                      "mt-1 font-sf-display text-[16px] font-semibold leading-none tracking-tight tabular-nums",
-                      isPending ? "text-amber-900" : "text-blue-900"
-                    )}
-                  >
-                    {`${card.count} ${card.count === 1 ? "order" : "orders"}`}
-                  </SidebarTextEffect>
-                </div>
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                {/* Icon */}
                 <div className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
-                  isPending ? "bg-amber-100" : "bg-blue-100"
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#e0e0e0] bg-white",
                 )}>
-                  <img src={AI_CHAT_ICON_URL} alt="" className="h-3.5 w-3.5 object-contain opacity-80" />
+                  {isPending
+                    ? <Clock className="h-4 w-4 text-amber-500" />
+                    : <Send className="h-4 w-4 text-blue-500" />
+                  }
                 </div>
+                {/* Text */}
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] text-[#999] leading-tight">
+                    {isPending ? "Needs follow-up" : "Ready for courier"}
+                  </p>
+                  <p className="text-[14px] font-semibold text-[#1a1a1a] leading-tight mt-0.5 tabular-nums">
+                    {card.count} {card.count === 1 ? "order" : "orders"}
+                  </p>
+                </div>
+                {/* Chevron */}
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#bbb]"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
               </div>
             </motion.div>
           );
         })}
       </div>
-
-      {/* Dot indicators */}
-      {cards.length > 1 && (
-        <div className="mt-2 flex justify-center gap-1">
-          {cards.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => { setActiveIndex(i); setOpenCard(null); }}
-              className={cn(
-                "rounded-full transition-all",
-                i === safeIndex
-                  ? "h-1.5 w-3 bg-foreground/30"
-                  : "h-1.5 w-1.5 bg-foreground/15 hover:bg-foreground/25"
-              )}
-            />
-          ))}
-        </div>
-      )}
 
       {/* Portal detail panel */}
       <AnimatePresence>
