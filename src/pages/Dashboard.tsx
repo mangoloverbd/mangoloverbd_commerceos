@@ -207,14 +207,20 @@ function MiniBarChart({ values }: { values: number[]; color?: string; gradientId
   const max = Math.max(...bars, 1);
 
   return (
-    <div className="flex items-end gap-[3px] h-10 shrink-0">
+    <div className="flex items-end shrink-0" style={{ gap: "10px", height: "64px" }}>
       {bars.map((v, i) => {
-        const height = Math.max(4, (v / max) * 100);
+        const isActive = i === bars.length - 1;
+        const height = Math.max(8, (v / max) * 100);
         return (
           <div
             key={i}
-            className="w-[3px] rounded-full bg-black/20"
-            style={{ height: `${height}%` }}
+            className="rounded-full"
+            style={{
+              width: isActive ? "5px" : "4px",
+              height: `${height}%`,
+              backgroundColor: isActive ? "#232323" : "#BFBFBC",
+              opacity: isActive ? 1 : 0.35,
+            }}
           />
         );
       })}
@@ -275,8 +281,6 @@ function FinanceMetric({
   meta,
   metaClassName,
   values,
-  color = "#10b981",
-  gradientId = "defaultGradient",
   positive = true,
 }: {
   label: string;
@@ -291,7 +295,16 @@ function FinanceMetric({
   positive?: boolean;
 }) {
   return (
-    <div className="flex-1 min-w-[160px] rounded-2xl border border-black/[0.06] bg-white p-5 flex flex-col justify-between">
+    <div
+      className="flex-1 min-w-[160px] overflow-hidden"
+      style={{
+        background: "#E9E8E5",
+        borderRadius: "28px",
+        padding: "6px",
+        border: "1.5px solid rgba(0,0,0,0.08)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.7)",
+      }}
+    >
       <AnimatePresence mode="wait">
         {loading ? (
           <motion.div
@@ -299,11 +312,16 @@ function FinanceMetric({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="space-y-3"
+            style={{
+              background: "#F7F7F6",
+              borderRadius: "22px",
+              padding: "28px",
+            }}
+            className="space-y-4"
           >
-            <div className="h-3 w-24 animate-pulse rounded bg-black/[0.06]" />
-            <div className="h-8 w-28 animate-pulse rounded bg-black/[0.06]" />
-            <div className="h-5 w-full animate-pulse rounded bg-black/[0.04]" />
+            <div className="h-5 w-28 animate-pulse rounded-lg" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div className="h-12 w-36 animate-pulse rounded-lg" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div className="h-8 w-full animate-pulse rounded-lg" style={{ background: "rgba(0,0,0,0.04)" }} />
           </motion.div>
         ) : (
           <motion.div
@@ -311,33 +329,77 @@ function FinanceMetric({
             initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="flex flex-col h-full"
           >
-            {/* Label */}
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-black/40">
-              {label}
-            </p>
-
-            {/* Value + Bar chart row */}
-            <div className="mt-3 flex items-end justify-between gap-3">
-              <p className="text-[28px] font-bold leading-none tracking-tight text-black/85 tabular-nums">
-                {value}
+            {/* Inner white panel */}
+            <div
+              style={{
+                background: "#F7F7F6",
+                borderRadius: "22px",
+                border: "1px solid rgba(0,0,0,0.06)",
+                padding: "28px",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 3px rgba(0,0,0,0.08)",
+              }}
+            >
+              {/* Label */}
+              <p
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  letterSpacing: "0.08em",
+                  color: "#7F7F7D",
+                  textTransform: "uppercase",
+                  margin: 0,
+                }}
+              >
+                {label}
               </p>
-              <MiniBarChart values={values} color={color} gradientId={gradientId} />
+
+              {/* Value + Bar chart row */}
+              <div className="mt-4 flex items-end justify-between">
+                <p
+                  className="tabular-nums"
+                  style={{
+                    fontSize: "36px",
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    color: "#222A38",
+                    margin: 0,
+                  }}
+                >
+                  {value}
+                </p>
+                <MiniBarChart values={values} />
+              </div>
             </div>
 
-            {/* Bottom row: arrow + meta */}
+            {/* Bottom section */}
             {meta && (
-              <div className="mt-4 flex items-center justify-between pt-2 border-t border-black/[0.04]">
-                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center">
+              <div
+                className="flex items-center justify-between"
+                style={{
+                  padding: "14px 20px",
+                  background: "#E9E8E5",
+                  borderRadius: "0 0 22px 22px",
+                }}
+              >
+                {/* Trend icon */}
+                <div
+                  className="flex items-center justify-center"
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "50%",
+                    background: "rgba(0,0,0,0.08)",
+                  }}
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="12"
                     height="12"
                     viewBox="0 0 24 24"
                     fill="none"
-                    stroke={positive ? "#10b981" : "#ef4444"}
-                    strokeWidth="2.5"
+                    stroke="#FFFFFF"
+                    strokeWidth="3"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
@@ -348,7 +410,16 @@ function FinanceMetric({
                     )}
                   </svg>
                 </div>
-                <span className={cn("text-[12px] font-medium text-emerald-600", metaClassName)}>
+
+                {/* Growth text */}
+                <span
+                  className={cn("", metaClassName)}
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#1BA475",
+                  }}
+                >
                   {meta}
                 </span>
               </div>
@@ -690,26 +761,21 @@ export default function Dashboard() {
           </div>
 
           {/* Metric cards grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <FinanceMetric
               label="Revenue"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.revenue ?? 0)}
-              meta="+0 live sales"
-              metaClassName="text-emerald-600"
+              meta="Live sales"
               values={metricSparklines.revenue}
-              color="#10b981"
-              gradientId="revenueGrad"
             />
             <FinanceMetric
               label="Ad Spend"
               loading={analyticsLoading}
               value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
               meta={!analytics?.fbConfigured && !analyticsLoading ? "Ads not connected" : "Marketing spend"}
-              metaClassName={!analytics?.fbConfigured ? "text-black/40" : undefined}
+              metaClassName={!analytics?.fbConfigured ? "color-[#7D7D7B]" : undefined}
               values={metricSparklines.adSpend}
-              color="#f59e0b"
-              gradientId="adSpendGrad"
             />
             <FinanceMetric
               label="Shipping"
@@ -717,8 +783,6 @@ export default function Dashboard() {
               value={fmtBDT(analytics?.shipping ?? 0)}
               meta="Delivery cost"
               values={metricSparklines.shipping}
-              color="#6366f1"
-              gradientId="shippingGrad"
             />
             <FinanceMetric
               label="Cost of Goods"
@@ -726,18 +790,14 @@ export default function Dashboard() {
               value={fmtBDT(analytics?.totalCog ?? 0)}
               meta={analytics?.cogCoverage ? `${analytics.cogCoverage.set}/${analytics.cogCoverage.total} priced` : "Product cost"}
               values={metricSparklines.cog}
-              color="#8b5cf6"
-              gradientId="cogGrad"
             />
             <FinanceMetric
               label="Net Profit"
               loading={analyticsLoading}
               value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
               meta={profitMargin != null ? `${analytics?.profit != null && analytics.profit >= 0 ? "+" : ""}${Math.abs(profitMargin).toFixed(1)}% margin` : "Profit health"}
-              metaClassName={analytics?.profit != null && analytics.profit < 0 ? "text-red-500" : undefined}
+              metaClassName={analytics?.profit != null && analytics.profit < 0 ? "!text-red-500" : undefined}
               values={metricSparklines.profit}
-              color={analytics?.profit != null && analytics.profit < 0 ? "#ef4444" : "#10b981"}
-              gradientId="profitGrad"
               positive={analytics?.profit == null || analytics.profit >= 0}
             />
           </div>

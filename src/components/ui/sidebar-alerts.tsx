@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Clock, Send, X, AlertTriangle } from "lucide-react";
 import { useSidebarAlerts, type SidebarAlert } from "@/hooks/useSidebarAlerts";
 import { formatDistanceToNow } from "date-fns";
+import { TextEffect } from "@/components/ui/text-effect";
 
 const SWIPE_THRESHOLD = 50;
 const AI_CHAT_ICON_URL = "https://img.icons8.com/material-rounded/24/bard--v2.png";
@@ -18,6 +19,52 @@ type CardDef = {
   sample: SidebarAlert;
   orders: SidebarAlert[];
 };
+
+const sidebarTextEffectVariants = {
+  container: {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.045 },
+    },
+  },
+  item: {
+    hidden: { opacity: 0, y: 8, filter: "blur(6px)" },
+    visible: {
+      opacity: 1,
+      y: 0,
+      filter: "blur(0px)",
+      transition: { duration: 0.35, ease: "easeOut" },
+    },
+  },
+};
+
+function SidebarTextEffect({
+  children,
+  className,
+  as = "span",
+  per = "word",
+  delay = 0.08,
+}: {
+  children: string;
+  className?: string;
+  as?: "span" | "p";
+  per?: "word" | "char";
+  delay?: number;
+}) {
+  return (
+    <TextEffect
+      key={children}
+      as={as}
+      per={per}
+      delay={delay}
+      variants={sidebarTextEffectVariants}
+      className={className}
+    >
+      {children}
+    </TextEffect>
+  );
+}
 
 function DetailPanel({
   card,
@@ -202,15 +249,20 @@ export function SidebarAlerts() {
     stackPosition: (i - safeIndex + cards.length) % cards.length,
   }));
 
-  const CARD_H = 64;
+  const CARD_H = 52;
   const PEEK = 6; // px each card peeks above
   const containerH = CARD_H + (cards.length - 1) * PEEK;
   const activeCard = cards[safeIndex];
+  const todayLabel = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
 
   return (
     <div className="mb-1.5 px-1">
       {/* Stack */}
-      <div ref={stackRef} className="relative overflow-hidden" style={{ height: containerH }}>
+      <div ref={stackRef} className="relative" style={{ height: containerH }}>
         {displayCards.map((card) => {
           const isTop = card.stackPosition === 0;
           const pos = card.stackPosition;
@@ -222,10 +274,12 @@ export function SidebarAlerts() {
               key={card.id}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{
-                opacity: isTop ? 1 : 0.6,
-                scale: 1 - pos * 0.04,
+                opacity: 1,
+                scale: 1 - pos * 0.03,
                 top: (cards.length - 1 - pos) * PEEK,
+                left: 0,
                 zIndex: cards.length - pos,
+                rotate: 0,
               }}
               exit={{ opacity: 0, scale: 0.8, x: -200 }}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
@@ -249,12 +303,15 @@ export function SidebarAlerts() {
                   }
                 }
               }}
-              className="absolute left-0 right-0 cursor-pointer select-none overflow-hidden border border-[#C0C0C0] bg-white rounded-[10px]"
+              className={cn(
+                "absolute right-0 overflow-hidden rounded-xl border border-[#C0C0C0] bg-white/80 cursor-pointer select-none transition-shadow",
+                isOpen && "border-[#aaa] shadow-md"
+              )}
               style={{ height: CARD_H }}
             >
-              <div className="flex h-full items-center gap-3 px-4">
+              <div className="flex h-full items-center gap-3 px-3 py-1.5">
                 {/* Icon */}
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#d0cfcc] bg-white">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#e0e0e0] bg-white">
                   {isPending
                     ? <Clock className="h-4 w-4 text-amber-500" />
                     : <Send className="h-4 w-4 text-blue-500" />
@@ -262,10 +319,10 @@ export function SidebarAlerts() {
                 </div>
                 {/* Text */}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] text-[#999] leading-tight">
+                  <p className="text-[11px] text-[#999] leading-tight">
                     {isPending ? "Needs follow-up" : "Ready for courier"}
                   </p>
-                  <p className="truncate text-[14px] font-semibold text-[#1a1a1a] leading-tight mt-0.5 tabular-nums">
+                  <p className="text-[14px] font-semibold text-[#1a1a1a] leading-tight mt-0.5 tabular-nums">
                     {card.count} {card.count === 1 ? "order" : "orders"}
                   </p>
                 </div>
@@ -279,7 +336,7 @@ export function SidebarAlerts() {
 
       {/* Dot indicators */}
       {cards.length > 1 && (
-        <div className="mt-3 flex justify-center gap-1.5">
+        <div className="mt-2 flex justify-center gap-1">
           {cards.map((_, i) => (
             <button
               key={i}
@@ -287,8 +344,8 @@ export function SidebarAlerts() {
               className={cn(
                 "rounded-full transition-all",
                 i === safeIndex
-                  ? "h-2 w-4 bg-[#999]"
-                  : "h-2 w-2 bg-[#c0c0c0] hover:bg-[#aaa]"
+                  ? "h-1.5 w-3 bg-foreground/30"
+                  : "h-1.5 w-1.5 bg-foreground/15 hover:bg-foreground/25"
               )}
             />
           ))}
