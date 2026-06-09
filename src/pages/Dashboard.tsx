@@ -207,7 +207,7 @@ function MiniBarChart({ values }: { values: number[]; color?: string; gradientId
   const max = Math.max(...bars, 1);
 
   return (
-    <div className="flex items-end shrink-0" style={{ gap: "5px", height: "32px" }}>
+    <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
       {bars.map((v, i) => {
         const isActive = i === bars.length - 1;
         const height = Math.max(10, (v / max) * 100);
@@ -300,7 +300,7 @@ function FinanceMetric({
       style={{
         background: "#E9E8E5",
         borderRadius: "14px",
-        padding: "5px",
+        padding: "4px",
         border: "1.5px solid rgba(0,0,0,0.07)",
         boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
       }}
@@ -315,12 +315,12 @@ function FinanceMetric({
             style={{
               background: "#F7F7F6",
               borderRadius: "10px",
-              padding: "16px 18px",
+              padding: "12px 14px",
             }}
-            className="space-y-3"
+            className="space-y-2"
           >
-            <div className="h-3 w-20 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
-            <div className="h-7 w-24 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div className="h-2.5 w-16 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div className="h-5 w-20 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
           </motion.div>
         ) : (
           <motion.div
@@ -335,7 +335,7 @@ function FinanceMetric({
                 background: "#F7F7F6",
                 borderRadius: "10px",
                 border: "1px solid rgba(0,0,0,0.05)",
-                padding: "16px 18px",
+                padding: "12px 14px",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
               }}
             >
@@ -354,11 +354,11 @@ function FinanceMetric({
               </p>
 
               {/* Value + Bar chart row */}
-              <div className="mt-2.5 flex items-end justify-between">
+              <div className="mt-1.5 flex items-end justify-between">
                 <p
                   className="tabular-nums"
                   style={{
-                    fontSize: "24px",
+                    fontSize: "22px",
                     fontWeight: 700,
                     lineHeight: 1,
                     color: "#222A38",
@@ -376,23 +376,23 @@ function FinanceMetric({
               <div
                 className="flex items-center justify-between"
                 style={{
-                  padding: "8px 14px",
+                  padding: "6px 12px",
                 }}
               >
                 {/* Trend icon */}
                 <div
                   className="flex items-center justify-center"
                   style={{
-                    width: "18px",
-                    height: "18px",
+                    width: "16px",
+                    height: "16px",
                     borderRadius: "50%",
                     background: "rgba(0,0,0,0.08)",
                   }}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    width="9"
-                    height="9"
+                    width="8"
+                    height="8"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="#FFFFFF"
@@ -412,7 +412,7 @@ function FinanceMetric({
                 <span
                   className={cn("", metaClassName)}
                   style={{
-                    fontSize: "11px",
+                    fontSize: "10px",
                     fontWeight: 500,
                     color: "#1BA475",
                   }}
