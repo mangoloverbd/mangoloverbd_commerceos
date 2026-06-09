@@ -299,7 +299,7 @@ function FinanceMetric({
       className="flex-1 min-w-[140px] overflow-hidden"
       style={{
         background: "#E9E8E5",
-        borderRadius: "20px",
+        borderRadius: "14px",
         padding: "5px",
         border: "1.5px solid rgba(0,0,0,0.07)",
         boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
@@ -314,7 +314,7 @@ function FinanceMetric({
             exit={{ opacity: 0 }}
             style={{
               background: "#F7F7F6",
-              borderRadius: "16px",
+              borderRadius: "10px",
               padding: "16px 18px",
             }}
             className="space-y-3"
@@ -333,7 +333,7 @@ function FinanceMetric({
             <div
               style={{
                 background: "#F7F7F6",
-                borderRadius: "16px",
+                borderRadius: "10px",
                 border: "1px solid rgba(0,0,0,0.05)",
                 padding: "16px 18px",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
