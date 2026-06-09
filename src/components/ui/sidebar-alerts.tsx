@@ -304,7 +304,7 @@ export function SidebarAlerts() {
                 }
               }}
               className={cn(
-                "absolute right-0 overflow-hidden rounded-xl border border-[#C0C0C0] bg-white/80 cursor-pointer select-none transition-shadow",
+                "absolute right-0 overflow-hidden rounded-xl border border-[#C0C0C0] bg-white cursor-pointer select-none transition-shadow",
                 isOpen && "border-[#aaa] shadow-md"
               )}
               style={{ height: CARD_H }}
