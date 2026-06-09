@@ -201,46 +201,23 @@ function fmtBDT(n: number) {
 }
 
 
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 
-function MiniAreaChart({ values, color = "var(--color-emerald-500)", gradientId }: { values: number[]; color?: string; gradientId: string }) {
-  const series = values.length === 0 ? [{ value: 0 }, { value: 0 }] : values.map((v) => ({ value: v }));
+function MiniBarChart({ values }: { values: number[]; color?: string; gradientId?: string }) {
+  const bars = values.length === 0 ? [0, 0, 0, 0, 0, 0, 0] : values.slice(-7);
+  const max = Math.max(...bars, 1);
 
   return (
-    <div className="w-28 h-14 shrink-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={series} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.3} />
-              <stop offset="100%" stopColor={color} stopOpacity={0.05} />
-            </linearGradient>
-          </defs>
-          <Tooltip
-            cursor={{ stroke: color, strokeWidth: 1, strokeDasharray: "2 2" }}
-            content={({ active, payload }) => {
-              if (active && payload && payload.length) {
-                const val = payload[0].value as number;
-                return (
-                  <div className="bg-white/95 backdrop-blur-sm border border-black/[0.08] shadow-lg rounded-lg px-2 py-1 pointer-events-none">
-                    <p className="text-[11px] font-semibold text-black tabular-nums">৳{val.toLocaleString()}</p>
-                  </div>
-                );
-              }
-              return null;
-            }}
+    <div className="flex items-end gap-[3px] h-10 shrink-0">
+      {bars.map((v, i) => {
+        const height = Math.max(4, (v / max) * 100);
+        return (
+          <div
+            key={i}
+            className="w-[3px] rounded-full bg-black/20"
+            style={{ height: `${height}%` }}
           />
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke={color}
-            fill={`url(#${gradientId})`}
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4, fill: color, stroke: "white", strokeWidth: 2 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+        );
+      })}
     </div>
   );
 }
@@ -300,6 +277,7 @@ function FinanceMetric({
   values,
   color = "#10b981",
   gradientId = "defaultGradient",
+  positive = true,
 }: {
   label: string;
   loading: boolean;
@@ -310,9 +288,10 @@ function FinanceMetric({
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
   color?: string;
   gradientId?: string;
+  positive?: boolean;
 }) {
   return (
-    <div className="flex-1 min-w-[160px] rounded-xl border border-[#E0E0E0] bg-white p-4">
+    <div className="flex-1 min-w-[160px] rounded-2xl border border-black/[0.06] bg-white p-5 flex flex-col justify-between">
       <AnimatePresence mode="wait">
         {loading ? (
           <motion.div
@@ -322,9 +301,9 @@ function FinanceMetric({
             exit={{ opacity: 0 }}
             className="space-y-3"
           >
-            <div className="h-3 w-20 animate-pulse rounded bg-black/[0.06]" />
-            <div className="h-7 w-28 animate-pulse rounded bg-black/[0.06]" />
-            <div className="h-12 w-full animate-pulse rounded bg-black/[0.04]" />
+            <div className="h-3 w-24 animate-pulse rounded bg-black/[0.06]" />
+            <div className="h-8 w-28 animate-pulse rounded bg-black/[0.06]" />
+            <div className="h-5 w-full animate-pulse rounded bg-black/[0.04]" />
           </motion.div>
         ) : (
           <motion.div
@@ -332,20 +311,44 @@ function FinanceMetric({
             initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
+            className="flex flex-col h-full"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-black/40">
+            {/* Label */}
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-black/40">
               {label}
             </p>
-            <div className="mt-2 flex items-end justify-between gap-2">
-              <p className="font-sf-display text-[26px] font-bold leading-none tracking-tight text-black tabular-nums">
+
+            {/* Value + Bar chart row */}
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <p className="text-[28px] font-bold leading-none tracking-tight text-black/85 tabular-nums">
                 {value}
               </p>
-              <MiniAreaChart values={values} color={color} gradientId={gradientId} />
+              <MiniBarChart values={values} color={color} gradientId={gradientId} />
             </div>
+
+            {/* Bottom row: arrow + meta */}
             {meta && (
-              <div className="mt-3 flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-black/20"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
-                <span className={cn("text-[11px] font-medium text-emerald-600", metaClassName)}>
+              <div className="mt-4 flex items-center justify-between pt-2 border-t border-black/[0.04]">
+                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={positive ? "#10b981" : "#ef4444"}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    {positive ? (
+                      <polyline points="18 15 12 9 6 15" />
+                    ) : (
+                      <polyline points="6 9 12 15 18 9" />
+                    )}
+                  </svg>
+                </div>
+                <span className={cn("text-[12px] font-medium text-emerald-600", metaClassName)}>
                   {meta}
                 </span>
               </div>
@@ -692,7 +695,7 @@ export default function Dashboard() {
               label="Revenue"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.revenue ?? 0)}
-              meta="↗ Live sales"
+              meta="+0 live sales"
               metaClassName="text-emerald-600"
               values={metricSparklines.revenue}
               color="#10b981"
@@ -730,11 +733,12 @@ export default function Dashboard() {
               label="Net Profit"
               loading={analyticsLoading}
               value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
-              meta={profitMargin != null ? `${analytics?.profit != null && analytics.profit >= 0 ? "↗" : "↘"} ${Math.abs(profitMargin).toFixed(1)}% margin` : "Profit health"}
+              meta={profitMargin != null ? `${analytics?.profit != null && analytics.profit >= 0 ? "+" : ""}${Math.abs(profitMargin).toFixed(1)}% margin` : "Profit health"}
               metaClassName={analytics?.profit != null && analytics.profit < 0 ? "text-red-500" : undefined}
               values={metricSparklines.profit}
               color={analytics?.profit != null && analytics.profit < 0 ? "#ef4444" : "#10b981"}
               gradientId="profitGrad"
+              positive={analytics?.profit == null || analytics.profit >= 0}
             />
           </div>
         </div>
