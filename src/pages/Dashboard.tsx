@@ -355,18 +355,14 @@ function FinanceMetric({
 
               {/* Value + Bar chart row */}
               <div className="mt-1.5 flex items-end justify-between">
-                <p
-                  className="tabular-nums"
-                  style={{
-                    fontSize: "22px",
-                    fontWeight: 700,
-                    lineHeight: 1,
-                    color: "#222A38",
-                    margin: 0,
-                  }}
+                <DashboardTextEffect
+                  as="p"
+                  per="char"
+                  delay={0.12}
+                  className="m-0 text-[22px] font-bold leading-none text-[#222A38] tabular-nums"
                 >
                   {value}
-                </p>
+                </DashboardTextEffect>
                 <MiniBarChart values={values} />
               </div>
             </div>

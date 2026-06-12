@@ -923,7 +923,7 @@ export default function Products() {
                         {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
                           <div className="px-4 pt-4 pb-3">
-                            <div className="flex items-center gap-1.5">
+                            <div className="relative flex w-full">
                               <div className="relative flex-1">
                                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
                                 <input
@@ -931,7 +931,7 @@ export default function Products() {
                                   type="number" min={0} value={cogVal}
                                   onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                   onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                  className={cn(INPUT_CLS, "h-9 rounded-md pl-7 pr-3")}
+                                  className={cn(INPUT_CLS, "h-9 pl-7 pr-11")}
                                 />
                               </div>
                               <AnimatePresence>
@@ -943,7 +943,7 @@ export default function Products() {
                                     data-testid={`button-save-metrics-${product.id}`}
                                     onClick={() => saveCog(product)}
                                     disabled={isSaving}
-                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                                    className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-md bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
                                   >
                                     {isSaving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
                                   </motion.button>
