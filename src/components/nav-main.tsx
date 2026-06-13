@@ -61,7 +61,7 @@ const navIconMotion =
     "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#1a1a1a] group-hover/nav-button:-translate-y-0.5 group-hover/nav-button:-rotate-6 group-hover/nav-button:scale-125 group-hover/nav-button:text-[#1a1a1a]";
 
 const activeNavItemClass =
-    "bg-[#E9E8E5] rounded-[14px] border-[1.5px] border-black/[0.16] text-[#1a1a1a] shadow-[0_2px_6px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.7)]";
+    "bg-[#E9E8E5] !rounded-[14px] border-[1.5px] border-black/[0.16] text-[#1a1a1a] shadow-[0_2px_6px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.7)]";
 
 export default function DashboardNavigation({ sections }: { sections: NavSection[] }) {
     const { state } = useSidebar();
