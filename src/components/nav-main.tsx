@@ -60,6 +60,9 @@ const inactiveIconStyle = { "--fillg": "#666666" } as React.CSSProperties;
 const navIconMotion =
     "transform-gpu transition-all duration-300 ease-out group-hover/nav-link:-translate-y-0.5 group-hover/nav-link:-rotate-6 group-hover/nav-link:scale-125 group-hover/nav-link:text-[#1a1a1a] group-hover/nav-button:-translate-y-0.5 group-hover/nav-button:-rotate-6 group-hover/nav-button:scale-125 group-hover/nav-button:text-[#1a1a1a]";
 
+const activeNavItemClass =
+    "bg-[#E9E8E5] rounded-[14px] border-[1.5px] border-black/[0.07] text-[#1a1a1a] shadow-[0_2px_6px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.7)]";
+
 export default function DashboardNavigation({ sections }: { sections: NavSection[] }) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
@@ -115,9 +118,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 tooltip={route.title}
                                                 className={cn(
                                                     "mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all",
-                                                    isActive
-                                                        ? "bg-white border border-[#C0C0C0] rounded-lg text-[#1a1a1a]"
-                                                        : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
+                                                    isActive ? activeNavItemClass : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                 )}
                                             >
                                                 <Link to={route.link} className="group/nav-link flex h-full w-full items-center justify-center">
@@ -169,9 +170,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             tooltip={route.title}
                                                             className={cn(
                                                                 "group/nav-button h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
-                                                                isActive
-                                                                    ? "bg-white border border-[#C0C0C0] text-[#1a1a1a]"
-                                                                    : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
+                                                                isActive ? activeNavItemClass : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                             )}
                                                         >
                                                             <span className={cn(
@@ -195,9 +194,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                             asChild
                                                                             className={cn(
                                                                                 "h-6 rounded-md font-sf-text text-[11.5px] font-medium tracking-normal transition-all",
-                                                                                subActive
-                                                                                    ? "bg-white border border-[#C0C0C0] text-[#1a1a1a]"
-                                                                                    : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
+                                                                                subActive ? activeNavItemClass : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                                             )}
                                                                         >
                                                                             <Link
@@ -231,9 +228,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     tooltip={route.title}
                                                     className={cn(
                                                         "h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
-                                                       isActive
-                                                           ? "bg-white border border-[#C0C0C0] rounded-lg text-[#1a1a1a]"
-                                                           : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
+                                                       isActive ? activeNavItemClass : "text-[#666] hover:bg-black/5 hover:text-[#1a1a1a]"
                                                     )}
                                                 >
                                                     <Link
