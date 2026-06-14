@@ -50,6 +50,7 @@ function ReturnsMetric({
   valueClassName = "text-black",
   subValueClassName = "text-black/30",
   sparklineValues = [],
+  loading = false,
 }: {
   label: string;
   value: string;
@@ -57,6 +58,7 @@ function ReturnsMetric({
   valueClassName?: string;
   subValueClassName?: string;
   sparklineValues?: number[];
+  loading?: boolean;
 }) {
   return (
     <div
@@ -69,59 +71,86 @@ function ReturnsMetric({
       }}
       className="min-w-0"
     >
-      <div
-        style={{
-          background: "#F7F7F6",
-          borderRadius: "10px",
-          border: "1px solid rgba(0,0,0,0.05)",
-          padding: "12px 14px",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
-        }}
-      >
-        <p
-          style={{
-            fontSize: "10px",
-            fontWeight: 500,
-            letterSpacing: "0.08em",
-            color: "#7F7F7D",
-            textTransform: "uppercase",
-            margin: 0,
-          }}
-        >
-          {label}
-        </p>
-
-        <div className="mt-1.5 flex items-end justify-between">
-          <TextEffect
-            as="p"
-            per="char"
-            delay={0.12}
-            className={`m-0 text-[22px] font-bold leading-none tabular-nums ${valueClassName}`}
+      <AnimatePresence mode="wait">
+        {loading ? (
+          <motion.div
+            key="skeleton"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              background: "#F7F7F6",
+              borderRadius: "10px",
+              border: "1px solid rgba(0,0,0,0.05)",
+              padding: "12px 14px",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
+            }}
+            className="space-y-2"
           >
-            {value}
-          </TextEffect>
-          {sparklineValues.length > 0 && (
-            <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
-              {sparklineValues.slice(-7).map((v, i) => {
-                const isActive = i === sparklineValues.length - 1;
-                const max = Math.max(...sparklineValues.slice(-7), 1);
-                const height = Math.max(10, (v / max) * 100);
-                return (
-                  <div
-                    key={i}
-                    className="rounded-full"
-                    style={{
-                      width: isActive ? "4px" : "3px",
-                      height: `${height}%`,
-                      backgroundColor: isActive ? "#232323" : "#BFBFBC",
-                      opacity: isActive ? 1 : 0.4,
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
+            <div className="h-2.5 w-16 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div className="h-5 w-20 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div className="h-3 w-24 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="value"
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            <div
+              style={{
+                background: "#F7F7F6",
+                borderRadius: "10px",
+                border: "1px solid rgba(0,0,0,0.05)",
+                padding: "12px 14px",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 500,
+                  letterSpacing: "0.08em",
+                  color: "#7F7F7D",
+                  textTransform: "uppercase",
+                  margin: 0,
+                }}
+              >
+                {label}
+              </p>
+
+              <div className="mt-1.5 flex items-end justify-between">
+                <TextEffect
+                  as="p"
+                  per="char"
+                  delay={0.12}
+                  className={`m-0 text-[22px] font-bold leading-none tabular-nums ${valueClassName}`}
+                >
+                  {value}
+                </TextEffect>
+                {sparklineValues.length > 0 && (
+                  <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
+                    {sparklineValues.slice(-7).map((v, i) => {
+                      const isActive = i === sparklineValues.length - 1;
+                      const max = Math.max(...sparklineValues.slice(-7), 1);
+                      const height = Math.max(10, (v / max) * 100);
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-full"
+                          style={{
+                            width: isActive ? "4px" : "3px",
+                            height: `${height}%`,
+                            backgroundColor: isActive ? "#232323" : "#BFBFBC",
+                            opacity: isActive ? 1 : 0.4,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
         {subValue && (
           <div className="flex items-center justify-between mt-3 pt-2 border-t border-black/[0.05]">
@@ -156,7 +185,10 @@ function ReturnsMetric({
             </span>
           </div>
         )}
-      </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -277,17 +309,22 @@ export default function Returns() {
         <div className="grid grid-cols-3 gap-4 border-b border-black/10 px-4 py-4 lg:px-6">
           <ReturnsMetric
             label="Lost Revenue"
-            value={`৳${summary.totalLostRevenue.toLocaleString()}`}
+            value={isLoading ? "—" : `৳${summary.totalLostRevenue.toLocaleString()}`}
+            subValue={isLoading ? "Loading..." : `${summary.total} orders lost`}
+            loading={isLoading}
           />
           <ReturnsMetric
             label="Courier Fees Lost"
-            value={`৳${summary.totalCourierFeesLost.toLocaleString()}`}
+            value={isLoading ? "—" : `৳${summary.totalCourierFeesLost.toLocaleString()}`}
+            subValue={isLoading ? "Loading..." : `${summary.total} fees`}
+            loading={isLoading}
           />
           <ReturnsMetric
             label="Return Rate"
-            value={`${summary.total}`}
+            value={isLoading ? "—" : `${summary.total}`}
             valueClassName="text-red-600"
-            subValue={`${summary.pending} pending · ${summary.processing} processing`}
+            subValue={isLoading ? "Loading..." : `${summary.pending} pending · ${summary.processing} processing`}
+            loading={isLoading}
           />
         </div>
 
