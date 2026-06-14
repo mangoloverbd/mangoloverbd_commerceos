@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -12,6 +12,7 @@ import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 import { format } from "date-fns";
 import { AnimatedText } from "@/components/ui/animated-text";
+import { TextEffect } from "@/components/ui/text-effect";
 
 interface ReturnOrder {
   id: string;
@@ -42,13 +43,131 @@ interface ReturnsSummary {
 
 type FilterTab = "all" | "pending" | "processing" | "completed";
 
+function ReturnsMetric({
+  label,
+  value,
+  subValue,
+  valueClassName = "text-black",
+  subValueClassName = "text-black/30",
+  sparklineValues = [],
+}: {
+  label: string;
+  value: string;
+  subValue?: string;
+  valueClassName?: string;
+  subValueClassName?: string;
+  sparklineValues?: number[];
+}) {
+  return (
+    <div
+      style={{
+        background: "#E9E8E5",
+        borderRadius: "14px",
+        padding: "4px",
+        border: "1.5px solid rgba(0,0,0,0.07)",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
+      }}
+      className="min-w-0"
+    >
+      <div
+        style={{
+          background: "#F7F7F6",
+          borderRadius: "10px",
+          border: "1px solid rgba(0,0,0,0.05)",
+          padding: "12px 14px",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
+        }}
+      >
+        <p
+          style={{
+            fontSize: "10px",
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            color: "#7F7F7D",
+            textTransform: "uppercase",
+            margin: 0,
+          }}
+        >
+          {label}
+        </p>
+
+        <div className="mt-1.5 flex items-end justify-between">
+          <TextEffect
+            as="p"
+            per="char"
+            delay={0.12}
+            className={`m-0 text-[22px] font-bold leading-none tabular-nums ${valueClassName}`}
+          >
+            {value}
+          </TextEffect>
+          {sparklineValues.length > 0 && (
+            <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
+              {sparklineValues.slice(-7).map((v, i) => {
+                const isActive = i === sparklineValues.length - 1;
+                const max = Math.max(...sparklineValues.slice(-7), 1);
+                const height = Math.max(10, (v / max) * 100);
+                return (
+                  <div
+                    key={i}
+                    className="rounded-full"
+                    style={{
+                      width: isActive ? "4px" : "3px",
+                      height: `${height}%`,
+                      backgroundColor: isActive ? "#232323" : "#BFBFBC",
+                      opacity: isActive ? 1 : 0.4,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {subValue && (
+          <div className="flex items-center justify-between mt-3 pt-2 border-t border-black/[0.05]">
+            <div
+              className="flex items-center justify-center"
+              style={{
+                width: "16px",
+                height: "16px",
+                borderRadius: "50%",
+                background: "rgba(0,0,0,0.08)",
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="8"
+                height="8"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#FFFFFF"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="18 15 12 9 6 15" />
+              </svg>
+            </div>
+            <span
+              className="text-[10px] font-medium"
+              style={{ color: "#1BA475" }}
+            >
+              {subValue}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ReturnStatusBadge({ status }: { status: string }) {
   const s = (status || "").toLowerCase();
-  if (s === "pending") return <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700">Pending</span>;
-  if (s === "approved" || s === "processing") return <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-blue-700">Processing</span>;
-  if (s === "completed" || s === "returned") return <span className="inline-flex items-center rounded-full bg-red-50 border border-red-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-600">Returned</span>;
-  if (s === "cancelled") return <span className="inline-flex items-center rounded-full bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black/40">Cancelled</span>;
-  return <span className="inline-flex items-center rounded-full bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black/40">{status || "Unknown"}</span>;
+  if (s === "pending") return <span className="inline-flex items-center rounded-lg bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700">Pending</span>;
+  if (s === "approved" || s === "processing") return <span className="inline-flex items-center rounded-lg bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-blue-700">Processing</span>;
+  if (s === "completed" || s === "returned") return <span className="inline-flex items-center rounded-lg bg-red-50 border border-red-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-600">Returned</span>;
+  if (s === "cancelled") return <span className="inline-flex items-center rounded-lg bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black/40">Cancelled</span>;
+  return <span className="inline-flex items-center rounded-lg bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black/40">{status || "Unknown"}</span>;
 }
 
 function CourierBadge({ name }: { name: string }) {
@@ -123,7 +242,7 @@ export default function Returns() {
       toast.success("Return requested successfully");
       setReason("");
       queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(err?.message || "Return request failed");
     } finally {
       setRequestingId(null);
@@ -155,20 +274,21 @@ export default function Returns() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-3 border-b border-black/10 px-4 py-4 lg:px-6">
-          <div className="rounded-[14px] border border-black/[0.08] bg-[#FAFAF8] p-4">
-            <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-black/40">Lost Revenue</p>
-            <p className="mt-1 text-[22px] font-light text-black tabular-nums">৳{summary.totalLostRevenue.toLocaleString()}</p>
-          </div>
-          <div className="rounded-[14px] border border-black/[0.08] bg-[#FAFAF8] p-4">
-            <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-black/40">Courier Fees Lost</p>
-            <p className="mt-1 text-[22px] font-light text-black tabular-nums">৳{summary.totalCourierFeesLost.toLocaleString()}</p>
-          </div>
-          <div className="rounded-[14px] border border-black/[0.08] bg-[#FAFAF8] p-4">
-            <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-black/40">Return Rate</p>
-            <p className="mt-1 text-[22px] font-light text-red-600 tabular-nums">{summary.total}</p>
-            <p className="text-[10px] text-black/30 mt-0.5">{summary.pending} pending · {summary.processing} processing</p>
-          </div>
+        <div className="grid grid-cols-3 gap-4 border-b border-black/10 px-4 py-4 lg:px-6">
+          <ReturnsMetric
+            label="Lost Revenue"
+            value={`৳${summary.totalLostRevenue.toLocaleString()}`}
+          />
+          <ReturnsMetric
+            label="Courier Fees Lost"
+            value={`৳${summary.totalCourierFeesLost.toLocaleString()}`}
+          />
+          <ReturnsMetric
+            label="Return Rate"
+            value={`${summary.total}`}
+            valueClassName="text-red-600"
+            subValue={`${summary.pending} pending · ${summary.processing} processing`}
+          />
         </div>
 
         {/* Filter Tabs */}
