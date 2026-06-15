@@ -96,7 +96,7 @@ export function DashboardLayout() {
                                 title="More"
                                 type="button"
                             >
-                                <DotsThree size={23} weight="bold" />
+                                <DotsThree size={20} weight="bold" />
                             </button>
 
                             <HeaderAlerts />
@@ -148,3 +148,4 @@ export function DashboardLayout() {
         </SidebarProvider>
     );
 }
+
