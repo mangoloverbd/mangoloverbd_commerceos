@@ -10,7 +10,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
+import { Button } from "@/components/ui/button";
 
 interface TeamMember {
   id: string;
@@ -226,12 +226,13 @@ export function TeamManagement() {
                   />
                 </div>
               </div>
-              <LiquidMetalButton
+              <Button
                 type="submit"
                 disabled={creating || !email.trim()}
-                label={creating ? "Adding…" : "Add Member"}
                 data-testid="button-create-member"
-              />
+              >
+                {creating ? "Adding…" : "Add Member"}
+              </Button>
             </form>
 
             {/* Generated credentials */}
