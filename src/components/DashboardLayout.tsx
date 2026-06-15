@@ -89,7 +89,7 @@ export function DashboardLayout() {
                                 title="Assistant"
                                 type="button"
                             >
-                                <Sparkle size={19} weight="light" />
+                                <Sparkle size={20} weight="light" />
                             </button>
                             <button
                                 className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 hover:text-black"
@@ -104,8 +104,8 @@ export function DashboardLayout() {
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <button className="ml-1 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 outline-none" title="Account">
-                                        <Avatar className="h-7 w-7 rounded-full">
-                                            <AvatarFallback className="rounded-full bg-black text-white text-[10px] font-semibold">
+                                        <Avatar className="h-5 w-5 rounded-full">
+                                            <AvatarFallback className="rounded-full bg-black text-white text-[8px] font-semibold">
                                                 {initials}
                                             </AvatarFallback>
                                         </Avatar>
@@ -148,4 +148,3 @@ export function DashboardLayout() {
         </SidebarProvider>
     );
 }
-
