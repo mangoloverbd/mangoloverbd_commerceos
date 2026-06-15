@@ -82,21 +82,21 @@ export function DashboardLayout() {
                                 title="Add"
                                 type="button"
                             >
-                                <Plus size={20} weight="light" />
+                                <Plus size={24} weight="light" />
                             </button>
                             <button
                                 className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 hover:text-black"
                                 title="Assistant"
                                 type="button"
                             >
-                                <Sparkle size={20} weight="light" />
+                                <Sparkle size={24} weight="light" />
                             </button>
                             <button
                                 className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 hover:text-black"
                                 title="More"
                                 type="button"
                             >
-                                <DotsThree size={20} weight="bold" />
+                                <DotsThree size={24} weight="bold" />
                             </button>
 
                             <HeaderAlerts />
@@ -104,8 +104,8 @@ export function DashboardLayout() {
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <button className="ml-1 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 outline-none" title="Account">
-                                        <Avatar className="h-5 w-5 rounded-full">
-                                            <AvatarFallback className="rounded-full bg-black text-white text-[8px] font-semibold">
+                                        <Avatar className="h-6 w-6 rounded-full">
+                                            <AvatarFallback className="rounded-full bg-black text-white text-[10px] font-semibold">
                                                 {initials}
                                             </AvatarFallback>
                                         </Avatar>
