@@ -15,6 +15,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut } from "lucide-react";
 
+const accountMenuPanelClass =
+    "w-56 overflow-hidden rounded-[14px] border-[1.5px] border-black/[0.07] bg-[#E9E8E5] p-1 text-[#202020] shadow-[0_2px_6px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.7)]";
+
+const accountMenuInnerClass =
+    "rounded-[10px] border border-black/[0.05] bg-[#F7F7F6] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.06)]";
+
+const accountMenuItemClass =
+    "flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-black/[0.05] bg-[#FBFBFA] px-2.5 py-2 text-[12px] font-medium text-[#202020]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors hover:bg-white hover:text-[#202020] focus:bg-white focus:text-[#202020]";
+
 const routeTitles: Record<string, string> = {
     "/": "Home",
     "/order-extraction": "Extraction",
@@ -115,24 +124,25 @@ export function DashboardLayout() {
                                     side="bottom"
                                     align="end"
                                     sideOffset={8}
-                                    className="w-56 rounded-xl border border-black/[0.08] bg-white p-0 shadow-xl shadow-black/[0.08]"
+                                    className={accountMenuPanelClass}
                                 >
-                                    <div className="px-4 pt-3.5 pb-3 border-b border-black/[0.06]">
-                                        <p className="text-[12px] font-semibold text-foreground truncate leading-tight">{displayName}</p>
-                                        <p className="text-[10px] text-muted-foreground font-normal truncate mt-0.5 leading-tight">{user?.email ?? ""}</p>
+                                    <div className={`${accountMenuInnerClass} px-4 py-3`}>
+                                        <p className="truncate text-[10px] font-medium uppercase leading-tight tracking-[0.18em] text-[#7F7F7D]">Account</p>
+                                        <p className="mt-1 truncate text-[12px] font-light leading-tight text-[#202020]">{displayName}</p>
+                                        <p className="mt-0.5 truncate text-[10px] font-normal leading-tight text-black/45">{user?.email ?? ""}</p>
                                     </div>
-                                    <div className="p-1.5">
+                                    <div className="mt-1 space-y-1">
                                         <DropdownMenuItem asChild>
-                                            <Link to="/settings" className="flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 text-[12px] font-medium text-foreground/80 hover:bg-black/[0.04] hover:text-foreground transition-colors">
-                                                <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-[15px] w-[15px] shrink-0" />
+                                            <Link to="/settings" className={accountMenuItemClass}>
+                                                <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-4 w-4 shrink-0" />
                                                 System Settings
                                             </Link>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
                                             onClick={() => signOut()}
-                                            className="flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2 text-[12px] font-medium text-red-500 hover:bg-red-50 hover:text-red-600 focus:bg-red-50 focus:text-red-600 transition-colors mt-0.5"
+                                            className={`${accountMenuItemClass} text-[#9B3D3D] hover:text-[#8E2F2F] focus:text-[#8E2F2F]`}
                                         >
-                                            <LogOut size={13} className="shrink-0" />
+                                            <LogOut size={15} className="shrink-0" />
                                             Sign Out
                                         </DropdownMenuItem>
                                     </div>
