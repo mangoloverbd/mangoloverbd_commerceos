@@ -31,7 +31,6 @@ import {
 
 } from "lucide-react";
 import { Logo } from "./logo";
-import { SidebarAlerts } from "./ui/sidebar-alerts";
 import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -214,8 +213,6 @@ export function AppSidebar() {
 
             {/* ── Footer ──────────────────────────────────── */}
             <SidebarFooter className="border-t-0 p-1.5">
-                {!isCollapsed && <SidebarAlerts />}
-
                 {/* Billing button */}
                 <div className={cn("px-2", isCollapsed && "flex justify-center px-0")}>
                     <Link

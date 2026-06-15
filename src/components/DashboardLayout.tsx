@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
+import { HeaderAlerts } from "./HeaderAlerts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useAuth } from "@/hooks/useAuth";
@@ -97,6 +98,8 @@ export function DashboardLayout() {
                             >
                                 <DotsThree size={23} weight="bold" />
                             </button>
+
+                            <HeaderAlerts />
 
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
