@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -80,7 +80,7 @@ export function useSidebarAlerts() {
   const [aiInsights, setAIInsights] = useState<SidebarAIInsights>({});
   const [loading, setLoading] = useState(true);
 
-  const fetch = async () => {
+  const fetch = useCallback(async () => {
     try {
       const res = await apiFetch("/api/sidebar-alerts", { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to load sidebar alerts");
@@ -103,7 +103,7 @@ export function useSidebarAlerts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     setAlerts([]);
@@ -116,7 +116,7 @@ export function useSidebarAlerts() {
     fetch();
     const intervalId = window.setInterval(fetch, 60000);
     return () => window.clearInterval(intervalId);
-  }, [user?.id]);
+  }, [user?.id, fetch]);
 
   const stalePending = alerts.filter((a) => a.type === "stale_pending");
   const unsentConfirmed = alerts.filter((a) => a.type === "unsent_confirmed");
