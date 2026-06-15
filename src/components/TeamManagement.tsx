@@ -10,7 +10,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { Button } from "@/components/ui/button";
+import { PopButton } from "@/components/ui/pop-button";
 
 interface TeamMember {
   id: string;
@@ -226,13 +226,13 @@ export function TeamManagement() {
                   />
                 </div>
               </div>
-              <Button
+              <PopButton
                 type="submit"
                 disabled={creating || !email.trim()}
                 data-testid="button-create-member"
               >
                 {creating ? "Adding…" : "Add Member"}
-              </Button>
+              </PopButton>
             </form>
 
             {/* Generated credentials */}
