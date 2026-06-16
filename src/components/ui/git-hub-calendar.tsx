@@ -109,8 +109,8 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-2">
-          <div className="min-w-[760px] xl:min-w-0">
+        <div className="overflow-x-hidden pb-2">
+          <div className="min-w-0">
             <div className="grid grid-cols-[92px_1fr] gap-4">
               <div className="space-y-[8px] pt-0.5 text-left text-[13px] leading-4 text-black/35">
                 {["60k", "50k", "40k", "30k", "20k", "10k", "0k"].map((label) => (
@@ -122,14 +122,14 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
                 ))}
               </div>
               <div>
-                <div className="flex w-full justify-between gap-[5px]">
+                <div className="grid w-full gap-[5px]" style={{ gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }}>
                   {weeks.map((week, weekIndex) => (
-                    <div key={weekIndex} className="flex flex-col gap-[8px]">
+                    <div key={weekIndex} className="flex min-w-0 flex-col items-center gap-[8px]">
                       {week.map((day) => (
                         <button
                           key={day.date}
                           type="button"
-                          className="h-4 w-4 rounded-[4px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
+                          className="aspect-square w-full max-w-4 rounded-[4px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
                           style={{ backgroundColor: colors[Math.max(0, Math.min(4, day.intensity))] }}
                           title={`${format(parseISO(day.date), "PPP")}: ${fmtBDT(day.totalRevenue)}`}
                         />
