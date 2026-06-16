@@ -112,7 +112,7 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
         <div className="overflow-x-auto pb-2">
           <div className="min-w-[1040px]">
             <div className="grid grid-cols-[92px_1fr] gap-4">
-              <div className="space-y-[10px] pt-1 text-left text-[13px] text-black/35">
+              <div className="space-y-[8px] pt-0.5 text-left text-[13px] leading-4 text-black/35">
                 {["60k", "50k", "40k", "30k", "20k", "10k", "0k"].map((label) => (
                   <div key={label} className="flex items-center gap-3">
                     <span className="w-8">{label}</span>
@@ -124,12 +124,12 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
               <div>
                 <div className="flex w-full justify-between gap-[5px]">
                   {weeks.map((week, weekIndex) => (
-                    <div key={weekIndex} className="flex flex-col gap-[5px]">
+                    <div key={weekIndex} className="flex flex-col gap-[8px]">
                       {week.map((day) => (
                         <button
                           key={day.date}
                           type="button"
-                          className="h-2.5 w-2.5 rounded-[3px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
+                          className="h-4 w-4 rounded-[4px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
                           style={{ backgroundColor: colors[Math.max(0, Math.min(4, day.intensity))] }}
                           title={`${format(parseISO(day.date), "PPP")}: ${fmtBDT(day.totalRevenue)}`}
                         />
@@ -137,7 +137,7 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
                     </div>
                   ))}
                 </div>
-                <div className="relative mt-4 h-4">
+                <div className="relative mt-7 h-4">
                   {monthLabels.map((month) => (
                     <span key={`${month.label}-${month.week}`} className="absolute text-xs font-medium uppercase tracking-[0.16em] text-black/35" style={{ left: `${(month.week / Math.max(weeks.length - 1, 1)) * 100}%` }}>
                       {month.label}
