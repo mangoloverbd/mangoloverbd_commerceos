@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { RichButton } from "@/components/ui/rich-button";
+import { Button } from "@/components/base/buttons/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowCounterClockwise, Package, ArrowUUpLeft } from "@phosphor-icons/react";
+import { RefreshCcw01, Package, CornerUpLeft } from "@untitledui/icons";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 import { format } from "date-fns";
@@ -292,17 +292,16 @@ export default function Returns() {
         <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-4 lg:px-6">
           <div className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/10 text-red-500">
-              <ArrowUUpLeft size={15} weight="light" />
+              <CornerUpLeft className="h-[15px] w-[15px]" />
             </span>
             <div>
               <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Returns</AnimatedText>
               <p className="text-[11px] text-muted-foreground">Manage courier returns and cancellations</p>
             </div>
           </div>
-          <RichButton onClick={async () => { await handleBackfillFees(); await handleSync(); }} disabled={syncing} size="sm" color="default">
-            {syncing ? <Spinner size="sm" /> : <ArrowCounterClockwise size={12} weight="light" />}
-            Sync
-          </RichButton>
+          <Button onClick={async () => { await handleBackfillFees(); await handleSync(); }} disabled={syncing} color="primary" size="md" iconLeading={syncing ? <Spinner size="sm" /> : <RefreshCcw01 data-icon />}>
+            {syncing ? "Syncing..." : "Sync"}
+          </Button>
         </div>
 
         {/* Summary Cards */}
@@ -355,7 +354,7 @@ export default function Returns() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-20">
               <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-black/[0.045]">
-                <Package size={28} weight="light" className="text-muted-foreground" />
+                <Package className="h-7 w-7 text-muted-foreground" />
               </span>
               <p className="text-sm font-semibold text-foreground">No returns found</p>
               <p className="mt-1 text-[12px] text-muted-foreground">Returns will appear here when orders are returned or cancelled by courier.</p>
