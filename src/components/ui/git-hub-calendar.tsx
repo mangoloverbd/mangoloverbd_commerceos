@@ -111,9 +111,15 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
 
         <div className="overflow-x-auto pb-2">
           <div className="min-w-[1040px]">
-            <div className="grid grid-cols-[58px_1fr] gap-5">
-              <div className="space-y-[10px] pt-1 text-right text-[13px] text-black/35">
-                {["60k", "50k", "40k", "30k", "20k", "10k", "0k"].map((label) => <div key={label}>{label}</div>)}
+            <div className="grid grid-cols-[92px_1fr] gap-4">
+              <div className="space-y-[10px] pt-1 text-left text-[13px] text-black/35">
+                {["60k", "50k", "40k", "30k", "20k", "10k", "0k"].map((label) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <span className="w-8">{label}</span>
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-black/25" />
+                    <span className="h-px flex-1 border-t border-dotted border-black/20" />
+                  </div>
+                ))}
               </div>
               <div>
                 <div className="flex w-full justify-between gap-[5px]">
