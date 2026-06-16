@@ -136,7 +136,7 @@ export function GitHubCalendar({ data, loading = false, monthlyRevenue }: GitHub
           </div>
         </div>
 
-        <div className="overflow-x-hidden pb-2">
+        <div className="overflow-visible pb-2">
           <div className="min-w-0">
             <div className="grid grid-cols-[92px_1fr] gap-4">
               <div className="space-y-[8px] pt-0.5 text-left text-[13px] leading-4 text-black/35">
