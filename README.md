@@ -8,6 +8,7 @@ An AI-powered order management and social inbox platform built with React, Vite,
 - 📊 Order analytics and dashboard
 - 📥 Social inbox (Facebook, Instagram, WhatsApp)
 - 🚚 Courier integrations (Pathao, Steadfast)
+- ⚡ Railway auto-deploy enabled
 - 🔒 Fraud detection
 - 🧾 Invoice generation
 - 👥 Team management
