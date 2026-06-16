@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { AnimatedText } from "@/components/ui/animated-text";
+import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-calendar";
 
 type ProductStatus = "stockout" | "shutdown_candidate" | "dead_stock" | "winner" | "stable";
 
@@ -50,6 +51,10 @@ type ForecastResponse = {
   stockoutRisks: ProductForecast[];
   shutdownCandidates: ProductForecast[];
   topActions: ForecastAction[];
+  salesTrend: {
+    totalRevenue: number;
+    days: SalesTrendDay[];
+  };
   aiSummary: string;
 };
 
@@ -145,6 +150,14 @@ export default function OrderAnalysis() {
               </div>
             ))}
           </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.03 }}
+        >
+          <GitHubCalendar data={data?.salesTrend?.days ?? []} loading={isLoading} />
         </motion.div>
 
         {error && (

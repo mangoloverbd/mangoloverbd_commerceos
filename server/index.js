@@ -11,6 +11,7 @@ import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
+import { buildSalesTrend } from "./salesTrend.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -2797,12 +2798,13 @@ app.get("/api/business-forecast", rateLimitAI, async (req, res) => {
     const lookbackDays = Math.max(7, Math.min(90, parseInt(req.query.days || "30", 10) || 30));
     const currentStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
     const previousStart = new Date(now.getTime() - lookbackDays * 2 * 24 * 60 * 60 * 1000);
+    const salesTrendStart = new Date(now.getTime() - 364 * 24 * 60 * 60 * 1000);
 
     const { data: rawOrders, error: ordersError } = await supabase
         .from("orders")
         .select("*")
         .eq("org_id", orgId)
-        .gte("created_at", previousStart.toISOString())
+        .gte("created_at", salesTrendStart.toISOString())
         .order("created_at", { ascending: false });
     if (ordersError) throw ordersError;
 
@@ -2911,6 +2913,7 @@ app.get("/api/business-forecast", rateLimitAI, async (req, res) => {
       stockoutRisks,
       shutdownCandidates,
       topActions,
+      salesTrend: buildSalesTrend(orders, { now, days: 365 }),
       executiveSummary: `## Business forecast\n\nYou have ${currentOrders.length} orders in the last ${lookbackDays} days with projected 30-day revenue of ৳${Math.round(projectedRevenue30d).toLocaleString("en-BD")}. ${stockoutRisks.length} products need restock attention and ${shutdownCandidates.length} products should be reviewed for discounting, bundling, or stopping promotion.`,
     };
 
