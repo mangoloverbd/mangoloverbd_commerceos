@@ -147,7 +147,7 @@ export default function OrderAnalysis() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.03 }}
         >
-          <GitHubCalendar data={data?.salesTrend?.days ?? []} loading={isLoading} />
+          <GitHubCalendar data={data?.salesTrend?.days ?? []} loading={isLoading} monthlyRevenue={overview?.projectedRevenue30d} />
         </motion.div>
 
         {error && (

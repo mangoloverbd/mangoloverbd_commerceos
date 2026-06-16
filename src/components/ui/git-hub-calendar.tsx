@@ -16,6 +16,7 @@ export type SalesTrendDay = {
 type GitHubCalendarProps = {
   data: SalesTrendDay[];
   loading?: boolean;
+  monthlyRevenue?: number;
 };
 
 const colors = ["#f2f1ef", "#dad9d6", "#aaa9a5", "#686763", "#171717"];
@@ -51,7 +52,7 @@ function buildCalendarDays(data: SalesTrendDay[], rangeDays: number) {
   return cells;
 }
 
-export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
+export function GitHubCalendar({ data, loading = false, monthlyRevenue }: GitHubCalendarProps) {
   const [range, setRange] = useState<"weekly" | "monthly" | "yearly">("monthly");
   const [active, setActive] = useState<(SalesTrendDay & { x: number; y: number }) | null>(null);
   const chartRef = useRef<HTMLDivElement | null>(null);
@@ -66,9 +67,10 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
 
   const endDate = data.length ? parseISO(data[data.length - 1].date) : new Date();
   const selectedStartDate = subDays(endDate, selectedPeriodDays - 1);
-  const totalRevenue = data
+  const computedTotalRevenue = data
     .filter((day) => parseISO(day.date) >= selectedStartDate && parseISO(day.date) <= endDate)
     .reduce((sum, day) => sum + day.totalRevenue, 0);
+  const totalRevenue = range === "monthly" && monthlyRevenue != null ? monthlyRevenue : computedTotalRevenue;
   const monthLabels = useMemo(() => {
     const start = parseISO(calendarDays[0]?.date || format(new Date(), "yyyy-MM-dd"));
     return Array.from({ length: 12 }, (_, index) => ({
@@ -82,15 +84,18 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
     if (!chart) return;
     const chartRect = chart.getBoundingClientRect();
     const cellRect = element.getBoundingClientRect();
+    const tooltipWidth = 210;
+    const rawX = cellRect.left - chartRect.left + cellRect.width / 2;
+    const x = Math.max(tooltipWidth / 2, Math.min(rawX, chartRect.width - tooltipWidth / 2));
     setActive({
       ...day,
-      x: cellRect.left - chartRect.left + cellRect.width / 2,
+      x,
       y: cellRect.top - chartRect.top - 10,
     });
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+    <section className="rounded-2xl border border-black/10 bg-white">
       <div className="flex h-11 items-center justify-between border-b border-black/10 bg-[#F4F3F1] px-6">
         <div className="flex items-center gap-2">
           <h2 className="text-[12px] font-semibold uppercase tracking-[0.22em] text-black/40">Sales Trend</h2>
@@ -157,7 +162,6 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
                           onBlur={() => setActive(null)}
                           className="aspect-square w-full max-w-4 rounded-[4px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
                           style={{ backgroundColor: colors[Math.max(0, Math.min(4, day.intensity))] }}
-                          title={`${format(parseISO(day.date), "PPP")}: ${fmtBDT(day.totalRevenue)}`}
                         />
                       ))}
                     </div>
