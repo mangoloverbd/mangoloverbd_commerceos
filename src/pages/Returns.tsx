@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/ios-spinner";
 import { CartoonButton } from "@/components/ui/cartoon-button";
 import { RichButton } from "@/components/ui/rich-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowCounterClockwise, Package, ArrowUUpLeft } from "@phosphor-icons/react";
+import { Package, ArrowUUpLeft } from "@phosphor-icons/react";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 import { format } from "date-fns";
@@ -302,7 +302,14 @@ export default function Returns() {
           </div>
           <CartoonButton
             label={syncing ? "Syncing..." : "Sync"}
-            icon={syncing ? <Spinner size="sm" /> : <ArrowCounterClockwise size={12} weight="light" className="text-neutral-800" />}
+            icon={syncing ? <Spinner size="sm" /> : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
+                <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m3.5 1.5l-3 3l3 3" />
+                  <path d="M.5 4.5h9a4 4 0 0 1 0 8h-5" />
+                </g>
+              </svg>
+            )}
             color="bg-orange-400"
             hasHighlight={!syncing}
             onClick={async () => { await handleBackfillFees(); await handleSync(); }}
