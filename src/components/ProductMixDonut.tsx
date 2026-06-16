@@ -15,7 +15,6 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
   useEffect(() => {
     if (!chartRef.current) return;
     const root = am5.Root.new(chartRef.current);
-    rootRef.current = root;
 
     root.setThemes([am5themes_Animated.new(root)]);
 
@@ -76,7 +75,7 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
 
     legend.labels.template.setAll({
       fontSize: 11,
-      fill: am5.color(resolvedTheme === "dark" ? "#ccc" : "#555"),
+      fill: am5.color(0x555555),
     });
 
     legend.valueLabels.template.setAll({
@@ -92,7 +91,7 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
     return () => {
       root.dispose();
     };
-  }, [data, resolvedTheme]);
+  }, [data]);
 
   return <div ref={chartRef} style={{ width: "100%", height: "260px" }} />;
 }
