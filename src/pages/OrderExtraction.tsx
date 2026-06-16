@@ -310,6 +310,7 @@ export default function OrderExtraction() {
                   color="bg-orange-400"
                   onClick={extractOrderFromText}
                   disabled={extracting || !orderText.trim()}
+                  className="block w-full"
                 />
               </div>
             </div>
@@ -559,12 +560,14 @@ export default function OrderExtraction() {
                     color="bg-gray-400"
                     hasHighlight={false}
                     onClick={() => setManualEdit(!manualEdit)}
+                    className="min-w-0 flex-1"
                   />
                   <CartoonButton
                     label={creating ? "Creating..." : "Create Order"}
                     color="bg-emerald-400"
                     onClick={createOrder}
                     disabled={creating}
+                    className="min-w-0 flex-1"
                   />
                 </div>
               </motion.div>
