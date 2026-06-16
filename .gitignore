@@ -32,3 +32,4 @@ dist-ssr
 .claude/
 .mcp.json
 .gstack/
+.superpowers/
