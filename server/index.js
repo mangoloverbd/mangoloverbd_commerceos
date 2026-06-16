@@ -7090,6 +7090,129 @@ Respond with raw JSON array only — no markdown fences.`,
   }
 });
 
+function getOrderDeliveryFromText(text) {
+  const lowerText = String(text || "").toLowerCase();
+  // Keep in sync with determineDeliveryCharge() in src/pages/OrderExtraction.tsx
+  const dhakaKws = ["dhaka", "dhanmondi", "gulshan", "banani", "mirpur", "mohammadpur",
+    "uttara", "badda", "khilgaon", "motijheel", "paltan", "farmgate",
+    "shahbagh", "new market", "azampur", "kurmitola", "tejgaon"];
+  const isInsideDhaka = dhakaKws.some((k) => lowerText.includes(k));
+  return {
+    delivery_charge: isInsideDhaka ? 80 : 120,
+    location_type: isInsideDhaka ? "inside_dhaka" : "outside_dhaka",
+  };
+}
+
+function extractOrderWithRegex(text) {
+  // Regex fallback works without OpenAI. Patterns are tuned for BD social commerce messages.
+  const phoneMatch = text.match(/(?:\+?880|0)?(1[3-9]\d{8})/);
+  const rawPhone = phoneMatch ? phoneMatch[1] : "";
+  const phone = rawPhone ? "0" + rawPhone : "";
+
+  const nameMatch = text.match(/(?:name|নাম)\s*[:\-]\s*([^\n,।]+)/i);
+  const addrMatch = text.match(/(?:address|ঠিকানা|delivery\s*address|location)\s*[:\-]\s*([^\n।]+)/i);
+  const productMatch = text.match(/(?:product|item|order|পণ্য)\s*[:\-]\s*([^\n,।]+)/i);
+  const qtyMatch = text.match(/(\d+)\s*(?:pcs?|pieces?|টি|টা|nos?\.?)/i);
+  const priceMatch = text.match(/(?:৳|BDT|Tk\.?)\s*([\d,]+)/i);
+  const delivery = getOrderDeliveryFromText(text);
+
+  return {
+    customer_name: nameMatch ? nameMatch[1].trim() : "Unknown",
+    phone,
+    address: addrMatch ? addrMatch[1].trim() : "",
+    product: productMatch ? productMatch[1].trim() : "",
+    quantity: qtyMatch ? parseInt(qtyMatch[1], 10) : 1,
+    price: priceMatch ? parseFloat(priceMatch[1].replace(/,/g, "")) : 0,
+    delivery_charge: delivery.delivery_charge,
+    location_type: delivery.location_type,
+  };
+}
+
+function cleanOrderString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function cleanOrderNumber(value, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = parseFloat(value.replace(/[^\d.]/g, ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function sanitizeExtractedOrder(aiOrder, fallbackOrder, text) {
+  const address = cleanOrderString(aiOrder?.address) || fallbackOrder.address;
+  const delivery = getOrderDeliveryFromText(`${address}\n${text}`);
+  const phone = normalizeBdPhone(cleanOrderString(aiOrder?.phone)) || fallbackOrder.phone;
+  const locationType = aiOrder?.location_type === "inside_dhaka" || aiOrder?.location_type === "outside_dhaka"
+    ? aiOrder.location_type
+    : delivery.location_type;
+
+  return {
+    customer_name: cleanOrderString(aiOrder?.customer_name) || fallbackOrder.customer_name || "Unknown",
+    phone,
+    address,
+    product: cleanOrderString(aiOrder?.product) || fallbackOrder.product,
+    quantity: Math.max(1, Math.round(cleanOrderNumber(aiOrder?.quantity, fallbackOrder.quantity || 1))),
+    price: Math.max(0, cleanOrderNumber(aiOrder?.price, fallbackOrder.price || 0)),
+    delivery_charge: Math.max(0, cleanOrderNumber(aiOrder?.delivery_charge, delivery.delivery_charge)),
+    location_type: locationType,
+  };
+}
+
+async function extractOrderWithAI(text, fallbackOrder, model) {
+  if (!process.env.OPENAI_API_KEY) return null;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      max_tokens: 400,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You extract Bangladeshi social-commerce order details from Bangla, English, or mixed messages.
+Return ONLY valid JSON with these exact keys:
+customer_name, phone, address, product, quantity, price, delivery_charge, location_type.
+Rules:
+- phone must be a Bangladesh mobile number normalized to 01XXXXXXXXX when present.
+- quantity must be a number. If the message clearly orders a product but quantity is missing, use 1.
+- price must be the order subtotal or unit price stated in the message. If not stated, use 0.
+- location_type must be inside_dhaka or outside_dhaka.
+- delivery_charge should be 80 for inside Dhaka and 120 outside Dhaka unless the message explicitly states another delivery charge.
+- Do not invent missing customer, product, phone, or address details. Use empty string when unknown.`,
+        },
+        {
+          role: "user",
+          content: `Order text:\n${text.slice(0, 4000)}\n\nRegex fallback guess:\n${JSON.stringify(fallbackOrder)}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(parseOpenAIError(response.status, body));
+  }
+
+  const data = await response.json();
+  const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
+  const parsed = JSON.parse(raw.replace(/^```json\n?|```$/g, "").trim());
+  return sanitizeExtractedOrder(parsed, fallbackOrder, text);
+}
+
+function getOrderExtractionWarnings(extractedOrder) {
+  const warnings = [];
+  if (!extractedOrder.phone) warnings.push("Phone number not found in order text");
+  if (!extractedOrder.product) warnings.push("Product not found in order text");
+  if (extractedOrder.price === 0) warnings.push("Price not found in order text — defaulted to 0");
+  return warnings;
+}
+
 app.post("/api/extract-order-from-text", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -7103,74 +7226,22 @@ app.post("/api/extract-order-from-text", rateLimitAI, async (req, res) => {
       return res.status(400).json({ error: "orderText is required" });
     }
 
-    // Regex-based extractor — works without an external AI key.
-    // Patterns tuned for Bangladeshi social commerce messages (Bengali + English).
     const text = orderText.trim();
+    const regexOrder = extractOrderWithRegex(text);
+    let extractedOrder = regexOrder;
+    let source = "regex_fallback";
 
-    // Phone: BD numbers starting with 01, optionally prefixed with +880 / 880
-    const phoneMatch = text.match(/(?:\+?880|0)?(1[3-9]\d{8})/);
-    const rawPhone = phoneMatch ? phoneMatch[1] : "";
-    const phone = rawPhone ? "0" + rawPhone : "";
-
-    // Customer name: look for "name:", "নাম:", or leading proper noun before phone
-    let customerName = "";
-    const nameMatch = text.match(/(?:name|নাম)\s*[:\-]\s*([^\n,।]+)/i);
-    if (nameMatch) {
-      customerName = nameMatch[1].trim();
+    try {
+      const aiOrder = await extractOrderWithAI(text, regexOrder, process.env.ORDER_EXTRACTION_MODEL || "gpt-4.1-mini");
+      if (aiOrder) {
+        extractedOrder = aiOrder;
+        source = "ai";
+      }
+    } catch (err) {
+      console.warn("[OrderExtraction] AI extraction failed, using regex fallback:", errorMessage(err));
     }
 
-    // Address: look for "address:", "ঠিকানা:", "delivery:", etc.
-    let address = "";
-    const addrMatch = text.match(/(?:address|ঠিকানা|delivery\s*address|location)\s*[:\-]\s*([^\n।]+)/i);
-    if (addrMatch) {
-      address = addrMatch[1].trim();
-    }
-
-    // Product: look for "product:", "item:", "order:", or take the first noun phrase
-    let product = "";
-    const productMatch = text.match(/(?:product|item|order|পণ্য)\s*[:\-]\s*([^\n,।]+)/i);
-    if (productMatch) {
-      product = productMatch[1].trim();
-    }
-
-    // Quantity: look for digits followed by "pcs", "pieces", "টি", "টা", etc.
-    let quantity = 1;
-    const qtyMatch = text.match(/(\d+)\s*(?:pcs?|pieces?|টি|টা|nos?\.?)/i);
-    if (qtyMatch) quantity = parseInt(qtyMatch[1], 10);
-
-    // Price: look for ৳ / BDT / Tk patterns
-    let price = 0;
-    const priceMatch = text.match(/(?:৳|BDT|Tk\.?)\s*([\d,]+)/i);
-    if (priceMatch) price = parseFloat(priceMatch[1].replace(/,/g, ""));
-
-    // Delivery charge heuristic (same logic as frontend determineDeliveryCharge)
-    const lowerText = text.toLowerCase();
-    // Keep in sync with determineDeliveryCharge() in src/pages/OrderExtraction.tsx
-    const dhakaKws = ["dhaka", "dhanmondi", "gulshan", "banani", "mirpur", "mohammadpur",
-      "uttara", "badda", "khilgaon", "motijheel", "paltan", "farmgate",
-      "shahbagh", "new market", "azampur", "kurmitola", "tejgaon"];
-    const isInsideDhaka = dhakaKws.some((k) => lowerText.includes(k));
-    const deliveryCharge = isInsideDhaka ? 80 : 120;
-    const locationType = isInsideDhaka ? "inside_dhaka" : "outside_dhaka";
-
-    const extractedOrder = {
-      customer_name: customerName || "Unknown",
-      phone,
-      address,
-      product,
-      quantity,
-      price,
-      delivery_charge: deliveryCharge,
-      location_type: locationType,
-    };
-
-    // Warn caller when critical fields could not be extracted
-    const warnings = [];
-    if (!phone) warnings.push("Phone number not found in order text");
-    if (!product) warnings.push("Product not found in order text");
-    if (price === 0) warnings.push("Price not found in order text — defaulted to 0");
-
-    return res.json({ extractedOrder, warnings });
+    return res.json({ extractedOrder, warnings: getOrderExtractionWarnings(extractedOrder), source });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
