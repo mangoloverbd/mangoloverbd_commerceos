@@ -110,7 +110,7 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
         </div>
 
         <div className="overflow-x-auto pb-2">
-          <div className="min-w-[1040px]">
+          <div className="min-w-[760px] xl:min-w-0">
             <div className="grid grid-cols-[92px_1fr] gap-4">
               <div className="space-y-[8px] pt-0.5 text-left text-[13px] leading-4 text-black/35">
                 {["60k", "50k", "40k", "30k", "20k", "10k", "0k"].map((label) => (
