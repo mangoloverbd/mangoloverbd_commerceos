@@ -78,7 +78,7 @@ export function DashboardLayout() {
 
     return (
         <SidebarProvider defaultOpen={true}>
-            <div className="flex min-h-screen w-full bg-[#dedede] text-[#202020]">
+            <div className="flex min-h-screen w-full bg-[#F3F2F0] text-[#202020]">
                 <AppSidebar />
                 <SidebarInset className="flex min-w-0 flex-col bg-transparent">
                     <header className="flex h-[58px] shrink-0 items-center justify-between px-5 text-[#202020]">
@@ -150,7 +150,7 @@ export function DashboardLayout() {
                             </DropdownMenu>
                         </div>
                     </header>
-                    <main className="mx-3 mb-3 min-w-0 flex-1 overflow-auto rounded-[18px] border border-black/10 bg-[#f3f3f3] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                    <main className="mx-3 mb-3 min-w-0 flex-1 overflow-auto rounded-[18px] border border-black/10 bg-[#F3F2F0] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                         <Outlet />
                     </main>
                 </SidebarInset>

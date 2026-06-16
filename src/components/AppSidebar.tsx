@@ -133,7 +133,7 @@ export function AppSidebar() {
 
 
     return (
-        <Sidebar collapsible="icon" className="border-r-0 bg-[#dedede]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
+        <Sidebar collapsible="icon" className="border-r-0 bg-[#F3F2F0]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
             {/* ── Brand header ────────────────────────────── */}
             <SidebarHeader className="h-[52px] justify-center px-2.5">
                 <div className="flex items-center justify-between min-w-0">
