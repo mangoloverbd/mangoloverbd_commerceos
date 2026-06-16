@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { AnimatedText } from "@/components/ui/animated-text";
 import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-calendar";
+import { ProductMixDonut } from "@/components/ProductMixDonut";
 
 const FIVE_HOURS_IN_MS = 5 * 60 * 60 * 1000;
 
@@ -411,31 +412,11 @@ function ExecutiveProductMix({
           </div>
         </div>
 
-        <div className="mt-5 overflow-hidden rounded-full bg-black/[0.06]" aria-label="Product status mix chart">
-          <div className="flex h-3 w-full">
-            {statusCounts.map((item) => (
-              <div
-                key={item.label}
-                className="h-full"
-                style={{ width: `${Math.max(item.count ? 5 : 0, (item.count / totalProducts) * 100)}%`, backgroundColor: item.color }}
-              />
-            ))}
-          </div>
+        <div className="mt-5" aria-label="Product status mix chart">
+          <ProductMixDonut data={statusCounts} />
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {statusCounts.map((item) => (
-            <div key={item.label} className="rounded-xl bg-white px-3 py-2 ring-1 ring-black/[0.05]">
-              <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-black/35">
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                {item.label}
-              </p>
-              <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{item.count}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-1 grid grid-cols-3 gap-2">
           <SummaryChip label="Winner" value={topWinner?.name || "No signal"} />
           <SummaryChip label="Risk" value={topRisk?.name || "Stable"} />
           <SummaryChip label="Dead Stock" value={deadStock?.name || "None"} />
