@@ -391,8 +391,6 @@ function ExecutiveProductMix({
     { label: "Risk", count: products.filter((product) => product.status === "stockout" || product.status === "dead_stock").length, color: "#B85C4A" },
   ];
   const winnerShare = Math.round((statusCounts[0].count / totalProducts) * 100);
-  const circumference = 100;
-  let dashOffset = 25;
   const barProducts = [...products].sort((a, b) => b.revenue - a.revenue).slice(0, 6);
   const maxRevenue = Math.max(...barProducts.map((product) => product.revenue), 1);
   const topWinner = products.find((product) => product.status === "winner") || products[0];
@@ -400,62 +398,44 @@ function ExecutiveProductMix({
   const deadStock = products.find((product) => product.status === "dead_stock") || shutdownCandidates[0];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:items-start">
-      <div className="self-start rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start">
+      <div className="self-start rounded-2xl border border-black/10 bg-[#FAFAF8] p-4">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Product Mix</p>
             <h3 className="mt-2 font-sf-display text-2xl font-light tracking-tight text-foreground">Revenue Mix</h3>
           </div>
-          <span className="rounded-full bg-black/[0.06] px-3 py-1 text-xs font-medium text-black/45">
-            {products.length} products
-          </span>
+          <div className="text-right">
+            <p className="font-sf-display text-3xl font-light leading-none tracking-tight text-foreground">{winnerShare}%</p>
+            <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-black/35">winner</p>
+          </div>
         </div>
 
-        <div className="mt-6 flex items-center gap-6">
-          <div className="relative h-32 w-32 shrink-0">
-            <svg viewBox="0 0 42 42" className="h-full w-full -rotate-90" role="img" aria-label="Product status mix chart">
-              <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#ECEBE8" strokeWidth="6" />
-              {statusCounts.map((item) => {
-                const segment = (item.count / totalProducts) * circumference;
-                const currentOffset = dashOffset;
-                dashOffset -= segment;
-                return (
-                  <circle
-                    key={item.label}
-                    cx="21"
-                    cy="21"
-                    r="15.915"
-                    fill="transparent"
-                    stroke={item.color}
-                    strokeWidth="6"
-                    strokeDasharray={`${segment} ${circumference - segment}`}
-                    strokeDashoffset={currentOffset}
-                    strokeLinecap="round"
-                  />
-                );
-              })}
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-sf-display text-3xl font-light tracking-tight text-foreground">{winnerShare}%</span>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-black/35">winner</span>
-            </div>
-          </div>
-
-          <div className="min-w-0 flex-1 space-y-3">
+        <div className="mt-5 overflow-hidden rounded-full bg-black/[0.06]" aria-label="Product status mix chart">
+          <div className="flex h-3 w-full">
             {statusCounts.map((item) => (
-              <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
-                <span className="inline-flex items-center gap-2 text-black/55">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                  {item.label}
-                </span>
-                <span className="font-medium tabular-nums text-foreground">{item.count}</span>
-              </div>
+              <div
+                key={item.label}
+                className="h-full"
+                style={{ width: `${Math.max(item.count ? 5 : 0, (item.count / totalProducts) * 100)}%`, backgroundColor: item.color }}
+              />
             ))}
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {statusCounts.map((item) => (
+            <div key={item.label} className="rounded-xl bg-white px-3 py-2 ring-1 ring-black/[0.05]">
+              <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-black/35">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
+                {item.label}
+              </p>
+              <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{item.count}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
           <SummaryChip label="Winner" value={topWinner?.name || "No signal"} />
           <SummaryChip label="Risk" value={topRisk?.name || "Stable"} />
           <SummaryChip label="Dead Stock" value={deadStock?.name || "None"} />
@@ -492,19 +472,13 @@ function ExecutiveProductMix({
           )}
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-          <div className="min-w-0 rounded-2xl bg-[#FAFAF8] p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Top revenue</p>
-            <p className="mt-2 truncate text-sm font-semibold text-foreground">{barProducts[0]?.name || "No product"}</p>
-            <p className="mt-1 font-sf-display text-2xl font-light tracking-tight text-foreground">
-              {barProducts[0] ? fmtBDT(barProducts[0].revenue) : "৳0"}
-            </p>
-          </div>
-          <div className="min-w-0 rounded-2xl bg-[#FAFAF8] p-4">
+        <div className="mt-5 min-w-0 rounded-2xl bg-[#FAFAF8] p-4">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">AI Readout</p>
-            <div className="prose prose-sm mt-2 max-w-none text-black/60 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground">
-              <ReactMarkdown>{aiSummary}</ReactMarkdown>
-            </div>
+            {barProducts[0] && <p className="text-xs text-black/40">Top revenue: {barProducts[0].name} · {fmtBDT(barProducts[0].revenue)}</p>}
+          </div>
+          <div className="prose prose-sm mt-2 max-w-none text-black/60 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground">
+            <ReactMarkdown>{aiSummary}</ReactMarkdown>
           </div>
         </div>
       </div>
