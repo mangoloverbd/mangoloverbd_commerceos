@@ -47,4 +47,22 @@ describe("buildSalesTrend", () => {
       },
     ]);
   });
+
+  it("uses older orders as customer history for the visible trend window", () => {
+    const result = buildSalesTrend(
+      [
+        { created_at: "2026-05-15T09:00:00.000Z", phone: "01733333333", customer_name: "Chaya", price: "900" },
+        { created_at: "2026-06-02T10:00:00.000Z", phone: "01733333333", customer_name: "Chaya", price: "600" },
+      ],
+      { now: new Date("2026-06-03T00:00:00.000Z"), days: 3 }
+    );
+
+    expect(result.days[1]).toMatchObject({
+      date: "2026-06-02",
+      newCustomerRevenue: 0,
+      existingCustomerRevenue: 600,
+      newCustomerOrders: 0,
+      existingCustomerOrders: 1,
+    });
+  });
 });

@@ -44,11 +44,14 @@ export function buildSalesTrend(orders, { now = new Date(), days = 365 } = {}) {
   for (const order of sortedOrders) {
     const date = toDayKey(order.created_at);
     const day = date ? dayMap.get(date) : null;
-    if (!day) continue;
-
     const revenue = Number.parseFloat(order.price || order.cod_amount || 0) || 0;
     const keys = customerKeys(order);
     const isExisting = keys.length > 0 && keys.some((key) => seenCustomers.has(key));
+
+    if (!day) {
+      for (const key of keys) seenCustomers.add(key);
+      continue;
+    }
 
     day.totalRevenue += revenue;
     day.totalOrders += 1;

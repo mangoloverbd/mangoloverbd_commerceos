@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { addDays, addMonths, format, parseISO, startOfWeek, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,10 @@ function buildCalendarDays(data: SalesTrendDay[], rangeDays: number) {
 
 export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
   const [range, setRange] = useState<"weekly" | "monthly" | "yearly">("monthly");
+  const [active, setActive] = useState<(SalesTrendDay & { x: number; y: number }) | null>(null);
+  const chartRef = useRef<HTMLDivElement | null>(null);
   const rangeDays = range === "weekly" ? 91 : range === "monthly" ? 365 : 365;
+  const selectedPeriodDays = range === "weekly" ? 7 : range === "monthly" ? 30 : 365;
   const calendarDays = useMemo(() => buildCalendarDays(data, rangeDays), [data, rangeDays]);
   const weeks = useMemo(() => {
     const grouped: SalesTrendDay[][] = [];
@@ -61,8 +64,11 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
     return grouped;
   }, [calendarDays]);
 
-  const visibleData = calendarDays.filter((day) => data.some((source) => source.date === day.date));
-  const totalRevenue = visibleData.reduce((sum, day) => sum + day.totalRevenue, 0);
+  const endDate = data.length ? parseISO(data[data.length - 1].date) : new Date();
+  const selectedStartDate = subDays(endDate, selectedPeriodDays - 1);
+  const totalRevenue = data
+    .filter((day) => parseISO(day.date) >= selectedStartDate && parseISO(day.date) <= endDate)
+    .reduce((sum, day) => sum + day.totalRevenue, 0);
   const monthLabels = useMemo(() => {
     const start = parseISO(calendarDays[0]?.date || format(new Date(), "yyyy-MM-dd"));
     return Array.from({ length: 12 }, (_, index) => ({
@@ -70,6 +76,18 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
       left: `${(index / 11) * 100}%`,
     }));
   }, [calendarDays]);
+
+  const showTooltip = (day: SalesTrendDay, element: HTMLElement) => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const chartRect = chart.getBoundingClientRect();
+    const cellRect = element.getBoundingClientRect();
+    setActive({
+      ...day,
+      x: cellRect.left - chartRect.left + cellRect.width / 2,
+      y: cellRect.top - chartRect.top - 10,
+    });
+  };
 
   return (
     <section className="overflow-hidden rounded-2xl border border-black/10 bg-white">
@@ -125,7 +143,7 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
                   </div>
                 ))}
               </div>
-              <div>
+              <div ref={chartRef} className="relative">
                 <div className="grid w-full gap-[5px]" style={{ gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }}>
                   {weeks.map((week, weekIndex) => (
                     <div key={weekIndex} className="flex min-w-0 flex-col items-center gap-[8px]">
@@ -133,6 +151,10 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
                         <button
                           key={day.date}
                           type="button"
+                          onMouseEnter={(event) => showTooltip(day, event.currentTarget)}
+                          onFocus={(event) => showTooltip(day, event.currentTarget)}
+                          onMouseLeave={() => setActive(null)}
+                          onBlur={() => setActive(null)}
                           className="aspect-square w-full max-w-4 rounded-[4px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
                           style={{ backgroundColor: colors[Math.max(0, Math.min(4, day.intensity))] }}
                           title={`${format(parseISO(day.date), "PPP")}: ${fmtBDT(day.totalRevenue)}`}
@@ -141,6 +163,20 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
                     </div>
                   ))}
                 </div>
+                {active && (
+                  <div
+                    className="pointer-events-none absolute z-20 w-[210px] -translate-x-1/2 -translate-y-full rounded-2xl border border-black/10 bg-white p-3 text-sm text-black/55 shadow-xl ring-1 ring-black/[0.03]"
+                    style={{ left: active.x, top: active.y }}
+                  >
+                    <div className="mb-2 rounded-xl bg-black/[0.035] px-3 py-2 font-medium text-black/45">
+                      {format(parseISO(active.date), "MMM d, yyyy")}
+                    </div>
+                    <div className="space-y-2 px-1">
+                      <p className="flex items-center justify-between gap-3"><span className="text-black/35">New User</span><span className="font-semibold text-black">{fmtBDT(active.newCustomerRevenue)}</span></p>
+                      <p className="flex items-center justify-between gap-3"><span className="text-black/35">Existing User</span><span className="font-semibold text-black">{fmtBDT(active.existingCustomerRevenue)}</span></p>
+                    </div>
+                  </div>
+                )}
                 <div className="relative mt-7 h-4">
                   {monthLabels.map((month, index) => (
                     <span key={`${month.label}-${index}`} className="absolute -translate-x-1/2 text-xs font-medium uppercase tracking-[0.16em] text-black/35 first:translate-x-0 last:-translate-x-full" style={{ left: month.left }}>
