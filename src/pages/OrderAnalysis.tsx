@@ -399,8 +399,8 @@ function ExecutiveProductMix({
   const deadStock = products.find((product) => product.status === "dead_stock") || shutdownCandidates[0];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start">
-      <div className="self-start rounded-2xl border border-black/10 bg-[#FAFAF8] p-4">
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Product Mix</p>
@@ -412,29 +412,31 @@ function ExecutiveProductMix({
           </div>
         </div>
 
-        <div className="mt-5" aria-label="Product status mix chart">
+        <div className="mt-4" aria-label="Product status mix chart">
           <ProductMixDonut data={statusCounts} />
         </div>
 
-        <div className="mt-1 grid grid-cols-3 gap-2">
+        <div className="mt-3 grid grid-cols-3 gap-2">
           <SummaryChip label="Winner" value={topWinner?.name || "No signal"} />
           <SummaryChip label="Risk" value={topRisk?.name || "Stable"} />
           <SummaryChip label="Dead Stock" value={deadStock?.name || "None"} />
         </div>
       </div>
 
-      <div className="self-start rounded-2xl border border-black/10 bg-white p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <div className="rounded-2xl border border-black/10 bg-white p-5">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Top Product Velocity</p>
             <h3 className="mt-2 font-sf-display text-2xl font-light tracking-tight text-foreground">Revenue leaders</h3>
           </div>
-          <p className="max-w-md text-sm leading-relaxed text-black/45">
-            The summary now pairs AI context with the products currently driving revenue, risk, and inventory decisions.
-          </p>
+          {barProducts[0] && (
+            <p className="text-xs font-medium tabular-nums text-black/40">
+              Top: {barProducts[0].name} · {fmtBDT(barProducts[0].revenue)}
+            </p>
+          )}
         </div>
 
-        <div className="mt-6 space-y-3 border-b border-black/10 pb-5">
+        <div className="mt-5 space-y-3">
           {barProducts.length ? barProducts.map((product) => (
             <div key={product.id} className="grid gap-2 md:grid-cols-[minmax(140px,220px)_1fr_auto] md:items-center">
               <p className="min-w-0 truncate text-sm font-medium text-foreground">{product.name}</p>
@@ -452,15 +454,21 @@ function ExecutiveProductMix({
             </div>
           )}
         </div>
+      </div>
 
-        <div className="mt-5 min-w-0 rounded-2xl bg-[#FAFAF8] p-4">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+      <div className="rounded-2xl border border-black/10 bg-white p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">AI Readout</p>
-            {barProducts[0] && <p className="text-xs text-black/40">Top revenue: {barProducts[0].name} · {fmtBDT(barProducts[0].revenue)}</p>}
           </div>
-          <div className="prose prose-sm mt-2 max-w-none text-black/60 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground">
-            <ReactMarkdown>{aiSummary}</ReactMarkdown>
-          </div>
+          {barProducts[0] && (
+            <p className="text-xs font-medium tabular-nums text-black/40">
+              Top revenue: {barProducts[0].name} · {fmtBDT(barProducts[0].revenue)}
+            </p>
+          )}
+        </div>
+        <div className="prose prose-sm mt-3 max-w-none text-black/60 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground">
+          <ReactMarkdown>{aiSummary}</ReactMarkdown>
         </div>
       </div>
     </div>
