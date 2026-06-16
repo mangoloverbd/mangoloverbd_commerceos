@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { addDays, format, parseISO, startOfWeek, subDays } from "date-fns";
+import { addDays, addMonths, format, parseISO, startOfWeek, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 
 export type SalesTrendDay = {
@@ -63,9 +63,13 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
 
   const visibleData = calendarDays.filter((day) => data.some((source) => source.date === day.date));
   const totalRevenue = visibleData.reduce((sum, day) => sum + day.totalRevenue, 0);
-  const monthLabels = weeks
-    .map((week, index) => ({ week: index, label: format(parseISO(week[0].date), "MMM") }))
-    .filter((item, index, arr) => index === 0 || item.label !== arr[index - 1].label);
+  const monthLabels = useMemo(() => {
+    const start = parseISO(calendarDays[0]?.date || format(new Date(), "yyyy-MM-dd"));
+    return Array.from({ length: 12 }, (_, index) => ({
+      label: format(addMonths(start, index), "MMM"),
+      left: `${(index / 11) * 100}%`,
+    }));
+  }, [calendarDays]);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-black/10 bg-white">
@@ -138,8 +142,8 @@ export function GitHubCalendar({ data, loading = false }: GitHubCalendarProps) {
                   ))}
                 </div>
                 <div className="relative mt-7 h-4">
-                  {monthLabels.map((month) => (
-                    <span key={`${month.label}-${month.week}`} className="absolute text-xs font-medium uppercase tracking-[0.16em] text-black/35" style={{ left: `${(month.week / Math.max(weeks.length - 1, 1)) * 100}%` }}>
+                  {monthLabels.map((month, index) => (
+                    <span key={`${month.label}-${index}`} className="absolute -translate-x-1/2 text-xs font-medium uppercase tracking-[0.16em] text-black/35 first:translate-x-0 last:-translate-x-full" style={{ left: month.left }}>
                       {month.label}
                     </span>
                   ))}

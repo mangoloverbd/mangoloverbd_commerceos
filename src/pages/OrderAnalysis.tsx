@@ -130,24 +130,14 @@ export default function OrderAnalysis() {
             </button>
           </div>
 
-          <div className="grid divide-y divide-black/10 lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+          <div className="grid gap-3 p-4 lg:grid-cols-4">
             {[
               { label: "Projected 30D Revenue", value: overview ? fmtBDT(overview.projectedRevenue30d) : "—", icon: BarChart3 },
               { label: "Stock-out Risks", value: overview?.stockoutCount ?? "—", icon: AlertTriangle },
               { label: "Products to Review", value: overview?.shutdownCount ?? "—", icon: TrendingDown },
               { label: "Products Tracked", value: overview?.productsTracked ?? "—", icon: Boxes },
             ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="min-w-0 px-6 py-5">
-                <div className="flex items-start justify-between">
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{label}</p>
-                  <Icon className="mt-0.5 h-3.5 w-3.5 text-muted-foreground/70" />
-                </div>
-                {isLoading ? (
-                  <div className="h-8 w-24 animate-pulse rounded-lg bg-black/[0.06]" />
-                ) : (
-                  <p className="font-sf-display text-2xl font-bold tracking-tight text-foreground tabular-nums">{value}</p>
-                )}
-              </div>
+              <ForecastMetricCard key={label} label={label} value={value} loading={isLoading} icon={<Icon className="h-3.5 w-3.5 text-muted-foreground/70" />} />
             ))}
           </div>
         </motion.div>
@@ -373,6 +363,41 @@ function Metric({ value, muted }: { value: string; muted?: string }) {
     <div className="px-4 py-4">
       <p className="text-sm font-medium text-foreground tabular-nums">{value}</p>
       {muted && <p className="mt-1 text-xs text-muted-foreground tabular-nums">{muted}</p>}
+    </div>
+  );
+}
+
+function ForecastMetricCard({ label, value, loading, icon }: { label: string; value: string | number; loading: boolean; icon: ReactNode }) {
+  return (
+    <div
+      className="min-w-0 overflow-hidden"
+      style={{
+        background: "#E9E8E5",
+        borderRadius: "14px",
+        padding: "4px",
+        border: "1.5px solid rgba(0,0,0,0.07)",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
+      }}
+    >
+      <div
+        style={{
+          background: "#F7F7F6",
+          borderRadius: "10px",
+          border: "1px solid rgba(0,0,0,0.05)",
+          padding: "12px 14px",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
+        }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.08em] text-[#7F7F7D]">{label}</p>
+          {icon}
+        </div>
+        {loading ? (
+          <div className="h-6 w-24 animate-pulse rounded bg-black/[0.06]" />
+        ) : (
+          <p className="font-sf-display text-[22px] font-bold leading-none tracking-tight text-[#222A38] tabular-nums">{value}</p>
+        )}
+      </div>
     </div>
   );
 }
