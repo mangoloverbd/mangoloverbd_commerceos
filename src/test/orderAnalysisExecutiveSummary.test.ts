@@ -12,4 +12,11 @@ describe("OrderAnalysis executive summary visuals", () => {
     expect(source).toContain("Top Product Velocity");
     expect(source).toContain("AI Readout");
   });
+
+  it("uses a natural-height Product Mix layout that does not crop summary cards", () => {
+    expect(source).toContain("lg:items-start");
+    expect(source).toContain("self-start");
+    expect(source).not.toContain("h-36 items-end");
+    expect(source).not.toContain("lg:grid-cols-[380px_1fr]");
+  });
 });

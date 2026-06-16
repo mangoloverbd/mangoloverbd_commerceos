@@ -164,7 +164,7 @@ export default function OrderAnalysis() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="overflow-hidden rounded-2xl border border-black/10 bg-white"
+          className="overflow-visible rounded-2xl border border-black/10 bg-white"
         >
           <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
             <div className="flex items-center gap-2.5">
@@ -400,8 +400,8 @@ function ExecutiveProductMix({
   const deadStock = products.find((product) => product.status === "dead_stock") || shutdownCandidates[0];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
-      <div className="rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:items-start">
+      <div className="self-start rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Product Mix</p>
@@ -462,7 +462,7 @@ function ExecutiveProductMix({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-black/10 bg-white p-5">
+      <div className="self-start rounded-2xl border border-black/10 bg-white p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Top Product Velocity</p>
@@ -473,33 +473,34 @@ function ExecutiveProductMix({
           </p>
         </div>
 
-        <div className="mt-6 flex h-36 items-end gap-3 border-b border-black/10 pb-3">
+        <div className="mt-6 space-y-3 border-b border-black/10 pb-5">
           {barProducts.length ? barProducts.map((product) => (
-            <div key={product.id} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-2">
-              <div className="flex flex-1 items-end rounded-t-xl bg-black/[0.035] px-1.5">
+            <div key={product.id} className="grid gap-2 md:grid-cols-[minmax(140px,220px)_1fr_auto] md:items-center">
+              <p className="min-w-0 truncate text-sm font-medium text-foreground">{product.name}</p>
+              <div className="h-2 overflow-hidden rounded-full bg-black/[0.06]">
                 <div
-                  className="w-full rounded-t-lg bg-black transition-all"
-                  style={{ height: `${Math.max(10, (product.revenue / maxRevenue) * 100)}%` }}
+                  className="h-full rounded-full bg-black transition-all"
+                  style={{ width: `${Math.max(10, (product.revenue / maxRevenue) * 100)}%` }}
                 />
               </div>
-              <p className="truncate text-center text-[10px] font-medium text-black/45">{product.name}</p>
+              <p className="text-xs font-medium tabular-nums text-black/45">{fmtBDT(product.revenue)}</p>
             </div>
           )) : (
-            <div className="flex h-full w-full items-center justify-center rounded-2xl bg-black/[0.035] text-sm text-muted-foreground">
+            <div className="flex min-h-[120px] w-full items-center justify-center rounded-2xl bg-black/[0.035] text-sm text-muted-foreground">
               Add product revenue to show velocity bars.
             </div>
           )}
         </div>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-[220px_1fr]">
-          <div className="rounded-2xl bg-[#FAFAF8] p-4">
+        <div className="mt-5 grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="min-w-0 rounded-2xl bg-[#FAFAF8] p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Top revenue</p>
             <p className="mt-2 truncate text-sm font-semibold text-foreground">{barProducts[0]?.name || "No product"}</p>
             <p className="mt-1 font-sf-display text-2xl font-light tracking-tight text-foreground">
               {barProducts[0] ? fmtBDT(barProducts[0].revenue) : "৳0"}
             </p>
           </div>
-          <div className="rounded-2xl bg-[#FAFAF8] p-4">
+          <div className="min-w-0 rounded-2xl bg-[#FAFAF8] p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">AI Readout</p>
             <div className="prose prose-sm mt-2 max-w-none text-black/60 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground">
               <ReactMarkdown>{aiSummary}</ReactMarkdown>
