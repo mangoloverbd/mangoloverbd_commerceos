@@ -302,6 +302,7 @@ export default function Returns() {
           </div>
           <CartoonButton
             label={syncing ? "Syncing..." : "Sync"}
+            icon={syncing ? <Spinner size="sm" /> : <ArrowCounterClockwise size={12} weight="light" className="text-neutral-800" />}
             color="bg-orange-400"
             hasHighlight={!syncing}
             onClick={async () => { await handleBackfillFees(); await handleSync(); }}
