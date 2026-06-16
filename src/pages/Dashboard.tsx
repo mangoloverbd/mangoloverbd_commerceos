@@ -708,9 +708,8 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="relative"
+        className="relative rounded-2xl bg-[#F3F3F3]"
       >
-        <div className="rounded-2xl bg-[#F3F3F3] p-5">
         {/* Blur overlay for non-admins */}
         {!isAdmin && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl">
@@ -796,7 +795,6 @@ export default function Dashboard() {
             />
           </div>
         </div>
-          </div>
         </motion.div>
 
       {/* ── Orders table card ────────────────────────────────────────────── */}
