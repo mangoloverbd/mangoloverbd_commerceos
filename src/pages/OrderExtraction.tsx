@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { RichButton } from "@/components/rich-button";
+import { CartoonButton } from "@/components/ui/cartoon-button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
 import {
@@ -305,16 +305,12 @@ export default function OrderExtraction() {
                   className="min-h-[220px] resize-none rounded-xl border-0 bg-black/[0.06] text-sm text-foreground shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
                 />
 
-                <RichButton
-                  type="button"
+                <CartoonButton
+                  label={extracting ? "Extracting..." : "Extract Order Details"}
+                  color="bg-orange-400"
                   onClick={extractOrderFromText}
                   disabled={extracting || !orderText.trim()}
-                  size="lg"
-                  className="w-full"
-                >
-                  {extracting ? <Spinner size="sm" /> : null}
-                  {extracting ? "Extracting..." : "Extract Order Details"}
-                </RichButton>
+                />
               </div>
             </div>
 
@@ -558,24 +554,18 @@ export default function OrderExtraction() {
                 })()}
 
                 <div className="flex gap-3">
-                  <RichButton
-                    type="button"
-                    color="zinc"
+                  <CartoonButton
+                    label={manualEdit ? "Lock Editing" : "Enable Editing"}
+                    color="bg-gray-400"
+                    hasHighlight={false}
                     onClick={() => setManualEdit(!manualEdit)}
-                    className="flex-1"
-                  >
-                    {manualEdit ? "Lock Editing" : "Enable Editing"}
-                  </RichButton>
-                  <RichButton
-                    type="button"
-                    color="emerald"
+                  />
+                  <CartoonButton
+                    label={creating ? "Creating..." : "Create Order"}
+                    color="bg-emerald-400"
                     onClick={createOrder}
                     disabled={creating}
-                    className="flex-1"
-                  >
-                    {creating ? <Spinner size="sm" /> : null}
-                    {creating ? "Creating..." : "Create Order"}
-                  </RichButton>
+                  />
                 </div>
               </motion.div>
             ) : (

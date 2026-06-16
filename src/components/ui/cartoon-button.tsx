@@ -19,17 +19,19 @@ export function CartoonButton({
   };
 
   return (
-    <div className="relative inline-block">
-      {/* Shadow layer */}
-      <div className={`absolute inset-0 translate-y-[6px] rounded-2xl bg-black/20`} />
+    <div
+      className={`inline-block ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+    >
       <button
-        onClick={handleClick}
         disabled={disabled}
-        className={`relative ${color} text-black font-extrabold text-base px-8 py-3 rounded-2xl border-[3px] border-black shadow-[inset_0_-4px_0_0_rgba(0,0,0,0.2)] active:translate-y-[2px] active:shadow-[inset_0_-2px_0_0_rgba(0,0,0,0.2)] transition-all duration-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
+        onClick={handleClick}
+        className={`relative h-12 px-6 text-xl rounded-full font-bold text-neutral-800 border-2 border-neutral-800 transition-all duration-150 overflow-hidden group
+        ${color} hover:shadow-[0_4px_0_0_#262626]
+        ${disabled ? 'opacity-50 pointer-events-none' : 'hover:-translate-y-1 active:translate-y-0 active:shadow-none'}`}
       >
-        {label}
+        <span className="relative z-10 whitespace-nowrap">{label}</span>
         {hasHighlight && !disabled && (
-          <span className="absolute top-[6px] left-[10px] right-[10px] h-[40%] rounded-t-xl bg-white/25 pointer-events-none" />
+          <div className="absolute top-1/2 left-[-100%] w-16 h-24 bg-white/50 -translate-y-1/2 rotate-12 transition-all duration-500 ease-in-out group-hover:left-[200%]"></div>
         )}
       </button>
     </div>
