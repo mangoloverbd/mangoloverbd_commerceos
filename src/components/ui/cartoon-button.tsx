@@ -1,3 +1,5 @@
+type CartoonSize = "sm" | "md" | "lg";
+
 interface CartoonButtonProps {
   label: string;
   color?: string;
@@ -5,7 +7,14 @@ interface CartoonButtonProps {
   disabled?: boolean;
   onClick?: () => void;
   className?: string;
+  size?: CartoonSize;
 }
+
+const sizeMap: Record<CartoonSize, string> = {
+  sm: "h-8 px-4 text-sm",
+  md: "h-10 px-5 text-lg",
+  lg: "h-12 px-6 text-xl",
+};
 
 export function CartoonButton({
   label,
@@ -14,6 +23,7 @@ export function CartoonButton({
   disabled = false,
   onClick,
   className,
+  size = "md",
 }: CartoonButtonProps) {
   const handleClick = () => {
     if (disabled) return;
@@ -27,7 +37,7 @@ export function CartoonButton({
       <button
         disabled={disabled}
         onClick={handleClick}
-        className={`relative h-12 w-full px-6 text-xl rounded-xl font-bold text-neutral-800 border-2 border-neutral-800 transition-all duration-150 overflow-hidden group
+        className={`relative w-full ${sizeMap[size]} rounded-xl font-bold text-neutral-800 border-2 border-neutral-800 transition-all duration-150 overflow-hidden group
         ${color} hover:shadow-[0_4px_0_0_#262626]
         ${disabled ? 'opacity-50 pointer-events-none' : 'hover:-translate-y-1 active:translate-y-0 active:shadow-none'}`}
       >

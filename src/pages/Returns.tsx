@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CartoonButton } from "@/components/ui/cartoon-button";
+import { RichButton } from "@/components/ui/rich-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowCounterClockwise, Package, ArrowUUpLeft } from "@phosphor-icons/react";
 import SteadfastLogo from "@/components/SteadfastLogo";
@@ -305,6 +306,7 @@ export default function Returns() {
             hasHighlight={!syncing}
             onClick={async () => { await handleBackfillFees(); await handleSync(); }}
             disabled={syncing}
+            size="sm"
           />
         </div>
 
