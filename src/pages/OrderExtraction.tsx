@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { RichButton } from "@/components/rich-button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
 import {
@@ -304,15 +305,16 @@ export default function OrderExtraction() {
                   className="min-h-[220px] resize-none rounded-xl border-0 bg-black/[0.06] text-sm text-foreground shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
                 />
 
-                <button
+                <RichButton
                   type="button"
                   onClick={extractOrderFromText}
                   disabled={extracting || !orderText.trim()}
-                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-black px-5 text-sm font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
+                  size="lg"
+                  className="w-full"
                 >
                   {extracting ? <Spinner size="sm" /> : null}
                   {extracting ? "Extracting..." : "Extract Order Details"}
-                </button>
+                </RichButton>
               </div>
             </div>
 
@@ -556,22 +558,24 @@ export default function OrderExtraction() {
                 })()}
 
                 <div className="flex gap-3">
-                  <Button
-                    variant="ghost"
+                  <RichButton
+                    type="button"
+                    color="zinc"
                     onClick={() => setManualEdit(!manualEdit)}
-                    className="h-10 flex-1 rounded-xl border border-black/10 bg-black/[0.035] text-sm font-medium text-foreground/70 hover:bg-black/[0.06] hover:text-foreground"
+                    className="flex-1"
                   >
                     {manualEdit ? "Lock Editing" : "Enable Editing"}
-                  </Button>
-                  <button
+                  </RichButton>
+                  <RichButton
                     type="button"
+                    color="emerald"
                     onClick={createOrder}
                     disabled={creating}
-                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-black px-6 text-sm font-medium text-white transition-colors hover:bg-black/80 disabled:opacity-30"
+                    className="flex-1"
                   >
                     {creating ? <Spinner size="sm" /> : null}
                     {creating ? "Creating..." : "Create Order"}
-                  </button>
+                  </RichButton>
                 </div>
               </motion.div>
             ) : (
