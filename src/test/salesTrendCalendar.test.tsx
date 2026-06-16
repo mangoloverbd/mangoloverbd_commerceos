@@ -21,4 +21,13 @@ describe("GitHubCalendar", () => {
 
     expect(container.querySelector(".overflow-x-hidden")).toBeNull();
   });
+
+  it("labels trend segments as customers instead of users", () => {
+    const { queryByText, getByText } = render(<GitHubCalendar data={days} />);
+
+    expect(getByText("New Customer")).toBeInTheDocument();
+    expect(getByText("Existing Customer")).toBeInTheDocument();
+    expect(queryByText("New User")).not.toBeInTheDocument();
+    expect(queryByText("Existing User")).not.toBeInTheDocument();
+  });
 });

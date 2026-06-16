@@ -116,8 +116,8 @@ export function GitHubCalendar({ data, loading = false, monthlyRevenue }: GitHub
               </span>
             </div>
             <div className="flex items-center gap-6 text-[12px] font-medium uppercase tracking-[0.2em] text-black/45">
-              <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-black/10" /> New User</span>
-              <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-black" /> Existing User</span>
+              <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-black/10" /> New Customer</span>
+              <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-black" /> Existing Customer</span>
             </div>
           </div>
           <div className="grid w-full grid-cols-3 rounded-full bg-black/[0.055] p-1 text-sm font-medium text-black/45 xl:w-[300px]">
@@ -176,8 +176,8 @@ export function GitHubCalendar({ data, loading = false, monthlyRevenue }: GitHub
                       {format(parseISO(active.date), "MMM d, yyyy")}
                     </div>
                     <div className="space-y-2 px-1">
-                      <p className="flex items-center justify-between gap-3"><span className="text-black/35">New User</span><span className="font-semibold text-black">{fmtBDT(active.newCustomerRevenue)}</span></p>
-                      <p className="flex items-center justify-between gap-3"><span className="text-black/35">Existing User</span><span className="font-semibold text-black">{fmtBDT(active.existingCustomerRevenue)}</span></p>
+                      <p className="flex items-center justify-between gap-3"><span className="text-black/35">New Customer</span><span className="font-semibold text-black">{fmtBDT(active.newCustomerRevenue)}</span></p>
+                      <p className="flex items-center justify-between gap-3"><span className="text-black/35">Existing Customer</span><span className="font-semibold text-black">{fmtBDT(active.existingCustomerRevenue)}</span></p>
                     </div>
                   </div>
                 )}

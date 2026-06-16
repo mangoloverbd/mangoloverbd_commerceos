@@ -9,6 +9,8 @@ import { Spinner } from "@/components/ui/ios-spinner";
 import { AnimatedText } from "@/components/ui/animated-text";
 import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-calendar";
 
+const FIVE_HOURS_IN_MS = 5 * 60 * 60 * 1000;
+
 type ProductStatus = "stockout" | "shutdown_candidate" | "dead_stock" | "winner" | "stable";
 
 type ProductForecast = {
@@ -97,6 +99,7 @@ export default function OrderAnalysis() {
       if (!res.ok) throw new Error(json.error || "Failed to load forecast");
       return json;
     },
+    staleTime: FIVE_HOURS_IN_MS,
   });
 
   const products = data?.productForecasts ?? [];
