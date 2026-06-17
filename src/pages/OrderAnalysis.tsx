@@ -131,7 +131,7 @@ export default function OrderAnalysis() {
               size="sm"
               onClick={() => refetch()}
               isLoading={isFetching}
-              iconLeading={<RefreshCw className="h-4 w-4" />}
+              iconLeading={<RefreshCw />}
             >
               Refresh
             </Button>
