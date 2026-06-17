@@ -79,7 +79,7 @@ const colorClasses: Record<ButtonColor, string> = {
   "link-destructive":
     "h-auto p-0 text-red-700 hover:text-red-800 [&_[data-text]]:underline [&_[data-text]]:decoration-transparent hover:[&_[data-text]]:decoration-current",
   skeuomorphic: [
-    "rounded-lg border-0 p-0 text-transparent shadow-[0_1px_2px_rgba(0,0,0,0.35),0_2px_20px_rgba(0,0,0,0.18)]",
+    "rounded-lg border-0 p-0 text-transparent shadow-[0_1px_1px_rgba(0,0,0,0.35),0_2px_20px_rgba(0,0,0,0.18)]",
     "bg-[rgba(0,0,0,0.78)] [-webkit-tap-highlight-color:transparent]",
     "after:pointer-events-none after:absolute after:inset-[-2px] after:rounded-[inherit] after:opacity-60 after:content-['']",
     "after:bg-[linear-gradient(135deg,rgba(255,255,255,0.12),transparent_35%)]",
