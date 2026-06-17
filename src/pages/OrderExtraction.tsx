@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { CartoonButton } from "@/components/ui/cartoon-button";
+import { Button as BaseButton } from "@/components/base/buttons/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
 import {
@@ -24,6 +24,9 @@ import {
   Plus,
   Minus,
   X,
+  Sparkles,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -305,13 +308,20 @@ export default function OrderExtraction() {
                   className="min-h-[220px] resize-none rounded-xl border-0 bg-black/[0.06] text-sm text-foreground shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
                 />
 
-                <CartoonButton
-                  label={extracting ? "Extracting..." : "Extract Order Details"}
-                  color="bg-orange-400"
-                  onClick={extractOrderFromText}
-                  disabled={extracting || !orderText.trim()}
-                  className="block w-full"
-                />
+                <div className="w-full">
+                  <BaseButton
+                    color="skeuomorphic"
+                    size="md"
+                    onClick={extractOrderFromText}
+                    isLoading={extracting}
+                    showTextWhileLoading
+                    disabled={extracting || !orderText.trim()}
+                    iconLeading={<Sparkles />}
+                    className="w-full"
+                  >
+                    {extracting ? "Extracting..." : "Extract Order Details"}
+                  </BaseButton>
+                </div>
               </div>
             </div>
 
@@ -555,20 +565,27 @@ export default function OrderExtraction() {
                 })()}
 
                 <div className="flex gap-3">
-                  <CartoonButton
-                    label={manualEdit ? "Lock Editing" : "Enable Editing"}
-                    color="bg-gray-400"
-                    hasHighlight={false}
+                  <BaseButton
+                    color="skeuomorphic"
+                    size="md"
                     onClick={() => setManualEdit(!manualEdit)}
+                    iconLeading={manualEdit ? <Lock /> : <Unlock />}
                     className="min-w-0 flex-1"
-                  />
-                  <CartoonButton
-                    label={creating ? "Creating..." : "Create Order"}
-                    color="bg-emerald-400"
+                  >
+                    {manualEdit ? "Lock Editing" : "Enable Editing"}
+                  </BaseButton>
+                  <BaseButton
+                    color="skeuomorphic"
+                    size="md"
                     onClick={createOrder}
+                    isLoading={creating}
+                    showTextWhileLoading
                     disabled={creating}
+                    iconLeading={<Plus />}
                     className="min-w-0 flex-1"
-                  />
+                  >
+                    {creating ? "Creating..." : "Create Order"}
+                  </BaseButton>
                 </div>
               </motion.div>
             ) : (
