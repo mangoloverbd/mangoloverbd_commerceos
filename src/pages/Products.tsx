@@ -79,7 +79,7 @@ function attrLabel(a: Record<string, string>): string {
 // ── Shared input class — every numeric cell uses this exact height/width ──────
 // h-9 = 36 px, fully uniform — matches Settings page input style exactly
 const INPUT_CLS =
-  "h-9 w-full rounded-2xl border border-black/[0.1] bg-black/[0.04] px-3 font-mono text-[13px] text-black outline-none tabular-nums transition-colors focus-visible:ring-1 focus-visible:ring-black/20 focus:bg-white placeholder:text-black/25";
+  "h-9 w-full rounded-xl border border-black/[0.1] bg-black/[0.04] px-3 font-mono text-[13px] text-black outline-none tabular-nums transition-colors focus-visible:ring-1 focus-visible:ring-black/20 focus:bg-white placeholder:text-black/25";
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
