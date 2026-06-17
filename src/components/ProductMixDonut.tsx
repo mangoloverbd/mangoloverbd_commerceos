@@ -43,9 +43,13 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
     series.slices.template.adapters.add("radius", (radius, target) => {
       const dataItem = target.dataItem;
       const high = series.getPrivate("valueHigh");
-      if (dataItem) {
+      const low = series.getPrivate("valueLow");
+      if (dataItem && high > 0) {
         const value = target.dataItem?.get("valueWorking", 0) ?? 0;
-        return (radius * value) / high;
+        if (high === low) return radius;
+        const ratio = value / high;
+        const minRatio = 0.45;
+        return radius * (minRatio + (1 - minRatio) * ratio);
       }
       return radius;
     });
@@ -81,5 +85,5 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
     };
   }, [data]);
 
-  return <div ref={chartRef} style={{ width: "100%", height: "260px" }} />;
+  return <div ref={chartRef} style={{ width: "100%", height: "380px" }} />;
 }
