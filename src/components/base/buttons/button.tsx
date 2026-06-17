@@ -79,10 +79,10 @@ const colorClasses: Record<ButtonColor, string> = {
   "link-destructive":
     "h-auto p-0 text-red-700 hover:text-red-800 [&_[data-text]]:underline [&_[data-text]]:decoration-transparent hover:[&_[data-text]]:decoration-current",
   skeuomorphic: [
-    "rounded-2xl border-0 p-0 text-transparent shadow-[0_1px_2px_rgba(0,0,0,0.35),0_2px_20px_rgba(0,0,0,0.18)]",
+    "rounded-2xl border-0 p-0 text-transparent shadow-[0_1px_2px_rgba(0,0,0,0.28),0_6px_18px_rgba(0,0,0,0.12)]",
     "bg-[rgba(0,0,0,0.78)] [-webkit-tap-highlight-color:transparent]",
-    "after:pointer-events-none after:absolute after:inset-[-2px] after:rounded-[inherit] after:opacity-60 after:content-['']",
-    "after:bg-[linear-gradient(135deg,rgba(255,255,255,0.12),transparent_35%)]",
+    "after:pointer-events-none after:absolute after:inset-[-2px] after:rounded-[inherit] after:opacity-65 after:content-['']",
+    "after:bg-[linear-gradient(135deg,rgba(255,255,255,0.14),transparent_36%)]",
   ].join(" "),
 };
 
@@ -109,12 +109,12 @@ function Spinner({ size }: { size: ButtonSize }) {
   );
 }
 
-const skeuomorphicOuter = "block w-full rounded-[inherit] transition-all duration-300 ease-linear shadow-[0_12px_24px_rgba(0,0,0,0.18)] group-hover/button:translate-y-px group-hover/button:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_6px_12px_rgba(0,0,0,0.15)]";
+const skeuomorphicOuter = "block w-full rounded-[inherit] transition-all duration-300 ease-linear shadow-[0_1px_2px_rgba(0,0,0,0.22),0_8px_18px_rgba(0,0,0,0.12)] group-hover/button:translate-y-px group-hover/button:shadow-[0_1px_2px_rgba(0,0,0,0.18),0_4px_10px_rgba(0,0,0,0.09)]";
 
-const skeuomorphicInner = "relative overflow-hidden rounded-[inherit] bg-[linear-gradient(180deg,#f8f8f8_0%,#ececec_45%,#d9d9d9_100%)] transition-[transform,box-shadow,background] duration-200 ease-linear shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_2px_rgba(0,0,0,0.08),inset_0_8px_16px_rgba(255,255,255,0.2)] group-hover/button:bg-[linear-gradient(180deg,#f3f3f3_0%,#dddddd_100%)] group-hover/button:shadow-[inset_0_2px_4px_rgba(0,0,0,0.15),inset_0_1px_0_rgba(255,255,255,0.6)] group-active/button:scale-[0.98]";
+const skeuomorphicInner = "relative overflow-hidden rounded-[inherit] bg-[linear-gradient(180deg,#fbfbfb_0%,#eeeeee_45%,#d8d8d8_100%)] transition-[transform,box-shadow,background] duration-200 ease-linear shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_2px_rgba(0,0,0,0.08),inset_0_8px_14px_rgba(255,255,255,0.22),inset_0_-8px_14px_rgba(0,0,0,0.04)] before:pointer-events-none before:absolute before:inset-x-px before:top-px before:h-[48%] before:rounded-[inherit] before:bg-[linear-gradient(180deg,rgba(255,255,255,0.55),transparent)] before:content-[''] group-hover/button:bg-[linear-gradient(180deg,#f6f6f6_0%,#e8e8e8_55%,#d4d4d4_100%)] group-hover/button:shadow-[inset_0_2px_4px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.72),inset_0_-6px_12px_rgba(0,0,0,0.05)] group-active/button:scale-[0.98]";
 
 const skeuomorphicText =
-  "relative block bg-[linear-gradient(180deg,#202020,#555555)] bg-clip-text [-webkit-background-clip:text] text-transparent text-[15px] font-semibold tracking-[-0.03em] [text-shadow:0_1px_1px_rgba(255,255,255,0.35)] transition-transform duration-200 ease-linear select-none group-hover/button:scale-[0.98]";
+  "relative z-[2] block bg-[linear-gradient(180deg,#171717,#555555)] bg-clip-text [-webkit-background-clip:text] text-transparent text-[15px] font-semibold tracking-[-0.03em] [text-shadow:0_1px_1px_rgba(255,255,255,0.35)] transition-transform duration-200 ease-linear select-none group-hover/button:scale-[0.985]";
 
 const skeuomorphicPaddingMap: Record<ButtonSize, string> = {
   xs: "px-2.5 py-1",
