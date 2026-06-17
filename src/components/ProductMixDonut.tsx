@@ -21,7 +21,6 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
     const chart = root.container.children.push(
       am5percent.PieChart.new(root, {
         layout: root.verticalLayout,
-        innerRadius: am5.percent(60),
       }),
     );
 
@@ -35,13 +34,13 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
     );
 
     series.slices.template.setAll({
-      strokeWidth: 2,
-      stroke: am5.color(0xfafaf8),
+      strokeWidth: 3,
+      stroke: am5.color(0xffffff),
       tooltipText: "{category}: {value} ({valuePercentTotal.formatNumber('0.0')}%)",
       cursorOverStyle: "pointer",
     });
 
-    series.labelsContainer.set("paddingTop", 20);
+    series.labelsContainer.set("paddingTop", 30);
 
     series.slices.template.adapters.add("radius", (radius, target) => {
       const dataItem = target.dataItem;
@@ -64,26 +63,6 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       strokeWidth: 4,
     });
 
-    series.slices.template.states.create("active", {
-      shiftRadius: 8,
-      strokeWidth: 4,
-    });
-
-    series.slices.template.states.create("dimmed", {
-      opacity: 0.25,
-    });
-
-    series.labels.template.setAll({
-      fontSize: 11,
-      fill: am5.color(0x171717),
-      fontWeight: "500",
-    });
-
-    series.ticks.template.setAll({
-      stroke: am5.color(0x171717),
-      strokeWidth: 1,
-    });
-
     series.data.setAll(
       data.map((item) => ({
         value: item.count,
@@ -91,40 +70,12 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       })),
     );
 
-    // Click slice -> isolate (dim others). One handler per slice instance.
-    let activeSlice: am5percent.PieSeriesSlice | null = null;
-    series.slices.each((slice) => {
-      slice.on("click", () => {
-        const sliceDataItem = slice.dataItem;
-        if (!sliceDataItem) return;
-        if (activeSlice === slice) {
-          // Toggle off
-          activeSlice = null;
-          series.slices.each((s) => s.states.applyAll());
-          series.slices.each((s) => s.set("active", false));
-          return;
-        }
-        if (activeSlice) {
-          activeSlice.set("active", false);
-        }
-        activeSlice = slice;
-        series.slices.each((s) => {
-          if (s === slice) {
-            s.set("active", true);
-            s.states.applyAll();
-          } else {
-            s.set("state", "dimmed");
-          }
-        });
-      });
-    });
-
     const legend = chart.children.push(
       am5.Legend.new(root, {
         centerX: am5.p50,
         x: am5.p50,
-        marginTop: 12,
-        marginBottom: 0,
+        marginTop: 15,
+        marginBottom: 15,
       }),
     );
 
@@ -139,27 +90,9 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       fill: am5.color(0x171717),
     });
 
-    // Legend item click -> toggle slice visibility
-    legend.itemContainers.each((item) => {
-      item.set("cursorOverStyle", "pointer");
-      item.events.on("click", () => {
-        const dataItem = item.dataItem as am5.DataItem<am5percent.ISliceSeriesDataItem> | undefined;
-        if (!dataItem) return;
-        const category = dataItem.dataContext?.category as string | undefined;
-        if (!category) return;
-        const slice = dataItem.get("slice") as am5percent.PieSeriesSlice | undefined;
-        if (!slice) return;
-        if (slice.get("hidden")) {
-          slice.show();
-        } else {
-          slice.hide();
-        }
-      });
-    });
-
     legend.data.setAll(series.dataItems);
 
-    series.appear(800, 100);
+    series.appear(1000, 100);
 
     return () => {
       root.dispose();
