@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
+import { Button as BaseButton } from "@/components/base/buttons/button";
 import { useUserRole } from "@/hooks/useUserRole";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -664,16 +665,18 @@ export default function Products() {
                 onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
                 className={cn(INPUT_CLS, "h-9 flex-1 font-sans")}
               />
-              <button
+              <BaseButton
                 data-testid="button-crawl"
+                color="skeuomorphic"
+                size="sm"
                 onClick={handleCrawl}
+                isLoading={crawlStatus === "crawling"}
+                showTextWhileLoading
                 disabled={crawlStatus === "crawling" || !crawlUrl.trim()}
-                className="flex h-9 shrink-0 items-center gap-2 rounded-xl bg-black px-5 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-30"
+                iconLeading={<RefreshCw />}
               >
-                {crawlStatus === "crawling"
-                  ? <><Spinner size="sm" />Extracting…</>
-                  : <><RefreshCw className="h-3.5 w-3.5" />Extract</>}
-              </button>
+                {crawlStatus === "crawling" ? "Extracting…" : "Extract"}
+              </BaseButton>
             </div>
             <AnimatePresence>
               {crawlMsg && (
