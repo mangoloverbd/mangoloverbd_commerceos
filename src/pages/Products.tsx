@@ -87,15 +87,47 @@ function StatCard({
   label, value, sub, accent,
 }: { label: string; value: React.ReactNode; sub: string; accent?: string }) {
   return (
-    <div className="flex flex-col gap-1 px-6 py-5">
-      <p className="text-[11px] font-medium tracking-[0.06em] uppercase text-black/40" style={{ fontFamily: SYS }}>
-        {label}
-      </p>
-      <p className={cn("text-[26px] font-light leading-none tabular-nums tracking-tight", accent ?? "text-black")}
-        style={{ fontFamily: SYS }}>
-        {value}
-      </p>
-      <p className="text-[12px] text-black/40" style={{ fontFamily: SYS }}>{sub}</p>
+    <div
+      className="flex flex-col min-w-0 overflow-hidden"
+      style={{
+        background: "#E9E8E5",
+        borderRadius: "14px",
+        padding: "4px",
+        border: "1.5px solid rgba(0,0,0,0.07)",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
+      }}
+    >
+      <div
+        style={{
+          background: "#F7F7F6",
+          borderRadius: "10px",
+          border: "1px solid rgba(0,0,0,0.05)",
+          padding: "12px 14px",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
+        }}
+      >
+        <p
+          style={{
+            fontSize: "10px",
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            color: "#7F7F7D",
+            textTransform: "uppercase",
+            margin: 0,
+          }}
+        >
+          {label}
+        </p>
+        <p
+          className={cn("mt-1.5 text-[22px] font-bold leading-none tabular-nums", accent ?? "text-[#222A38]")}
+          style={{ fontFamily: SYS }}
+        >
+          {value}
+        </p>
+      </div>
+      <div className="flex items-center px-3 py-1.5">
+        <p className="text-[11px] text-black/45" style={{ fontFamily: SYS }}>{sub}</p>
+      </div>
     </div>
   );
 }
@@ -612,7 +644,7 @@ export default function Products() {
           transition={{ duration: 0.4 }}
           className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
         >
-          <div className="grid divide-y divide-black/[0.06] sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Products"
               value={isLoading ? <span className="inline-block h-7 w-10 animate-pulse rounded-lg bg-black/[0.05]" /> : totalProducts}
