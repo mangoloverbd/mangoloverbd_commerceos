@@ -109,7 +109,7 @@ function Spinner({ size }: { size: ButtonSize }) {
   );
 }
 
-const skeuomorphicOuter = "relative rounded-[inherit] transition-all duration-300 ease-linear shadow-[0_2px_4px_rgba(0,0,0,0.3),0_12px_24px_rgba(0,0,0,0.18)] group-hover/button:translate-y-px group-hover/button:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_6px_12px_rgba(0,0,0,0.15)]";
+const skeuomorphicOuter = "block w-full rounded-[inherit] transition-all duration-300 ease-linear shadow-[0_2px_4px_rgba(0,0,0,0.3),0_12px_24px_rgba(0,0,0,0.18)] group-hover/button:translate-y-px group-hover/button:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_6px_12px_rgba(0,0,0,0.15)]";
 
 const skeuomorphicInner = "relative overflow-hidden rounded-[inherit] bg-[linear-gradient(180deg,#f8f8f8_0%,#ececec_45%,#d9d9d9_100%)] transition-[transform,box-shadow,background] duration-200 ease-linear shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_2px_rgba(0,0,0,0.08),inset_0_8px_16px_rgba(255,255,255,0.2)] group-hover/button:bg-[linear-gradient(180deg,#f3f3f3_0%,#dddddd_100%)] group-hover/button:shadow-[inset_0_2px_4px_rgba(0,0,0,0.15),inset_0_1px_0_rgba(255,255,255,0.6)] group-active/button:scale-[0.98]";
 
@@ -193,11 +193,11 @@ export function Button({
         aria-disabled={disabled || undefined}
         data-loading={pending ? true : undefined}
         data-icon-only={isIconOnly ? true : undefined}
-        className={cn(baseClasses, sizeClasses[size], colorClasses[effectiveColor], pending && "pointer-events-none", className)}
+        className={cn(baseClasses, "flex", sizeClasses[size], colorClasses[effectiveColor], pending && "pointer-events-none", className)}
         {...props}
       >
         <span className={skeuomorphicOuter}>
-          <span className={cn(skeuomorphicInner, skeuomorphicPaddingMap[size], "flex items-center justify-center gap-1.5")}>
+          <span className={cn(skeuomorphicInner, skeuomorphicPaddingMap[size], "flex w-full items-center justify-center gap-1.5")}>
             {showLeadingIcon && (
               <span data-icon="leading" className={cn("inline-flex shrink-0 items-center justify-center text-neutral-700", iconSizeMap[size])} aria-hidden="true">
                 {iconLeading}

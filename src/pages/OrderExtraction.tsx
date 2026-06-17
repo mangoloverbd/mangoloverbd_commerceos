@@ -308,8 +308,7 @@ export default function OrderExtraction() {
                   className="min-h-[220px] resize-none rounded-xl border-0 bg-black/[0.06] text-sm text-foreground shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
                 />
 
-                <div className="w-full">
-                  <BaseButton
+                <BaseButton
                     color="skeuomorphic"
                     size="md"
                     onClick={extractOrderFromText}
@@ -321,7 +320,6 @@ export default function OrderExtraction() {
                   >
                     {extracting ? "Extracting..." : "Extract Order Details"}
                   </BaseButton>
-                </div>
               </div>
             </div>
 
