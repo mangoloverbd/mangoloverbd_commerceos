@@ -38,11 +38,11 @@ const baseClasses = [
 ].join(" ");
 
 const sizeClasses: Record<ButtonSize, string> = {
-  xs: "gap-1 rounded-[10px] px-2.5 py-1.5 text-xs font-semibold data-icon-only:p-2",
-  sm: "gap-1 rounded-[12px] px-3 py-1.5 text-sm font-semibold data-icon-only:p-2",
-  md: "gap-1 rounded-[14px] px-3.5 py-2 text-sm font-semibold data-icon-only:p-2.5",
-  lg: "gap-1.5 rounded-[16px] px-4 py-2.5 text-base font-semibold data-icon-only:p-3",
-  xl: "gap-1.5 rounded-[18px] px-5 py-3 text-base font-semibold data-icon-only:p-3.5",
+  xs: "gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold data-icon-only:p-2",
+  sm: "gap-1 rounded-md px-3 py-1.5 text-sm font-semibold data-icon-only:p-2",
+  md: "gap-1 rounded-lg px-3.5 py-2 text-sm font-semibold data-icon-only:p-2.5",
+  lg: "gap-1.5 rounded-lg px-4 py-2.5 text-base font-semibold data-icon-only:p-3",
+  xl: "gap-1.5 rounded-lg px-5 py-3 text-base font-semibold data-icon-only:p-3.5",
 };
 
 const iconSizeMap: Record<ButtonSize, string> = {
@@ -79,7 +79,7 @@ const colorClasses: Record<ButtonColor, string> = {
   "link-destructive":
     "h-auto p-0 text-red-700 hover:text-red-800 [&_[data-text]]:underline [&_[data-text]]:decoration-transparent hover:[&_[data-text]]:decoration-current",
   skeuomorphic: [
-    "rounded-[14px] border-0 p-0 text-transparent shadow-[0_1px_2px_rgba(0,0,0,0.35),0_6px_12px_rgba(0,0,0,0.18)]",
+    "rounded-lg border-0 p-0 text-transparent shadow-[0_1px_2px_rgba(0,0,0,0.35),0_6px_12px_rgba(0,0,0,0.18)]",
     "bg-[rgba(0,0,0,0.78)] [-webkit-tap-highlight-color:transparent]",
     "after:pointer-events-none after:absolute after:inset-[-2px] after:rounded-[inherit] after:opacity-60 after:content-['']",
     "after:bg-[linear-gradient(135deg,rgba(255,255,255,0.12),transparent_35%)]",
