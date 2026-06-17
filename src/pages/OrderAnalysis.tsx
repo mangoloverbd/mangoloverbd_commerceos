@@ -127,10 +127,11 @@ export default function OrderAnalysis() {
               <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">AI Business Forecast</AnimatedText>
             </div>
             <Button
-              color="secondary"
-              size="sm"
+              color="skeuomorphic"
+              size="md"
               onClick={() => refetch()}
               isLoading={isFetching}
+              showTextWhileLoading
               iconLeading={<RefreshCw />}
             >
               Refresh
