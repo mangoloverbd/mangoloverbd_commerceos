@@ -38,17 +38,17 @@ const baseClasses = [
 ].join(" ");
 
 const sizeClasses: Record<ButtonSize, string> = {
-  xs: "gap-1 rounded-[12px] px-2.5 py-1.5 text-sm font-semibold data-icon-only:p-2",
-  sm: "gap-1 rounded-[14px] px-3 py-2 text-sm font-semibold data-icon-only:p-2",
-  md: "gap-1 rounded-[16px] px-3.5 py-2.5 text-sm font-semibold data-icon-only:p-2.5",
-  lg: "gap-1.5 rounded-[18px] px-4 py-2.5 text-base font-semibold data-icon-only:p-3",
-  xl: "gap-1.5 rounded-[20px] px-[18px] py-3 text-base font-semibold data-icon-only:p-3.5",
+  xs: "gap-1 rounded-[10px] px-2.5 py-1.5 text-xs font-semibold data-icon-only:p-2",
+  sm: "gap-1 rounded-[12px] px-3 py-1.5 text-sm font-semibold data-icon-only:p-2",
+  md: "gap-1 rounded-[14px] px-3.5 py-2 text-sm font-semibold data-icon-only:p-2.5",
+  lg: "gap-1.5 rounded-[16px] px-4 py-2.5 text-base font-semibold data-icon-only:p-3",
+  xl: "gap-1.5 rounded-[18px] px-5 py-3 text-base font-semibold data-icon-only:p-3.5",
 };
 
 const iconSizeMap: Record<ButtonSize, string> = {
-  xs: "h-4 w-4 stroke-[2.25px]",
-  sm: "h-5 w-5",
-  md: "h-5 w-5",
+  xs: "h-3.5 w-3.5 stroke-[2.25px]",
+  sm: "h-4 w-4",
+  md: "h-4 w-4",
   lg: "h-5 w-5",
   xl: "h-5 w-5",
 };
@@ -79,7 +79,7 @@ const colorClasses: Record<ButtonColor, string> = {
   "link-destructive":
     "h-auto p-0 text-red-700 hover:text-red-800 [&_[data-text]]:underline [&_[data-text]]:decoration-transparent hover:[&_[data-text]]:decoration-current",
   skeuomorphic: [
-    "rounded-2xl border-0 p-0 text-transparent shadow-[0_1px_2px_rgba(0,0,0,0.35),0_10px_20px_rgba(0,0,0,0.18)]",
+    "rounded-[14px] border-0 p-0 text-transparent shadow-[0_1px_2px_rgba(0,0,0,0.35),0_6px_12px_rgba(0,0,0,0.18)]",
     "bg-[rgba(0,0,0,0.78)] [-webkit-tap-highlight-color:transparent]",
     "after:pointer-events-none after:absolute after:inset-[-2px] after:rounded-[inherit] after:opacity-60 after:content-['']",
     "after:bg-[linear-gradient(135deg,rgba(255,255,255,0.12),transparent_35%)]",
@@ -109,19 +109,19 @@ function Spinner({ size }: { size: ButtonSize }) {
   );
 }
 
-const skeuomorphicOuter = "relative rounded-[inherit] transition-all duration-300 ease-linear shadow-[0_2px_4px_rgba(0,0,0,0.3),0_12px_24px_rgba(0,0,0,0.18)] group-hover/button:translate-y-px group-hover/button:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_6px_12px_rgba(0,0,0,0.15)]";
+const skeuomorphicOuter = "relative rounded-[inherit] transition-all duration-300 ease-linear shadow-[0_1px_2px_rgba(0,0,0,0.35),0_6px_12px_rgba(0,0,0,0.18)] group-hover/button:translate-y-px group-hover/button:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_4px_8px_rgba(0,0,0,0.15)]";
 
 const skeuomorphicInner = "relative overflow-hidden rounded-[inherit] bg-[linear-gradient(180deg,#f8f8f8_0%,#ececec_45%,#d9d9d9_100%)] transition-[transform,box-shadow,background] duration-200 ease-linear shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_2px_rgba(0,0,0,0.08),inset_0_8px_16px_rgba(255,255,255,0.2)] group-hover/button:bg-[linear-gradient(180deg,#f3f3f3_0%,#dddddd_100%)] group-hover/button:shadow-[inset_0_2px_4px_rgba(0,0,0,0.15),inset_0_1px_0_rgba(255,255,255,0.6)] group-active/button:scale-[0.98]";
 
 const skeuomorphicText =
-  "relative block bg-[linear-gradient(180deg,#202020,#555555)] bg-clip-text [-webkit-background-clip:text] text-transparent text-[15px] font-semibold tracking-[-0.03em] [text-shadow:0_1px_1px_rgba(255,255,255,0.35)] transition-transform duration-200 ease-linear select-none group-hover/button:scale-[0.98]";
+  "relative block bg-[linear-gradient(180deg,#202020,#555555)] bg-clip-text [-webkit-background-clip:text] text-transparent text-sm font-semibold tracking-[-0.03em] [text-shadow:0_1px_1px_rgba(255,255,255,0.35)] transition-transform duration-200 ease-linear select-none group-hover/button:scale-[0.98]";
 
 const skeuomorphicPaddingMap: Record<ButtonSize, string> = {
-  xs: "px-2.5 py-1.5",
-  sm: "px-3.5 py-2",
-  md: "px-[26px] py-[14px]",
-  lg: "px-6 py-3",
-  xl: "px-7 py-3.5",
+  xs: "px-2.5 py-1",
+  sm: "px-3 py-1.5",
+  md: "px-3.5 py-2",
+  lg: "px-4 py-2.5",
+  xl: "px-5 py-3",
 };
 
 export function Button({

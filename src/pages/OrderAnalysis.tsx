@@ -128,7 +128,7 @@ export default function OrderAnalysis() {
             </div>
             <Button
               color="skeuomorphic"
-              size="md"
+              size="sm"
               onClick={() => refetch()}
               isLoading={isFetching}
               showTextWhileLoading

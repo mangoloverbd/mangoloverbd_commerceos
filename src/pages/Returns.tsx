@@ -7,6 +7,8 @@ import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CartoonButton } from "@/components/ui/cartoon-button";
 import { RichButton } from "@/components/ui/rich-button";
+import { Button } from "@/components/base/buttons/button";
+import { RefreshCw } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Package, ArrowUUpLeft } from "@phosphor-icons/react";
 import SteadfastLogo from "@/components/SteadfastLogo";
@@ -300,19 +302,16 @@ export default function Returns() {
               <p className="text-[11px] text-muted-foreground">Manage courier returns and cancellations</p>
             </div>
           </div>
-          <CartoonButton
-            label={syncing ? "Syncing..." : "Sync"}
-            icon={syncing ? <Spinner size="sm" /> : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
-                <path fill="currentColor" fillRule="evenodd" d="M2.93 11.2c.072-4.96 4.146-8.95 9.149-8.95a9.16 9.16 0 0 1 7.814 4.357a.75.75 0 0 1-1.277.786a7.66 7.66 0 0 0-6.537-3.643c-4.185 0-7.575 3.328-7.648 7.448l.4-.397a.75.75 0 0 1 1.057 1.065l-1.68 1.666a.75.75 0 0 1-1.056 0l-1.68-1.666A.75.75 0 1 1 2.528 10.8zm16.856-.733a.75.75 0 0 1 1.055 0l1.686 1.666a.75.75 0 1 1-1.054 1.067l-.41-.405c-.07 4.965-4.161 8.955-9.18 8.955a9.2 9.2 0 0 1-7.842-4.356a.75.75 0 1 1 1.277-.788a7.7 7.7 0 0 0 6.565 3.644c4.206 0 7.61-3.333 7.68-7.453l-.408.403a.75.75 0 1 1-1.055-1.067z" clipRule="evenodd" />
-              </svg>
-            )}
-            color="bg-orange-400"
-            hasHighlight={!syncing}
-            onClick={async () => { await handleBackfillFees(); await handleSync(); }}
-            disabled={syncing}
+          <Button
+            color="skeuomorphic"
             size="sm"
-          />
+            onClick={async () => { await handleBackfillFees(); await handleSync(); }}
+            isLoading={syncing}
+            showTextWhileLoading
+            iconLeading={<RefreshCw />}
+          >
+            {syncing ? "Syncing..." : "Sync"}
+          </Button>
         </div>
 
         {/* Summary Cards */}
