@@ -82,7 +82,6 @@ const colorClasses: Record<ButtonColor, string> = {
 function Spinner({ size }: { size: ButtonSize }) {
   return (
     <svg
-      data-icon="loading"
       fill="none"
       viewBox="0 0 20 20"
       className={cn("animate-spin", iconSizeMap[size])}
@@ -144,12 +143,20 @@ export function Button({
         colorClasses[effectiveColor],
         pending && "pointer-events-none",
         pending && !showTextWhileLoading && "[&>*:not([data-icon=loading])]:invisible",
+        pending && showTextWhileLoading && "[&>*:not([data-icon=loading]):not([data-text])]:hidden",
         className,
       )}
       {...props}
     >
       {showSpinner && (
-        <span className={cn(!showTextWhileLoading && "absolute inset-0 flex items-center justify-center")}>
+        <span
+          data-icon="loading"
+          className={cn(
+            "inline-flex items-center justify-center",
+            !showTextWhileLoading && "absolute inset-0",
+          )}
+          aria-hidden="true"
+        >
           <Spinner size={size} />
         </span>
       )}
