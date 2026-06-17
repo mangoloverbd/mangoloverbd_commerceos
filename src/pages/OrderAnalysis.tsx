@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
 import { AlertTriangle, BarChart3, Boxes, CheckCircle2, Package, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
+import { Button } from "@/components/base/buttons/button";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -125,14 +126,15 @@ export default function OrderAnalysis() {
               <img src="https://img.icons8.com/material-rounded/24/bard--v2.png" alt="" className="h-3.5 w-3.5 object-contain opacity-75" />
               <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">AI Business Forecast</AnimatedText>
             </div>
-            <button
+            <Button
+              color="secondary"
+              size="sm"
               onClick={() => refetch()}
-              disabled={isFetching}
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-black/[0.035] px-3 text-sm font-medium text-foreground/70 transition-all hover:border-black/20 hover:bg-black/[0.06] hover:text-foreground disabled:opacity-30"
+              isLoading={isFetching}
+              iconLeading={<RefreshCw className="h-4 w-4" />}
             >
-              {isFetching ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Refresh
-            </button>
+            </Button>
           </div>
 
           <div className="grid gap-3 p-4 lg:grid-cols-4">
