@@ -36,8 +36,6 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
     series.slices.template.setAll({
       strokeWidth: 3,
       stroke: am5.color(0xffffff),
-      tooltipText: "{category}: {value} ({valuePercentTotal.formatNumber('0.0')}%)",
-      cursorOverStyle: "pointer",
     });
 
     series.labelsContainer.set("paddingTop", 30);
@@ -58,11 +56,6 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       return match ? am5.color(match.color) : _;
     });
 
-    series.slices.template.states.create("hover", {
-      scale: 1.08,
-      strokeWidth: 4,
-    });
-
     series.data.setAll(
       data.map((item) => ({
         value: item.count,
@@ -78,17 +71,6 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
         marginBottom: 15,
       }),
     );
-
-    legend.labels.template.setAll({
-      fontSize: 11,
-      fill: am5.color(0x555555),
-    });
-
-    legend.valueLabels.template.setAll({
-      fontSize: 11,
-      fontWeight: "600",
-      fill: am5.color(0x171717),
-    });
 
     legend.data.setAll(series.dataItems);
 
