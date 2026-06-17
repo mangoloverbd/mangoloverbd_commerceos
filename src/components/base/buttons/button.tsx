@@ -39,8 +39,8 @@ const baseClasses = [
 
 const sizeClasses: Record<ButtonSize, string> = {
   xs: "gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold data-icon-only:p-2",
-  sm: "gap-1 rounded-md px-3 py-1.5 text-sm font-semibold data-icon-only:p-2",
-  md: "gap-1 rounded-lg px-3.5 py-2 text-sm font-semibold data-icon-only:p-2.5",
+  sm: "gap-1 rounded-md px-3 py-2 text-sm font-semibold data-icon-only:p-2",
+  md: "gap-1 rounded-lg px-3.5 py-2.5 text-sm font-semibold data-icon-only:p-2.5",
   lg: "gap-1.5 rounded-lg px-4 py-2.5 text-base font-semibold data-icon-only:p-3",
   xl: "gap-1.5 rounded-lg px-5 py-3 text-base font-semibold data-icon-only:p-3.5",
 };
@@ -117,9 +117,9 @@ const skeuomorphicText =
   "relative block bg-[linear-gradient(180deg,#202020,#555555)] bg-clip-text [-webkit-background-clip:text] text-transparent text-[15px] font-semibold tracking-[-0.03em] [text-shadow:0_1px_1px_rgba(255,255,255,0.35)] transition-transform duration-200 ease-linear select-none group-hover/button:scale-[0.98]";
 
 const skeuomorphicPaddingMap: Record<ButtonSize, string> = {
-  xs: "px-2.5 py-1",
-  sm: "px-3 py-1.5",
-  md: "px-3.5 py-2",
+  xs: "px-2.5 py-1.5",
+  sm: "px-3 py-2.5",
+  md: "px-3.5 py-2.5",
   lg: "px-4 py-2.5",
   xl: "px-5 py-3",
 };
