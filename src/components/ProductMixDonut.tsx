@@ -41,15 +41,8 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       cursorOverStyle: "pointer",
     });
 
-    series.slices.template.adapters.add("fill", (_, target) => {
-      const category = target.dataItem?.get("category", "");
-      const match = data.find((d) => d.label === category);
-      return match ? am5.color(match.color) : _;
-    });
-
     series.labelsContainer.set("paddingTop", 20);
 
-    // Variable slice radius by value
     series.slices.template.adapters.add("radius", (radius, target) => {
       const dataItem = target.dataItem;
       const high = series.getPrivate("valueHigh");
@@ -60,7 +53,12 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       return radius;
     });
 
-    // Hover: pop out + grow slice
+    series.slices.template.adapters.add("fill", (_, target) => {
+      const category = target.dataItem?.get("category", "");
+      const match = data.find((d) => d.label === category);
+      return match ? am5.color(match.color) : _;
+    });
+
     series.slices.template.states.create("hover", {
       scale: 1.08,
       strokeWidth: 4,
@@ -68,6 +66,7 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
 
     series.slices.template.states.create("active", {
       shiftRadius: 8,
+      strokeWidth: 4,
     });
 
     series.slices.template.states.create("dimmed", {
@@ -85,32 +84,6 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       strokeWidth: 1,
     });
 
-    // Click slice -> isolate (dim others)
-    let activeSlice: am5.DataItem<am5percent.ISliceSeriesDataItem> | null = null;
-    series.slices.template.on("active", function (active, target) {
-      if (target.dataItem) {
-        if (active) {
-          if (activeSlice && activeSlice !== target.dataItem) {
-            activeSlice.set("active", false);
-          }
-          activeSlice = target.dataItem;
-          series.slices.each((slice) => {
-            if (slice.dataItem !== target.dataItem) {
-              slice.set("state", "dimmed");
-            } else {
-              slice.set("state", "active");
-            }
-          });
-        } else {
-          activeSlice = null;
-          series.slices.each((slice) => {
-            slice.set("state", "hover");
-          });
-          series.slices.template.set("state", "default");
-        }
-      }
-    });
-
     series.data.setAll(
       data.map((item) => ({
         value: item.count,
@@ -118,13 +91,40 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       })),
     );
 
+    // Click slice -> isolate (dim others). One handler per slice instance.
+    let activeSlice: am5percent.PieSeriesSlice | null = null;
+    series.slices.each((slice) => {
+      slice.on("click", () => {
+        const sliceDataItem = slice.dataItem;
+        if (!sliceDataItem) return;
+        if (activeSlice === slice) {
+          // Toggle off
+          activeSlice = null;
+          series.slices.each((s) => s.states.applyAll());
+          series.slices.each((s) => s.set("active", false));
+          return;
+        }
+        if (activeSlice) {
+          activeSlice.set("active", false);
+        }
+        activeSlice = slice;
+        series.slices.each((s) => {
+          if (s === slice) {
+            s.set("active", true);
+            s.states.applyAll();
+          } else {
+            s.set("state", "dimmed");
+          }
+        });
+      });
+    });
+
     const legend = chart.children.push(
       am5.Legend.new(root, {
         centerX: am5.p50,
         x: am5.p50,
         marginTop: 12,
         marginBottom: 0,
-        clickTargetType: "none",
       }),
     );
 
@@ -139,34 +139,26 @@ export function ProductMixDonut({ data }: { data: StatusItem[] }) {
       fill: am5.color(0x171717),
     });
 
-    legend.markerContainers.template.setAll({
-      cursorOverStyle: "pointer",
-    });
-
-    legend.itemContainers.template.set("cursorOverStyle", "pointer");
-
-    // Click legend item -> toggle visibility
-    let hidden: Set<string> = new Set();
-    legend.itemContainers.template.on("click", (e, target) => {
-      if (!target.dataItem) return;
-      const dataContext = target.dataItem.dataContext as { category?: string };
-      const category = dataContext?.category;
-      if (!category) return;
-      const slice = series.slices.getIndex(series.dataItems.indexOf(target.dataItem as am5.DataItem<am5percent.ISliceSeriesDataItem>));
-      if (!slice) return;
-
-      if (hidden.has(category)) {
-        hidden.delete(category);
-        slice.show();
-      } else {
-        hidden.add(category);
-        slice.hide();
-      }
+    // Legend item click -> toggle slice visibility
+    legend.itemContainers.each((item) => {
+      item.set("cursorOverStyle", "pointer");
+      item.events.on("click", () => {
+        const dataItem = item.dataItem as am5.DataItem<am5percent.ISliceSeriesDataItem> | undefined;
+        if (!dataItem) return;
+        const category = dataItem.dataContext?.category as string | undefined;
+        if (!category) return;
+        const slice = dataItem.get("slice") as am5percent.PieSeriesSlice | undefined;
+        if (!slice) return;
+        if (slice.get("hidden")) {
+          slice.show();
+        } else {
+          slice.hide();
+        }
+      });
     });
 
     legend.data.setAll(series.dataItems);
 
-    // Animate slices on initial render
     series.appear(800, 100);
 
     return () => {

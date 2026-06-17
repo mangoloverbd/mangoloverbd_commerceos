@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { motion } from "framer-motion";
 import { AlertTriangle, BarChart3, Boxes, CheckCircle2, Package, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
@@ -385,14 +386,20 @@ function ExecutiveProductMix({
   aiSummary: string;
 }) {
   const totalProducts = Math.max(products.length, 1);
-  const statusCounts = [
-    { label: "Winners", count: products.filter((product) => product.status === "winner").length, color: "#171717" },
-    { label: "Stable", count: products.filter((product) => product.status === "stable").length, color: "#8C8A86" },
-    { label: "Review", count: products.filter((product) => product.status === "shutdown_candidate").length, color: "#C9A74F" },
-    { label: "Risk", count: products.filter((product) => product.status === "stockout" || product.status === "dead_stock").length, color: "#B85C4A" },
-  ];
+  const statusCounts = useMemo(
+    () => [
+      { label: "Winners", count: products.filter((product) => product.status === "winner").length, color: "#171717" },
+      { label: "Stable", count: products.filter((product) => product.status === "stable").length, color: "#8C8A86" },
+      { label: "Review", count: products.filter((product) => product.status === "shutdown_candidate").length, color: "#C9A74F" },
+      { label: "Risk", count: products.filter((product) => product.status === "stockout" || product.status === "dead_stock").length, color: "#B85C4A" },
+    ],
+    [products],
+  );
   const winnerShare = Math.round((statusCounts[0].count / totalProducts) * 100);
-  const barProducts = [...products].sort((a, b) => b.revenue - a.revenue).slice(0, 6);
+  const barProducts = useMemo(
+    () => [...products].sort((a, b) => b.revenue - a.revenue).slice(0, 6),
+    [products],
+  );
   const maxRevenue = Math.max(...barProducts.map((product) => product.revenue), 1);
   const topWinner = products.find((product) => product.status === "winner") || products[0];
   const topRisk = stockoutRisks[0] || shutdownCandidates[0];
