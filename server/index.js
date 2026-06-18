@@ -3623,7 +3623,7 @@ app.post("/api/orders", async (req, res) => {
     if (!row.shopify_order_id) {
       row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
-    if (!row.order_number) row.order_number = `MAN-${Date.now()}`;
+    if (!row.order_number) row.order_number = `#M-${await getNextManualOrderSeq(orgId)}`;
     if (!row.status) row.status = "pending";
 
     const { data, error } = await supabase
