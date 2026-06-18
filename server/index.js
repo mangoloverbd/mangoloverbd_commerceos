@@ -895,8 +895,10 @@ async function getNextManualOrderSeq(orgId) {
       .maybeSingle();
 
     const currentStr = existing?.value ?? "0";
+    const highestShopifyStyleOrderNumber = await getHighestShopifyStyleOrderNumber(orgId);
     const current = parseInt(currentStr, 10) || 0;
-    const next = current + 1;
+    const baseline = Math.max(current, highestShopifyStyleOrderNumber);
+    const next = baseline + 1;
 
     const { data: updated, error } = await supabase
       .from("app_settings")
@@ -910,6 +912,21 @@ async function getNextManualOrderSeq(orgId) {
   }
 
   throw new Error("Failed to allocate manual order sequence after retries");
+}
+
+async function getHighestShopifyStyleOrderNumber(orgId) {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("order_number")
+    .eq("org_id", orgId);
+  if (error) throw error;
+
+  return (data || []).reduce((highest, order) => {
+    if (!/^#\d+$/.test(order.order_number || "")) return highest;
+    const orderNumber = Number(order.order_number.replace("#", ""));
+    return Number.isFinite(orderNumber) ? Math.max(highest, orderNumber) : highest;
+  }, 0);
 }
 
 async function getProductStockMap(orgId, productIds) {
@@ -3524,6 +3541,7 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
         fulfillment_status: order.fulfillment_status || null,
         fraud_checked: existing?.fraud_checked || false,
         fraud_data: existing?.fraud_data || null,
+        created_at: order.created_at || new Date().toISOString(),
         org_id: orgId,
       };
     });
@@ -3558,7 +3576,7 @@ app.get("/api/orders", async (req, res) => {
       .from("orders")
       .select("*")
       .eq("org_id", orgId)
-      .order("order_number", { ascending: false });
+      .order("created_at", { ascending: false });
     if (error) throw error;
 
     const allOrders = allData || [];
@@ -3623,7 +3641,7 @@ app.post("/api/orders", async (req, res) => {
     if (!row.shopify_order_id) {
       row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
-    if (!row.order_number) row.order_number = `#M-${await getNextManualOrderSeq(orgId)}`;
+    if (!row.order_number) row.order_number = `#M${await getNextManualOrderSeq(orgId)}`;
     if (!row.status) row.status = "pending";
 
     const { data, error } = await supabase

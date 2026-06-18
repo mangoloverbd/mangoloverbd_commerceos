@@ -12,12 +12,34 @@ describe("manual order numbering", () => {
     expect(source).toContain('.eq("value", currentStr)');
   });
 
-  it("creates manual orders with #M-<seq> numbers", () => {
+  it("creates manual orders with compact Shopify-adjacent #M<seq> numbers", () => {
     const createRoute = source.slice(
       source.indexOf('app.post("/api/orders"'),
       source.indexOf('app.patch("/api/orders/:id"')
     );
     expect(createRoute).toContain("await getNextManualOrderSeq(orgId)");
-    expect(createRoute).toContain("#M-${await getNextManualOrderSeq(orgId)}");
+    expect(createRoute).toContain("#M${await getNextManualOrderSeq(orgId)}");
+  });
+
+  it("seeds manual order numbers from the highest Shopify-style order number", () => {
+    expect(source).toContain("async function getHighestShopifyStyleOrderNumber(orgId)");
+    expect(source).toContain('Number(order.order_number.replace("#", ""))');
+    expect(source).toContain("Math.max(current, highestShopifyStyleOrderNumber)");
+  });
+
+  it("stores Shopify order creation time as the business order date", () => {
+    const syncRoute = source.slice(
+      source.indexOf('app.post("/api/fetch-shopify-orders"'),
+      source.indexOf('app.get("/api/orders"')
+    );
+    expect(syncRoute).toContain("created_at: order.created_at || new Date().toISOString()");
+  });
+
+  it("sorts orders by business order date recency instead of order_number", () => {
+    const listRoute = source.slice(
+      source.indexOf('app.get("/api/orders"'),
+      source.indexOf('app.get("/api/orders/recent-notifications"')
+    );
+    expect(listRoute).toContain('.order("created_at", { ascending: false })');
   });
 });
