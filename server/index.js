@@ -876,6 +876,42 @@ async function saveOrgSettings(orgId, settings) {
   return saveSettings(scopedSettings);
 }
 
+async function getNextManualOrderSeq(orgId) {
+  const supabase = getServiceSupabase();
+  const key = orgSettingKey(orgId, "manual_order_seq");
+  const now = new Date().toISOString();
+
+  // Ensure a counter row exists. ignoreDuplicates protects progress if another
+  // process already initialized or incremented it.
+  await supabase
+    .from("app_settings")
+    .upsert({ key, value: "0", updated_at: now }, { onConflict: "key", ignoreDuplicates: true });
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { data: existing } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle();
+
+    const currentStr = existing?.value ?? "0";
+    const current = parseInt(currentStr, 10) || 0;
+    const next = current + 1;
+
+    const { data: updated, error } = await supabase
+      .from("app_settings")
+      .update({ value: String(next), updated_at: now })
+      .eq("key", key)
+      .eq("value", currentStr)
+      .select("value");
+
+    if (error) throw error;
+    if (updated && updated.length > 0) return next;
+  }
+
+  throw new Error("Failed to allocate manual order sequence after retries");
+}
+
 async function getProductStockMap(orgId, productIds) {
   if (!productIds.length) return {};
   const keys = productIds.map((id) => `${orgId}:product_stock:${id}`);
