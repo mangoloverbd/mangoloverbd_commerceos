@@ -141,11 +141,11 @@ export function AppSidebar() {
                         <Link
                             to="/"
                             className="flex min-w-0 items-center gap-2 text-[#111] transition-opacity hover:opacity-70"
-                            aria-label="Arc Lab Suite"
+                            aria-label="Merchant-Suite"
                         >
                             <Logo className="h-6 w-6 rounded-md shrink-0" />
                             <span className="text-[15px] font-semibold leading-none tracking-normal">
-                                Arc Lab
+                                Merchant-
                             </span>
                             <span
                                 className="text-[17px] font-semibold leading-none tracking-normal"
@@ -174,7 +174,7 @@ export function AppSidebar() {
                                     </p>
                                 )}
                                 <p className="text-[9px] text-sidebar-foreground/40 mt-0.5 leading-none">
-                                    Arc Lab Technology
+                                    Merchant-Suite
                                 </p>
                             </div>
                         )}
@@ -255,7 +255,7 @@ export function AppSidebar() {
                 {!isCollapsed && (
                     <div className="flex items-center justify-between px-4 pb-2">
                         <p className="text-[9px] text-sidebar-foreground/25">
-                            © 2026 Arc Lab Technology
+                            © 2026 Merchant-Suite
                         </p>
                         <Popover>
                             <PopoverTrigger asChild>

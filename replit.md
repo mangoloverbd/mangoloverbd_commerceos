@@ -1,4 +1,4 @@
-# Arc Lab Technology — Order Management Dashboard
+# Merchant-Suite — Order Management Dashboard
 
 ## Overview
 Full-stack order management SaaS with multi-tenancy. Built with React/Vite (frontend) + Express (backend) + Supabase (PostgreSQL).

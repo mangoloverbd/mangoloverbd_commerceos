@@ -62,7 +62,7 @@ export default function Onboarding() {
         <div className="mb-10 flex items-center gap-2">
           <Logo className="h-6 w-6 rounded-md shrink-0" />
           <span className="text-[18px] font-semibold leading-none tracking-normal text-black">
-            Arc Lab
+            Merchant-
           </span>
           <span
             className="text-[20px] font-semibold leading-none tracking-normal text-black"
@@ -79,7 +79,7 @@ export default function Onboarding() {
               Name your workspace
             </h1>
             <p className="text-[13px] text-black/40 mt-2">
-              Set up your Arc Lab Suite account.
+              Set up your Merchant-Suite account.
             </p>
             <div className="mt-4 w-full rounded-lg bg-emerald-50 border border-emerald-200/60 px-4 py-3 text-center">
               <p className="text-[13px] font-medium text-emerald-700">
@@ -100,7 +100,7 @@ export default function Onboarding() {
               <input
                 id="org-name"
                 autoFocus
-                placeholder="e.g. Arc Lab Corporation"
+                placeholder="e.g. Merchant-Suite Corporation"
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
                 className="w-full h-[44px] bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4"

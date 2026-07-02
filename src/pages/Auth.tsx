@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/logo";
 
 type Mode = "signin" | "signup";
-const rememberedEmailKey = "arclabsuite:remembered-email";
+const rememberedEmailKey = "merchantsuite:remembered-email";
 
 export default function Auth() {
   const [mode, setMode] = useState<Mode>("signin");
@@ -235,7 +235,7 @@ export default function Auth() {
                 <div className="mb-10 flex items-center gap-2">
                   <Logo className="h-6 w-6 rounded-md shrink-0" />
                   <span className="text-[18px] font-semibold leading-none tracking-normal text-black">
-                    Arc Lab
+                    Merchant-
                   </span>
                   <span
                     className="text-[20px] font-semibold leading-none tracking-normal text-black"

@@ -190,7 +190,7 @@ function WorkspaceSection() {
                   value={displayValue}
                   onChange={(e) => setValue(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && isDirty && handleSave()}
-                  placeholder="Arc Lab Corporation"
+                  placeholder="Merchant-Suite Corporation"
                   className="h-8 w-48 rounded-lg border-black/[0.1] bg-black/[0.04] text-[13px] text-black placeholder:text-black/25 focus-visible:ring-1 focus-visible:ring-black/20"
                 />
                 {isDirty && (

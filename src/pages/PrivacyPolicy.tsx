@@ -5,8 +5,8 @@ export default function PrivacyPolicy() {
       <header className="border-b border-black/[0.08] bg-white">
         <div className="mx-auto max-w-3xl px-6 py-5 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="Arc Lab Technology" className="h-7 w-7 rounded-lg" />
-            <span className="text-[15px] font-semibold tracking-tight text-black">Arc Lab Technology</span>
+            <img src="/logo.png" alt="Merchant-Suite" className="h-7 w-7 rounded-lg" />
+            <span className="text-[15px] font-semibold tracking-tight text-black">Merchant-Suite</span>
           </a>
           <a
             href="/"
@@ -36,10 +36,10 @@ export default function PrivacyPolicy() {
           {/* Introduction */}
           <Section title="1. Introduction">
             <p>
-              Arc Lab Technology ("we", "us", or "our") operates the Arc Lab Suite business management
+              Merchant-Suite ("we", "us", or "our") operates the Merchant-Suite business management
               platform, accessible at{" "}
-              <a href="https://suite.arclabtechnology.com" className="text-black underline underline-offset-2">
-                https://suite.arclabtechnology.com
+              <a href="https://merchant-suite.com" className="text-black underline underline-offset-2">
+                https://merchant-suite.com
               </a>{" "}
               (the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard
               your information when you use our Service. Please read this policy carefully. If you
@@ -235,9 +235,9 @@ export default function PrivacyPolicy() {
               please contact us:
             </p>
             <div className="mt-3 rounded-[14px] border border-black/[0.08] bg-white px-5 py-4 space-y-1 text-[14px]">
-              <p className="font-semibold text-black">Arc Lab Technology</p>
-              <p className="text-black/60">Email: <a href="mailto:privacy@arclabtechnology.com" className="text-black underline underline-offset-2">privacy@arclabtechnology.com</a></p>
-              <p className="text-black/60">Website: <a href="https://suite.arclabtechnology.com" className="text-black underline underline-offset-2">https://suite.arclabtechnology.com</a></p>
+              <p className="font-semibold text-black">Merchant-Suite</p>
+              <p className="text-black/60">Email: <a href="mailto:privacy@merchant-suite.com" className="text-black underline underline-offset-2">privacy@merchant-suite.com</a></p>
+              <p className="text-black/60">Website: <a href="https://merchant-suite.com" className="text-black underline underline-offset-2">https://merchant-suite.com</a></p>
               <p className="text-black/60">Bangladesh</p>
             </div>
           </Section>
@@ -248,7 +248,7 @@ export default function PrivacyPolicy() {
       {/* Footer */}
       <footer className="border-t border-black/[0.08] mt-16">
         <div className="mx-auto max-w-3xl px-6 py-6 flex items-center justify-center text-[12px] text-black/35">
-          <span>© {new Date().getFullYear()} Arc Lab Technology. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} Merchant-Suite. All rights reserved.</span>
         </div>
       </footer>
     </div>

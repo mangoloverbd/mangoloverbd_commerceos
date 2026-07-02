@@ -217,7 +217,7 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
                 })()
               ) : currentPlan.status === "trial_expired" ? (
                 <>
-                  Your free trial has <span className="font-medium text-red-600">expired</span>. Choose a plan below to continue using Arc Lab Suite.
+                  Your free trial has <span className="font-medium text-red-600">expired</span>. Choose a plan below to continue using Merchant-Suite.
                 </>
               ) : (
                 <>

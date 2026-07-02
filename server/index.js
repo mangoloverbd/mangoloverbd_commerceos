@@ -1051,7 +1051,7 @@ function verifyMetaState(state) {
 }
 
 function metaRedirectUri() {
-  return process.env.META_REDIRECT_URI || "https://suite.arclabtechnology.com/api/meta/oauth/callback";
+  return process.env.META_REDIRECT_URI || "https://merchant-suite.com/api/meta/oauth/callback";
 }
 
 const META_SCOPES = [
@@ -1533,7 +1533,7 @@ app.post("/api/webhooks/stripe", async (req, res) => {
 const SHOPIFY_SCOPES = "read_orders,read_products,read_customers";
 
 function shopifyRedirectUri() {
-  return process.env.SHOPIFY_REDIRECT_URI || "https://suite.arclabtechnology.com/api/auth/shopify/callback";
+  return process.env.SHOPIFY_REDIRECT_URI || "https://merchant-suite.com/api/auth/shopify/callback";
 }
 
 function signShopifyState(payload, secret) {
