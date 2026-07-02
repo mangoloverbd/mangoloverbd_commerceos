@@ -1,6 +1,6 @@
 # Merchant-Suite
 
-An AI-powered order management and social inbox platform built with React, Vite, TypeScript, and Supabase.
+An AI-powered order management and social inbox platform for growing merchants, built with React, Vite, TypeScript, and Supabase.
 
 ## Features
 
