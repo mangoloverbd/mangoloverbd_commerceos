@@ -93,7 +93,7 @@ const textShadowMap: Record<Color, string> = {
 
 const sizeMap: Record<SizeVariant, string> = {
   sm: "h-8 rounded-[8px] gap-1.5 px-3 text-sm",
-  default: "px-6 py-2.5 text-sm rounded-[8px]",
+  default: "px-4 py-1.5 text-sm rounded-[8px]",
   lg: "h-10 rounded-[8px] px-6 text-base",
 };
 

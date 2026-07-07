@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Button as BaseButton } from "@/components/base/buttons/button";
+import { RichButton } from "@/components/ui/rich-button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/ui/combobox";
 import {
@@ -308,18 +308,16 @@ export default function OrderExtraction() {
                   className="min-h-[220px] resize-none rounded-xl border-0 bg-black/[0.06] text-sm text-foreground shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
                 />
 
-                <BaseButton
-                    color="skeuomorphic"
-                    size="md"
+                <RichButton
+                    color="default"
+                    size="default"
                     onClick={extractOrderFromText}
-                    isLoading={extracting}
-                    showTextWhileLoading
                     disabled={extracting || !orderText.trim()}
-                    iconLeading={<Sparkles />}
                     className="w-full"
                   >
+                    {extracting ? <Spinner className="w-4 h-4 text-black/40" /> : <Sparkles className="w-4 h-4" />}
                     {extracting ? "Extracting..." : "Extract Order Details"}
-                  </BaseButton>
+                  </RichButton>
               </div>
             </div>
 
