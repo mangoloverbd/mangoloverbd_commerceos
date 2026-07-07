@@ -561,27 +561,22 @@ export default function OrderExtraction() {
                 })()}
 
                 <div className="flex gap-3">
-                  <BaseButton
-                    color="skeuomorphic"
-                    size="md"
+                  <Button
+                    variant="outline"
                     onClick={() => setManualEdit(!manualEdit)}
-                    iconLeading={manualEdit ? <Lock /> : <Unlock />}
-                    className="min-w-0 flex-1"
+                    className="min-w-0 flex-1 h-11 rounded-xl"
                   >
+                    {manualEdit ? <Lock className="w-4 h-4 mr-2" /> : <Unlock className="w-4 h-4 mr-2" />}
                     {manualEdit ? "Lock Editing" : "Enable Editing"}
-                  </BaseButton>
-                  <BaseButton
-                    color="skeuomorphic"
-                    size="md"
+                  </Button>
+                  <Button
                     onClick={createOrder}
-                    isLoading={creating}
-                    showTextWhileLoading
                     disabled={creating}
-                    iconLeading={<Plus />}
-                    className="min-w-0 flex-1"
+                    className="min-w-0 flex-1 h-11 rounded-xl bg-black text-white hover:bg-black/90"
                   >
+                    {creating ? <Spinner className="w-4 h-4 mr-2 text-white/50" /> : <Plus className="w-4 h-4 mr-2" />}
                     {creating ? "Creating..." : "Create Order"}
-                  </BaseButton>
+                  </Button>
                 </div>
               </motion.div>
             ) : (
