@@ -88,47 +88,17 @@ function StatCard({
   label, value, sub, accent,
 }: { label: string; value: React.ReactNode; sub: string; accent?: string }) {
   return (
-    <div
-      className="flex flex-col min-w-0 overflow-hidden"
-      style={{
-        background: "#E9E8E5",
-        borderRadius: "14px",
-        padding: "4px",
-        border: "1.5px solid rgba(0,0,0,0.07)",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
-      }}
-    >
-      <div
-        style={{
-          background: "#F7F7F6",
-          borderRadius: "10px",
-          border: "1px solid rgba(0,0,0,0.05)",
-          padding: "12px 14px",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
-        }}
+    <div className="flex flex-col min-w-0 overflow-hidden rounded-xl border border-black/[0.08] bg-white p-4 shadow-sm">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-black/50">
+        {label}
+      </p>
+      <p
+        className={cn("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", accent ?? "text-black")}
+        style={{ fontFamily: SYS }}
       >
-        <p
-          style={{
-            fontSize: "10px",
-            fontWeight: 500,
-            letterSpacing: "0.08em",
-            color: "#7F7F7D",
-            textTransform: "uppercase",
-            margin: 0,
-          }}
-        >
-          {label}
-        </p>
-        <p
-          className={cn("mt-1.5 text-[22px] font-bold leading-none tabular-nums", accent ?? "text-[#222A38]")}
-          style={{ fontFamily: SYS }}
-        >
-          {value}
-        </p>
-      </div>
-      <div className="flex items-center px-3 py-1.5">
-        <p className="text-[11px] text-black/45" style={{ fontFamily: SYS }}>{sub}</p>
-      </div>
+        {value}
+      </p>
+      <p className="mt-1.5 text-[12px] text-black/40" style={{ fontFamily: SYS }}>{sub}</p>
     </div>
   );
 }
@@ -643,9 +613,9 @@ export default function Products() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
+          className="flex flex-col gap-4"
         >
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Products"
               value={isLoading ? <span className="inline-block h-7 w-10 animate-pulse rounded-lg bg-black/[0.05]" /> : totalProducts}
@@ -669,9 +639,9 @@ export default function Products() {
               accent={outCount > 0 ? "text-red-500" : "text-black"}
             />
           </div>
-          <div className="border-t border-black/[0.06] px-6 py-2.5">
-            <span className="text-[12px] text-black/40">
-              Total cost value: <span className="font-medium text-black">{fmt(totalCog)}</span>
+          <div className="rounded-xl border border-black/[0.08] bg-white px-5 py-3 shadow-sm">
+            <span className="text-[13px] text-black/60">
+              Total cost value: <span className="font-semibold text-black">{fmt(totalCog)}</span>
             </span>
           </div>
         </motion.div>
@@ -681,49 +651,47 @@ export default function Products() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.04 }}
-          className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
+          className="rounded-xl border border-black/[0.08] bg-white p-5 shadow-sm"
         >
-          <div className="flex h-[50px] items-center gap-2.5 border-b border-black/[0.06] px-5">
-            <Globe2 className="h-3.5 w-3.5 text-black/40" />
-            <span className="text-[15px] font-semibold tracking-tight text-black">Import from Website</span>
+          <div className="mb-4 flex items-center gap-2">
+            <Globe2 className="h-4 w-4 text-black/60" />
+            <span className="text-[14px] font-semibold text-black">Import from Website</span>
           </div>
-          <div className="px-5 py-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <input
-                data-testid="input-crawl-url"
-                type="url"
-                placeholder="https://yourstore.com — AI extracts products automatically"
-                value={crawlUrl}
-                onChange={e => setCrawlUrl(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
-                className={cn(INPUT_CLS, "h-9 flex-1 font-sans")}
-              />
-              <RichButton
-                data-testid="button-crawl"
-                color="default"
-                size="default"
-                onClick={handleCrawl}
-                disabled={crawlStatus === "crawling" || !crawlUrl.trim()}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              data-testid="input-crawl-url"
+              type="url"
+              placeholder="https://yourstore.com — AI extracts products automatically"
+              value={crawlUrl}
+              onChange={e => setCrawlUrl(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
+              className={cn(INPUT_CLS, "h-9 flex-1 font-sans")}
+            />
+            <RichButton
+              data-testid="button-crawl"
+              color="default"
+              size="default"
+              onClick={handleCrawl}
+              disabled={crawlStatus === "crawling" || !crawlUrl.trim()}
+            >
+              {crawlStatus === "crawling" ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              {crawlStatus === "crawling" ? "Extracting…" : "Extract"}
+            </RichButton>
+          </div>
+          <AnimatePresence>
+            {crawlMsg && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className={cn("mt-3 text-[12px]",
+                  crawlStatus === "error" ? "text-red-500" : "text-emerald-600"
+                )}
               >
-                {crawlStatus === "crawling" ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                {crawlStatus === "crawling" ? "Extracting…" : "Extract"}
-              </RichButton>
-            </div>
-            <AnimatePresence>
-              {crawlMsg && (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className={cn("mt-2 text-[12px]",
-                    crawlStatus === "error" ? "text-red-500" : "text-emerald-600"
-                  )}
-                >
-                  {crawlMsg}
-                </motion.p>
-              )}
-            </AnimatePresence>
-          </div>
+                {crawlMsg}
+              </motion.p>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* ── Main product card ── */}
@@ -731,16 +699,16 @@ export default function Products() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08 }}
-          className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
+          className="overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-sm"
         >
           {/* ── Toolbar ── */}
-          <div className="flex flex-col gap-3 border-b border-black/[0.06] px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-b border-black/[0.08] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             {/* Left: title + count */}
-            <div className="flex items-center gap-2.5">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#000000"><g clipPath="url(#clip0_4418_8364)"><path d="M11.75 7H11H7C4.24 7 2 9.24 2 12V17C2 19.76 4.24 22 7 22H12C14.76 22 17 19.76 17 17V13V12.25C17 9.35 14.65 7 11.75 7Z" fill="currentColor" opacity="0.35"/><path d="M21.8799 6.33033C22.4045 8.88991 21.1621 11.2123 19.159 12.306C18.8514 12.4739 18.4999 12.2343 18.4999 11.8838V11.7503C18.4999 8.31033 15.6899 5.50033 12.2499 5.50033H12.1164C11.7659 5.50033 11.5263 5.14879 11.6942 4.84119C12.7879 2.8381 15.1103 1.59574 17.6699 2.12033C19.7599 2.55033 21.4499 4.24033 21.8799 6.33033Z" fill="currentColor"/></g><defs><clipPath id="clip0_4418_8364"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>
-              <span className="text-[15px] font-semibold tracking-tight text-black">Products</span>
+            <div className="flex items-center gap-2">
+              <PackageSearch className="h-4 w-4 text-black/60" />
+              <span className="text-[14px] font-semibold text-black">Products</span>
               {!isLoading && (
-                <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black/40">
+                <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black/60">
                   {products.length}{products.length !== allProducts.length && `/${allProducts.length}`}
                 </span>
               )}
