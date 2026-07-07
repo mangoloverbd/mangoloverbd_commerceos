@@ -79,7 +79,7 @@ type FieldDef = {
   label: string;
   placeholder: string;
   secret?: boolean;
-  hint?: string;
+  hint?: React.ReactNode;
 };
 
 type SectionDef = {
@@ -113,7 +113,44 @@ const SECTIONS: SectionDef[] = [
     description: "Receive orders via webhook",
     color: "bg-black",
     fields: [
-      { key: "custom_store_api_key", label: "Webhook API Key", placeholder: "e.g., my-super-secret-key-123", secret: true, hint: "Include this in the x-api-key header of your POST request to /api/custom-orders/webhook" },
+      { 
+        key: "custom_store_api_key", 
+        label: "Webhook API Key", 
+        placeholder: "e.g., my-super-secret-key-123", 
+        secret: true, 
+        hint: (
+          <div className="mt-3 space-y-2 text-black/60 leading-relaxed border border-black/10 p-3 rounded-lg bg-black/5">
+            <p><strong className="text-black">1. Create a Key:</strong> Type any secure password above and click Save.</p>
+            <p><strong className="text-black">2. Connect your Website:</strong> Tell your developer to send a POST request for new orders.</p>
+            <div>
+              <p className="text-[10px] uppercase font-bold text-black/40 mb-1">Webhook URL</p>
+              <code className="block bg-white p-2 border border-black/10 rounded text-[11px] text-black">
+                POST https://suite.arclabtechnology.com/api/custom-orders/webhook
+              </code>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-bold text-black/40 mb-1">Required Header</p>
+              <code className="block bg-white p-2 border border-black/10 rounded text-[11px] text-black">
+                x-api-key: [THE_KEY_YOU_SAVED_ABOVE]
+              </code>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-bold text-black/40 mb-1">JSON Body</p>
+              <code className="block bg-white p-2 border border-black/10 rounded text-[11px] text-black">
+                {`{
+  "customer_name": "Test User",
+  "phone": "01712345678",
+  "address": "Dhaka",
+  "product": "T-Shirt",
+  "quantity": 1,
+  "price": 1200,
+  "delivery_rate": 60
+}`}
+              </code>
+            </div>
+          </div>
+        )
+      },
     ],
   },
   {
