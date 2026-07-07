@@ -7347,7 +7347,7 @@ app.post("/api/extract-order-from-text", rateLimitAI, async (req, res) => {
     let source = "regex_fallback";
 
     try {
-      const aiOrder = await extractOrderWithAI(text, regexOrder, process.env.ORDER_EXTRACTION_MODEL || "gpt-4.1-mini");
+      const aiOrder = await extractOrderWithAI(text, regexOrder, process.env.ORDER_EXTRACTION_MODEL || "gpt-4o-mini");
       if (aiOrder) {
         extractedOrder = aiOrder;
         source = "ai";
