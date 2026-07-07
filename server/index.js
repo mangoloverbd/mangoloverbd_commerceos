@@ -3651,6 +3651,10 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
 
+    if (req.body?.order_id !== undefined) {
+      row.order_number = req.body.order_id;
+    }
+
     if (!row.order_number) row.order_number = `#M${await getNextManualOrderSeq(orgId)}`;
     if (!row.status) row.status = "pending";
     if (!row.shopify_order_id) {
