@@ -80,7 +80,7 @@ function attrLabel(a: Record<string, string>): string {
 // ── Shared input class — every numeric cell uses this exact height/width ──────
 // h-9 = 36 px, fully uniform — matches Settings page input style exactly
 const INPUT_CLS =
-  "h-9 w-full rounded-xl border border-black/[0.1] bg-black/[0.04] px-3 font-mono text-[13px] text-black outline-none tabular-nums transition-colors focus-visible:ring-1 focus-visible:ring-black/20 focus:bg-white placeholder:text-black/25";
+  "h-9 w-full rounded-[12px] border border-black/[0.1] bg-black/[0.04] px-3 font-mono text-[13px] text-black outline-none tabular-nums transition-colors focus-visible:ring-1 focus-visible:ring-black/20 focus:bg-white placeholder:text-black/25";
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
@@ -188,10 +188,10 @@ function VariantChip({
   }
 
   const chipCls = cn(
-    "inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[11px] font-medium leading-none transition-all",
+    "inline-flex cursor-pointer select-none items-center gap-1.5 rounded-[12px] px-2.5 py-[5px] text-[11px] font-medium leading-none transition-all",
     status === "out" && "bg-red-50 text-red-600 ring-1 ring-inset ring-red-200",
     status === "low" && "bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-200",
-    status === "ok"  && "bg-black/[0.04] text-black ring-1 ring-inset ring-black/[0.08]",
+    status === "ok"  && "bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 hover:bg-[#E3E3E3]",
     open && "ring-2 ring-black/30"
   );
 
@@ -241,11 +241,11 @@ function VariantChip({
                 <div>
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Cost (৳)</label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/40">৳</span>
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
                     <input type="number" min={0} value={cogDraft}
                       onChange={e => setCogDraft(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && save()}
-                      className={cn(INPUT_CLS, "h-9 pl-7")} />
+                      className="h-9 w-full rounded-[12px] pl-7 pr-3 font-mono text-[13px] outline-none tabular-nums focus-visible:ring-2 focus-visible:ring-black/20 bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 transition-all hover:bg-[#E3E3E3]" />
                   </div>
                 </div>
               )}
@@ -959,13 +959,13 @@ export default function Products() {
                           <div className="px-4 pt-4 pb-3">
                             <div className="relative flex w-full">
                               <div className="relative flex-1">
-                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/30">৳</span>
+                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
                                 <input
                                   data-testid={`input-cog-${product.id}`}
                                   type="number" min={0} value={cogVal}
                                   onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                   onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                  className={cn(INPUT_CLS, "h-9 pl-7 pr-11")}
+                                  className="h-9 w-full rounded-[12px] pl-7 pr-11 font-mono text-[13px] outline-none tabular-nums focus-visible:ring-2 focus-visible:ring-black/20 bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 transition-all hover:bg-[#E3E3E3]"
                                 />
                               </div>
                               <AnimatePresence>
