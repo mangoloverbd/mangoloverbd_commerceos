@@ -3611,6 +3611,67 @@ app.get("/api/orders/recent-notifications", async (req, res) => {
   }
 });
 
+app.post("/api/custom-orders/webhook", async (req, res) => {
+  try {
+    const apiKey = req.headers["x-api-key"];
+    if (!apiKey) {
+      return res.status(401).json({ error: "Missing x-api-key header" });
+    }
+
+    const supabase = getServiceSupabase();
+    // Look up the org_id by API key in app_settings.
+    const { data: settings, error: settingsError } = await supabase
+      .from("app_settings")
+      .select("key")
+      .eq("value", apiKey)
+      .like("key", "%:custom_store_api_key");
+
+    if (settingsError || !settings || settings.length === 0) {
+      return res.status(401).json({ error: "Invalid API Key" });
+    }
+
+    // Extract orgId from the setting key (orgId is a UUID before the colon)
+    const orgId = settings[0].key.split(":")[0];
+
+    // Validate and format incoming order data
+    const allowed = [
+      "order_number",
+      "customer_name",
+      "phone",
+      "address",
+      "product",
+      "quantity",
+      "price",
+      "delivery_rate",
+      "status",
+      "notes",
+    ];
+    const row = { org_id: orgId, source: "custom_store" };
+    for (const key of allowed) {
+      if (req.body?.[key] !== undefined) row[key] = req.body[key];
+    }
+
+    if (!row.order_number) row.order_number = `#M${await getNextManualOrderSeq(orgId)}`;
+    if (!row.status) row.status = "pending";
+    if (!row.shopify_order_id) {
+       row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
+    }
+
+    const { data, error } = await supabase
+      .from("orders")
+      .insert(row)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    return res.status(201).json({ success: true, order: data });
+  } catch (e) {
+    console.error("Custom Store Webhook Error:", e);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/orders", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));

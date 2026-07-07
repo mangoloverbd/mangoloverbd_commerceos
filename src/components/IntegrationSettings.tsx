@@ -4,7 +4,7 @@ import { toast } from "@/components/ui/sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye, EyeOff, CheckCircle2, XCircle,
-  ShieldCheck, FileHeart, ChevronRight, ArrowLeft, Link2, Unplug, Bot, ChevronDown, X,
+  ShieldCheck, FileHeart, ChevronRight, ArrowLeft, Link2, Unplug, Bot, ChevronDown, X, Store
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -107,6 +107,16 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    id: "custom-store",
+    label: "Custom Website",
+    icon: Store,
+    description: "Receive orders via webhook",
+    color: "bg-black",
+    fields: [
+      { key: "custom_store_api_key", label: "Webhook API Key", placeholder: "e.g., my-super-secret-key-123", secret: true, hint: "Include this in the x-api-key header of your POST request to /api/custom-orders/webhook" },
+    ],
+  },
+  {
     id: "facebook",
     label: "Facebook Ads",
     icon: MetaIcon,
@@ -197,7 +207,7 @@ type MetaStatus = {
 };
 
 const GROUPS = [
-  { label: "Commerce", ids: ["shopify"] },
+  { label: "Commerce", ids: ["shopify", "custom-store"] },
   { label: "Marketing", ids: ["facebook"] },
   { label: "Courier", ids: ["steadfast", "pathao"] },
   { label: "Social", ids: ["facebook-messenger", "instagram-dm", "whatsapp-business"] },
