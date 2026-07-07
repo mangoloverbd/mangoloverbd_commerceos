@@ -285,7 +285,7 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
                         ? "Downgrade"
                         : "Upgrade"
                     )}
-                  </button>
+                  </RichButton>
                 </div>
               </div>
             );
