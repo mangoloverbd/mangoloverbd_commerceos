@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
+import { RichButton } from "@/components/ui/rich-button";
 
 interface TeamMember {
   id: string;
@@ -226,13 +227,17 @@ export function TeamManagement() {
                   />
                 </div>
               </div>
-              <PopButton
+              <RichButton
+                color="default"
+                size="default"
                 type="submit"
+                className="w-full mt-4"
                 disabled={creating || !email.trim()}
                 data-testid="button-create-member"
               >
+                {creating ? <Spinner size="sm" className="mr-2" /> : null}
                 {creating ? "Adding…" : "Add Member"}
-              </PopButton>
+              </RichButton>
             </form>
 
             {/* Generated credentials */}

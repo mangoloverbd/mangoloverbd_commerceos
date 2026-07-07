@@ -302,16 +302,15 @@ export default function Returns() {
               <p className="text-[11px] text-muted-foreground">Manage courier returns and cancellations</p>
             </div>
           </div>
-          <Button
-            color="skeuomorphic"
-            size="sm"
+          <RichButton
+            color="default"
+            size="default"
             onClick={async () => { await handleBackfillFees(); await handleSync(); }}
-            isLoading={syncing}
-            showTextWhileLoading
-            iconLeading={<RefreshCw />}
+            disabled={syncing}
           >
+            {syncing ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             {syncing ? "Syncing..." : "Sync"}
-          </Button>
+          </RichButton>
         </div>
 
         {/* Summary Cards */}

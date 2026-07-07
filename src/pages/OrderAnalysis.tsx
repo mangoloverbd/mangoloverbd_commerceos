@@ -7,6 +7,8 @@ import { AlertTriangle, BarChart3, Boxes, CheckCircle2, Package, RefreshCw, Tren
 import { Button } from "@/components/base/buttons/button";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
+import { Card } from "@/components/ui/card";
+import { RichButton } from "@/components/ui/rich-button";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { AnimatedText } from "@/components/ui/animated-text";
 import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-calendar";
@@ -126,16 +128,15 @@ export default function OrderAnalysis() {
               <img src="https://img.icons8.com/material-rounded/24/bard--v2.png" alt="" className="h-3.5 w-3.5 object-contain opacity-75" />
               <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">AI Business Forecast</AnimatedText>
             </div>
-            <Button
-              color="skeuomorphic"
-              size="sm"
+            <RichButton
+              color="default"
+              size="default"
               onClick={() => refetch()}
-              isLoading={isFetching}
-              showTextWhileLoading
-              iconLeading={<RefreshCw />}
+              disabled={isFetching}
             >
+              {isFetching ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
               Refresh
-            </Button>
+            </RichButton>
           </div>
 
           <div className="grid gap-3 p-4 lg:grid-cols-4">

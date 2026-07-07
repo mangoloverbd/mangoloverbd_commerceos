@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { RichButton } from "@/components/ui/rich-button";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { toast } from "@/components/ui/sonner";
 import { CreditCard, Receipt, TrendingUp, Crown } from "lucide-react";
@@ -268,15 +269,12 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
                   </div>
                 </div>
                 <div className="px-5 pb-5">
-                  <button
+                  <RichButton
+                    color="default"
+                    size="default"
                     onClick={() => handleSwitch(plan.id)}
                     disabled={isCurrent || switching !== null}
-                    className={cn(
-                      "w-full h-8 rounded-lg text-[12px] font-medium transition-all",
-                      isCurrent
-                        ? "bg-black/[0.05] text-black/40 cursor-default"
-                        : "bg-black text-white hover:bg-black/85 disabled:opacity-50"
-                    )}
+                    className="w-full"
                   >
                     {switching === plan.id ? (
                       <Spinner size="sm" className="mx-auto" />
@@ -353,12 +351,14 @@ function UsageSection({ usage }: { usage: UsageData | null }) {
             { label: "+100 Extractions", price: 149 },
             { label: "+50 Fraud Checks", price: 99 },
           ].map((pack) => (
-            <button
+            <RichButton
               key={pack.label}
-              className="h-8 px-3 rounded-lg border border-black/[0.08] bg-black/[0.02] text-[11px] font-medium text-black hover:bg-black/[0.05] transition-colors"
+              color="default"
+              size="default"
+              className="px-3"
             >
               {pack.label} · ৳{pack.price}
-            </button>
+            </RichButton>
           ))}
         </div>
       </div>
@@ -407,13 +407,14 @@ function PaymentSection() {
               <p className="text-[11px] text-black/40 mt-0.5">Update your card, view invoices, or cancel your subscription.</p>
             </div>
           </div>
-          <button
+          <RichButton
+            color="default"
+            size="default"
             onClick={openPortal}
             disabled={loading}
-            className="h-8 px-4 rounded-lg bg-black text-white text-[12px] font-medium hover:bg-black/85 transition-colors disabled:opacity-50"
           >
             {loading ? <Spinner size="sm" className="mx-auto" /> : "Manage Billing"}
-          </button>
+          </RichButton>
         </div>
 
         <div className="px-5 py-4">
