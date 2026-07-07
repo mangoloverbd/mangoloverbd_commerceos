@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
@@ -464,7 +463,6 @@ function AddVariantDrawer({
 export default function Products() {
   const qc = useQueryClient();
   const { isAdmin } = useUserRole();
-  const navigate = useNavigate();
 
   // Search + filter
   const [query, setQuery] = useState("");
@@ -476,6 +474,11 @@ export default function Products() {
   const [cogEdits, setCogEdits] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [addingFor, setAddingFor] = useState<string | null>(null);
+
+  // Import
+  const [crawlUrl, setCrawlUrl] = useState("");
+  const [crawlStatus, setCrawlStatus] = useState<"idle" | "crawling" | "done" | "error">("idle");
+  const [crawlMsg, setCrawlMsg] = useState("");
 
   // Close filter dropdown on outside click
   useEffect(() => {
@@ -535,6 +538,38 @@ export default function Products() {
     return list;
   }, [allProducts, query, stockFilter]);
 
+  async function saveProducts(prods: unknown[], sourceUrl: string) {
+    const res = await apiFetch("/api/products/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ products: prods, sourceUrl }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Save failed");
+    await qc.invalidateQueries({ queryKey: ["/api/products"] });
+    setCrawlStatus("done");
+    const varMsg = json.variants_saved > 0 ? ` with ${json.variants_saved} variant${json.variants_saved !== 1 ? "s" : ""}` : "";
+    setCrawlMsg(`${json.saved} product${json.saved !== 1 ? "s" : ""}${varMsg} imported.`);
+    toast.success(`${json.saved} products imported${varMsg}`);
+  }
+
+  async function handleCrawl() {
+    if (!crawlUrl.trim()) return;
+    setCrawlStatus("crawling"); setCrawlMsg("");
+    try {
+      const res = await apiFetch("/api/products/crawl", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: crawlUrl.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Crawl failed");
+      if (json.products?.length) await saveProducts(json.products, crawlUrl.trim());
+      else { setCrawlStatus("done"); setCrawlMsg("No products found."); }
+    } catch (e: unknown) {
+      setCrawlStatus("error");
+      setCrawlMsg(e instanceof Error ? e.message : "Crawl failed");
+    }
+  }
+
   async function saveCog(product: Product) {
     if (cogEdits[product.id] === undefined) return;
     setSavingIds(s => new Set(s).add(product.id));
@@ -571,15 +606,93 @@ export default function Products() {
 
   return (
     <div className="min-h-full" style={{ fontFamily: SYS }}>
-      <div className="mx-auto max-w-7xl p-4 lg:p-8 space-y-6">
-        
-        {/* ── Page Header ── */}
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-[20px] font-semibold tracking-tight text-black">Products</h1>
-          <RichButton onClick={() => navigate("/products/add")} color="default" size="default">
-            Add product
-          </RichButton>
-        </div>
+      <div className="space-y-5 p-1 lg:p-2">
+
+        {/* ── Stats bar ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex flex-col gap-4"
+        >
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Products"
+              value={isLoading ? <span className="inline-block h-7 w-10 animate-pulse rounded-lg bg-black/[0.05]" /> : totalProducts}
+              sub="In catalogue"
+            />
+            <StatCard
+              label="Avg Margin"
+              value={isLoading ? <span className="inline-block h-7 w-14 animate-pulse rounded-lg bg-black/[0.05]" /> : (avgMargin ? `${avgMargin}%` : "—")}
+              sub="Selling price − cost"
+              accent={avgMargin ? (parseFloat(avgMargin) > 40 ? "text-emerald-600" : parseFloat(avgMargin) > 20 ? "text-black" : "text-red-500") : undefined}
+            />
+            <StatCard
+              label="Total Stock"
+              value={isLoading ? <span className="inline-block h-7 w-16 animate-pulse rounded-lg bg-black/[0.05]" /> : totalStock.toLocaleString("en-BD")}
+              sub="Units available"
+            />
+            <StatCard
+              label="Out of Stock"
+              value={isLoading ? <span className="inline-block h-7 w-8 animate-pulse rounded-lg bg-black/[0.05]" /> : outCount}
+              sub="Variants / products"
+              accent={outCount > 0 ? "text-red-500" : "text-black"}
+            />
+          </div>
+          <div className="rounded-xl border border-black/[0.08] bg-white px-5 py-3 shadow-sm">
+            <span className="text-[13px] text-black/60">
+              Total cost value: <span className="font-semibold text-black">{fmt(totalCog)}</span>
+            </span>
+          </div>
+        </motion.div>
+
+        {/* ── Import from website — always visible ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.04 }}
+          className="rounded-xl border border-black/[0.08] bg-white p-5 shadow-sm"
+        >
+          <div className="mb-4 flex items-center gap-2">
+            <Globe2 className="h-4 w-4 text-black/60" />
+            <span className="text-[14px] font-semibold text-black">Import from Website</span>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              data-testid="input-crawl-url"
+              type="url"
+              placeholder="https://yourstore.com — AI extracts products automatically"
+              value={crawlUrl}
+              onChange={e => setCrawlUrl(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
+              className={cn(INPUT_CLS, "h-9 flex-1 font-sans")}
+            />
+            <RichButton
+              data-testid="button-crawl"
+              color="default"
+              size="default"
+              onClick={handleCrawl}
+              disabled={crawlStatus === "crawling" || !crawlUrl.trim()}
+            >
+              {crawlStatus === "crawling" ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+              {crawlStatus === "crawling" ? "Extracting…" : "Extract"}
+            </RichButton>
+          </div>
+          <AnimatePresence>
+            {crawlMsg && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className={cn("mt-3 text-[12px]",
+                  crawlStatus === "error" ? "text-red-500" : "text-emerald-600"
+                )}
+              >
+                {crawlMsg}
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </motion.div>
 
         {/* ── Main product card ── */}
         <motion.div
