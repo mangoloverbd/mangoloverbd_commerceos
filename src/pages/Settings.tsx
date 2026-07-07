@@ -197,7 +197,7 @@ function WorkspaceSection() {
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-black text-white transition-colors hover:bg-black/80 disabled:opacity-40 shrink-0"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-black text-white transition-colors hover:bg-black/80 disabled:cursor-wait disabled:opacity-50 shrink-0"
                   >
                     {saving ? <Spinner size="sm" /> : <SaveIcon className="h-3.5 w-3.5" />}
                   </button>

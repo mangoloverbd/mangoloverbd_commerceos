@@ -40,7 +40,7 @@ interface RichButtonProps
 
 const colorMap: Record<Color, string> = {
   default:
-    "from-zinc-900/85 to-zinc-900 dark:from-zinc-100/85 dark:to-zinc-100",
+    "bg-[#E3E3E3]/80 hover:bg-[#E3E3E3] shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] focus-visible:ring-[#1a1614]",
   emerald: "from-emerald-600/85 to-emerald-600 dark:from-emerald-600/75",
   blue: "from-blue-600/85 to-blue-600 dark:from-blue-600/75",
   purple: "from-purple-600/85 to-purple-600 dark:from-purple-600/75",
@@ -66,8 +66,7 @@ const colorMap: Record<Color, string> = {
 };
 
 const textShadowMap: Record<Color, string> = {
-  default:
-    "[text-shadow:0_1px_0_rgb(0,0,0)] dark:[text-shadow:0_1px_0_rgb(255,255,255)]",
+  default: "",
   emerald: "[text-shadow:0_1px_0_var(--color-emerald-800)]",
   blue: "[text-shadow:0_1px_0_var(--color-blue-800)]",
   purple: "[text-shadow:0_1px_0_var(--color-purple-800)]",
@@ -93,9 +92,9 @@ const textShadowMap: Record<Color, string> = {
 };
 
 const sizeMap: Record<SizeVariant, string> = {
-  sm: "h-8 rounded-md gap-1.5 px-3 text-sm",
-  default: "h-9 px-4 py-2 text-sm rounded-md",
-  lg: "h-10 rounded-md px-6 text-base",
+  sm: "h-8 rounded-[8px] gap-1.5 px-3 text-sm",
+  default: "px-6 py-2.5 text-sm rounded-[8px]",
+  lg: "h-10 rounded-[8px] px-6 text-base",
 };
 
 const RichButton = React.forwardRef<HTMLButtonElement, RichButtonProps>(
@@ -115,14 +114,17 @@ const RichButton = React.forwardRef<HTMLButtonElement, RichButtonProps>(
     const textShadowClasses = textShadowMap[color];
     const sizeClasses = sizeMap[size];
     const textColor = color === "default"
-      ? "text-white dark:text-zinc-900"
+      ? "text-zinc-900"
       : "text-white";
 
     return (
       <Comp
         ref={ref}
         className={cn(
-          "cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-gradient-to-b border border-zinc-950/35 shadow-sm shadow-zinc-950/10 ring-0 transition-[filter] duration-200 hover:brightness-110 active:brightness-95 dark:border-0 dark:border-zinc-950/50",
+          "relative cursor-pointer inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-medium outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-50 transition-all [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+          color === "default" 
+            ? "active:scale-[0.98]" 
+            : "bg-gradient-to-b border border-zinc-950/35 shadow-sm shadow-zinc-950/10 ring-0 duration-200 hover:brightness-110 active:brightness-95 dark:border-0 dark:border-zinc-950/50",
           colorClasses,
           sizeClasses,
           textColor,
