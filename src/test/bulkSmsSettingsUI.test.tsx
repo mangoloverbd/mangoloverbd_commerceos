@@ -33,5 +33,8 @@ describe('Bulk SMS Settings UI', () => {
     expect(screen.getByLabelText(/Enable Bulk SMS BD/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/SMS API Key/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Sender ID/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Save Bulk SMS Settings/i })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Hello {customer_name}, your order {order_id} for ৳{price} has been confirmed. We will contact you before dispatch.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Your order {order_id} has been dispatched via {courier_name}. Tracking code: {tracking_code}. Thank you for shopping with us.')).toBeInTheDocument();
   });
 });
