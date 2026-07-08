@@ -3718,6 +3718,9 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
     if (error) throw error;
 
+    // Send Order Confirmation SMS in background
+    sendBulkSms(orgId, "confirmation", data).catch(console.error);
+
     return res.status(201).json({ success: true, order_id: data.order_number, order: data });
   } catch (e) {
     console.error("Custom Store Webhook Error:", e);
