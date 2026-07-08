@@ -3,6 +3,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { TeamManagement } from "@/components/TeamManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
+import { BulkSmsSection } from "@/components/BulkSmsSection";
 import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -217,6 +218,7 @@ function WorkspaceSection() {
       </div>
 
       <AIAutoReplySection />
+      <BulkSmsSection />
     </div>
   );
 }
