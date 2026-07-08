@@ -232,16 +232,10 @@ export default function Auth() {
                 className="flex flex-col items-center w-full"
               >
                 {/* Logo — matches sidebar header */}
-                <div className="mb-10 flex items-center gap-2">
-                  <Logo className="h-10 w-auto shrink-0" />
-                  <span className="text-[18px] font-semibold leading-none tracking-normal text-black">
-                    Merchant-
-                  </span>
-                  <span
-                    className="text-[20px] font-semibold leading-none tracking-normal text-black"
-                    style={{ fontFamily: "'Pixelify Sans', system-ui, sans-serif" }}
-                  >
-                    Suite
+                <div className="mb-10 flex items-center gap-0.5">
+                  <Logo className="h-10 w-auto shrink-0 -ml-1 -mr-1.5" />
+                  <span className="text-[19px] font-medium tracking-tight text-[#111] antialiased">
+                    Merchant-Suite
                   </span>
                 </div>
 

@@ -140,18 +140,12 @@ export function AppSidebar() {
                     {!isCollapsed && (
                         <Link
                             to="/"
-                            className="flex min-w-0 items-center gap-2 text-[#111] transition-opacity hover:opacity-70"
+                            className="flex min-w-0 items-center gap-0.5 text-[#111] transition-opacity hover:opacity-70"
                             aria-label="Merchant-Suite"
                         >
-                            <Logo className="h-8 w-auto shrink-0" />
-                            <span className="text-[15px] font-semibold leading-none tracking-normal">
-                                Merchant-
-                            </span>
-                            <span
-                                className="text-[17px] font-semibold leading-none tracking-normal"
-                                style={{ fontFamily: "'Pixelify Sans', system-ui, sans-serif" }}
-                            >
-                                Suite
+                            <Logo className="h-8 w-auto shrink-0 -ml-1 -mr-1.5" />
+                            <span className="text-[15.5px] font-medium tracking-tight text-[#111] antialiased">
+                                Merchant-Suite
                             </span>
                         </Link>
                     )}
@@ -184,11 +178,11 @@ export function AppSidebar() {
                     {!isCollapsed && (
                         <button
                             onClick={toggleSidebar}
-                            className="shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-[#777] hover:text-black hover:bg-black/5 transition-colors"
+                            className="shrink-0 h-7 w-7 rounded-md flex items-center justify-center text-[#666] hover:text-black hover:bg-black/5 transition-colors"
                             data-testid="button-sidebar-toggle"
                             title="Collapse sidebar"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 21 21"><g fill="none" fillRule="evenodd" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 15.5v-10a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2"/><path fill="currentColor" d="M5.5 15.5v-10a2 2 0 0 1 2-2h-2c-1 0-2 .895-2 2v10c0 1.105 1 2 2 2h2a2 2 0 0 1-2-2"/><path d="m10.5 13.5l-3-3l3-3m5 3h-8"/></g></svg>
+                            <PanelLeftClose size={17} strokeWidth={1.5} />
                         </button>
                     )}
                 </div>
@@ -197,11 +191,11 @@ export function AppSidebar() {
                 {isCollapsed && (
                     <button
                         onClick={toggleSidebar}
-                        className="mt-1.5 h-7 w-full rounded-full flex items-center justify-center text-[#777] hover:text-black hover:bg-black/5 transition-colors"
+                        className="mt-1.5 h-8 w-8 mx-auto rounded-md flex items-center justify-center text-[#666] hover:text-black hover:bg-black/5 transition-colors"
                         data-testid="button-sidebar-toggle-collapsed"
                         title="Expand sidebar"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 21 21" style={{transform: 'scaleX(-1)'}}><g fill="none" fillRule="evenodd" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 15.5v-10a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2"/><path fill="currentColor" d="M5.5 15.5v-10a2 2 0 0 1 2-2h-2c-1 0-2 .895-2 2v10c0 1.105 1 2 2 2h2a2 2 0 0 1-2-2"/><path d="m10.5 13.5l-3-3l3-3m5 3h-8"/></g></svg>
+                        <PanelLeftOpen size={17} strokeWidth={1.5} />
                     </button>
                 )}
             </SidebarHeader>
