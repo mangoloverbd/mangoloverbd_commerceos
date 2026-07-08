@@ -499,6 +499,57 @@ async function checkFraudStatus(phone, apiKey) {
   }
 }
 
+async function sendBulkSms(orgId, type, order) {
+  try {
+    const keys = [
+      `${orgId}:bulksms_enabled`,
+      `${orgId}:bulksms_api_key`,
+      `${orgId}:bulksms_sender_id`,
+      `${orgId}:bulksms_confirmation_template`,
+      `${orgId}:bulksms_dispatch_template`
+    ];
+    const settings = await getSettings(keys);
+    
+    if (settings[`${orgId}:bulksms_enabled`] !== "true") return;
+    
+    const apiKey = settings[`${orgId}:bulksms_api_key`];
+    const senderId = settings[`${orgId}:bulksms_sender_id`];
+    if (!apiKey || !senderId) return;
+
+    let template = "";
+    if (type === "confirmation") {
+      template = settings[`${orgId}:bulksms_confirmation_template`] || "";
+    } else if (type === "dispatch") {
+      template = settings[`${orgId}:bulksms_dispatch_template`] || "";
+    }
+    
+    if (!template.trim() || !order.phone) return;
+    
+    const phone = normalizeBdPhone(order.phone);
+    if (!phone) return;
+
+    let message = template
+      .replace(/{customer_name}/g, order.customer_name || "")
+      .replace(/{order_id}/g, order.order_number || "")
+      .replace(/{price}/g, order.price || "")
+      .replace(/{delivery_fee}/g, order.delivery_rate || "")
+      .replace(/{courier_name}/g, order.courier_name || "")
+      .replace(/{tracking_code}/g, order.tracking_code || "");
+      
+    const url = `http://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(apiKey)}&type=text&number=${encodeURIComponent(phone)}&senderid=${encodeURIComponent(senderId)}&message=${encodeURIComponent(message)}`;
+
+    // Fire and forget
+    fetch(url).then(res => res.json()).then(data => {
+      console.log(`[BulkSMS] Sent to ${phone}, Response:`, data);
+    }).catch(err => {
+      console.error(`[BulkSMS] Failed to send SMS to ${phone}:`, err);
+    });
+
+  } catch (err) {
+    console.error("[BulkSMS] Error in sendBulkSms:", err);
+  }
+}
+
 async function getPathaoToken(orgId) {
   const cfg = await getOrgSettings(orgId, ["pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password"]);
   const clientId = cfg["pathao_client_id"];
