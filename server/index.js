@@ -536,7 +536,7 @@ async function sendBulkSms(orgId, type, order) {
       .replace(/{courier_name}/g, order.courier_name || "")
       .replace(/{tracking_code}/g, order.tracking_code || "");
       
-    const url = `http://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(apiKey)}&type=text&number=${encodeURIComponent(phone)}&senderid=${encodeURIComponent(senderId)}&message=${encodeURIComponent(message)}`;
+    const url = `https://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(apiKey)}&type=text&number=${encodeURIComponent(phone)}&senderid=${encodeURIComponent(senderId)}&message=${encodeURIComponent(message)}`;
 
     // Fire and forget
     fetch(url).then(res => res.json()).then(data => {
