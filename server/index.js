@@ -3877,6 +3877,10 @@ app.post("/api/send-to-courier", async (req, res) => {
     }).eq("id", orderId).eq("org_id", orgId);
 
     const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
+    // Send Order Dispatch SMS in background
+    if (updated) {
+      sendBulkSms(orgId, "dispatch", updated).catch(console.error);
+    }
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -3946,6 +3950,10 @@ app.post("/api/send-to-pathao", async (req, res) => {
     }).eq("id", orderId).eq("org_id", orgId);
 
     const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
+    // Send Order Dispatch SMS in background
+    if (updated) {
+      sendBulkSms(orgId, "dispatch", updated).catch(console.error);
+    }
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
