@@ -233,7 +233,7 @@ export default function Auth() {
               >
                 {/* Logo — matches sidebar header */}
                 <div className="mb-10 flex items-center gap-2">
-                  <Logo className="h-6 w-6 rounded-md shrink-0" />
+                  <Logo className="h-10 w-auto shrink-0" />
                   <span className="text-[18px] font-semibold leading-none tracking-normal text-black">
                     Merchant-
                   </span>

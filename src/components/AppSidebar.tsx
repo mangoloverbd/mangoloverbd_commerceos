@@ -143,7 +143,7 @@ export function AppSidebar() {
                             className="flex min-w-0 items-center gap-2 text-[#111] transition-opacity hover:opacity-70"
                             aria-label="Merchant-Suite"
                         >
-                            <Logo className="h-6 w-6 rounded-md shrink-0" />
+                            <Logo className="h-8 w-auto shrink-0" />
                             <span className="text-[15px] font-semibold leading-none tracking-normal">
                                 Merchant-
                             </span>
@@ -163,7 +163,7 @@ export function AppSidebar() {
                             isCollapsed ? "justify-center w-full" : "hidden"
                         )}
                     >
-                        <Logo className="h-7 w-7 rounded-lg" />
+                        <Logo className="h-7 w-7 rounded-lg object-contain" />
                         {!isCollapsed && (
                             <div className="min-w-0 flex-1">
                                 {orgLoading ? (

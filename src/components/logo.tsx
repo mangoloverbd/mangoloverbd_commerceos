@@ -5,7 +5,7 @@ export function Logo({ className }: { className?: string }) {
         <img
             src="/logo.png"
             alt="Merchant-Suite"
-            className={cn("shrink-0", className)}
+            className={cn("shrink-0 mix-blend-multiply", className)}
         />
     );
 }
