@@ -3651,11 +3651,9 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
 
-    if (req.body?.order_id !== undefined) {
-      row.order_number = req.body.order_id;
-    }
+    // Force sequential order number, ignoring any provided order_id
+    row.order_number = `#${await getNextManualOrderSeq(orgId)}`;
 
-    if (!row.order_number) row.order_number = `#M${await getNextManualOrderSeq(orgId)}`;
     if (!row.status) row.status = "pending";
     if (!row.shopify_order_id) {
        row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
@@ -3669,7 +3667,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
     if (error) throw error;
 
-    return res.status(201).json({ success: true, order: data });
+    return res.status(201).json({ success: true, order_id: data.order_number, order: data });
   } catch (e) {
     console.error("Custom Store Webhook Error:", e);
     return res.status(500).json({ error: e.message });
