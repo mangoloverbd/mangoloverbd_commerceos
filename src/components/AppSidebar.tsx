@@ -144,10 +144,10 @@ export function AppSidebar() {
                     {!isCollapsed && (
                         <Link
                             to="/"
-                            className="flex min-w-0 items-center gap-2 text-[#111] transition-opacity hover:opacity-70"
+                            className="flex min-w-0 items-center gap-1.5 text-[#111] transition-opacity hover:opacity-70"
                             aria-label="Merchant-Suite"
                         >
-                            <Logo className="h-[18px] w-auto shrink-0 ml-1" />
+                            <Logo className="h-[18px] w-auto shrink-0" />
                             <span className="text-[18px] font-bold tracking-tight text-[#111] antialiased">
                                 merchant-suite
                             </span>
