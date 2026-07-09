@@ -5,7 +5,7 @@ export default function PrivacyPolicy() {
       <header className="border-b border-black/[0.08] bg-white">
         <div className="mx-auto max-w-3xl px-6 py-5 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2.5">
-            <img src="/favicon.svg" alt="Merchant-Suite" className="h-7 w-7 rounded-lg" />
+            <img src="/favicon.svg" alt="Merchant-Suite" className="h-7 w-7 rounded-lg brightness-0" />
             <span className="text-[15px] font-semibold tracking-tight text-black">Merchant-Suite</span>
           </a>
           <a

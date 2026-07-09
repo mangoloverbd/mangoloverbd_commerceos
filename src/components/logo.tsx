@@ -5,7 +5,7 @@ export function Logo({ className }: { className?: string }) {
         <img
             src="/favicon.svg"
             alt="Merchant-Suite"
-            className={cn("shrink-0 mix-blend-multiply", className)}
+            className={cn("shrink-0 mix-blend-multiply brightness-0", className)}
         />
     );
 }
