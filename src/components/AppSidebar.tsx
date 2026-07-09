@@ -148,7 +148,7 @@ export function AppSidebar() {
                             aria-label="Merchant-Suite"
                         >
                             <Logo className="h-[19px] w-auto shrink-0" />
-                            <span className="text-[19px] font-bold tracking-tight text-[#111] antialiased">
+                            <span className="text-[19px] font-bold tracking-tight text-[#111] antialiased leading-none">
                                 merchant-suite
                             </span>
                         </Link>
