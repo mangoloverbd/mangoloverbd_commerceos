@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { MagnifyingGlass, Sparkle, UsersThree, X } from "@phosphor-icons/react";
 import { motion, AnimatePresence, useReducedMotion, type Transition } from "framer-motion";
@@ -65,10 +65,10 @@ const segmentLabels: Record<string, string> = {
 
 const sourceOptions = ["all", "shopify", "custom_website", "facebook", "instagram", "whatsapp", "manual"] as const;
 
-const SPRING_FOLDER: Transition = {
+const customerPopoverTransition: Transition = {
   type: "spring",
-  stiffness: 300,
-  damping: 32,
+  stiffness: 240,
+  damping: 28,
   mass: 0.9,
 };
 
@@ -87,7 +87,7 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="rounded-xl border border-black/10 bg-white px-5 py-4"
+      className="min-h-[112px] rounded-xl border border-black/10 bg-white px-5 py-4"
     >
       <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
       <p className="mt-2 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
@@ -143,7 +143,6 @@ function CustomerBloomPopover({
   onGenerateInsight: (customer: Customer) => void;
 }) {
   const reduce = useReducedMotion();
-  const layoutId = useId();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -162,7 +161,7 @@ function CustomerBloomPopover({
     };
   }, [customer, onClose]);
 
-  const morph = reduce ? { duration: 0.15 } : SPRING_FOLDER;
+  const morph = reduce ? { duration: 0.16 } : customerPopoverTransition;
 
   return (
     <AnimatePresence initial={false} mode="popLayout">
@@ -172,21 +171,23 @@ function CustomerBloomPopover({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.16 }}
-          className="fixed inset-0 z-40 grid place-items-center bg-black/10 px-4 backdrop-blur-[2px]"
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="fixed inset-0 z-40 grid place-items-center bg-black/12 px-4 backdrop-blur-[3px]"
         >
           <motion.div
             ref={ref}
-            layoutId={layoutId}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.96, filter: "blur(8px)" }}
+            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97, filter: "blur(6px)" }}
             transition={morph}
             style={{ borderRadius: 18 }}
             className="max-h-[88vh] w-[min(92vw,760px)] overflow-hidden border border-black/10 bg-[#FAFAF8] shadow-2xl shadow-black/15"
           >
             <motion.div
-              layout
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: reduce ? 0 : 0.08, duration: 0.2 }}
+              exit={{ opacity: 0 }}
+              transition={{ delay: reduce ? 0 : 0.08, duration: 0.18, ease: "easeOut" }}
             >
               <div className="flex items-center justify-between border-b border-black/10 bg-white px-5 py-4">
                 <div>
@@ -205,9 +206,10 @@ function CustomerBloomPopover({
               </div>
 
               <motion.div
-                initial={reduce ? false : { clipPath: "inset(45% 34% 45% 34%)" }}
-                animate={{ clipPath: "inset(0% 0% 0% 0%)" }}
-                transition={{ delay: reduce ? 0 : 0.05, duration: 0.42, ease: "easeOut" }}
+                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                transition={{ delay: reduce ? 0 : 0.06, duration: 0.22, ease: "easeOut" }}
                 className="max-h-[calc(88vh-89px)] overflow-y-auto p-5"
               >
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -310,9 +312,9 @@ export default function Customers() {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="relative rounded-2xl bg-[#F3F3F3] p-4 sm:p-5"
+        className="relative rounded-2xl bg-[#F3F3F3] p-3 sm:p-4"
       >
-        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Customer Intelligence</p>
             <h1 className="mt-1 text-[22px] font-bold tracking-tight text-black">Customers</h1>
@@ -320,7 +322,7 @@ export default function Customers() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Total" value={summary?.totalCustomers ?? 0} sub="Detected customers" />
           <Stat label="Repeat" value={summary?.repeatBuyers ?? 0} sub="Bought more than once" />
           <Stat label="Custom Site" value={summary?.customWebsiteCustomers ?? 0} sub="Webhook customers" />

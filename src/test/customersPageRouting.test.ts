@@ -47,11 +47,21 @@ describe("Customers page routing", () => {
     const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
 
     expect(pageSource).toContain("function CustomerBloomPopover");
-    expect(pageSource).toContain("SPRING_FOLDER");
-    expect(pageSource).toContain("clipPath");
     expect(pageSource).toContain("pointerdown");
     expect(pageSource).toContain("Escape");
     expect(pageSource).not.toContain("motion.aside");
     expect(pageSource).not.toContain("inset-y-0 right-0");
+  });
+
+  it("uses smooth modal animation and compact dashboard-style summary cards", () => {
+    const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
+
+    expect(pageSource).toContain("customerPopoverTransition");
+    expect(pageSource).toContain("scale: 0.96");
+    expect(pageSource).toContain('filter: "blur(8px)"');
+    expect(pageSource).toContain("rounded-2xl bg-[#F3F3F3] p-3 sm:p-4");
+    expect(pageSource).toContain("grid gap-3 sm:grid-cols-2 lg:grid-cols-4");
+    expect(pageSource).toContain("min-h-[112px]");
+    expect(pageSource).not.toContain("clipPath");
   });
 });
