@@ -149,7 +149,7 @@ export function AppSidebar() {
                             className="flex min-w-0 items-center gap-1.5 text-[#111] transition-opacity hover:opacity-70"
                             aria-label="Merchant-Suite"
                         >
-                            <Logo className="h-[20px] w-auto shrink-0 -ml-0.5" />
+                            <Logo className="h-[16px] w-auto shrink-0 -ml-0.5" />
                             <span className="text-[15.5px] font-bold tracking-tight text-[#111] antialiased">
                                 merchant-suite
                             </span>
