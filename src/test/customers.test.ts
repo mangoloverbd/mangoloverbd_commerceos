@@ -15,8 +15,9 @@ describe("customer intelligence aggregation", () => {
 
   it("detects Shopify, custom website webhook, manual, and social sources", () => {
     expect(detectCustomerOrderSource({ source: "custom_store" }, "order")).toBe("custom_website");
-    expect(detectCustomerOrderSource({ source: "facebook" }, "social")).toBe("facebook");
+    expect(detectCustomerOrderSource({ platform: "facebook" }, "social")).toBe("facebook");
     expect(detectCustomerOrderSource({ shopify_order_id: 12345 }, "order")).toBe("shopify");
+    expect(detectCustomerOrderSource({ shopify_order_id: -12345, order_number: "#1002" }, "order")).toBe("custom_website");
     expect(detectCustomerOrderSource({ shopify_order_id: -12345, order_number: "#M12" }, "order")).toBe("manual");
   });
 
@@ -69,7 +70,7 @@ describe("customer intelligence aggregation", () => {
       inboxOrders: [
         {
           id: "social-1",
-          source: "whatsapp",
+          platform: "whatsapp",
           contact_name: "Arif",
           items: [{ name: "T-shirt", quantity: 2 }],
           total_price: "1800",

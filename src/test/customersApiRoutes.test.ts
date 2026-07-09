@@ -17,6 +17,8 @@ describe("customers API routes", () => {
     expect(route).toContain('.from("orders")');
     expect(route).toContain('.eq("org_id", orgId)');
     expect(route).toContain('.from("social_inbox_orders")');
+    expect(route).toContain("platform");
+    expect(route).not.toContain("status, source, notes");
     expect(route).toContain('buildCustomers({ orders: orders || [], inboxOrders: inboxOrders || [] })');
     expect(route).toContain("summarizeCustomers(customers)");
   });

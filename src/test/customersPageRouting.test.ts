@@ -22,6 +22,8 @@ describe("Customers page routing", () => {
 
     expect(pageSource).toContain('apiFetch("/api/customers")');
     expect(pageSource).toContain('/api/customers/ai-insight');
+    expect(pageSource).toContain('import { RichButton } from "@/components/ui/rich-button"');
+    expect(pageSource).toContain('<RichButton');
     expect(pageSource).toContain('custom_website: "Custom Website"');
     expect(pageSource).toContain('shopify: "Shopify"');
     expect(pageSource).toContain('primarySource');

@@ -6,7 +6,7 @@ export function normalizeCustomerPhone(phone) {
 }
 
 export function detectCustomerOrderSource(row, tableKind) {
-  const source = String(row?.source || "").toLowerCase();
+  const source = String(row?.source || row?.platform || "").toLowerCase();
   if (tableKind === "social") {
     if (["facebook", "instagram", "whatsapp"].includes(source)) return source;
     return "social_inbox";
@@ -14,6 +14,7 @@ export function detectCustomerOrderSource(row, tableKind) {
   if (["custom_store", "custom_website", "webhook"].includes(source)) return "custom_website";
   if (source === "shopify") return "shopify";
   if (Number(row?.shopify_order_id) > 0) return "shopify";
+  if (Number(row?.shopify_order_id) < 0 && /^#\d+$/.test(String(row?.order_number || ""))) return "custom_website";
   return "manual";
 }
 

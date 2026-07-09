@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { toast } from "@/components/ui/sonner";
+import { RichButton } from "@/components/ui/rich-button";
 
 type Source = "shopify" | "custom_website" | "manual" | "facebook" | "instagram" | "whatsapp" | "social_inbox";
 
@@ -163,13 +164,26 @@ export default function Customers() {
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex h-10 items-center gap-2 border border-black/[0.08] bg-white px-3 sm:w-80">
+          <div className="flex h-10 items-center gap-2 rounded-[10px] border border-black/[0.08] bg-black/[0.03] px-3 transition-colors focus-within:border-black/20 focus-within:ring-1 focus-within:ring-black/10 sm:w-80">
             <MagnifyingGlass weight="light" size={16} className="text-black/35" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, phone, segment" className="h-full flex-1 bg-transparent text-sm outline-none placeholder:text-black/30" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, phone, segment" className="h-full flex-1 bg-transparent text-[13px] text-black outline-none placeholder:text-black/25" />
           </div>
           <div className="flex flex-wrap gap-2">
             {(["all", "shopify", "custom_website", "facebook", "instagram", "whatsapp", "manual"] as const).map((item) => (
-              <button key={item} onClick={() => setSource(item)} className={cn("h-9 border px-3 text-[11px] transition-colors", source === item ? "border-black bg-black text-white" : "border-black/[0.08] bg-white text-black/55 hover:text-black")}>{item === "all" ? "All Sources" : sourceLabels[item]}</button>
+              <RichButton
+                key={item}
+                type="button"
+                size="sm"
+                onClick={() => setSource(item)}
+                className={cn(
+                  "h-9 rounded-[10px] px-3 text-[11px]",
+                  source === item
+                    ? "bg-black text-white shadow-[0_2px_4px_0_rgba(0,0,0,0.16),0_0_0_1px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.18)] hover:bg-black"
+                    : "bg-[#E3E3E3]/80 text-zinc-900"
+                )}
+              >
+                {item === "all" ? "All Sources" : sourceLabels[item]}
+              </RichButton>
             ))}
           </div>
         </div>
@@ -209,7 +223,7 @@ export default function Customers() {
               <Stat label="AOV" value={money(selected.averageOrderValue)} sub="Average" />
             </div>
             <div className="mt-5 flex flex-wrap gap-2">{selected.segments.map((segment) => <span key={segment} className="bg-black px-2.5 py-1 text-[10px] font-medium text-white">{segmentLabels[segment] || segment}</span>)}</div>
-            <button onClick={() => generateInsight(selected)} className="mt-6 flex h-10 w-full items-center justify-center gap-2 bg-black text-xs font-medium text-white transition-opacity hover:opacity-85"><Sparkle weight="light" size={16} /> Generate AI Insight</button>
+            <RichButton type="button" onClick={() => generateInsight(selected)} className="mt-6 h-10 w-full rounded-[10px] bg-black text-xs text-white shadow-[0_2px_4px_0_rgba(0,0,0,0.16),0_0_0_1px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.18)] hover:bg-black"><Sparkle weight="light" size={16} /> Generate AI Insight</RichButton>
             {(insightLoading || insight) && (
               <div className="mt-4 border border-black/[0.08] bg-white p-4">
                 {insightLoading ? <div className="flex items-center gap-2 text-sm text-black/45"><Spinner className="text-black/40" /> Thinking through customer behavior</div> : <div className="space-y-3 text-sm text-black/65"><p>{insight?.summary}</p><p>{insight?.riskExplanation}</p><p className="font-medium text-black">Next: {insight?.nextAction}</p></div>}
