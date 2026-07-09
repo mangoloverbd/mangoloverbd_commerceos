@@ -309,7 +309,7 @@ export default function Customers() {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="relative rounded-2xl bg-[#F3F3F3] p-4 sm:p-6"
+        className="relative space-y-4"
       >
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
