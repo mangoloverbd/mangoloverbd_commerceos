@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { MagnifyingGlass, Sparkle, UsersThree } from "@phosphor-icons/react";
-import { motion, AnimatePresence } from "framer-motion";
+import { MagnifyingGlass, Sparkle, UsersThree, X } from "@phosphor-icons/react";
+import { motion, AnimatePresence, useReducedMotion, type Transition } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { toast } from "@/components/ui/sonner";
@@ -65,6 +65,13 @@ const segmentLabels: Record<string, string> = {
 
 const sourceOptions = ["all", "shopify", "custom_website", "facebook", "instagram", "whatsapp", "manual"] as const;
 
+const SPRING_FOLDER: Transition = {
+  type: "spring",
+  stiffness: 300,
+  damping: 32,
+  mass: 0.9,
+};
+
 function money(value: number) {
   return `৳${Math.round(value || 0).toLocaleString("en-BD")}`;
 }
@@ -119,6 +126,120 @@ function CustomersTable({ customers, loading, onSelect }: { customers: Customer[
         </motion.button>
       ))}
     </div>
+  );
+}
+
+function CustomerBloomPopover({
+  customer,
+  insight,
+  insightLoading,
+  onClose,
+  onGenerateInsight,
+}: {
+  customer: Customer | null;
+  insight: AiInsight | null;
+  insightLoading: boolean;
+  onClose: () => void;
+  onGenerateInsight: (customer: Customer) => void;
+}) {
+  const reduce = useReducedMotion();
+  const layoutId = useId();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!customer) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const onPointer = (event: PointerEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [customer, onClose]);
+
+  const morph = reduce ? { duration: 0.15 } : SPRING_FOLDER;
+
+  return (
+    <AnimatePresence initial={false} mode="popLayout">
+      {customer ? (
+        <motion.div
+          key="customer-bloom-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+          className="fixed inset-0 z-40 grid place-items-center bg-black/10 px-4 backdrop-blur-[2px]"
+        >
+          <motion.div
+            ref={ref}
+            layoutId={layoutId}
+            transition={morph}
+            style={{ borderRadius: 18 }}
+            className="max-h-[88vh] w-[min(92vw,760px)] overflow-hidden border border-black/10 bg-[#FAFAF8] shadow-2xl shadow-black/15"
+          >
+            <motion.div
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: reduce ? 0 : 0.08, duration: 0.2 }}
+            >
+              <div className="flex items-center justify-between border-b border-black/10 bg-white px-5 py-4">
+                <div>
+                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/35">Customer Profile</p>
+                  <h2 className="mt-1 text-[22px] font-bold tracking-tight text-black">{customer.name}</h2>
+                  <p className="mt-1 text-[12px] text-black/45">{customer.phone || "No phone"} · {sourceLabels[customer.primarySource]}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close customer profile"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-black/35 transition-colors hover:bg-black/[0.04] hover:text-black"
+                >
+                  <X weight="light" size={18} />
+                </button>
+              </div>
+
+              <motion.div
+                initial={reduce ? false : { clipPath: "inset(45% 34% 45% 34%)" }}
+                animate={{ clipPath: "inset(0% 0% 0% 0%)" }}
+                transition={{ delay: reduce ? 0 : 0.05, duration: 0.42, ease: "easeOut" }}
+                className="max-h-[calc(88vh-89px)] overflow-y-auto p-5"
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Stat label="Orders" value={customer.totalOrders} sub="Total" />
+                  <Stat label="Spent" value={money(customer.totalSpent)} sub="LTV" />
+                  <Stat label="AOV" value={money(customer.averageOrderValue)} sub="Average" />
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {customer.segments.map((segment) => <span key={segment} className="rounded-full bg-black px-2.5 py-1 text-[10px] font-medium text-white">{segmentLabels[segment] || segment}</span>)}
+                </div>
+
+                <RichButton type="button" onClick={() => onGenerateInsight(customer)} className="mt-6 h-10 w-full rounded-[10px] bg-black text-xs text-white shadow-[0_2px_4px_0_rgba(0,0,0,0.16),0_0_0_1px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.18)] hover:bg-black"><Sparkle weight="light" size={16} /> Generate AI Insight</RichButton>
+
+                {(insightLoading || insight) && (
+                  <div className="mt-4 rounded-xl border border-black/10 bg-white p-4">
+                    {insightLoading ? <div className="flex items-center gap-2 text-sm text-black/45"><Spinner className="text-black/40" /> Thinking through customer behavior</div> : <div className="space-y-3 text-sm text-black/65"><p>{insight?.summary}</p><p>{insight?.riskExplanation}</p><p className="font-medium text-black">Next: {insight?.nextAction}</p></div>}
+                  </div>
+                )}
+
+                <div className="mt-6">
+                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Timeline</p>
+                  <div className="mt-3 grid gap-2">
+                    {customer.timeline.map((entry, index) => <div key={`${entry.id}-${index}`} className="rounded-xl border border-black/[0.06] bg-white p-3"><p className="text-xs font-medium text-black">{entry.orderNumber || entry.kind} · {sourceLabels[entry.source]}</p><p className="mt-1 text-xs text-black/45">{entry.product || "No product"} · {money(entry.amount || 0)} · {entry.status}</p><p className="mt-1 text-[10px] text-black/35">{dateLabel(entry.createdAt)}</p></div>)}
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 
@@ -245,33 +366,13 @@ export default function Customers() {
         </Tabs>
       </motion.div>
 
-      <AnimatePresence>
-        {selected && (
-          <motion.aside initial={{ x: 420 }} animate={{ x: 0 }} exit={{ x: 420 }} transition={{ type: "spring", stiffness: 260, damping: 30 }} className="fixed inset-y-0 right-0 z-40 w-full max-w-md overflow-y-auto border-l border-black/[0.08] bg-[#FAFAF8] p-6 shadow-2xl shadow-black/10">
-            <button onClick={() => setSelected(null)} className="text-[10px] font-medium uppercase tracking-[0.25em] text-black/40 hover:text-black">Close</button>
-            <h2 className="mt-5 text-3xl font-light tracking-[-0.04em]">{selected.name}</h2>
-            <p className="mt-1 text-sm text-black/45">{selected.phone || "No phone"} · {sourceLabels[selected.primarySource]}</p>
-            <div className="mt-5 grid grid-cols-3 gap-2">
-              <Stat label="Orders" value={selected.totalOrders} sub="Total" />
-              <Stat label="Spent" value={money(selected.totalSpent)} sub="LTV" />
-              <Stat label="AOV" value={money(selected.averageOrderValue)} sub="Average" />
-            </div>
-            <div className="mt-5 flex flex-wrap gap-2">{selected.segments.map((segment) => <span key={segment} className="bg-black px-2.5 py-1 text-[10px] font-medium text-white">{segmentLabels[segment] || segment}</span>)}</div>
-            <RichButton type="button" onClick={() => generateInsight(selected)} className="mt-6 h-10 w-full rounded-[10px] bg-black text-xs text-white shadow-[0_2px_4px_0_rgba(0,0,0,0.16),0_0_0_1px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.18)] hover:bg-black"><Sparkle weight="light" size={16} /> Generate AI Insight</RichButton>
-            {(insightLoading || insight) && (
-              <div className="mt-4 border border-black/[0.08] bg-white p-4">
-                {insightLoading ? <div className="flex items-center gap-2 text-sm text-black/45"><Spinner className="text-black/40" /> Thinking through customer behavior</div> : <div className="space-y-3 text-sm text-black/65"><p>{insight?.summary}</p><p>{insight?.riskExplanation}</p><p className="font-medium text-black">Next: {insight?.nextAction}</p></div>}
-              </div>
-            )}
-            <div className="mt-6">
-              <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Timeline</p>
-              <div className="mt-3 space-y-2">
-                {selected.timeline.map((entry, index) => <div key={`${entry.id}-${index}`} className="border border-black/[0.06] bg-white p-3"><p className="text-xs font-medium text-black">{entry.orderNumber || entry.kind} · {sourceLabels[entry.source]}</p><p className="mt-1 text-xs text-black/45">{entry.product || "No product"} · {money(entry.amount || 0)} · {entry.status}</p><p className="mt-1 text-[10px] text-black/35">{dateLabel(entry.createdAt)}</p></div>)}
-              </div>
-            </div>
-          </motion.aside>
-        )}
-      </AnimatePresence>
+      <CustomerBloomPopover
+        customer={selected}
+        insight={insight}
+        insightLoading={insightLoading}
+        onClose={() => { setSelected(null); setInsight(null); }}
+        onGenerateInsight={generateInsight}
+      />
     </div>
   );
 }

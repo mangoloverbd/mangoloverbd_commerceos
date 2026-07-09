@@ -42,4 +42,16 @@ describe("Customers page routing", () => {
     expect(tabsSource).toContain('export function TabsContent');
     expect(tabsSource).toContain('layoutRoot');
   });
+
+  it("opens customer details as a centered bloom popover instead of a right drawer", () => {
+    const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
+
+    expect(pageSource).toContain("function CustomerBloomPopover");
+    expect(pageSource).toContain("SPRING_FOLDER");
+    expect(pageSource).toContain("clipPath");
+    expect(pageSource).toContain("pointerdown");
+    expect(pageSource).toContain("Escape");
+    expect(pageSource).not.toContain("motion.aside");
+    expect(pageSource).not.toContain("inset-y-0 right-0");
+  });
 });
