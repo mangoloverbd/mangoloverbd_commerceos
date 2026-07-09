@@ -3758,12 +3758,12 @@ app.get("/api/customers", async (req, res) => {
     const [{ data: orders, error: ordersError }, { data: inboxOrders, error: inboxError }] = await Promise.all([
       supabase
         .from("orders")
-        .select("id, shopify_order_id, order_number, customer_name, phone, product, price, status, fraud_checked, fraud_data, return_status, created_at")
+        .select("*")
         .eq("org_id", orgId)
         .order("created_at", { ascending: false }),
       supabase
         .from("social_inbox_orders")
-        .select("id, order_number, contact_name, items, total_price, status, platform, notes, fraud_checked, fraud_data, return_status, created_at")
+        .select("*")
         .eq("org_id", orgId)
         .order("created_at", { ascending: false }),
     ]);

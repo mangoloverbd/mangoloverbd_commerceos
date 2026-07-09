@@ -97,8 +97,8 @@ export default function Customers() {
       setLoading(true);
       try {
         const res = await apiFetch("/api/customers");
-        if (!res.ok) throw new Error("Failed to load customers");
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load customers");
         if (!cancelled) {
           setCustomers(data.customers || []);
           setSummary(data.summary || null);
