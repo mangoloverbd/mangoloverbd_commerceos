@@ -22,10 +22,24 @@ describe("Customers page routing", () => {
 
     expect(pageSource).toContain('apiFetch("/api/customers")');
     expect(pageSource).toContain('/api/customers/ai-insight');
-    expect(pageSource).toContain('import { RichButton } from "@/components/ui/rich-button"');
-    expect(pageSource).toContain('<RichButton');
+    expect(pageSource).toContain('import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/motion-tabs"');
+    expect(pageSource).toContain('<Tabs value={source}');
+    expect(pageSource).toContain('<TabsList');
+    expect(pageSource).toContain('<TabsTrigger');
+    expect(pageSource).not.toContain('AI source-aware profiles');
     expect(pageSource).toContain('custom_website: "Custom Website"');
     expect(pageSource).toContain('shopify: "Shopify"');
     expect(pageSource).toContain('primarySource');
+  });
+
+  it("provides the requested motion tabs primitives", () => {
+    const tabsSource = readFileSync(resolve(process.cwd(), "src/components/ui/motion-tabs.tsx"), "utf8");
+
+    expect(tabsSource).toContain('type Variant = "pill" | "underline" | "segment"');
+    expect(tabsSource).toContain('export function Tabs(');
+    expect(tabsSource).toContain('export function TabsList');
+    expect(tabsSource).toContain('export function TabsTrigger');
+    expect(tabsSource).toContain('export function TabsContent');
+    expect(tabsSource).toContain('layoutRoot');
   });
 });
