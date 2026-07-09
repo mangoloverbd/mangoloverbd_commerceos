@@ -32,6 +32,19 @@ describe("Customers page routing", () => {
     expect(pageSource).toContain('primarySource');
   });
 
+  it("supports marketing funnel segments, lifecycle labels, and bulk export", () => {
+    const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
+
+    expect(pageSource).toContain('import { buildCustomerExportCsv } from "@/lib/customerExport"');
+    expect(pageSource).toContain("campaignSegments");
+    expect(pageSource).toContain("lifecycleStage");
+    expect(pageSource).toContain("campaignFilter");
+    expect(pageSource).toContain("exportFilteredCustomers");
+    expect(pageSource).toContain("Export Audience");
+    expect(pageSource).toContain("Win-back");
+    expect(pageSource).toContain("VIP Loyalty");
+  });
+
   it("provides the requested motion tabs primitives", () => {
     const tabsSource = readFileSync(resolve(process.cwd(), "src/components/ui/motion-tabs.tsx"), "utf8");
 
@@ -59,7 +72,7 @@ describe("Customers page routing", () => {
     expect(pageSource).toContain("customerPopoverTransition");
     expect(pageSource).toContain("scale: 0.96");
     expect(pageSource).toContain('filter: "blur(8px)"');
-    expect(pageSource).toContain("rounded-2xl bg-[#F3F3F3] p-3 sm:p-4");
+    expect(pageSource).toContain("min-h-[112px] rounded-xl border border-black/10 bg-white px-5 py-4");
     expect(pageSource).toContain("grid gap-3 sm:grid-cols-2 lg:grid-cols-4");
     expect(pageSource).toContain("min-h-[112px]");
     expect(pageSource).not.toContain("clipPath");

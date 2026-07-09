@@ -62,6 +62,8 @@ describe("customer intelligence aggregation", () => {
     });
     expect(customers[0].segments).toContain("repeat_buyer");
     expect(customers[0].riskLevel).toBe("medium");
+    expect(customers[0].lifecycleStage).toBe("repeat");
+    expect(customers[0].campaignSegments).toEqual(expect.arrayContaining(["repeat_upsell", "cod_guardrail"]));
   });
 
   it("includes social inbox orders and extracts phone numbers from notes", () => {
@@ -90,5 +92,41 @@ describe("customer intelligence aggregation", () => {
       sources: ["whatsapp"],
     });
     expect(customers[0].timeline[0]).toMatchObject({ source: "whatsapp", kind: "social_order" });
+  });
+
+  it("marks dormant VIP customers for win-back and loyalty campaigns", () => {
+    const customers = buildCustomers({
+      now: new Date("2026-07-09T00:00:00Z"),
+      orders: [
+        {
+          id: "vip-1",
+          shopify_order_id: 101,
+          order_number: "#101",
+          customer_name: "Sadia",
+          phone: "01711111111",
+          product: "Premium Saree",
+          price: "12000",
+          status: "delivered",
+          created_at: "2026-04-01T10:00:00Z",
+        },
+        {
+          id: "vip-2",
+          shopify_order_id: 102,
+          order_number: "#102",
+          customer_name: "Sadia",
+          phone: "01711111111",
+          product: "Jewelry Set",
+          price: "8000",
+          status: "delivered",
+          created_at: "2026-04-05T10:00:00Z",
+        },
+      ],
+    });
+
+    expect(customers[0]).toMatchObject({
+      lifecycleStage: "dormant",
+      totalSpent: 20000,
+    });
+    expect(customers[0].campaignSegments).toEqual(expect.arrayContaining(["win_back", "vip_loyalty", "repeat_upsell"]));
   });
 });

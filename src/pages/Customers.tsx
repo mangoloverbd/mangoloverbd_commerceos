@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { MagnifyingGlass, Sparkle, UsersThree, X } from "@phosphor-icons/react";
+import { buildCustomerExportCsv } from "@/lib/customerExport";
+import { DownloadSimple, MagnifyingGlass, Sparkle, UsersThree, X } from "@phosphor-icons/react";
 import { motion, AnimatePresence, useReducedMotion, type Transition } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -21,6 +22,8 @@ type Customer = {
   primarySource: Source;
   riskLevel: "low" | "medium" | "high";
   segments: string[];
+  lifecycleStage: "new" | "repeat" | "vip" | "dormant" | "risky";
+  campaignSegments: string[];
   lastOrderAt: string | null;
   timeline: Array<{
     id?: string;
@@ -63,7 +66,28 @@ const segmentLabels: Record<string, string> = {
   new_customer: "New Customer",
 };
 
+const lifecycleLabels: Record<Customer["lifecycleStage"], string> = {
+  new: "New",
+  repeat: "Repeat",
+  vip: "VIP",
+  dormant: "Dormant",
+  risky: "Risky",
+};
+
+const campaignLabels: Record<string, string> = {
+  all: "All Campaigns",
+  cod_guardrail: "COD Guardrail",
+  custom_site_retarget: "Custom Site Retarget",
+  first_order_nurture: "First Order",
+  repeat_upsell: "Repeat Upsell",
+  review_request: "Review Request",
+  social_retarget: "Social Retarget",
+  vip_loyalty: "VIP Loyalty",
+  win_back: "Win-back",
+};
+
 const sourceOptions = ["all", "shopify", "custom_website", "facebook", "instagram", "whatsapp", "manual"] as const;
+const campaignOptions = ["all", "win_back", "vip_loyalty", "repeat_upsell", "first_order_nurture", "review_request", "social_retarget", "custom_site_retarget", "cod_guardrail"] as const;
 
 const customerPopoverTransition: Transition = {
   type: "spring",
@@ -99,8 +123,8 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
 function CustomersTable({ customers, loading, onSelect }: { customers: Customer[]; loading: boolean; onSelect: (customer: Customer) => void }) {
   return (
     <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
-      <div className="grid grid-cols-[1.5fr_0.9fr_0.8fr_0.8fr_0.8fr] border-b border-black/10 px-6 py-3 text-[8px] font-medium uppercase tracking-[0.25em] text-black/35 max-lg:hidden">
-        <span>Customer</span><span>Source</span><span>Orders</span><span>Spent</span><span>Risk</span>
+      <div className="grid grid-cols-[1.45fr_0.9fr_0.8fr_0.7fr_0.8fr_0.8fr] border-b border-black/10 px-6 py-3 text-[8px] font-medium uppercase tracking-[0.25em] text-black/35 max-lg:hidden">
+        <span>Customer</span><span>Source</span><span>Lifecycle</span><span>Orders</span><span>Spent</span><span>Risk</span>
       </div>
       {loading ? (
         <div className="flex h-56 items-center justify-center"><Spinner className="text-black/40" /></div>
@@ -113,13 +137,14 @@ function CustomersTable({ customers, loading, onSelect }: { customers: Customer[
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: index * 0.025 }}
           onClick={() => onSelect(customer)}
-          className="grid w-full grid-cols-1 gap-3 border-b border-black/[0.06] px-6 py-4 text-left transition-colors last:border-0 hover:bg-black/[0.025] lg:grid-cols-[1.5fr_0.9fr_0.8fr_0.8fr_0.8fr] lg:items-center"
+          className="grid w-full grid-cols-1 gap-3 border-b border-black/[0.06] px-6 py-4 text-left transition-colors last:border-0 hover:bg-black/[0.025] lg:grid-cols-[1.45fr_0.9fr_0.8fr_0.7fr_0.8fr_0.8fr] lg:items-center"
         >
           <div>
             <p className="text-[13px] font-medium text-black">{customer.name}</p>
             <p className="mt-1 text-[11px] text-black/40">{customer.phone || "No phone"} · Last order {dateLabel(customer.lastOrderAt)}</p>
           </div>
           <div className="flex flex-wrap gap-1.5">{customer.sources.map((item) => <span key={item} className="rounded-full bg-black/[0.05] px-2 py-1 text-[10px] text-black/50">{sourceLabels[item]}</span>)}</div>
+          <p className="text-[12px] font-medium text-black/70">{lifecycleLabels[customer.lifecycleStage] || customer.lifecycleStage}</p>
           <p className="text-[13px] tabular-nums text-black/65">{customer.totalOrders}</p>
           <p className="text-[13px] tabular-nums text-black/65">{money(customer.totalSpent)}</p>
           <p className={cn("text-[11px] font-medium capitalize", customer.riskLevel === "high" ? "text-red-600" : customer.riskLevel === "medium" ? "text-amber-600" : "text-emerald-700")}>{customer.riskLevel}</p>
@@ -216,7 +241,12 @@ function CustomerBloomPopover({
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black/55">{lifecycleLabels[customer.lifecycleStage] || customer.lifecycleStage}</span>
                   {customer.segments.map((segment) => <span key={segment} className="rounded-full bg-black px-2.5 py-1 text-[10px] font-medium text-white">{segmentLabels[segment] || segment}</span>)}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {customer.campaignSegments.map((segment) => <span key={segment} className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[10px] font-medium text-black/55">{campaignLabels[segment] || segment}</span>)}
                 </div>
 
                 <RichButton type="button" onClick={() => onGenerateInsight(customer)} className="mt-6 h-10 w-full rounded-[10px] bg-black text-xs text-white shadow-[0_2px_4px_0_rgba(0,0,0,0.16),0_0_0_1px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.18)] hover:bg-black"><Sparkle weight="light" size={16} /> Generate AI Insight</RichButton>
@@ -248,6 +278,7 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<Source | "all">("all");
+  const [campaignFilter, setCampaignFilter] = useState<(typeof campaignOptions)[number]>("all");
   const [selected, setSelected] = useState<Customer | null>(null);
   const [insight, setInsight] = useState<AiInsight | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -278,10 +309,38 @@ export default function Customers() {
     const q = query.trim().toLowerCase();
     return customers.filter((customer) => {
       const matchesSource = source === "all" || customer.sources.includes(source);
-      const matchesQuery = !q || [customer.name, customer.phone, customer.primarySource, ...customer.segments].join(" ").toLowerCase().includes(q);
-      return matchesSource && matchesQuery;
+      const matchesCampaign = campaignFilter === "all" || customer.campaignSegments.includes(campaignFilter);
+      const matchesQuery = !q || [
+        customer.name,
+        customer.phone,
+        customer.primarySource,
+        customer.lifecycleStage,
+        ...customer.segments,
+        ...customer.campaignSegments,
+      ].join(" ").toLowerCase().includes(q);
+      return matchesSource && matchesCampaign && matchesQuery;
     });
-  }, [customers, query, source]);
+  }, [campaignFilter, customers, query, source]);
+
+  const winBackCount = useMemo(() => customers.filter((customer) => customer.campaignSegments.includes("win_back")).length, [customers]);
+
+  function exportFilteredCustomers() {
+    if (!filtered.length) {
+      toast.error("No customers to export");
+      return;
+    }
+    const csv = buildCustomerExportCsv(filtered);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `customer-audience-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filtered.length} customers`);
+  }
 
   async function generateInsight(customer: Customer) {
     setSelected(customer);
@@ -311,18 +370,22 @@ export default function Customers() {
         transition={{ duration: 0.4 }}
         className="relative space-y-4"
       >
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Customer Intelligence</p>
             <h1 className="mt-1 font-sf-display text-[22px] font-bold tracking-tight text-black">Customer Intelligence</h1>
             <p className="mt-1 max-w-2xl text-[13px] text-black/45">Source-aware customer profiles from Shopify, website webhook, manual, and social inbox orders.</p>
           </div>
+          <RichButton type="button" onClick={exportFilteredCustomers} className="h-10 rounded-[10px] bg-black px-4 text-xs text-white hover:bg-black">
+            <DownloadSimple weight="light" size={16} />
+            Export Audience
+          </RichButton>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Total" value={summary?.totalCustomers ?? 0} sub="Detected customers" />
           <Stat label="Repeat" value={summary?.repeatBuyers ?? 0} sub="Bought more than once" />
-          <Stat label="Custom Site" value={summary?.customWebsiteCustomers ?? 0} sub="Webhook customers" />
+          <Stat label="Win-back" value={winBackCount} sub="Dormant audience" />
           <Stat label="Risk" value={summary?.highRiskCustomers ?? 0} sub="Need confirmation" />
         </div>
       </motion.div>
@@ -348,7 +411,7 @@ export default function Customers() {
           </div>
         </div>
 
-        <Tabs value={source} onValueChange={(value) => setSource(value as Source | "all")} variant="pill" className="px-6 py-4">
+        <Tabs value={source} onValueChange={(value) => setSource(value as Source | "all")} variant="pill" className="px-6 pt-4">
           <TabsList className="max-w-full overflow-x-auto bg-black/[0.06] p-1">
             {sourceOptions.map((item) => (
               <TabsTrigger key={item} value={item} className="text-[11px]" indicatorClassName="bg-black">
@@ -359,6 +422,21 @@ export default function Customers() {
 
           {sourceOptions.map((item) => (
             <TabsContent key={item} value={item} className="mt-4">
+              <div className="mb-4 flex flex-wrap gap-2">
+                {campaignOptions.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setCampaignFilter(item)}
+                    className={cn(
+                      "h-8 rounded-full px-3 text-[11px] font-medium transition-colors",
+                      campaignFilter === item ? "bg-black text-white" : "bg-black/[0.05] text-black/50 hover:bg-black/[0.08]",
+                    )}
+                  >
+                    {campaignLabels[item]}
+                  </button>
+                ))}
+              </div>
               <CustomersTable customers={filtered} loading={loading} onSelect={(customer) => { setSelected(customer); setInsight(null); }} />
             </TabsContent>
           ))}

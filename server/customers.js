@@ -56,6 +56,27 @@ function segmentsFor(customer) {
   return segments;
 }
 
+function lifecycleStageFor(customer) {
+  if (customer.daysSinceLastOrder != null && customer.daysSinceLastOrder >= 45) return "dormant";
+  if (customer.riskLevel === "high") return "risky";
+  if (customer.totalSpent >= 10000) return "vip";
+  if (customer.totalOrders >= 2) return "repeat";
+  return "new";
+}
+
+function campaignSegmentsFor(customer) {
+  const segments = [];
+  if (customer.lifecycleStage === "dormant") segments.push("win_back");
+  if (customer.totalSpent >= 10000) segments.push("vip_loyalty");
+  if (customer.totalOrders >= 2) segments.push("repeat_upsell");
+  if (customer.totalOrders === 1) segments.push("first_order_nurture");
+  if (customer.riskLevel !== "low") segments.push("cod_guardrail");
+  if (customer.riskLevel === "low" && customer.totalOrders >= 1) segments.push("review_request");
+  if (customer.sources.some((source) => ["facebook", "instagram", "whatsapp", "social_inbox"].includes(source))) segments.push("social_retarget");
+  if (customer.sources.includes("custom_website")) segments.push("custom_site_retarget");
+  return segments;
+}
+
 function sourceRank(source) {
   return { custom_website: 4, shopify: 3, whatsapp: 2, facebook: 2, instagram: 2, social_inbox: 1, manual: 0 }[source] ?? 0;
 }
@@ -84,6 +105,8 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
         primarySource: source,
         lastOrderAt: null,
         riskLevel: "low",
+        lifecycleStage: "new",
+        campaignSegments: [],
         segments: [],
         timeline: [],
       });
@@ -151,6 +174,8 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
       ? Math.max(0, Math.floor((nowTime - new Date(customer.lastOrderAt).getTime()) / 86_400_000))
       : null;
     customer.segments = segmentsFor(customer);
+    customer.lifecycleStage = lifecycleStageFor(customer);
+    customer.campaignSegments = campaignSegmentsFor(customer);
     return customer;
   }).sort((a, b) => new Date(b.lastOrderAt || 0).getTime() - new Date(a.lastOrderAt || 0).getTime());
 }
