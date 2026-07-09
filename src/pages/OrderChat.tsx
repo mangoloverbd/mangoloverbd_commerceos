@@ -122,7 +122,7 @@ function AiAvatar({ isStreaming }: { isStreaming?: boolean }) {
       {isStreaming && <Spinner className="absolute inset-0 m-auto text-black/45" />}
       {/* Favicon */}
       <div className="absolute inset-[3px] rounded-full bg-black/5 flex items-center justify-center overflow-hidden">
-        <img src="/logo.png" alt="AI" className="size-4 object-contain" />
+        <img src="/favicon.svg" alt="AI" className="size-4 object-contain" />
       </div>
     </div>
   );
