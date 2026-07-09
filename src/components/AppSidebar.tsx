@@ -252,7 +252,7 @@ export function AppSidebar() {
                 {/* Copyright */}
                 {!isCollapsed && (
                     <div className="flex items-center justify-between px-4 pb-2">
-                        <p className="text-[9px] text-sidebar-foreground/25">
+                        <p className="text-[8px] text-sidebar-foreground/25 whitespace-nowrap">
                             © 2026 Arc Technology Corporation
                         </p>
                         <Popover>
