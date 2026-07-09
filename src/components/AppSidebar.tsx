@@ -68,6 +68,12 @@ export function AppSidebar() {
                     link: "/products",
                 },
                 {
+                    id: "customers",
+                    title: "Customers",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M9 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8" style={{fill: 'var(--fillg)', opacity: 0.4}}/><path fill="currentColor" d="M17 10a3 3 0 1 0 0-6a3 3 0 0 0 0 6M3 19.2C3 15.8 5.686 13 9 13s6 2.8 6 6.2c0 .442-.358.8-.8.8H3.8a.8.8 0 0 1-.8-.8M15.8 19.2c0-1.904-.65-3.66-1.741-5.053A5.4 5.4 0 0 1 17 13.3c2.761 0 5 2.149 5 4.8c0 .497-.403.9-.9.9z" style={{fill: 'var(--fillg)'}}/></svg>,
+                    link: "/customers",
+                },
+                {
                     id: "order-extraction",
                     title: "Extraction",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_3111_22255)"><path d="M22.0001 8.5C22.0001 11.76 19.6001 14.45 16.4801 14.92V14.86C16.1701 10.98 13.0201 7.83 9.11008 7.52H9.08008C9.55008 4.4 12.2401 2 15.5001 2C19.0901 2 22.0001 4.91 22.0001 8.5Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M14.98 14.98C14.73 11.81 12.19 9.27 9.02 9.02C8.85 9.01 8.67 9 8.5 9C4.91 9 2 11.91 2 15.5C2 19.09 4.91 22 8.5 22C12.09 22 15 19.09 15 15.5C15 15.33 14.99 15.15 14.98 14.98ZM9.38 16.38L8.5 18L7.62 16.38L6 15.5L7.62 14.62L8.5 13L9.38 14.62L11 15.5L9.38 16.38Z" fill="white" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_3111_22255"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,

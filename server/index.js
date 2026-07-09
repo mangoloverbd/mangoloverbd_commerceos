@@ -12,6 +12,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
+import { buildCustomers, summarizeCustomers } from "./customers.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -3724,6 +3725,110 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     return res.status(201).json({ success: true, order_id: data.order_number, order: data });
   } catch (e) {
     console.error("Custom Store Webhook Error:", e);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+function buildCustomerAiInsight(customer) {
+  const sourceLabel = customer.primarySource === "custom_website" ? "custom website webhook" : customer.primarySource;
+  const riskReason = customer.riskLevel === "low"
+    ? "No major cancellation or return pattern is visible."
+    : `${customer.cancelledOrders || 0} cancelled and ${customer.returnedOrders || 0} returned order(s) across ${customer.totalOrders || 0} order(s).`;
+  const nextAction = customer.riskLevel === "high"
+    ? "Confirm before dispatch and prefer prepaid payment."
+    : customer.segments?.includes("vip")
+      ? "Reward with an early-access offer or bundle discount."
+      : customer.segments?.includes("inactive")
+        ? "Send a win-back message with a clear limited-time offer."
+        : "Follow up with a relevant product recommendation.";
+  return {
+    summary: `${customer.name || "This customer"} has ${customer.totalOrders || 0} order(s), ৳${Math.round(customer.totalSpent || 0).toLocaleString("en-BD")} total spend, and was last seen through ${sourceLabel}.`,
+    riskExplanation: riskReason,
+    nextAction,
+  };
+}
+
+app.get("/api/customers", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const [{ data: orders, error: ordersError }, { data: inboxOrders, error: inboxError }] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id, shopify_order_id, order_number, customer_name, phone, product, price, status, source, fraud_checked, fraud_data, return_status, created_at")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("social_inbox_orders")
+        .select("id, order_number, contact_name, items, total_price, status, source, notes, fraud_checked, fraud_data, return_status, created_at")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (ordersError) throw ordersError;
+    if (inboxError) throw inboxError;
+
+    const customers = buildCustomers({ orders: orders || [], inboxOrders: inboxOrders || [] });
+    return res.json({ customers, summary: summarizeCustomers(customers) });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/customers/ai-insight", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    await getUserOrg(supabase, user.id);
+
+    const customer = req.body?.customer;
+    if (!customer || typeof customer !== "object") return res.status(400).json({ error: "customer is required" });
+
+    const fallback = buildCustomerAiInsight(customer);
+    if (!process.env.OPENAI_API_KEY) return res.json({ insight: fallback, source: "rules" });
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: process.env.CUSTOMER_INSIGHT_MODEL || "gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 350,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: "You are a Bangladeshi e-commerce customer intelligence analyst. Return only JSON with summary, riskExplanation, nextAction. Be concise. Do not invent facts outside the provided customer object.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              name: customer.name,
+              phone: customer.phone ? "present" : "missing",
+              totalOrders: customer.totalOrders,
+              totalSpent: customer.totalSpent,
+              averageOrderValue: customer.averageOrderValue,
+              primarySource: customer.primarySource,
+              sources: customer.sources,
+              riskLevel: customer.riskLevel,
+              segments: customer.segments,
+              recentTimeline: Array.isArray(customer.timeline) ? customer.timeline.slice(0, 5) : [],
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) return res.json({ insight: fallback, source: "rules" });
+    const data = await response.json();
+    const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    return res.json({ insight: { ...fallback, ...parsed }, source: "ai" });
+  } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });
