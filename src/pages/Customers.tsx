@@ -164,30 +164,27 @@ function CustomerBloomPopover({
   const morph = reduce ? { duration: 0.16 } : customerPopoverTransition;
 
   return (
-    <AnimatePresence initial={false} mode="popLayout">
+    <AnimatePresence>
       {customer ? (
         <motion.div
           key="customer-bloom-backdrop"
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
+          animate={{ opacity: 1, transition: { duration: 0.3, ease: "easeOut" } }}
+          exit={{ opacity: 0, transition: { duration: 0.2, ease: "easeIn" } }}
           className="fixed inset-0 z-40 grid place-items-center bg-black/12 px-4 backdrop-blur-[3px]"
         >
           <motion.div
             ref={ref}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.96, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97, filter: "blur(6px)" }}
-            transition={morph}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.96, filter: "blur(8px)" }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: morph }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96, filter: "blur(4px)", transition: { duration: 0.2, ease: "easeIn" } }}
             style={{ borderRadius: 18 }}
             className="max-h-[88vh] w-[min(92vw,760px)] overflow-hidden border border-black/10 bg-[#FAFAF8] shadow-2xl shadow-black/15"
           >
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ delay: reduce ? 0 : 0.08, duration: 0.18, ease: "easeOut" }}
+              animate={{ opacity: 1, transition: { delay: reduce ? 0 : 0.08, duration: 0.2, ease: "easeOut" } }}
+              exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeIn" } }}
             >
               <div className="flex items-center justify-between border-b border-black/10 bg-white px-5 py-4">
                 <div>
@@ -312,12 +309,12 @@ export default function Customers() {
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="relative rounded-2xl bg-[#F3F3F3] p-3 sm:p-4"
+        className="relative rounded-2xl bg-[#F3F3F3] p-4 sm:p-6"
       >
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Customer Intelligence</p>
-            <h1 className="mt-1 text-[22px] font-bold tracking-tight text-black">Customers</h1>
+            <h1 className="mt-1 font-sf-display text-[22px] font-bold tracking-tight text-black">Customer Intelligence</h1>
             <p className="mt-1 max-w-2xl text-[13px] text-black/45">Source-aware customer profiles from Shopify, website webhook, manual, and social inbox orders.</p>
           </div>
         </div>
