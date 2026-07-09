@@ -391,6 +391,13 @@ function parseFraudShieldError(status, body) {
     // FraudShield sometimes returns plain text/HTML on upstream failures.
   }
 
+  if (status === 502) {
+    return "FraudShield server returned a 502 Bad Gateway. This usually indicates their origin database or upstream courier sync service is down.";
+  }
+  if (status === 504) {
+    return "FraudShield server returned a 504 Gateway Timeout. The request timed out while querying courier records.";
+  }
+
   if (/BdCourierService|transformApiResponse|null returned/i.test(message)) {
     return "FraudShield is temporarily failing while reading BD Courier data. Please try again later or contact FraudShield support if it continues.";
   }
@@ -411,12 +418,14 @@ async function checkFraudStatus(phone, apiKey) {
     return { fraudData: null, successRate: null, errorMessage: "No API key provided" };
   }
 
+  const trimmedApiKey = apiKey.trim();
+
   try {
     const response = await fetch("https://fraudshield.bd/api/customer/check", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "X-API-Key": apiKey,
+        Authorization: `Bearer ${trimmedApiKey}`,
+        "X-API-Key": trimmedApiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -425,6 +434,7 @@ async function checkFraudStatus(phone, apiKey) {
 
     if (!response.ok) {
       const errorBody = await response.text();
+      console.error(`[FraudShield] API returned error for ${cleanedPhone}: status ${response.status}, body: ${errorBody}`);
       return {
         fraudData: null,
         successRate: null,
@@ -4556,7 +4566,7 @@ app.post("/api/check-fraud", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     incrementUsage(orgId, "fraud_checks").catch(() => {});
-    const fraudShieldApiKey = process.env.FRAUDSHIELD_API_KEY;
+    const fraudShieldApiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
     if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
     if (orderId) {
@@ -4646,7 +4656,7 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
     const { phone: rawPhone } = parseInboxOrderNotes(order.notes);
     if (!rawPhone) return res.status(400).json({ error: "No phone number found in this order's notes" });
 
-    const fraudShieldApiKey = process.env.FRAUDSHIELD_API_KEY;
+    const fraudShieldApiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
     if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
     const { fraudData, errorMessage } = await checkFraudStatus(rawPhone, fraudShieldApiKey);
