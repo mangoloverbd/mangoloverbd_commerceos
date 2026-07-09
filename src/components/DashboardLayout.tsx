@@ -5,7 +5,7 @@ import { HeaderAlerts } from "./HeaderAlerts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useAuth } from "@/hooks/useAuth";
-import { DotsThree, Plus, Sparkle } from "@phosphor-icons/react";
+import { CaretRight, DotsThree, Plus, Sparkle } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -24,21 +24,25 @@ const accountMenuInnerClass =
 const accountMenuItemClass =
     "flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-black/[0.05] bg-[#FBFBFA] px-2.5 py-2 text-[12px] font-medium text-[#202020]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors hover:bg-white hover:text-[#202020] focus:bg-white focus:text-[#202020]";
 
-const routeTitles: Record<string, string> = {
-    "/": "Home",
+const routeBreadcrumbLabels: Record<string, string> = {
+    "/": "Overview",
+    "/returns": "Returns",
+    "/products": "Products",
+    "/customers": "Customers",
     "/order-extraction": "Extraction",
     "/order-chat": "AI Chat",
-    "/products": "Products",
     "/order-analysis": "AI Analysis",
     "/inbox/facebook": "Facebook",
     "/inbox/instagram": "Instagram",
     "/inbox/whatsapp": "WhatsApp",
     "/inbox/orders": "Inbox Orders",
+    "/studio": "Studio",
+    "/billing": "Billing",
     "/settings": "System Settings",
 };
 
-function getRouteTitle(pathname: string) {
-    return routeTitles[pathname] ?? "Merchant-Suite";
+function getBreadcrumbLabel(pathname: string) {
+    return routeBreadcrumbLabels[pathname] ?? "Overview";
 }
 
 export function DashboardLayout() {
@@ -82,9 +86,15 @@ export function DashboardLayout() {
                 <AppSidebar />
                 <SidebarInset className="flex min-w-0 flex-col bg-transparent">
                     <header className="flex h-[58px] shrink-0 items-center justify-between px-5 text-[#202020]">
-                        <h1 className="font-sf-display text-[20px] font-semibold leading-none tracking-normal">
-                            {getRouteTitle(location.pathname)}
-                        </h1>
+                        <nav aria-label="Breadcrumb" className="flex min-w-0 items-center">
+                            <div className="flex min-w-0 items-center gap-2 text-[13px] leading-none">
+                                <span className="truncate text-[#8a8a88]">Dashboard</span>
+                                <CaretRight className="shrink-0 text-[#ababaa]" size={14} weight="light" />
+                                <span aria-current="page" className="truncate font-semibold text-[#202020]">
+                                    {getBreadcrumbLabel(location.pathname)}
+                                </span>
+                            </div>
+                        </nav>
                         <div className="flex items-center gap-1.5 text-[#6f6f6f]">
                             <button
                                 className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 hover:text-black"
