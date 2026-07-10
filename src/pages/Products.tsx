@@ -88,7 +88,7 @@ function StatCard({
   label, value, sub, accent,
 }: { label: string; value: React.ReactNode; sub: string; accent?: string }) {
   return (
-      <div className="flex flex-col min-w-0 overflow-hidden rounded-xl border border-black/[0.16] bg-white p-4 shadow-sm">
+      <div className="flex flex-col min-w-0 overflow-hidden rounded-xl border border-black/[0.16] bg-white p-4 shadow-[0_1px_1px_0_rgba(0,0,0,0.04)]">
       <p className="text-[11px] font-medium uppercase tracking-wider text-black/50">
         {label}
       </p>
@@ -646,7 +646,7 @@ export default function Products() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.04 }}
-          className="rounded-xl border border-black/[0.16] bg-white p-5 shadow-sm"
+          className="rounded-xl border border-black/[0.16] bg-white p-5 shadow-[0_1px_1px_0_rgba(0,0,0,0.04)]"
         >
           <div className="mb-4 flex items-center gap-2">
             <Globe2 className="h-4 w-4 text-black/60" />
@@ -698,7 +698,7 @@ export default function Products() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08 }}
-          className="overflow-hidden rounded-xl border border-black/[0.16] bg-white shadow-sm"
+          className="overflow-hidden rounded-xl border border-black/[0.16] bg-white shadow-[0_1px_1px_0_rgba(0,0,0,0.04)]"
         >
           {/* ── Toolbar ── */}
           <div className="flex flex-col gap-3 border-b border-black/[0.08] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
