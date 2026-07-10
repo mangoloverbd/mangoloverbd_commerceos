@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import * as PricingCard from "@/components/ui/pricing-card";
 import Billing from "@/pages/Billing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -59,6 +60,24 @@ function renderBilling() {
 }
 
 describe("Billing plans", () => {
+  it("composes reusable pricing-card primitives", () => {
+    render(
+      <PricingCard.Card data-testid="pricing-card">
+        <PricingCard.Header>
+          <PricingCard.PlanName>Starter</PricingCard.PlanName>
+        </PricingCard.Header>
+        <PricingCard.Body>
+          <PricingCard.List>
+            <PricingCard.ListItem>500 orders</PricingCard.ListItem>
+          </PricingCard.List>
+        </PricingCard.Body>
+      </PricingCard.Card>,
+    );
+
+    expect(screen.getByTestId("pricing-card")).toHaveClass("backdrop-blur-xl");
+    expect(screen.getByText("500 orders")).toBeInTheDocument();
+  });
+
   it("shows Starter and Growth while hiding Pro and Enterprise", async () => {
     renderBilling();
 
