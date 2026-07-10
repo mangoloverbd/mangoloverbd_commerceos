@@ -5,7 +5,7 @@ import { HeaderAlerts } from "./HeaderAlerts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useAuth } from "@/hooks/useAuth";
-import { CaretRight, DotsThree, Plus, Sparkle } from "@phosphor-icons/react";
+import { CaretRight, DotsThree, Gear, Plus, SignOut, Sparkle } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -13,16 +13,15 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut } from "lucide-react";
 
 const accountMenuPanelClass =
-    "w-56 overflow-hidden rounded-[14px] border-[1.5px] border-black/[0.07] bg-[#E9E8E5] p-1 text-[#202020] shadow-[0_2px_6px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.7)]";
+    "w-56 overflow-hidden rounded-[16px] border-transparent bg-white/80 p-1.5 text-[#202020] shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] backdrop-blur-xl";
 
 const accountMenuInnerClass =
-    "rounded-[10px] border border-black/[0.05] bg-[#F7F7F6] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.06)]";
+    "rounded-[12px] border-b border-black/[0.06]";
 
 const accountMenuItemClass =
-    "flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-black/[0.05] bg-[#FBFBFA] px-2.5 py-2 text-[12px] font-medium text-[#202020]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors hover:bg-white hover:text-[#202020] focus:bg-white focus:text-[#202020]";
+    "flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[12.5px] font-medium text-[#202020]/85 transition-colors hover:bg-black/[0.045] focus:bg-black/[0.045] focus:text-[#202020]";
 
 const routeBreadcrumbLabels: Record<string, string> = {
     "/": "Overview",
@@ -136,23 +135,23 @@ export function DashboardLayout() {
                                     sideOffset={8}
                                     className={accountMenuPanelClass}
                                 >
-                                    <div className={`${accountMenuInnerClass} px-4 py-3`}>
+                                    <div className={`${accountMenuInnerClass} px-4 pb-3 pt-2`}>
                                         <p className="truncate text-[10px] font-medium uppercase leading-tight tracking-[0.18em] text-[#7F7F7D]">Account</p>
-                                        <p className="mt-1 truncate text-[12px] font-light leading-tight text-[#202020]">{displayName}</p>
+                                        <p className="mt-1 truncate text-[13px] font-light leading-tight text-[#202020]">{displayName}</p>
                                         <p className="mt-0.5 truncate text-[10px] font-normal leading-tight text-black/45">{user?.email ?? ""}</p>
                                     </div>
-                                    <div className="mt-1 space-y-1">
+                                    <div className="space-y-0.5 px-1 pb-1 pt-1">
                                         <DropdownMenuItem asChild>
                                             <Link to="/settings" className={accountMenuItemClass}>
-                                                <img src="https://img.icons8.com/color/50/apple-settings.png" alt="settings" className="h-4 w-4 shrink-0" />
+                                                <Gear weight="light" size={15} className="shrink-0 text-[#202020]/70" />
                                                 System Settings
                                             </Link>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
                                             onClick={() => signOut()}
-                                            className={`${accountMenuItemClass} text-[#9B3D3D] hover:text-[#8E2F2F] focus:text-[#8E2F2F]`}
+                                            className={`${accountMenuItemClass} text-[#9B3D3D] hover:bg-[#9B3D3D]/[0.06] focus:bg-[#9B3D3D]/[0.06] hover:text-[#8E2F2F] focus:text-[#8E2F2F]`}
                                         >
-                                            <LogOut size={15} className="shrink-0" />
+                                            <SignOut weight="light" size={15} className="shrink-0" />
                                             Sign Out
                                         </DropdownMenuItem>
                                     </div>
