@@ -667,7 +667,7 @@ export default function Products() {
               onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
               className={cn(
                 INPUT_CLS,
-                "h-9 flex-1 rounded-[8px] border-transparent bg-white font-sans shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] focus-visible:ring-0",
+                "h-9 flex-1 rounded-[8px] border-transparent bg-white font-sans shadow-[0_1px_2px_0_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.12),inset_0_1px_0_0_#FDFDFD] focus-visible:ring-0",
               )}
             />
             <RichButton
