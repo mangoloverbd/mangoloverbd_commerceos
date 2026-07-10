@@ -930,23 +930,23 @@ export default function Dashboard() {
         />
 
         {orderTotalPages > 1 && (
-          <div className="flex items-center justify-center gap-3 border-t border-black/10 py-3">
+          <div className="relative flex items-center justify-between border-t border-black/10 px-4 py-3">
             <button
               type="button"
               onClick={() => setOrderPage((p) => Math.max(0, p - 1))}
               disabled={orderSafePage === 0}
-              className="rounded-full bg-[#E3E3E3]/80 px-4 py-1.5 text-[11px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-[8px] bg-[#E3E3E3]/80 px-5 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Previous
             </button>
-            <span className="text-[11px] font-medium text-black/55 tabular-nums">
+            <span className="absolute left-1/2 -translate-x-1/2 text-[11px] font-medium text-black/55 tabular-nums">
               Page {orderSafePage + 1} of {orderTotalPages}
             </span>
             <button
               type="button"
               onClick={() => setOrderPage((p) => Math.min(orderTotalPages - 1, p + 1))}
               disabled={orderSafePage >= orderTotalPages - 1}
-              className="rounded-full bg-[#E3E3E3]/80 px-4 py-1.5 text-[11px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-[8px] bg-[#E3E3E3]/80 px-5 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
             </button>
