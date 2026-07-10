@@ -639,11 +639,6 @@ export default function Products() {
               accent={outCount > 0 ? "text-red-500" : "text-black"}
             />
           </div>
-          <div className="rounded-xl border border-black/[0.08] bg-white px-5 py-3 shadow-sm">
-            <span className="text-[13px] text-black/60">
-              Total cost value: <span className="font-semibold text-black">{fmt(totalCog)}</span>
-            </span>
-          </div>
         </motion.div>
 
         {/* ── Import from website — always visible ── */}
@@ -651,7 +646,7 @@ export default function Products() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.04 }}
-          className="rounded-xl border border-black/[0.08] bg-white p-5 shadow-sm"
+          className="rounded-xl border border-black/[0.16] bg-white p-5 shadow-sm"
         >
           <div className="mb-4 flex items-center gap-2">
             <Globe2 className="h-4 w-4 text-black/60" />
@@ -703,7 +698,7 @@ export default function Products() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08 }}
-          className="overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-sm"
+          className="overflow-hidden rounded-xl border border-black/[0.16] bg-white shadow-sm"
         >
           {/* ── Toolbar ── */}
           <div className="flex flex-col gap-3 border-b border-black/[0.08] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
