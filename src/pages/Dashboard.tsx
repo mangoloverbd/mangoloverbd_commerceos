@@ -436,6 +436,7 @@ export default function Dashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
+  const [visibleOrderCount, setVisibleOrderCount] = useState(100);
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { orgName } = useOrgName();
@@ -622,6 +623,14 @@ export default function Dashboard() {
         (o.phone && o.phone.toLowerCase().includes(q))
     );
   }, [orders, debouncedSearch]);
+
+  // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
+  // which keeps interactions like the avatar menu responsive on the dashboard.
+  const visibleOrders = useMemo(
+    () => filteredOrders.slice(0, visibleOrderCount),
+    [filteredOrders, visibleOrderCount],
+  );
+  const hasMoreOrders = visibleOrderCount < filteredOrders.length;
 
   const metricSparklines = useMemo(() => {
     const series = analytics?.series;
@@ -909,11 +918,23 @@ export default function Dashboard() {
 
         {/* Table */}
         <OrdersTable
-          orders={filteredOrders}
+          orders={visibleOrders}
           loading={loading}
           onStatusUpdate={handleStatusUpdate}
           onOrderUpdate={handleOrderUpdate}
         />
+
+        {hasMoreOrders && (
+          <div className="flex items-center justify-center border-t border-black/10 py-3">
+            <button
+              type="button"
+              onClick={() => setVisibleOrderCount((c) => c + 100)}
+              className="rounded-full border border-black/10 px-4 py-1.5 text-[11px] font-medium text-black/70 transition-colors hover:bg-black/[0.03] hover:text-black"
+            >
+              Show more orders ({filteredOrders.length - visibleOrderCount} hidden)
+            </button>
+          </div>
+        )}
       </motion.div>
 
     </div>
