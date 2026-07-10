@@ -674,6 +674,7 @@ export default function Products() {
               data-testid="button-crawl"
               color="default"
               size="default"
+              className="h-9 shrink-0"
               onClick={handleCrawl}
               disabled={crawlStatus === "crawling" || !crawlUrl.trim()}
             >
