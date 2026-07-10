@@ -4,8 +4,10 @@ import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { RichButton } from "@/components/ui/rich-button";
+import * as PricingCard from "@/components/ui/pricing-card";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { toast } from "@/components/ui/sonner";
+import { CheckCircle, Storefront, TrendUp, XCircle } from "@phosphor-icons/react";
 import { CreditCard, Receipt, TrendingUp, Crown } from "lucide-react";
 
 type Section = "plan" | "usage" | "payment" | "invoices";
@@ -137,6 +139,34 @@ const PLANS = [
   },
 ];
 
+const VISIBLE_PLAN_IDS = new Set(["starter", "growth"]);
+
+const PLAN_CARD_FEATURES: Record<string, { included: string[]; locked?: string[] }> = {
+  starter: {
+    included: [
+      "500 orders and 50 fraud checks each month",
+      "One team member and one courier connection",
+      "300 AI inbox replies and 100 extractions",
+      "One social platform and basic weekly analytics",
+    ],
+    locked: [
+      "Both courier integrations and three team members",
+      "Daily analytics and priority WhatsApp support",
+    ],
+  },
+  growth: {
+    included: [
+      "2,000 orders and 300 fraud checks each month",
+      "Three team members with Steadfast and Pathao",
+      "1,500 AI inbox replies and 500 AI extractions",
+      "300 AI order captures and 20 analysis runs",
+      "Two social inbox platforms with business-hours automation",
+      "200 products and a 2,000-word brand document",
+      "Full daily analytics and priority WhatsApp support",
+    ],
+  },
+};
+
 function UsageBar({ label, used, limit, icon }: { label: string; used: number; limit: number; icon?: React.ReactNode }) {
   const pct = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
   const tone = pct >= 90 ? "red" : pct >= 70 ? "amber" : "emerald";
@@ -194,8 +224,8 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
       if (url) {
         window.location.href = url;
       }
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to start checkout");
     } finally {
       setSwitching(null);
     }
@@ -232,49 +262,45 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {PLANS.map((plan) => {
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+          {PLANS.filter((plan) => VISIBLE_PLAN_IDS.has(plan.id)).map((plan) => {
             const isCurrent = currentPlan?.id === plan.id;
+            const display = PLAN_CARD_FEATURES[plan.id];
+            const PlanIcon = plan.id === "growth" ? TrendUp : Storefront;
+
             return (
-              <div
+              <PricingCard.Card
                 key={plan.id}
+                data-testid={`plan-${plan.id}`}
                 className={cn(
-                  "relative overflow-hidden rounded-[14px] border bg-white flex flex-col transition-all",
-                  isCurrent
-                    ? "border-black ring-1 ring-black/10"
-                    : "border-black/[0.08] hover:border-black/20"
+                  "w-full transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_28px_80px_rgba(29,29,31,0.13)]",
+                  plan.id === "growth" && "border-blue-500/20 shadow-[0_24px_70px_rgba(0,80,170,0.10)]",
                 )}
               >
-                <div className="p-5 pb-3">
-                  {plan.popular && (
-                    <span className="absolute top-3 right-3 text-[9px] font-semibold uppercase tracking-widest bg-black text-white px-2 py-0.5 rounded-full">
-                      Popular
-                    </span>
-                  )}
-                  <p className="text-[13px] font-semibold text-black">{plan.name}</p>
-                  <p className="text-[10px] text-black/40 mt-0.5">{plan.subtitle}</p>
-                  <p className="mt-2">
-                    <span className="text-[24px] font-light text-black tabular-nums">৳{plan.price.toLocaleString()}</span>
-                    <span className="text-[11px] text-black/40 ml-1">/month</span>
-                  </p>
-                </div>
-                <div className="flex-1 px-5 pb-4">
-                  <div className="border-t border-black/[0.06] pt-3 space-y-1.5">
-                    {plan.features.map((f) => (
-                      <div key={f.category} className="flex items-start justify-between gap-2">
-                        <span className="text-[10px] text-black/45 shrink-0">{f.category}</span>
-                        <span className="text-[10px] font-medium text-black text-right">{f.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="px-5 pb-5">
+                <PricingCard.Header className={cn(plan.id === "growth" && "bg-blue-50/70")}>
+                  <PricingCard.Plan>
+                    <PricingCard.PlanName>
+                      <PlanIcon weight="light" />
+                      <span>{plan.name}</span>
+                    </PricingCard.PlanName>
+                    <PricingCard.Badge
+                      className={cn(plan.id === "growth" && "border-blue-500/20 text-blue-600")}
+                    >
+                      {plan.id === "growth" ? "Recommended" : "Solo sellers"}
+                    </PricingCard.Badge>
+                  </PricingCard.Plan>
+
+                  <PricingCard.Price>
+                    <PricingCard.MainPrice>৳{plan.price.toLocaleString()}</PricingCard.MainPrice>
+                    <PricingCard.Period>/ month</PricingCard.Period>
+                  </PricingCard.Price>
+
                   <RichButton
                     color="default"
                     size="default"
                     onClick={() => handleSwitch(plan.id)}
                     disabled={isCurrent || switching !== null}
-                    className="w-full"
+                    className="relative z-10 w-full"
                   >
                     {switching === plan.id ? (
                       <Spinner size="sm" className="mx-auto" />
@@ -286,8 +312,36 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
                         : "Upgrade"
                     )}
                   </RichButton>
-                </div>
-              </div>
+                </PricingCard.Header>
+
+                <PricingCard.Body>
+                  <p className="mb-3 text-[11px] font-medium text-black">
+                    {plan.id === "growth" ? "More capacity and automation" : "Everything you need to start"}
+                  </p>
+                  <PricingCard.List>
+                    {display.included.map((feature) => (
+                      <PricingCard.ListItem key={feature} data-testid="included-feature">
+                        <CheckCircle weight="light" className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                        <span>{feature}</span>
+                      </PricingCard.ListItem>
+                    ))}
+                  </PricingCard.List>
+
+                  {display.locked && (
+                    <>
+                      <PricingCard.Separator />
+                      <PricingCard.List>
+                        {display.locked.map((feature) => (
+                          <PricingCard.ListItem key={feature} className="opacity-70">
+                            <XCircle weight="light" className="mt-0.5 size-4 shrink-0 text-black/35" />
+                            <span>{feature}</span>
+                          </PricingCard.ListItem>
+                        ))}
+                      </PricingCard.List>
+                    </>
+                  )}
+                </PricingCard.Body>
+              </PricingCard.Card>
             );
           })}
         </div>
@@ -382,8 +436,8 @@ function PaymentSection() {
       }
       const { url } = await res.json();
       if (url) window.location.href = url;
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to open portal");
     } finally {
       setLoading(false);
     }
@@ -499,7 +553,7 @@ export default function Billing() {
       toast.success("Subscription activated! Your plan is now active.");
       setSearchParams({}, { replace: true });
     }
-  }, []);
+  }, [searchParams, setSearchParams]);
 
   const fetchBilling = async () => {
     try {

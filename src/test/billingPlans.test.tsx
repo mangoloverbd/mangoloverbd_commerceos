@@ -53,7 +53,10 @@ vi.mock("@/lib/api", () => ({ apiFetch }));
 
 function renderBilling() {
   return render(
-    <MemoryRouter initialEntries={["/billing"]}>
+    <MemoryRouter
+      initialEntries={["/billing"]}
+      future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+    >
       <Billing />
     </MemoryRouter>,
   );
