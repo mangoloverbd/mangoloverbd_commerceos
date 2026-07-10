@@ -262,7 +262,7 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
           </p>
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+        <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2">
           {PLANS.filter((plan) => VISIBLE_PLAN_IDS.has(plan.id)).map((plan) => {
             const isCurrent = currentPlan?.id === plan.id;
             const display = PLAN_CARD_FEATURES[plan.id];
