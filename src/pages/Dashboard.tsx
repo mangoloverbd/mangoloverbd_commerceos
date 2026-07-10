@@ -436,7 +436,8 @@ export default function Dashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
-  const [visibleOrderCount, setVisibleOrderCount] = useState(100);
+  const ORDER_PAGE_SIZE = 100;
+  const [orderPage, setOrderPage] = useState(0);
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { orgName } = useOrgName();
@@ -490,7 +491,10 @@ export default function Dashboard() {
   }, [fetchAnalytics]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 200);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setOrderPage(0);
+    }, 200);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -626,11 +630,12 @@ export default function Dashboard() {
 
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
+  const orderSafePage = Math.min(orderPage, orderTotalPages - 1);
   const visibleOrders = useMemo(
-    () => filteredOrders.slice(0, visibleOrderCount),
-    [filteredOrders, visibleOrderCount],
+    () => filteredOrders.slice(orderSafePage * ORDER_PAGE_SIZE, (orderSafePage + 1) * ORDER_PAGE_SIZE),
+    [filteredOrders, orderSafePage],
   );
-  const hasMoreOrders = visibleOrderCount < filteredOrders.length;
 
   const metricSparklines = useMemo(() => {
     const series = analytics?.series;
@@ -924,14 +929,26 @@ export default function Dashboard() {
           onOrderUpdate={handleOrderUpdate}
         />
 
-        {hasMoreOrders && (
-          <div className="flex items-center justify-center border-t border-black/10 py-3">
+        {orderTotalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 border-t border-black/10 py-3">
             <button
               type="button"
-              onClick={() => setVisibleOrderCount((c) => c + 100)}
-              className="rounded-full border border-black/10 px-4 py-1.5 text-[11px] font-medium text-black/70 transition-colors hover:bg-black/[0.03] hover:text-black"
+              onClick={() => setOrderPage((p) => Math.max(0, p - 1))}
+              disabled={orderSafePage === 0}
+              className="rounded-full bg-[#E3E3E3]/80 px-4 py-1.5 text-[11px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Show more orders ({filteredOrders.length - visibleOrderCount} hidden)
+              Previous
+            </button>
+            <span className="text-[11px] font-medium text-black/55 tabular-nums">
+              Page {orderSafePage + 1} of {orderTotalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setOrderPage((p) => Math.min(orderTotalPages - 1, p + 1))}
+              disabled={orderSafePage >= orderTotalPages - 1}
+              className="rounded-full bg-[#E3E3E3]/80 px-4 py-1.5 text-[11px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
             </button>
           </div>
         )}
