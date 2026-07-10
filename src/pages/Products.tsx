@@ -88,7 +88,7 @@ function StatCard({
   label, value, sub, accent,
 }: { label: string; value: React.ReactNode; sub: string; accent?: string }) {
   return (
-    <div className="flex flex-col min-w-0 overflow-hidden rounded-xl border border-black/[0.08] bg-white p-4 shadow-sm">
+      <div className="flex flex-col min-w-0 overflow-hidden rounded-xl border border-black/[0.16] bg-white p-4 shadow-sm">
       <p className="text-[11px] font-medium uppercase tracking-wider text-black/50">
         {label}
       </p>
