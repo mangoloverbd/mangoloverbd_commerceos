@@ -273,8 +273,9 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
                 key={plan.id}
                 data-testid={`plan-${plan.id}`}
                 className={cn(
-                  "w-full transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_28px_80px_rgba(29,29,31,0.13)]",
-                  plan.id === "growth" && "border-blue-500/20 shadow-[0_24px_70px_rgba(0,80,170,0.10)]",
+                  "w-full border-transparent transition-all duration-300 hover:-translate-y-0.5",
+                  "shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD]",
+                  plan.id === "growth" && "bg-blue-50/40",
                 )}
               >
                 <PricingCard.Header className={cn(plan.id === "growth" && "bg-blue-50/70")}>
