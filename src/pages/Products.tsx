@@ -665,7 +665,10 @@ export default function Products() {
               value={crawlUrl}
               onChange={e => setCrawlUrl(e.target.value)}
               onKeyDown={e => e.key === "Enter" && crawlStatus !== "crawling" && handleCrawl()}
-              className={cn(INPUT_CLS, "h-9 flex-1 font-sans")}
+              className={cn(
+                INPUT_CLS,
+                "h-9 flex-1 rounded-[8px] border-transparent bg-white font-sans shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] focus-visible:ring-0",
+              )}
             />
             <RichButton
               data-testid="button-crawl"
