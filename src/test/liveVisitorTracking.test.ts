@@ -39,8 +39,17 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain("memoryLiveVisitors");
     expect(serverSource).toContain("addLiveVisitorPresence");
     expect(serverSource).toContain("countLiveVisitorsForKey");
+    expect(serverSource).toContain("falling back to memory");
     expect(serverSource).not.toContain("if (!redisClient) return res.json({ count: 0, tracked: false })");
     expect(serverSource).not.toContain("if (!redisClient) return res.json({ ok: true, tracked: false })");
+  });
+
+  it("allows public cross-origin tracker pings from merchant websites", () => {
+    expect(serverSource).toContain("publicTrackerCors");
+    expect(serverSource).toContain('app.options("/api/live-visitor/ping"');
+    expect(serverSource).toContain('app.get("/api/tracker.js", publicTrackerCors');
+    expect(serverSource).toContain('app.post("/api/live-visitor/ping", publicTrackerCors');
+    expect(serverSource).toContain("allowedHeaders: [\"Content-Type\"]");
   });
 
   it("shows the embed script in Custom Website settings", () => {

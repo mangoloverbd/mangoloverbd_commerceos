@@ -144,6 +144,12 @@ const __dirname = dirname(__filename);
 
 const app = express();
 app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : true }));
+const publicTrackerCors = cors({
+  origin: true,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+  maxAge: 86400,
+});
 
 // Parse JSON and simultaneously capture raw body buffer for webhook HMAC verification.
 // Using the verify callback avoids consuming the stream twice.
@@ -3769,9 +3775,13 @@ function pruneMemoryLiveVisitors(key, now) {
 
 async function addLiveVisitorPresence(key, sessionId, now) {
   if (redisClient) {
-    await redisClient.zadd(key, { score: now, member: sessionId });
-    await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
-    return;
+    try {
+      await redisClient.zadd(key, { score: now, member: sessionId });
+      await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
+      return;
+    } catch (err) {
+      console.warn("[LiveVisitor] Redis write failed, falling back to memory:", err.message);
+    }
   }
 
   const visitors = pruneMemoryLiveVisitors(key, now);
@@ -3781,15 +3791,21 @@ async function addLiveVisitorPresence(key, sessionId, now) {
 
 async function countLiveVisitorsForKey(key, now) {
   if (redisClient) {
-    await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
-    const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
-    return Number(count) || 0;
+    try {
+      await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
+      const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
+      return Number(count) || 0;
+    } catch (err) {
+      console.warn("[LiveVisitor] Redis count failed, falling back to memory:", err.message);
+    }
   }
 
   return pruneMemoryLiveVisitors(key, now).size;
 }
 
-app.get("/api/tracker.js", (req, res) => {
+app.options("/api/live-visitor/ping", publicTrackerCors);
+
+app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   const orgId = req.query.org;
   if (!isValidOrgId(orgId)) {
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
@@ -3841,7 +3857,7 @@ app.get("/api/tracker.js", (req, res) => {
 })();`);
 });
 
-app.post("/api/live-visitor/ping", async (req, res) => {
+app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
   const { org_id, session_id, url } = req.body || {};
   if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
     return res.status(400).json({ error: "Invalid live visitor payload" });
