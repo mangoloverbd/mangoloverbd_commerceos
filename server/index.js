@@ -3101,20 +3101,20 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
         queryPostHogHogql(`
           SELECT
             uniq(distinct_id) AS visitors,
-            countIf(coalesce(properties.bucket, '') = '') AS productViews,
-            countIf(properties.bucket = 'cart') AS carts,
-            countIf(properties.bucket = 'checkout') AS checkouts,
-            countIf(properties.bucket = 'purchased') AS purchases
+            uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS productViews,
+            uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
+            uniqIf(distinct_id, properties.bucket = 'checkout') AS checkouts,
+            uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases
           FROM events
           WHERE ${eventFilter}
         `, { orgId }),
         queryPostHogHogql(`
           SELECT
             coalesce(properties.url, 'Unknown page') AS url,
-            countIf(coalesce(properties.bucket, '') = '') AS views,
-            countIf(properties.bucket = 'cart') AS carts,
-            countIf(properties.bucket = 'checkout') AS checkouts,
-            countIf(properties.bucket = 'purchased') AS purchases
+            uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS views,
+            uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
+            uniqIf(distinct_id, properties.bucket = 'checkout') AS checkouts,
+            uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases
           FROM events
           WHERE ${eventFilter}
           GROUP BY url
@@ -3126,8 +3126,8 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
             coalesce(properties.url, '') AS url,
             coalesce(properties.referrer, '') AS referrer,
             uniq(distinct_id) AS visitors,
-            countIf(properties.bucket = 'cart') AS carts,
-            countIf(properties.bucket = 'purchased') AS purchases
+            uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
+            uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases
           FROM events
           WHERE ${eventFilter}
           GROUP BY url, referrer

@@ -32,6 +32,9 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(serverSource).toContain("OPENAI_API_KEY");
     expect(serverSource).toContain("gpt-4o-mini");
     expect(serverSource).toContain("bullets");
+    expect(serverSource).toContain("uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS productViews");
+    expect(serverSource).toContain("uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases");
+    expect(serverSource).not.toContain("countIf(properties.bucket = 'purchased') AS purchases");
   });
 
   it("renders the approved Option A website behavior panel on Order Analysis", () => {
