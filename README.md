@@ -43,6 +43,10 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 SUPABASE_DB_URL=your_supabase_pooler_connection_string
 ADMIN_EMAILS=owner@example.com
+POSTHOG_PROJECT_API_KEY=your_posthog_project_api_key
+POSTHOG_PERSONAL_API_KEY=your_posthog_personal_api_key
+POSTHOG_PROJECT_ID=your_posthog_project_id
+POSTHOG_HOST=https://app.posthog.com
 ```
 
 On Railway, also set the Vite public variables so the browser bundle can sign in:
@@ -60,6 +64,11 @@ string is preferred for startup migrations. You can alternatively set
 `DATABASE_URL`, or `POSTGRES_URL`.
 `ADMIN_EMAILS` is a comma-separated list of existing Supabase Auth users that
 should be repaired or promoted to admin on their next sign-in.
+`POSTHOG_PROJECT_API_KEY` is used only server-side to forward custom website
+tracker events into the SaaS-owned PostHog project; merchants do not need their
+own PostHog accounts.
+`POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID` are used only server-side to
+query PostHog behavior data for Order Analysis.
 
 ### Run the frontend
 

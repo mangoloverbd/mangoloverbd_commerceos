@@ -2910,6 +2910,164 @@ async function buildForecastNarrative(payload) {
   }
 }
 
+function emptyWebsiteBehaviorPayload(configured = true, lookbackDays = 30) {
+  return {
+    configured,
+    lookbackDays,
+    funnel: {
+      visitors: 0,
+      productViews: 0,
+      carts: 0,
+      checkouts: 0,
+      purchases: 0,
+      conversionRate: 0,
+    },
+    dropOff: null,
+    productDemand: [],
+  };
+}
+
+async function queryPostHogHogql(query, values = {}) {
+  const personalApiKey = process.env.POSTHOG_PERSONAL_API_KEY;
+  const projectId = process.env.POSTHOG_PROJECT_ID;
+  if (!personalApiKey || !projectId) return null;
+
+  const host = (process.env.POSTHOG_HOST || "https://app.posthog.com").replace(/\/+$/, "");
+  const response = await fetch(`${host}/api/projects/${projectId}/query/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${personalApiKey}`,
+    },
+    body: JSON.stringify({
+      query: {
+        kind: "HogQLQuery",
+        query,
+        values,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`PostHog query failed (${response.status}): ${body.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+function pctDropOff(from, to) {
+  if (!from || from <= 0) return 0;
+  return Math.max(0, Math.min(100, Number((((from - to) / from) * 100).toFixed(1))));
+}
+
+function buildWebsiteBehaviorDropOff(funnel) {
+  const candidates = [
+    {
+      step: "Product View to Cart",
+      rate: pctDropOff(funnel.productViews, funnel.carts),
+      hint: "Improve product page clarity, price trust, and add-to-cart visibility.",
+    },
+    {
+      step: "Cart to Checkout",
+      rate: pctDropOff(funnel.carts, funnel.checkouts),
+      hint: "Review delivery cost, cart friction, and checkout CTA placement.",
+    },
+    {
+      step: "Checkout to Purchase",
+      rate: pctDropOff(funnel.checkouts, funnel.purchases),
+      hint: "Check payment trust, form length, and courier promise clarity.",
+    },
+  ];
+  const meaningful = candidates.filter((candidate) => candidate.rate > 0);
+  return meaningful.sort((a, b) => b.rate - a.rate)[0] || null;
+}
+
+app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const lookbackDays = Math.max(7, Math.min(90, parseInt(req.query.days || "30", 10) || 30));
+
+    if (!process.env.POSTHOG_PERSONAL_API_KEY || !process.env.POSTHOG_PROJECT_ID) {
+      return res.json(emptyWebsiteBehaviorPayload(false, lookbackDays));
+    }
+
+    try {
+      const eventFilter = `
+        event = 'merchant_suite_live_visitor'
+        AND properties.org_id = {orgId}
+        AND timestamp >= now() - INTERVAL ${lookbackDays} DAY
+      `;
+      const [funnelRows, demandRows] = await Promise.all([
+        queryPostHogHogql(`
+          SELECT
+            uniq(distinct_id) AS visitors,
+            countIf(coalesce(properties.bucket, '') = '') AS productViews,
+            countIf(properties.bucket = 'cart') AS carts,
+            countIf(properties.bucket = 'checkout') AS checkouts,
+            countIf(properties.bucket = 'purchased') AS purchases
+          FROM events
+          WHERE ${eventFilter}
+        `, { orgId }),
+        queryPostHogHogql(`
+          SELECT
+            coalesce(properties.url, 'Unknown page') AS url,
+            countIf(coalesce(properties.bucket, '') = '') AS views,
+            countIf(properties.bucket = 'cart') AS carts,
+            countIf(properties.bucket = 'checkout') AS checkouts,
+            countIf(properties.bucket = 'purchased') AS purchases
+          FROM events
+          WHERE ${eventFilter}
+          GROUP BY url
+          ORDER BY views DESC
+          LIMIT 8
+        `, { orgId }),
+      ]);
+
+      const funnelRow = funnelRows?.[0] || [];
+      const funnel = {
+        visitors: Number(funnelRow[0]) || 0,
+        productViews: Number(funnelRow[1]) || 0,
+        carts: Number(funnelRow[2]) || 0,
+        checkouts: Number(funnelRow[3]) || 0,
+        purchases: Number(funnelRow[4]) || 0,
+        conversionRate: Number((((Number(funnelRow[4]) || 0) / Math.max(Number(funnelRow[0]) || 0, 1)) * 100).toFixed(1)),
+      };
+      const productDemand = (demandRows || []).map((row) => {
+        const views = Number(row[1]) || 0;
+        const purchases = Number(row[4]) || 0;
+        return {
+          url: String(row[0] || "Unknown page"),
+          views,
+          carts: Number(row[2]) || 0,
+          checkouts: Number(row[3]) || 0,
+          purchases,
+          conversionRate: Number(((purchases / Math.max(views, 1)) * 100).toFixed(1)),
+        };
+      });
+
+      return res.json({
+        configured: true,
+        lookbackDays,
+        funnel,
+        dropOff: buildWebsiteBehaviorDropOff(funnel),
+        productDemand,
+      });
+    } catch (err) {
+      console.warn("[PostHog] website behavior query failed:", err.message);
+      return res.json(emptyWebsiteBehaviorPayload(true, lookbackDays));
+    }
+  } catch (err) {
+    console.error("[Website Behavior] error:", err);
+    return sendError(res, err);
+  }
+});
+
 app.get("/api/business-forecast", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -3807,6 +3965,38 @@ async function countLiveVisitorsForKey(key, now) {
   return pruneMemoryLiveVisitors(key, now).size;
 }
 
+async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket }) {
+  const apiKey = process.env.POSTHOG_PROJECT_API_KEY;
+  if (!apiKey) return;
+
+  try {
+    const host = (process.env.POSTHOG_HOST || "https://app.posthog.com").replace(/\/+$/, "");
+    const response = await fetch(`${host}/capture/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        event: "merchant_suite_live_visitor",
+        distinct_id: `${orgId}:${sessionId}`,
+        properties: {
+          org_id: orgId,
+          session_id: sessionId,
+          url: typeof url === "string" ? url : "",
+          referrer: typeof referrer === "string" ? referrer : "",
+          bucket: bucket || null,
+          source: "custom_website_tracker",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("[PostHog] capture failed:", response.status, response.statusText);
+    }
+  } catch (err) {
+    console.warn("[PostHog] capture failed:", err.message);
+  }
+}
+
 app.options("/api/live-visitor/ping", publicTrackerCors);
 
 app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
@@ -3898,7 +4088,7 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
 });
 
 app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
-  const { org_id, session_id, url, bucket } = req.body || {};
+  const { org_id, session_id, url, referrer, bucket } = req.body || {};
   if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
     return res.status(400).json({ error: "Invalid live visitor payload" });
   }
@@ -3912,6 +4102,7 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
     await Promise.all(keys.map((key) => countLiveVisitorsForKey(key, now)));
     await addLiveVisitorPresence(allKey, session_id, now);
     if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
+    void capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket });
     return res.json({ ok: true, tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" });
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);

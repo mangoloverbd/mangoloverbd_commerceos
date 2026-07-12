@@ -65,8 +65,38 @@ type ForecastResponse = {
   aiSummary: string;
 };
 
+type WebsiteBehaviorResponse = {
+  configured: boolean;
+  lookbackDays: number;
+  funnel: {
+    visitors: number;
+    productViews: number;
+    carts: number;
+    checkouts: number;
+    purchases: number;
+    conversionRate: number;
+  };
+  dropOff: {
+    step: string;
+    rate: number;
+    hint: string;
+  } | null;
+  productDemand: Array<{
+    url: string;
+    views: number;
+    carts: number;
+    checkouts: number;
+    purchases: number;
+    conversionRate: number;
+  }>;
+};
+
 function fmtBDT(value: number) {
   return "৳" + Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 0 });
+}
+
+function fmtPct(value: number) {
+  return `${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 1 })}%`;
 }
 
 function statusLabel(status: ProductStatus) {
@@ -102,6 +132,17 @@ export default function OrderAnalysis() {
       const res = await apiFetch("/api/business-forecast");
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load forecast");
+      return json;
+    },
+    staleTime: FIVE_HOURS_IN_MS,
+  });
+
+  const { data: websiteBehavior, isLoading: behaviorLoading } = useQuery<WebsiteBehaviorResponse>({
+    queryKey: ["/api/order-analysis/website-behavior"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/order-analysis/website-behavior");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load website behavior");
       return json;
     },
     staleTime: FIVE_HOURS_IN_MS,
@@ -150,6 +191,8 @@ export default function OrderAnalysis() {
             ))}
           </div>
         </motion.div>
+
+        <WebsiteBehaviorPanel data={websiteBehavior} loading={behaviorLoading} />
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -375,6 +418,122 @@ function Metric({ value, muted }: { value: string; muted?: string }) {
       <p className="text-sm font-medium text-foreground tabular-nums">{value}</p>
       {muted && <p className="mt-1 text-xs text-muted-foreground tabular-nums">{muted}</p>}
     </div>
+  );
+}
+
+function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorResponse; loading: boolean }) {
+  const steps = [
+    { label: "Visitors", value: data?.funnel.visitors ?? 0 },
+    { label: "Product Views", value: data?.funnel.productViews ?? 0 },
+    { label: "Added to Cart", value: data?.funnel.carts ?? 0 },
+    { label: "Checkout", value: data?.funnel.checkouts ?? 0 },
+    { label: "Purchased", value: data?.funnel.purchases ?? 0 },
+  ];
+  const maxStepValue = Math.max(...steps.map((step) => step.value), 1);
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.02 }}
+      className="overflow-hidden rounded-2xl border border-black/10 bg-white"
+    >
+      <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
+        <div className="flex items-center gap-2.5">
+          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+          <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Website Funnel</AnimatedText>
+        </div>
+        <span className="text-[13px] text-muted-foreground">
+          PostHog · Last {data?.lookbackDays ?? 30} days
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="h-[220px] animate-pulse rounded-2xl bg-black/[0.05]" />
+          <div className="h-[220px] animate-pulse rounded-2xl bg-black/[0.05]" />
+        </div>
+      ) : data?.configured === false ? (
+        <div className="px-6 py-10 text-center">
+          <p className="text-sm font-semibold text-foreground">PostHog query credentials are not configured</p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            Add POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID to unlock Website Funnel, Conversion Drop-off, and Product Demand Signals.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-4 p-5 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Conversion Flow</p>
+                <h3 className="mt-2 font-sf-display text-2xl font-light tracking-tight text-foreground">
+                  {fmtPct(data?.funnel.conversionRate ?? 0)} visitor to purchase
+                </h3>
+              </div>
+              <div className="rounded-full bg-black px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+                Live web
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {steps.map((step) => (
+                <div key={step.label} className="grid gap-2 md:grid-cols-[130px_1fr_80px] md:items-center">
+                  <p className="text-xs font-medium text-black/50">{step.label}</p>
+                  <div className="h-2 overflow-hidden rounded-full bg-black/[0.08]">
+                    <div
+                      className="h-full rounded-full bg-black transition-all"
+                      style={{ width: `${Math.max(4, (step.value / maxStepValue) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-right text-sm font-semibold tabular-nums text-foreground">{step.value.toLocaleString("en-BD")}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-black/10 bg-white p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Conversion Drop-off</p>
+              {data?.dropOff ? (
+                <>
+                  <div className="mt-3 flex items-end justify-between gap-4">
+                    <div>
+                      <h3 className="font-sf-display text-xl font-light tracking-tight text-foreground">{data.dropOff.step}</h3>
+                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data.dropOff.hint}</p>
+                    </div>
+                    <p className="text-3xl font-light tabular-nums text-red-600">{fmtPct(data.dropOff.rate)}</p>
+                  </div>
+                </>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No meaningful drop-off detected yet.</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-black/10 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Product Demand Signals</p>
+                <span className="text-xs text-muted-foreground">{data?.productDemand.length ?? 0} pages</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {data?.productDemand.length ? data.productDemand.slice(0, 4).map((item) => (
+                  <div key={item.url} className="grid gap-2 rounded-xl bg-black/[0.025] p-3 md:grid-cols-[1fr_auto] md:items-center">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-foreground">{item.url}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {item.views.toLocaleString("en-BD")} views · {item.carts.toLocaleString("en-BD")} carts · {item.purchases.toLocaleString("en-BD")} purchases
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold tabular-nums text-foreground">{fmtPct(item.conversionRate)}</p>
+                  </div>
+                )) : (
+                  <p className="text-sm text-muted-foreground">No product demand signals yet. Install the custom website tracker and wait for visitor events.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </motion.section>
   );
 }
 

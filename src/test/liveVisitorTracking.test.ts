@@ -94,6 +94,8 @@ describe("live visitor tracking", () => {
     expect(settingsSource).toContain("/api/tracker.js?org=");
     expect(settingsSource).toContain("Optional behavior events");
     expect(settingsSource).toContain("MerchantSuiteTracker?.track");
+    expect(settingsSource).toContain("PostHog-powered analytics");
+    expect(settingsSource).toContain("merchants do not need a PostHog account");
     expect(settingsSource).toContain("useMe");
   });
 
@@ -110,5 +112,22 @@ describe("live visitor tracking", () => {
     expect(dashboardSource).toContain("Purchased");
     expect(headerStart).toBeGreaterThan(-1);
     expect(pickerStart).toBeGreaterThan(headerStart);
+  });
+
+  it("captures live visitor tracker events to PostHog server-side", () => {
+    const pingStart = serverSource.indexOf('app.post("/api/live-visitor/ping"');
+    const pingEnd = serverSource.indexOf('app.get("/api/live-visitors"', pingStart);
+    const pingRoute = serverSource.slice(pingStart, pingEnd);
+
+    expect(serverSource).toContain("async function capturePostHogEvent");
+    expect(serverSource).toContain("POSTHOG_PROJECT_API_KEY");
+    expect(serverSource).toContain("POSTHOG_HOST");
+    expect(serverSource).toContain('event: "merchant_suite_live_visitor"');
+    expect(serverSource).toContain('distinct_id: `${orgId}:${sessionId}`');
+    expect(serverSource).toContain('source: "custom_website_tracker"');
+    expect(serverSource).toContain('[PostHog] capture failed:');
+    expect(pingRoute).toContain("referrer");
+    expect(pingRoute).toContain("capturePostHogEvent");
+    expect(pingRoute).not.toContain("await capturePostHogEvent");
   });
 });

@@ -1366,6 +1366,13 @@ function DetailView({
               </button>
             </div>
 
+            <div className="rounded-[10px] border border-emerald-500/15 bg-emerald-500/[0.04] p-3">
+              <p className="text-[11px] font-medium text-black/60">PostHog-powered analytics</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-black/45">
+                This same script also sends visitor events to Merchant-Suite's analytics pipeline for PostHog-powered reports, and merchants do not need a PostHog account or any extra PostHog script.
+              </p>
+            </div>
+
             <div className="rounded-[10px] border border-black/[0.06] bg-black/[0.02] p-3">
               <p className="text-[11px] font-medium text-black/50">Optional behavior events</p>
               <p className="mt-1 text-[11px] leading-relaxed text-black/40">
