@@ -9,7 +9,7 @@ describe("AI order extraction route", () => {
   const routeSource = source.slice(routeStart, routeEnd);
 
   it("uses OpenAI first and keeps regex extraction as a fallback", () => {
-    expect(routeSource).toContain('process.env.ORDER_EXTRACTION_MODEL || "gpt-4.1-mini"');
+    expect(routeSource).toContain('process.env.ORDER_EXTRACTION_MODEL || "gpt-4o-mini"');
     expect(source).toContain('https://api.openai.com/v1/chat/completions');
     expect(routeSource).toContain('extractOrderWithAI(text, regexOrder');
     expect(routeSource).toContain('extractOrderWithRegex(text)');
