@@ -50,6 +50,7 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("trafficSources");
     expect(pageSource).toContain("Funnel Counters");
     expect(pageSource).toContain("metric-card");
+    expect(pageSource).toContain('padding: "8px 10px"');
     expect(pageSource).toContain("col-span-full");
     expect(pageSource).toContain("defaultTrafficSources");
     expect(pageSource).toContain('"Facebook"');

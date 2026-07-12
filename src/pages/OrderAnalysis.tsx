@@ -759,7 +759,7 @@ function ForecastMetricCard({ label, value, loading, icon }: { label: string; va
           background: "#F7F7F6",
           borderRadius: "10px",
           border: "1px solid rgba(0,0,0,0.05)",
-          padding: "12px 14px",
+          padding: "8px 10px",
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
         }}
       >
