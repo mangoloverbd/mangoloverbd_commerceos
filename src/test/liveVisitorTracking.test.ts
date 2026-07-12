@@ -10,10 +10,12 @@ describe("live visitor tracking", () => {
   it("serves a tenant-scoped public tracker script and records pings in Redis", () => {
     expect(serverSource).toContain('app.get("/api/tracker.js"');
     expect(serverSource).toContain('app.post("/api/live-visitor/ping"');
-    expect(serverSource).toContain('`visitors:${org_id}`');
+    expect(serverSource).toContain('`visitors:${org_id}:all`');
+    expect(serverSource).toContain('`visitors:${org_id}:${bucket}`');
     expect(serverSource).toContain("zremrangebyscore");
     expect(serverSource).toContain("zadd");
     expect(serverSource).toContain("VISITOR_TTL_MS");
+    expect(serverSource).toContain("liveVisitorBucketFromUrl");
   });
 
   it("keeps live visitor counts isolated to the authenticated user's org", () => {
@@ -25,8 +27,12 @@ describe("live visitor tracking", () => {
     expect(route).toContain("await getUser(getToken(req))");
     expect(route).toContain("if (!user) return res.status(401)");
     expect(route).toContain("await getUserOrg(supabase, user.id)");
-    expect(route).toContain('`visitors:${orgId}`');
-    expect(route).toContain("zcount");
+    expect(route).toContain('`visitors:${orgId}:all`');
+    expect(route).toContain('`visitors:${orgId}:cart`');
+    expect(route).toContain('`visitors:${orgId}:checkout`');
+    expect(route).toContain('`visitors:${orgId}:purchased`');
+    expect(route).toContain("details");
+    expect(serverSource).toContain("zcount");
   });
 
   it("shows the embed script in Custom Website settings", () => {
@@ -41,6 +47,11 @@ describe("live visitor tracking", () => {
 
     expect(dashboardSource).toContain("function LiveVisitorsCounter");
     expect(dashboardSource).toContain('/api/live-visitors');
+    expect(dashboardSource).toContain("Visitors right now");
+    expect(dashboardSource).toContain("Customer behavior");
+    expect(dashboardSource).toContain("Active carts");
+    expect(dashboardSource).toContain("Checking out");
+    expect(dashboardSource).toContain("Purchased");
     expect(headerStart).toBeGreaterThan(-1);
     expect(pickerStart).toBeGreaterThan(headerStart);
   });

@@ -276,6 +276,7 @@ function DashboardTextEffect({
 
 function LiveVisitorsCounter() {
   const [count, setCount] = useState(0);
+  const [details, setDetails] = useState({ activeCarts: 0, checkingOut: 0, purchased: 0 });
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -286,7 +287,14 @@ function LiveVisitorsCounter() {
         const res = await apiFetch("/api/live-visitors", { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
-        if (!cancelled) setCount(Number(data.count) || 0);
+        if (!cancelled) {
+          setCount(Number(data.count) || 0);
+          setDetails({
+            activeCarts: Number(data.details?.activeCarts) || 0,
+            checkingOut: Number(data.details?.checkingOut) || 0,
+            purchased: Number(data.details?.purchased) || 0,
+          });
+        }
       } catch {
         // Non-critical dashboard signal.
       } finally {
@@ -304,13 +312,43 @@ function LiveVisitorsCounter() {
 
   if (!loaded) return null;
 
+  const behaviorRows = [
+    { label: "Active carts", value: details.activeCarts },
+    { label: "Checking out", value: details.checkingOut },
+    { label: "Purchased", value: details.purchased },
+  ];
+
   return (
-    <div className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
-      <span className="relative flex h-2 w-2">
-        {count > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
-        <span className={cn("relative inline-flex h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/20")} />
-      </span>
-      {count} online
+    <div className="group relative">
+      <div className="flex h-8 cursor-default items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
+        <span className="relative flex h-2 w-2">
+          {count > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
+          <span className={cn("relative inline-flex h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/20")} />
+        </span>
+        {count} online
+      </div>
+
+      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 translate-y-1 rounded-xl border border-black/[0.08] bg-white p-4 opacity-0 shadow-[0_10px_30px_rgba(0,0,0,0.08)] transition-all duration-150 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/35">Visitors right now</p>
+            <p className="mt-1 text-2xl font-light leading-none text-black tabular-nums">{count}</p>
+          </div>
+          <span className={cn("mt-1 h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/15")} />
+        </div>
+
+        <div className="mt-4 border-t border-black/[0.06] pt-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-black/30">Customer behavior</p>
+          <div className="space-y-2">
+            {behaviorRows.map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-3 text-[12px]">
+                <span className="text-black/50">{row.label}</span>
+                <span className="font-medium text-black tabular-nums">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

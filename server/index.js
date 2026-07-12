@@ -3748,6 +3748,20 @@ function isValidOrgId(value) {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
+function liveVisitorBucketFromUrl(value) {
+  const url = String(value || "").toLowerCase();
+  if (/\/((thank[-_]?you)|(order[-_]?received)|(order[-_]?confirmation)|(purchase[-_]?complete))\b/.test(url)) return "purchased";
+  if (/\/(checkout|checkouts)\b/.test(url)) return "checkout";
+  if (/\/(cart|basket|bag)\b/.test(url)) return "cart";
+  return null;
+}
+
+async function countLiveVisitorsForKey(key, now) {
+  await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
+  const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
+  return Number(count) || 0;
+}
+
 app.get("/api/tracker.js", (req, res) => {
   const orgId = req.query.org;
   if (!isValidOrgId(orgId)) {
@@ -3801,7 +3815,7 @@ app.get("/api/tracker.js", (req, res) => {
 });
 
 app.post("/api/live-visitor/ping", async (req, res) => {
-  const { org_id, session_id } = req.body || {};
+  const { org_id, session_id, url } = req.body || {};
   if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
     return res.status(400).json({ error: "Invalid live visitor payload" });
   }
@@ -3809,12 +3823,16 @@ app.post("/api/live-visitor/ping", async (req, res) => {
   if (!redisClient) return res.json({ ok: true, tracked: false });
 
   try {
-    const key = `visitors:${org_id}`;
+    const allKey = `visitors:${org_id}:all`;
+    const bucket = liveVisitorBucketFromUrl(url);
+    const bucketKey = bucket ? `visitors:${org_id}:${bucket}` : null;
     const now = Date.now();
-    await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
-    await redisClient.zadd(key, { score: now, member: session_id });
-    await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
-    return res.json({ ok: true, tracked: true });
+    const keys = [allKey, `visitors:${org_id}:cart`, `visitors:${org_id}:checkout`, `visitors:${org_id}:purchased`];
+    await Promise.all(keys.map((key) => redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS)));
+    await redisClient.zadd(allKey, { score: now, member: session_id });
+    if (bucketKey) await redisClient.zadd(bucketKey, { score: now, member: session_id });
+    await Promise.all(keys.map((key) => redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2)));
+    return res.json({ ok: true, tracked: true, bucket });
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);
     return res.json({ ok: true, tracked: false });
@@ -3832,11 +3850,22 @@ app.get("/api/live-visitors", async (req, res) => {
     if (!redisClient) return res.json({ count: 0, tracked: false });
 
     try {
-      const key = `visitors:${orgId}`;
+      const allKey = `visitors:${orgId}:all`;
+      const cartKey = `visitors:${orgId}:cart`;
+      const checkoutKey = `visitors:${orgId}:checkout`;
+      const purchasedKey = `visitors:${orgId}:purchased`;
       const now = Date.now();
-      await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
-      const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
-      return res.json({ count: Number(count) || 0, tracked: true });
+      const [count, activeCarts, checkingOut, purchased] = await Promise.all([
+        countLiveVisitorsForKey(allKey, now),
+        countLiveVisitorsForKey(cartKey, now),
+        countLiveVisitorsForKey(checkoutKey, now),
+        countLiveVisitorsForKey(purchasedKey, now),
+      ]);
+      return res.json({
+        count,
+        tracked: true,
+        details: { activeCarts, checkingOut, purchased },
+      });
     } catch (err) {
       console.warn("[LiveVisitor] Redis count failed:", err.message);
       return res.json({ count: 0, tracked: false });
