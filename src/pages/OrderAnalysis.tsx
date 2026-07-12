@@ -441,6 +441,11 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
     { label: "Checkout", value: data?.funnel.checkouts ?? 0 },
     { label: "Purchased", value: data?.funnel.purchases ?? 0 },
   ];
+  const defaultTrafficSources = ["Direct", "Facebook", "Instagram", "Google"];
+  const trafficSources = defaultTrafficSources.map((source) => {
+    const actual = data?.trafficSources.find((item) => item.source.toLowerCase() === source.toLowerCase());
+    return actual || { source, visitors: 0, carts: 0, purchases: 0, conversionRate: 0 };
+  });
 
   return (
     <motion.section
@@ -469,8 +474,8 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
           </p>
         </div>
       ) : (
-        <div className="grid items-start gap-4 p-5 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
+        <div className="grid items-stretch gap-4 p-5 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="h-full rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Conversion Flow</p>
@@ -518,7 +523,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="grid h-full grid-rows-2 gap-4">
             <div className="rounded-2xl border border-black/10 bg-white p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Conversion Drop-off</p>
               {data?.dropOff ? (
@@ -569,21 +574,23 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
               <span className="text-xs text-muted-foreground">{data?.trafficSources.length ?? 0} sources</span>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {data?.trafficSources.length ? data.trafficSources.slice(0, 4).map((item) => (
+              {trafficSources.map((item) => (
                 <div key={item.source} className="rounded-2xl bg-black/[0.025] p-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="grid min-h-[112px] content-between gap-4">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-foreground">{item.source}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {item.visitors.toLocaleString("en-BD")} visitors · {item.carts.toLocaleString("en-BD")} carts · {item.purchases.toLocaleString("en-BD")} purchases
-                      </p>
+                      {item.visitors || item.carts || item.purchases ? (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {item.visitors.toLocaleString("en-BD")} visitors · {item.carts.toLocaleString("en-BD")} carts · {item.purchases.toLocaleString("en-BD")} purchases
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-muted-foreground">No tracked purchases yet</p>
+                      )}
                     </div>
-                    <p className="text-xl font-medium tracking-[-0.05em] text-foreground tabular-nums">{fmtPct(item.conversionRate)}</p>
+                    <p className="text-2xl font-medium tracking-[-0.05em] text-foreground tabular-nums">{fmtPct(item.conversionRate)}</p>
                   </div>
                 </div>
-              )) : (
-                <p className="text-sm text-muted-foreground">No traffic source signals yet. Add UTM tags to campaigns or wait for referred visitors.</p>
-              )}
+              ))}
             </div>
           </div>
         </div>

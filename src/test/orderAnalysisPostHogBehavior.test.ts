@@ -44,6 +44,11 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("Funnel Counters");
     expect(pageSource).toContain("metric-card");
     expect(pageSource).toContain("col-span-full");
+    expect(pageSource).toContain("defaultTrafficSources");
+    expect(pageSource).toContain('"Facebook"');
+    expect(pageSource).toContain('"Instagram"');
+    expect(pageSource).toContain('"Google"');
+    expect(pageSource).toContain("grid-rows-2");
     expect(pageSource).not.toContain("PostHog · Last");
     expect(pageSource).not.toContain("maxStepValue");
     expect(pageSource).toContain("WEBSITE_BEHAVIOR_REFETCH_MS");
