@@ -2928,6 +2928,23 @@ function emptyWebsiteBehaviorPayload(configured = true, lookbackDays = 30) {
   };
 }
 
+function productNameFromUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    const parts = url.pathname.split("/").filter(Boolean);
+    const productIndex = parts.findIndex((part) => ["product", "products"].includes(part.toLowerCase()));
+    const slug = productIndex >= 0 ? parts[productIndex + 1] : parts[parts.length - 1];
+    if (!slug) return "Homepage";
+    return decodeURIComponent(slug)
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  } catch {
+    return "Unknown product";
+  }
+}
+
 function extractPostHogTrafficSource(url, referrer) {
   try {
     const parsedUrl = new URL(String(url || ""));
@@ -3006,6 +3023,58 @@ function buildWebsiteBehaviorDropOff(funnel) {
   return meaningful.sort((a, b) => b.rate - a.rate)[0] || null;
 }
 
+function fallbackWebsiteBehaviorDropOffBullets(dropOff) {
+  if (!dropOff) return [];
+  if (dropOff.step === "Checkout to Purchase") {
+    return [
+      "Add COD, delivery time, and return-policy reassurance near the submit button.",
+      "Remove optional fields or split checkout into fewer visible decisions.",
+      "Show a clear courier promise before the final order action.",
+    ];
+  }
+  if (dropOff.step === "Cart to Checkout") {
+    return [
+      "Make delivery fee and total cost visible before checkout starts.",
+      "Keep the checkout CTA sticky or repeated near cart totals.",
+      "Reduce cart distractions that pull shoppers away from checkout.",
+    ];
+  }
+  return [
+    "Put price, benefits, and product proof above the first scroll break.",
+    "Move the add-to-cart button closer to product details on mobile.",
+    "Add trust cues such as reviews, delivery promise, and return clarity.",
+  ];
+}
+
+async function buildWebsiteBehaviorDropOffBullets(dropOff, funnel) {
+  const fallback = fallbackWebsiteBehaviorDropOffBullets(dropOff);
+  if (!dropOff || !process.env.OPENAI_API_KEY) return fallback;
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Return JSON only: {\"bullets\":[\"...\",\"...\",\"...\"]}. Write concise ecommerce operator advice for Bangladesh. No markdown." },
+          { role: "user", content: JSON.stringify({ dropOff, funnel }) },
+        ],
+        temperature: 0.2,
+      }),
+    });
+    if (!response.ok) return fallback;
+    const json = await response.json();
+    const parsed = JSON.parse(json.choices?.[0]?.message?.content || "{}");
+    const bullets = Array.isArray(parsed.bullets) ? parsed.bullets.map((item) => String(item).trim()).filter(Boolean).slice(0, 3) : [];
+    return bullets.length ? bullets : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -3078,6 +3147,7 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
         const purchases = Number(row[4]) || 0;
         return {
           url: String(row[0] || "Unknown page"),
+          productName: productNameFromUrl(row[0]),
           views,
           carts: Number(row[2]) || 0,
           checkouts: Number(row[3]) || 0,
@@ -3102,11 +3172,14 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
         .sort((a, b) => b.visitors - a.visitors)
         .slice(0, 6);
 
+      const dropOff = buildWebsiteBehaviorDropOff(funnel);
+      if (dropOff) dropOff.bullets = await buildWebsiteBehaviorDropOffBullets(dropOff, funnel);
+
       return res.json({
         configured: true,
         lookbackDays,
         funnel,
-        dropOff: buildWebsiteBehaviorDropOff(funnel),
+        dropOff,
         productDemand,
         trafficSources,
       });

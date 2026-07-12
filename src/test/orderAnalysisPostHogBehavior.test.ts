@@ -25,6 +25,12 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(serverSource).toContain("extractPostHogTrafficSource");
     expect(serverSource).toContain("utm_source");
     expect(serverSource).toContain("properties.referrer");
+    expect(serverSource).toContain("productNameFromUrl");
+    expect(serverSource).toContain("productName");
+    expect(serverSource).toContain("buildWebsiteBehaviorDropOffBullets");
+    expect(serverSource).toContain("OPENAI_API_KEY");
+    expect(serverSource).toContain("gpt-4o-mini");
+    expect(serverSource).toContain("bullets");
   });
 
   it("renders the approved Option A website behavior panel on Order Analysis", () => {
@@ -49,6 +55,10 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain('"Instagram"');
     expect(pageSource).toContain('"Google"');
     expect(pageSource).toContain("grid-rows-2");
+    expect(pageSource).toContain("productName");
+    expect(pageSource).toContain("break-all");
+    expect(pageSource).toContain("dropOff?.bullets");
+    expect(pageSource).toContain("list-disc");
     expect(pageSource).not.toContain("PostHog · Last");
     expect(pageSource).not.toContain("maxStepValue");
     expect(pageSource).toContain("WEBSITE_BEHAVIOR_REFETCH_MS");
