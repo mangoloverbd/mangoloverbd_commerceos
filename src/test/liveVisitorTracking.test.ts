@@ -30,6 +30,21 @@ describe("live visitor tracking", () => {
     expect(trackerRoute).toContain("ping(bucket)");
   });
 
+  it("auto-detects common ecommerce behavior signals in the tracker", () => {
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
+    const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
+    const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
+
+    expect(trackerRoute).toContain("detectBucketFromText");
+    expect(trackerRoute).toContain("addEventListener(\"click\"");
+    expect(trackerRoute).toContain("addEventListener(\"submit\"");
+    expect(trackerRoute).toContain('"pushState", "replaceState"');
+    expect(trackerRoute).toContain("locationchange");
+    expect(trackerRoute).toContain("add to cart");
+    expect(trackerRoute).toContain("checkout");
+    expect(trackerRoute).toContain("thank you");
+  });
+
   it("keeps live visitor counts isolated to the authenticated user's org", () => {
     const start = serverSource.indexOf('app.get("/api/live-visitors"');
     const end = serverSource.indexOf("//", start + 1);

@@ -3849,9 +3849,48 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
     } catch (_) {}
   }
+  function detectBucketFromText(value){
+    var text = String(value || "").toLowerCase();
+    if (!text) return null;
+    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
+    if (text.indexOf("checkout") !== -1 || text.indexOf("check out") !== -1 || text.indexOf("place order") !== -1 || text.indexOf("complete order") !== -1 || text.indexOf("buy now") !== -1) return "checkout";
+    if (text.indexOf("add to cart") !== -1 || text.indexOf("add-to-cart") !== -1 || text.indexOf("add_to_cart") !== -1 || text.indexOf("cart") !== -1 || text.indexOf("basket") !== -1 || text.indexOf("bag") !== -1) return "cart";
+    return null;
+  }
+  function bucketFromElement(el){
+    var node = el;
+    for (var i = 0; node && i < 4; i++, node = node.parentElement) {
+      var text = [node.innerText, node.textContent, node.id, node.className, node.name, node.value, node.getAttribute && node.getAttribute("aria-label"), node.getAttribute && node.getAttribute("data-action"), node.getAttribute && node.getAttribute("href")].join(" ");
+      var bucket = detectBucketFromText(text);
+      if (bucket) return bucket;
+    }
+    return null;
+  }
+  function pingCurrentLocation(){
+    ping(detectBucketFromText(window.location.pathname + " " + window.location.search + " " + document.title));
+  }
   window.MerchantSuiteTracker = window.MerchantSuiteTracker || {};
   window.MerchantSuiteTracker.track = function(bucket){ ping(bucket); };
-  ping();
+  document.addEventListener("click", function(event){
+    var bucket = bucketFromElement(event.target);
+    if (bucket) setTimeout(function(){ ping(bucket); }, 0);
+  }, true);
+  document.addEventListener("submit", function(event){
+    var bucket = bucketFromElement(event.target);
+    if (bucket) ping(bucket);
+  }, true);
+  ["pushState", "replaceState"].forEach(function(method){
+    var original = history[method];
+    if (typeof original !== "function") return;
+    history[method] = function(){
+      var result = original.apply(this, arguments);
+      window.dispatchEvent(new Event("locationchange"));
+      return result;
+    };
+  });
+  window.addEventListener("popstate", function(){ window.dispatchEvent(new Event("locationchange")); });
+  window.addEventListener("locationchange", function(){ setTimeout(pingCurrentLocation, 0); });
+  pingCurrentLocation();
   setInterval(ping, 15000);
   document.addEventListener("visibilitychange", function(){ if (!document.hidden) ping(); });
   window.addEventListener("focus", ping);
