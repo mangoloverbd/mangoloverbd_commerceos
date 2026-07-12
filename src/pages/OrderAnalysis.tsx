@@ -441,7 +441,6 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
     { label: "Checkout", value: data?.funnel.checkouts ?? 0 },
     { label: "Purchased", value: data?.funnel.purchases ?? 0 },
   ];
-  const maxStepValue = Math.max(...steps.map((step) => step.value), 1);
 
   return (
     <motion.section
@@ -450,14 +449,11 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
       transition={{ delay: 0.02 }}
       className="overflow-hidden rounded-2xl border border-black/10 bg-white"
     >
-      <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-6">
+      <div className="flex h-[50px] items-center border-b border-black/10 px-6">
         <div className="flex items-center gap-2.5">
           <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
           <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Website Funnel</AnimatedText>
         </div>
-        <span className="text-[13px] text-muted-foreground">
-          PostHog · Last {data?.lookbackDays ?? 30} days
-        </span>
       </div>
 
       {loading ? (
@@ -473,33 +469,52 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 p-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid items-start gap-4 p-5 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Conversion Flow</p>
-                <h3 className="mt-2 font-sf-display text-2xl font-light tracking-tight text-foreground">
-                  {fmtPct(data?.funnel.conversionRate ?? 0)} visitor to purchase
+                <h3 className="mt-2 font-sf-display text-5xl font-light leading-none tracking-[-0.06em] text-foreground">
+                  {fmtPct(data?.funnel.conversionRate ?? 0)}
                 </h3>
+                <p className="mt-3 text-sm font-medium text-muted-foreground">
+                  {(data?.funnel.purchases ?? 0).toLocaleString("en-BD")} purchase{(data?.funnel.purchases ?? 0) === 1 ? "" : "s"} from {(data?.funnel.visitors ?? 0).toLocaleString("en-BD")} tracked visitors
+                </p>
               </div>
               <div className="rounded-full bg-black px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
                 Live web
               </div>
             </div>
 
-            <div className="mt-5 space-y-3">
-              {steps.map((step) => (
-                <div key={step.label} className="grid gap-2 md:grid-cols-[130px_1fr_80px] md:items-center">
-                  <p className="text-xs font-medium text-black/50">{step.label}</p>
-                  <div className="h-2 overflow-hidden rounded-full bg-black/[0.08]">
-                    <div
-                      className="h-full rounded-full bg-black transition-all"
-                      style={{ width: `${Math.max(4, (step.value / maxStepValue) * 100)}%` }}
-                    />
+            <div className="mt-5 space-y-2">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30">Funnel Counters</p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                {steps.map((step) => (
+                  <div key={step.label} className="metric-card rounded-[14px] border border-black/[0.08] bg-white px-3.5 py-3 transition-colors hover:bg-black/[0.025]">
+                    <p className="text-[11px] font-medium leading-tight text-black/50">{step.label}</p>
+                    <p className="mt-2 font-sf-display text-[26px] font-medium leading-none tracking-[-0.045em] text-foreground tabular-nums">
+                      {step.value.toLocaleString("en-BD")}
+                    </p>
                   </div>
-                  <p className="text-right text-sm font-semibold tabular-nums text-foreground">{step.value.toLocaleString("en-BD")}</p>
-                </div>
-              ))}
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-black/10 bg-white p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Main Leak</p>
+                <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{data?.dropOff?.step || "No drop-off yet"}</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data?.dropOff?.hint || "More traffic is needed before a reliable leak appears."}</p>
+              </div>
+              <div className="rounded-2xl border border-black/10 bg-white p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Best Signal</p>
+                <p className="mt-3 truncate text-base font-semibold tracking-tight text-foreground">{data?.productDemand[0]?.url || "No product signal"}</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {data?.productDemand[0]
+                    ? `${data.productDemand[0].views.toLocaleString("en-BD")} views, ${data.productDemand[0].carts.toLocaleString("en-BD")} carts, ${data.productDemand[0].purchases.toLocaleString("en-BD")} purchases.`
+                    : "Product demand signals will appear after tracked product visits."}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -543,26 +558,32 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
               </div>
             </div>
 
-            <div className="rounded-2xl border border-black/10 bg-white p-5">
-              <div className="flex items-center justify-between gap-3">
+          </div>
+
+          <div className="col-span-full rounded-2xl border border-black/10 bg-white p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Traffic Source Performance</p>
-                <span className="text-xs text-muted-foreground">{data?.trafficSources.length ?? 0} sources</span>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Campaign quality by visitor source, cart intent, and completed purchases.</p>
               </div>
-              <div className="mt-4 space-y-3">
-                {data?.trafficSources.length ? data.trafficSources.slice(0, 4).map((item) => (
-                  <div key={item.source} className="grid gap-2 rounded-xl bg-black/[0.025] p-3 md:grid-cols-[1fr_auto] md:items-center">
+              <span className="text-xs text-muted-foreground">{data?.trafficSources.length ?? 0} sources</span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {data?.trafficSources.length ? data.trafficSources.slice(0, 4).map((item) => (
+                <div key={item.source} className="rounded-2xl bg-black/[0.025] p-4">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-foreground">{item.source}</p>
+                      <p className="truncate text-sm font-semibold text-foreground">{item.source}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         {item.visitors.toLocaleString("en-BD")} visitors · {item.carts.toLocaleString("en-BD")} carts · {item.purchases.toLocaleString("en-BD")} purchases
                       </p>
                     </div>
-                    <p className="text-sm font-semibold tabular-nums text-foreground">{fmtPct(item.conversionRate)}</p>
+                    <p className="text-xl font-medium tracking-[-0.05em] text-foreground tabular-nums">{fmtPct(item.conversionRate)}</p>
                   </div>
-                )) : (
-                  <p className="text-sm text-muted-foreground">No traffic source signals yet. Add UTM tags to campaigns or wait for referred visitors.</p>
-                )}
-              </div>
+                </div>
+              )) : (
+                <p className="text-sm text-muted-foreground">No traffic source signals yet. Add UTM tags to campaigns or wait for referred visitors.</p>
+              )}
             </div>
           </div>
         </div>
