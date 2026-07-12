@@ -45,14 +45,15 @@ describe("live visitor tracking", () => {
     expect(trackerRoute).toContain("thank you");
   });
 
-  it("treats custom store order submission signals as purchases", () => {
+  it("does not treat order submission attempts as completed purchases", () => {
     const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
     const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
     const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
 
-    expect(trackerRoute).toContain('text.indexOf("place order") !== -1) return "purchased"');
-    expect(trackerRoute).toContain('text.indexOf("complete order") !== -1) return "purchased"');
-    expect(trackerRoute).toContain('text.indexOf("order placed") !== -1');
+    expect(trackerRoute).toContain('window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); }');
+    expect(trackerRoute).toContain('detectBucketFromLocation');
+    expect(trackerRoute).not.toContain('text.indexOf("place order") !== -1) return "purchased"');
+    expect(trackerRoute).not.toContain('text.indexOf("complete order") !== -1) return "purchased"');
   });
 
   it("keeps live visitor counts isolated to the authenticated user's org", () => {
@@ -135,8 +136,10 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain('event: "merchant_suite_live_visitor"');
     expect(serverSource).toContain('distinct_id: `${orgId}:${sessionId}`');
     expect(serverSource).toContain('source: "custom_website_tracker"');
+    expect(serverSource).toContain("explicit: explicit === true");
     expect(serverSource).toContain('[PostHog] capture failed:');
     expect(pingRoute).toContain("referrer");
+    expect(pingRoute).toContain("explicit");
     expect(pingRoute).toContain("capturePostHogEvent");
     expect(serverSource).toContain("POSTHOG_CAPTURE_TIMEOUT_MS");
     expect(serverSource).toContain("AbortController");

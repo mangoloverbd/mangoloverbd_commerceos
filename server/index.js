@@ -3097,6 +3097,7 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
         AND properties.org_id = {orgId}
         AND timestamp >= now() - INTERVAL ${lookbackDays} DAY
       `;
+      const purchaseFilter = `properties.bucket = 'purchased' AND (properties.explicit = true OR match(coalesce(properties.url, ''), '(thank[-_]?you|order[-_]?received|order[-_]?confirmation|order[-_]?placed|purchase[-_]?complete|payment[-_]?success)'))`;
       const [funnelRows, demandRows, sourceRows] = await Promise.all([
         queryPostHogHogql(`
           SELECT
@@ -3104,7 +3105,7 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
             uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS productViews,
             uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
             uniqIf(distinct_id, properties.bucket = 'checkout') AS checkouts,
-            uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases
+            uniqIf(distinct_id, ${purchaseFilter}) AS purchases
           FROM events
           WHERE ${eventFilter}
         `, { orgId }),
@@ -3114,7 +3115,7 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
             uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS views,
             uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
             uniqIf(distinct_id, properties.bucket = 'checkout') AS checkouts,
-            uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases
+            uniqIf(distinct_id, ${purchaseFilter}) AS purchases
           FROM events
           WHERE ${eventFilter}
           GROUP BY url
@@ -3127,7 +3128,7 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
             coalesce(properties.referrer, '') AS referrer,
             uniq(distinct_id) AS visitors,
             uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
-            uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases
+            uniqIf(distinct_id, ${purchaseFilter}) AS purchases
           FROM events
           WHERE ${eventFilter}
           GROUP BY url, referrer
@@ -4094,7 +4095,7 @@ async function countLiveVisitorsForKey(key, now) {
   return pruneMemoryLiveVisitors(key, now).size;
 }
 
-async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket }) {
+async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket, explicit }) {
   const apiKey = process.env.POSTHOG_PROJECT_API_KEY;
   if (!apiKey) return;
 
@@ -4116,6 +4117,7 @@ async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket }) 
           url: typeof url === "string" ? url : "",
           referrer: typeof referrer === "string" ? referrer : "",
           bucket: bucket || null,
+          explicit: explicit === true,
           source: "custom_website_tracker",
         },
       }),
@@ -4166,9 +4168,14 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
     }
   }
   var sessionId = getSessionId();
-  function ping(bucket){
+  function detectBucketFromLocation(value){
+    var text = String(value || "").toLowerCase();
+    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("order placed") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
+    return detectBucketFromText(text);
+  }
+  function ping(bucket, explicit){
     if (document.hidden) return;
-    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null });
+    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true });
     try {
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
     } catch (_) {}
@@ -4176,9 +4183,6 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   function detectBucketFromText(value){
     var text = String(value || "").toLowerCase();
     if (!text) return null;
-    if (text.indexOf("place order") !== -1) return "purchased";
-    if (text.indexOf("complete order") !== -1) return "purchased";
-    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("order placed") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
     if (text.indexOf("checkout") !== -1 || text.indexOf("check out") !== -1 || text.indexOf("buy now") !== -1) return "checkout";
     if (text.indexOf("add to cart") !== -1 || text.indexOf("add-to-cart") !== -1 || text.indexOf("add_to_cart") !== -1 || text.indexOf("cart") !== -1 || text.indexOf("basket") !== -1 || text.indexOf("bag") !== -1) return "cart";
     return null;
@@ -4193,10 +4197,10 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
     return null;
   }
   function pingCurrentLocation(){
-    ping(detectBucketFromText(window.location.pathname + " " + window.location.search + " " + document.title));
+    ping(detectBucketFromLocation(window.location.pathname + " " + window.location.search + " " + document.title));
   }
   window.MerchantSuiteTracker = window.MerchantSuiteTracker || {};
-  window.MerchantSuiteTracker.track = function(bucket){ ping(bucket); };
+  window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); };
   document.addEventListener("click", function(event){
     var bucket = bucketFromElement(event.target);
     if (bucket) setTimeout(function(){ ping(bucket); }, 0);
@@ -4224,7 +4228,7 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
 });
 
 app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
-  const { org_id, session_id, url, referrer, bucket } = req.body || {};
+  const { org_id, session_id, url, referrer, bucket, explicit } = req.body || {};
   if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
     return res.status(400).json({ error: "Invalid live visitor payload" });
   }
@@ -4238,7 +4242,7 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
     await Promise.all(keys.map((key) => countLiveVisitorsForKey(key, now)));
     await addLiveVisitorPresence(allKey, session_id, now);
     if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
-    await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket });
+    await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket, explicit });
     return res.json({ ok: true, tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" });
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);

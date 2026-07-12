@@ -33,7 +33,10 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(serverSource).toContain("gpt-4o-mini");
     expect(serverSource).toContain("bullets");
     expect(serverSource).toContain("uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS productViews");
-    expect(serverSource).toContain("uniqIf(distinct_id, properties.bucket = 'purchased') AS purchases");
+    expect(serverSource).toContain("const purchaseFilter");
+    expect(serverSource).toContain("uniqIf(distinct_id, ${purchaseFilter}) AS purchases");
+    expect(serverSource).toContain("properties.explicit = true");
+    expect(serverSource).toContain("match(coalesce(properties.url, ''),");
     expect(serverSource).not.toContain("countIf(properties.bucket = 'purchased') AS purchases");
   });
 
