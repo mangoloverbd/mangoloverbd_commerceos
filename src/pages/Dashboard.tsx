@@ -300,7 +300,7 @@ function FinanceMetric({
       style={{
         background: "#E9E8E5",
         borderRadius: "14px",
-        padding: "4px",
+        padding: "3px",
         border: "1.5px solid rgba(0,0,0,0.07)",
         boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
       }}
@@ -315,7 +315,7 @@ function FinanceMetric({
             style={{
               background: "#F7F7F6",
               borderRadius: "10px",
-              padding: "12px 14px",
+              padding: "9px 12px",
             }}
             className="space-y-2"
           >
@@ -335,7 +335,7 @@ function FinanceMetric({
                 background: "#F7F7F6",
                 borderRadius: "10px",
                 border: "1px solid rgba(0,0,0,0.05)",
-                padding: "12px 14px",
+                padding: "9px 12px",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
               }}
             >
@@ -359,7 +359,7 @@ function FinanceMetric({
                   as="p"
                   per="char"
                   delay={0.12}
-                  className="m-0 text-[22px] font-bold leading-none text-[#222A38] tabular-nums"
+                  className="m-0 text-[20px] font-bold leading-none text-[#222A38] tabular-nums"
                 >
                   {value}
                 </DashboardTextEffect>
@@ -372,15 +372,15 @@ function FinanceMetric({
               <div
                 className="flex items-center justify-between"
                 style={{
-                  padding: "6px 12px",
+                  padding: "5px 10px",
                 }}
               >
                 {/* Trend icon */}
                 <div
                   className="flex items-center justify-center"
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "15px",
+                    height: "15px",
                     borderRadius: "50%",
                     background: "rgba(0,0,0,0.08)",
                   }}
@@ -768,7 +768,7 @@ export default function Dashboard() {
           </div>
 
           {/* Metric cards grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <FinanceMetric
               label="Revenue"
               loading={analyticsLoading}
