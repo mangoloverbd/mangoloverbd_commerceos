@@ -3841,11 +3841,6 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   function ping(){
     if (document.hidden) return;
     var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "" });
-    if (navigator.sendBeacon) {
-      try {
-        if (navigator.sendBeacon(endpoint, new Blob([payload], { type: "application/json" }))) return;
-      } catch (_) {}
-    }
     try {
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
     } catch (_) {}

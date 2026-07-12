@@ -52,6 +52,16 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain("allowedHeaders: [\"Content-Type\"]");
   });
 
+  it("uses CORS fetch rather than cross-origin sendBeacon for live pings", () => {
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js"');
+    const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
+    const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
+
+    expect(trackerRoute).toContain('fetch(endpoint');
+    expect(trackerRoute).toContain('mode: "cors"');
+    expect(trackerRoute).not.toContain("navigator.sendBeacon");
+  });
+
   it("shows the embed script in Custom Website settings", () => {
     expect(settingsSource).toContain("Live Visitor Tracking");
     expect(settingsSource).toContain("/api/tracker.js?org=");
