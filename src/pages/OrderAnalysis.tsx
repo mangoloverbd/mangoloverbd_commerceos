@@ -81,6 +81,7 @@ type WebsiteBehaviorResponse = {
     step: string;
     rate: number;
     hint: string;
+    summary?: string;
     bullets?: string[];
   } | null;
   productDemand: Array<{
@@ -511,13 +512,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
               <div className="rounded-2xl border border-black/10 bg-white p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Main Leak</p>
                 <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{data?.dropOff?.step || "No drop-off yet"}</p>
-                {data?.dropOff?.bullets?.length ? (
-                  <ul className="mt-3 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-muted-foreground">
-                    {data.dropOff.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data?.dropOff?.hint || "More traffic is needed before a reliable leak appears."}</p>
-                )}
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data?.dropOff?.summary || data?.dropOff?.hint || "More traffic is needed before a reliable leak appears."}</p>
               </div>
               <div className="rounded-2xl border border-black/10 bg-white p-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Best Signal</p>
@@ -525,11 +520,24 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
                 {data?.productDemand[0]?.url && (
                   <p className="mt-1 break-all text-[11px] leading-relaxed text-muted-foreground">{data.productDemand[0].url}</p>
                 )}
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  {data?.productDemand[0]
-                    ? `${data.productDemand[0].views.toLocaleString("en-BD")} views, ${data.productDemand[0].carts.toLocaleString("en-BD")} carts, ${data.productDemand[0].purchases.toLocaleString("en-BD")} purchases.`
-                    : "Product demand signals will appear after tracked product visits."}
-                </p>
+                {data?.productDemand[0] ? (
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="best-signal-stat rounded-[12px] border border-black/[0.08] bg-black/[0.025] px-3 py-2">
+                      <p className="text-[10px] font-medium text-black/45">Views</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.productDemand[0].views.toLocaleString("en-BD")}</p>
+                    </div>
+                    <div className="best-signal-stat rounded-[12px] border border-black/[0.08] bg-black/[0.025] px-3 py-2">
+                      <p className="text-[10px] font-medium text-black/45">Carts</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.productDemand[0].carts.toLocaleString("en-BD")}</p>
+                    </div>
+                    <div className="best-signal-stat rounded-[12px] border border-black/[0.08] bg-black/[0.025] px-3 py-2">
+                      <p className="text-[10px] font-medium text-black/45">Purchases</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.productDemand[0].purchases.toLocaleString("en-BD")}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Product demand signals will appear after tracked product visits.</p>
+                )}
               </div>
             </div>
           </div>
@@ -542,7 +550,13 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
                   <div className="mt-3 flex items-end justify-between gap-4">
                     <div>
                       <h3 className="font-sf-display text-xl font-light tracking-tight text-foreground">{data.dropOff.step}</h3>
-                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data.dropOff.hint}</p>
+                      {data.dropOff.bullets?.length ? (
+                        <ul className="mt-3 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-muted-foreground">
+                          {data.dropOff.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data.dropOff.hint}</p>
+                      )}
                     </div>
                     <p className="text-3xl font-light tabular-nums text-red-600">{fmtPct(data.dropOff.rate)}</p>
                   </div>

@@ -28,6 +28,7 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(serverSource).toContain("productNameFromUrl");
     expect(serverSource).toContain("productName");
     expect(serverSource).toContain("buildWebsiteBehaviorDropOffBullets");
+    expect(serverSource).toContain("summary");
     expect(serverSource).toContain("OPENAI_API_KEY");
     expect(serverSource).toContain("gpt-4o-mini");
     expect(serverSource).toContain("bullets");
@@ -57,8 +58,10 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("grid-rows-2");
     expect(pageSource).toContain("productName");
     expect(pageSource).toContain("break-all");
-    expect(pageSource).toContain("dropOff?.bullets");
+    expect(pageSource).toContain("dropOff.bullets");
+    expect(pageSource).toContain("dropOff?.summary");
     expect(pageSource).toContain("list-disc");
+    expect(pageSource).toContain("best-signal-stat");
     expect(pageSource).not.toContain("PostHog · Last");
     expect(pageSource).not.toContain("maxStepValue");
     expect(pageSource).toContain("WEBSITE_BEHAVIOR_REFETCH_MS");

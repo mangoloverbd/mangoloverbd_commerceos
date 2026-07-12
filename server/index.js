@@ -3007,16 +3007,19 @@ function buildWebsiteBehaviorDropOff(funnel) {
       step: "Product View to Cart",
       rate: pctDropOff(funnel.productViews, funnel.carts),
       hint: "Improve product page clarity, price trust, and add-to-cart visibility.",
+      summary: "Shoppers are interested enough to view products, but the product page is not giving enough confidence to add items to cart.",
     },
     {
       step: "Cart to Checkout",
       rate: pctDropOff(funnel.carts, funnel.checkouts),
       hint: "Review delivery cost, cart friction, and checkout CTA placement.",
+      summary: "Customers are adding items, but something in the cart is making checkout feel unclear or not worth continuing.",
     },
     {
       step: "Checkout to Purchase",
       rate: pctDropOff(funnel.checkouts, funnel.purchases),
       hint: "Check payment trust, form length, and courier promise clarity.",
+      summary: "Customers reach checkout, but they still need stronger trust, simpler forms, and clearer delivery expectations before placing the order.",
     },
   ];
   const meaningful = candidates.filter((candidate) => candidate.rate > 0);
