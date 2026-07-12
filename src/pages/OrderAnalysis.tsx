@@ -89,6 +89,13 @@ type WebsiteBehaviorResponse = {
     purchases: number;
     conversionRate: number;
   }>;
+  trafficSources: Array<{
+    source: string;
+    visitors: number;
+    carts: number;
+    purchases: number;
+    conversionRate: number;
+  }>;
 };
 
 function fmtBDT(value: number) {
@@ -457,7 +464,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
         <div className="px-6 py-10 text-center">
           <p className="text-sm font-semibold text-foreground">PostHog query credentials are not configured</p>
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            Add POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID to unlock Website Funnel, Conversion Drop-off, and Product Demand Signals.
+            Add POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID to unlock Website Funnel, Conversion Drop-off, Product Demand Signals, and Traffic Source Performance.
           </p>
         </div>
       ) : (
@@ -527,6 +534,28 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
                   </div>
                 )) : (
                   <p className="text-sm text-muted-foreground">No product demand signals yet. Install the custom website tracker and wait for visitor events.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-black/10 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Traffic Source Performance</p>
+                <span className="text-xs text-muted-foreground">{data?.trafficSources.length ?? 0} sources</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {data?.trafficSources.length ? data.trafficSources.slice(0, 4).map((item) => (
+                  <div key={item.source} className="grid gap-2 rounded-xl bg-black/[0.025] p-3 md:grid-cols-[1fr_auto] md:items-center">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-foreground">{item.source}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {item.visitors.toLocaleString("en-BD")} visitors · {item.carts.toLocaleString("en-BD")} carts · {item.purchases.toLocaleString("en-BD")} purchases
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold tabular-nums text-foreground">{fmtPct(item.conversionRate)}</p>
+                  </div>
+                )) : (
+                  <p className="text-sm text-muted-foreground">No traffic source signals yet. Add UTM tags to campaigns or wait for referred visitors.</p>
                 )}
               </div>
             </div>

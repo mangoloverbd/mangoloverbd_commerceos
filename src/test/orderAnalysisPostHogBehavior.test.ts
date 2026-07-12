@@ -21,6 +21,10 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(serverSource).toContain("properties.org_id = {orgId}");
     expect(serverSource).toContain("emptyWebsiteBehaviorPayload(false");
     expect(serverSource).toContain("[PostHog] website behavior query failed:");
+    expect(serverSource).toContain("trafficSources");
+    expect(serverSource).toContain("extractPostHogTrafficSource");
+    expect(serverSource).toContain("utm_source");
+    expect(serverSource).toContain("properties.referrer");
   });
 
   it("renders the approved Option A website behavior panel on Order Analysis", () => {
@@ -35,6 +39,8 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("Website Funnel");
     expect(pageSource).toContain("Conversion Drop-off");
     expect(pageSource).toContain("Product Demand Signals");
+    expect(pageSource).toContain("Traffic Source Performance");
+    expect(pageSource).toContain("trafficSources");
     expect(pageSource).toContain("PostHog query credentials are not configured");
     expect(behaviorPanel).toBeGreaterThan(metricCards);
     expect(salesCalendar).toBeGreaterThan(behaviorPanel);

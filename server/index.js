@@ -2924,7 +2924,29 @@ function emptyWebsiteBehaviorPayload(configured = true, lookbackDays = 30) {
     },
     dropOff: null,
     productDemand: [],
+    trafficSources: [],
   };
+}
+
+function extractPostHogTrafficSource(url, referrer) {
+  try {
+    const parsedUrl = new URL(String(url || ""));
+    const utmSource = parsedUrl.searchParams.get("utm_source");
+    if (utmSource) return utmSource.trim().toLowerCase();
+  } catch { /* ignore invalid event URL */ }
+
+  try {
+    const host = new URL(String(referrer || "")).hostname.replace(/^www\./, "");
+    if (!host) return "Direct";
+    if (host.includes("facebook") || host.includes("fb.")) return "Facebook";
+    if (host.includes("instagram")) return "Instagram";
+    if (host.includes("tiktok")) return "TikTok";
+    if (host.includes("google")) return "Google";
+    if (host.includes("youtube")) return "YouTube";
+    return host;
+  } catch {
+    return "Direct";
+  }
 }
 
 async function queryPostHogHogql(query, values = {}) {
@@ -3003,7 +3025,7 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
         AND properties.org_id = {orgId}
         AND timestamp >= now() - INTERVAL ${lookbackDays} DAY
       `;
-      const [funnelRows, demandRows] = await Promise.all([
+      const [funnelRows, demandRows, sourceRows] = await Promise.all([
         queryPostHogHogql(`
           SELECT
             uniq(distinct_id) AS visitors,
@@ -3026,6 +3048,19 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
           GROUP BY url
           ORDER BY views DESC
           LIMIT 8
+        `, { orgId }),
+        queryPostHogHogql(`
+          SELECT
+            coalesce(properties.url, '') AS url,
+            coalesce(properties.referrer, '') AS referrer,
+            uniq(distinct_id) AS visitors,
+            countIf(properties.bucket = 'cart') AS carts,
+            countIf(properties.bucket = 'purchased') AS purchases
+          FROM events
+          WHERE ${eventFilter}
+          GROUP BY url, referrer
+          ORDER BY visitors DESC
+          LIMIT 50
         `, { orgId }),
       ]);
 
@@ -3050,6 +3085,22 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
           conversionRate: Number(((purchases / Math.max(views, 1)) * 100).toFixed(1)),
         };
       });
+      const sourceMap = new Map();
+      for (const row of sourceRows || []) {
+        const source = extractPostHogTrafficSource(row[0], row[1]);
+        const current = sourceMap.get(source) || { source, visitors: 0, carts: 0, purchases: 0 };
+        current.visitors += Number(row[2]) || 0;
+        current.carts += Number(row[3]) || 0;
+        current.purchases += Number(row[4]) || 0;
+        sourceMap.set(source, current);
+      }
+      const trafficSources = [...sourceMap.values()]
+        .map((source) => ({
+          ...source,
+          conversionRate: Number(((source.purchases / Math.max(source.visitors, 1)) * 100).toFixed(1)),
+        }))
+        .sort((a, b) => b.visitors - a.visitors)
+        .slice(0, 6);
 
       return res.json({
         configured: true,
@@ -3057,6 +3108,7 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
         funnel,
         dropOff: buildWebsiteBehaviorDropOff(funnel),
         productDemand,
+        trafficSources,
       });
     } catch (err) {
       console.warn("[PostHog] website behavior query failed:", err.message);
