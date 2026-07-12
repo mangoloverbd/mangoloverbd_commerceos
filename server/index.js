@@ -160,6 +160,8 @@ app.use("/api", (req, res, next) => {
   // Exclude webhook endpoints and public config from rate limiting
   if (
     path.startsWith("/webhooks/") ||
+    path === "/tracker.js" ||
+    path === "/live-visitor/ping" ||
     path === "/config"
   ) return next();
   return rateLimitAPI(req, res, next);
@@ -3735,6 +3737,111 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     return res.status(201).json({ success: true, order_id: data.order_number, order: data });
   } catch (e) {
     console.error("Custom Store Webhook Error:", e);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Live Visitor Tracking ──────────────────────────────────────────────────
+const VISITOR_TTL_MS = 60_000;
+
+function isValidOrgId(value) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+app.get("/api/tracker.js", (req, res) => {
+  const orgId = req.query.org;
+  if (!isValidOrgId(orgId)) {
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    return res.status(400).send("/* Merchant-Suite tracker: invalid org */");
+  }
+
+  res.set({
+    "Content-Type": "application/javascript; charset=utf-8",
+    "Cache-Control": "public, max-age=300",
+  });
+
+  return res.send(`(function(){
+  var org = ${JSON.stringify(orgId)};
+  var currentScript = document.currentScript;
+  var endpoint = new URL("/api/live-visitor/ping", currentScript && currentScript.src ? currentScript.src : window.location.href).toString();
+  var storageKey = "merchant_suite_live_sid_" + org;
+  function makeId(){
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==="x"?r:(r&3|8);return v.toString(16);});
+  }
+  function getSessionId(){
+    try {
+      var existing = sessionStorage.getItem(storageKey);
+      if (existing) return existing;
+      var next = makeId();
+      sessionStorage.setItem(storageKey, next);
+      return next;
+    } catch (_) {
+      return makeId();
+    }
+  }
+  var sessionId = getSessionId();
+  function ping(){
+    if (document.hidden) return;
+    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "" });
+    if (navigator.sendBeacon) {
+      try {
+        if (navigator.sendBeacon(endpoint, new Blob([payload], { type: "application/json" }))) return;
+      } catch (_) {}
+    }
+    try {
+      fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
+    } catch (_) {}
+  }
+  ping();
+  setInterval(ping, 15000);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden) ping(); });
+  window.addEventListener("focus", ping);
+})();`);
+});
+
+app.post("/api/live-visitor/ping", async (req, res) => {
+  const { org_id, session_id } = req.body || {};
+  if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
+    return res.status(400).json({ error: "Invalid live visitor payload" });
+  }
+
+  if (!redisClient) return res.json({ ok: true, tracked: false });
+
+  try {
+    const key = `visitors:${org_id}`;
+    const now = Date.now();
+    await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
+    await redisClient.zadd(key, { score: now, member: session_id });
+    await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
+    return res.json({ ok: true, tracked: true });
+  } catch (err) {
+    console.warn("[LiveVisitor] Redis ping failed:", err.message);
+    return res.json({ ok: true, tracked: false });
+  }
+});
+
+app.get("/api/live-visitors", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    if (!redisClient) return res.json({ count: 0, tracked: false });
+
+    try {
+      const key = `visitors:${orgId}`;
+      const now = Date.now();
+      await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
+      const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
+      return res.json({ count: Number(count) || 0, tracked: true });
+    } catch (err) {
+      console.warn("[LiveVisitor] Redis count failed:", err.message);
+      return res.json({ count: 0, tracked: false });
+    }
+  } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 });

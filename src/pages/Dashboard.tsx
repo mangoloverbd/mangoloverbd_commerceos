@@ -274,6 +274,47 @@ function DashboardTextEffect({
   );
 }
 
+function LiveVisitorsCounter() {
+  const [count, setCount] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCount = async () => {
+      try {
+        const res = await apiFetch("/api/live-visitors", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setCount(Number(data.count) || 0);
+      } catch {
+        // Non-critical dashboard signal.
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    };
+
+    fetchCount();
+    const interval = window.setInterval(fetchCount, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  if (!loaded) return null;
+
+  return (
+    <div className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
+      <span className="relative flex h-2 w-2">
+        {count > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
+        <span className={cn("relative inline-flex h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/20")} />
+      </span>
+      {count} online
+    </div>
+  );
+}
+
 function FinanceMetric({
   label,
   loading,
@@ -752,6 +793,7 @@ export default function Dashboard() {
             {analytics?.fbError && (
               <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
             )}
+            <LiveVisitorsCounter />
             <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
             <button
               onClick={() => fetchAnalytics(dateRange)}
