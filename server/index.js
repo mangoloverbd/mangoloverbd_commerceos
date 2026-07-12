@@ -4100,8 +4100,10 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   function detectBucketFromText(value){
     var text = String(value || "").toLowerCase();
     if (!text) return null;
-    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
-    if (text.indexOf("checkout") !== -1 || text.indexOf("check out") !== -1 || text.indexOf("place order") !== -1 || text.indexOf("complete order") !== -1 || text.indexOf("buy now") !== -1) return "checkout";
+    if (text.indexOf("place order") !== -1) return "purchased";
+    if (text.indexOf("complete order") !== -1) return "purchased";
+    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("order placed") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
+    if (text.indexOf("checkout") !== -1 || text.indexOf("check out") !== -1 || text.indexOf("buy now") !== -1) return "checkout";
     if (text.indexOf("add to cart") !== -1 || text.indexOf("add-to-cart") !== -1 || text.indexOf("add_to_cart") !== -1 || text.indexOf("cart") !== -1 || text.indexOf("basket") !== -1 || text.indexOf("bag") !== -1) return "cart";
     return null;
   }

@@ -41,6 +41,8 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("Product Demand Signals");
     expect(pageSource).toContain("Traffic Source Performance");
     expect(pageSource).toContain("trafficSources");
+    expect(pageSource).toContain("WEBSITE_BEHAVIOR_REFETCH_MS");
+    expect(pageSource).toContain("refetchInterval: WEBSITE_BEHAVIOR_REFETCH_MS");
     expect(pageSource).toContain("PostHog query credentials are not configured");
     expect(behaviorPanel).toBeGreaterThan(metricCards);
     expect(salesCalendar).toBeGreaterThan(behaviorPanel);

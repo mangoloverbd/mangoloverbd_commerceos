@@ -45,6 +45,16 @@ describe("live visitor tracking", () => {
     expect(trackerRoute).toContain("thank you");
   });
 
+  it("treats custom store order submission signals as purchases", () => {
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
+    const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
+    const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
+
+    expect(trackerRoute).toContain('text.indexOf("place order") !== -1) return "purchased"');
+    expect(trackerRoute).toContain('text.indexOf("complete order") !== -1) return "purchased"');
+    expect(trackerRoute).toContain('text.indexOf("order placed") !== -1');
+  });
+
   it("keeps live visitor counts isolated to the authenticated user's org", () => {
     const start = serverSource.indexOf('app.get("/api/live-visitors"');
     const end = serverSource.indexOf("//", start + 1);

@@ -15,6 +15,7 @@ import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-cale
 import { ProductMixDonut } from "@/components/ProductMixDonut";
 
 const FIVE_HOURS_IN_MS = 5 * 60 * 60 * 1000;
+const WEBSITE_BEHAVIOR_REFETCH_MS = 30 * 1000;
 
 type ProductStatus = "stockout" | "shutdown_candidate" | "dead_stock" | "winner" | "stable";
 
@@ -144,7 +145,7 @@ export default function OrderAnalysis() {
     staleTime: FIVE_HOURS_IN_MS,
   });
 
-  const { data: websiteBehavior, isLoading: behaviorLoading } = useQuery<WebsiteBehaviorResponse>({
+  const { data: websiteBehavior, isLoading: behaviorLoading, refetch: refetchWebsiteBehavior } = useQuery<WebsiteBehaviorResponse>({
     queryKey: ["/api/order-analysis/website-behavior"],
     queryFn: async () => {
       const res = await apiFetch("/api/order-analysis/website-behavior");
@@ -152,7 +153,8 @@ export default function OrderAnalysis() {
       if (!res.ok) throw new Error(json.error || "Failed to load website behavior");
       return json;
     },
-    staleTime: FIVE_HOURS_IN_MS,
+    staleTime: 0,
+    refetchInterval: WEBSITE_BEHAVIOR_REFETCH_MS,
   });
 
   const products = data?.productForecasts ?? [];
@@ -179,7 +181,10 @@ export default function OrderAnalysis() {
             <RichButton
               color="default"
               size="default"
-              onClick={() => refetch()}
+              onClick={() => {
+                refetch();
+                refetchWebsiteBehavior();
+              }}
               disabled={isFetching}
             >
               {isFetching ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
