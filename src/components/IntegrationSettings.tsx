@@ -1365,6 +1365,18 @@ function DetailView({
                 Copy
               </button>
             </div>
+
+            <div className="rounded-[10px] border border-black/[0.06] bg-black/[0.02] p-3">
+              <p className="text-[11px] font-medium text-black/50">Optional behavior events</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-black/40">
+                Call these from the website when the customer adds to cart, starts checkout, or completes purchase.
+              </p>
+              <code className="mt-2 block whitespace-pre-wrap rounded-[8px] bg-white p-2 font-mono text-[10px] leading-relaxed text-black/70">
+{`window.MerchantSuiteTracker?.track("cart");
+window.MerchantSuiteTracker?.track("checkout");
+window.MerchantSuiteTracker?.track("purchased");`}
+              </code>
+            </div>
           </div>
         </div>
       )}

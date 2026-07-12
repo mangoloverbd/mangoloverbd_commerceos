@@ -11,11 +11,23 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain('app.get("/api/tracker.js"');
     expect(serverSource).toContain('app.post("/api/live-visitor/ping"');
     expect(serverSource).toContain('`visitors:${org_id}:all`');
-    expect(serverSource).toContain('`visitors:${org_id}:${bucket}`');
+    expect(serverSource).toContain('`visitors:${org_id}:${behaviorBucket}`');
     expect(serverSource).toContain("zremrangebyscore");
     expect(serverSource).toContain("zadd");
     expect(serverSource).toContain("VISITOR_TTL_MS");
     expect(serverSource).toContain("liveVisitorBucketFromUrl");
+  });
+
+  it("supports explicit behavior events from custom websites", () => {
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
+    const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
+    const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
+
+    expect(serverSource).toContain("validLiveVisitorBucket");
+    expect(serverSource).toContain("validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url)");
+    expect(trackerRoute).toContain("window.MerchantSuiteTracker");
+    expect(trackerRoute).toContain("track = function(bucket)");
+    expect(trackerRoute).toContain("ping(bucket)");
   });
 
   it("keeps live visitor counts isolated to the authenticated user's org", () => {
@@ -53,7 +65,7 @@ describe("live visitor tracking", () => {
   });
 
   it("uses CORS fetch rather than cross-origin sendBeacon for live pings", () => {
-    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js"');
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
     const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
     const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
 
@@ -65,6 +77,8 @@ describe("live visitor tracking", () => {
   it("shows the embed script in Custom Website settings", () => {
     expect(settingsSource).toContain("Live Visitor Tracking");
     expect(settingsSource).toContain("/api/tracker.js?org=");
+    expect(settingsSource).toContain("Optional behavior events");
+    expect(settingsSource).toContain("MerchantSuiteTracker?.track");
     expect(settingsSource).toContain("useMe");
   });
 

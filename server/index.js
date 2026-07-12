@@ -3763,6 +3763,10 @@ function liveVisitorBucketFromUrl(value) {
   return null;
 }
 
+function validLiveVisitorBucket(value) {
+  return ["cart", "checkout", "purchased"].includes(value) ? value : null;
+}
+
 function pruneMemoryLiveVisitors(key, now) {
   const visitors = memoryLiveVisitors.get(key);
   if (!visitors) return new Map();
@@ -3838,13 +3842,15 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
     }
   }
   var sessionId = getSessionId();
-  function ping(){
+  function ping(bucket){
     if (document.hidden) return;
-    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "" });
+    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null });
     try {
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
     } catch (_) {}
   }
+  window.MerchantSuiteTracker = window.MerchantSuiteTracker || {};
+  window.MerchantSuiteTracker.track = function(bucket){ ping(bucket); };
   ping();
   setInterval(ping, 15000);
   document.addEventListener("visibilitychange", function(){ if (!document.hidden) ping(); });
@@ -3853,21 +3859,21 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
 });
 
 app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
-  const { org_id, session_id, url } = req.body || {};
+  const { org_id, session_id, url, bucket } = req.body || {};
   if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
     return res.status(400).json({ error: "Invalid live visitor payload" });
   }
 
   try {
     const allKey = `visitors:${org_id}:all`;
-    const bucket = liveVisitorBucketFromUrl(url);
-    const bucketKey = bucket ? `visitors:${org_id}:${bucket}` : null;
+    const behaviorBucket = validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url);
+    const bucketKey = behaviorBucket ? `visitors:${org_id}:${behaviorBucket}` : null;
     const now = Date.now();
     const keys = [allKey, `visitors:${org_id}:cart`, `visitors:${org_id}:checkout`, `visitors:${org_id}:purchased`];
     await Promise.all(keys.map((key) => countLiveVisitorsForKey(key, now)));
     await addLiveVisitorPresence(allKey, session_id, now);
     if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
-    return res.json({ ok: true, tracked: true, bucket, storage: redisClient ? "redis" : "memory" });
+    return res.json({ ok: true, tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" });
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);
     return res.json({ ok: true, tracked: false });
