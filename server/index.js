@@ -3907,6 +3907,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
 // ─── Live Visitor Tracking ──────────────────────────────────────────────────
 const VISITOR_TTL_MS = 60_000;
+const POSTHOG_CAPTURE_TIMEOUT_MS = 900;
 const memoryLiveVisitors = new Map();
 
 function isValidOrgId(value) {
@@ -3969,11 +3970,14 @@ async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket }) 
   const apiKey = process.env.POSTHOG_PROJECT_API_KEY;
   if (!apiKey) return;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), POSTHOG_CAPTURE_TIMEOUT_MS);
   try {
     const host = (process.env.POSTHOG_HOST || "https://app.posthog.com").replace(/\/+$/, "");
     const response = await fetch(`${host}/capture/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         api_key: apiKey,
         event: "merchant_suite_live_visitor",
@@ -3994,6 +3998,8 @@ async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket }) 
     }
   } catch (err) {
     console.warn("[PostHog] capture failed:", err.message);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -4102,7 +4108,7 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
     await Promise.all(keys.map((key) => countLiveVisitorsForKey(key, now)));
     await addLiveVisitorPresence(allKey, session_id, now);
     if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
-    void capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket });
+    await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket });
     return res.json({ ok: true, tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" });
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);

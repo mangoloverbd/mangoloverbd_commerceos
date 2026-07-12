@@ -128,6 +128,9 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain('[PostHog] capture failed:');
     expect(pingRoute).toContain("referrer");
     expect(pingRoute).toContain("capturePostHogEvent");
-    expect(pingRoute).not.toContain("await capturePostHogEvent");
+    expect(serverSource).toContain("POSTHOG_CAPTURE_TIMEOUT_MS");
+    expect(serverSource).toContain("AbortController");
+    expect(pingRoute).toContain("await capturePostHogEvent");
+    expect(pingRoute).not.toContain("void capturePostHogEvent");
   });
 });
