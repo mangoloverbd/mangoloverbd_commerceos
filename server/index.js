@@ -3743,6 +3743,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
 // ─── Live Visitor Tracking ──────────────────────────────────────────────────
 const VISITOR_TTL_MS = 60_000;
+const memoryLiveVisitors = new Map();
 
 function isValidOrgId(value) {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -3756,10 +3757,36 @@ function liveVisitorBucketFromUrl(value) {
   return null;
 }
 
+function pruneMemoryLiveVisitors(key, now) {
+  const visitors = memoryLiveVisitors.get(key);
+  if (!visitors) return new Map();
+  for (const [sessionId, lastSeen] of visitors.entries()) {
+    if (lastSeen < now - VISITOR_TTL_MS) visitors.delete(sessionId);
+  }
+  if (visitors.size === 0) memoryLiveVisitors.delete(key);
+  return visitors;
+}
+
+async function addLiveVisitorPresence(key, sessionId, now) {
+  if (redisClient) {
+    await redisClient.zadd(key, { score: now, member: sessionId });
+    await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
+    return;
+  }
+
+  const visitors = pruneMemoryLiveVisitors(key, now);
+  visitors.set(sessionId, now);
+  memoryLiveVisitors.set(key, visitors);
+}
+
 async function countLiveVisitorsForKey(key, now) {
-  await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
-  const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
-  return Number(count) || 0;
+  if (redisClient) {
+    await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
+    const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
+    return Number(count) || 0;
+  }
+
+  return pruneMemoryLiveVisitors(key, now).size;
 }
 
 app.get("/api/tracker.js", (req, res) => {
@@ -3820,19 +3847,16 @@ app.post("/api/live-visitor/ping", async (req, res) => {
     return res.status(400).json({ error: "Invalid live visitor payload" });
   }
 
-  if (!redisClient) return res.json({ ok: true, tracked: false });
-
   try {
     const allKey = `visitors:${org_id}:all`;
     const bucket = liveVisitorBucketFromUrl(url);
     const bucketKey = bucket ? `visitors:${org_id}:${bucket}` : null;
     const now = Date.now();
     const keys = [allKey, `visitors:${org_id}:cart`, `visitors:${org_id}:checkout`, `visitors:${org_id}:purchased`];
-    await Promise.all(keys.map((key) => redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS)));
-    await redisClient.zadd(allKey, { score: now, member: session_id });
-    if (bucketKey) await redisClient.zadd(bucketKey, { score: now, member: session_id });
-    await Promise.all(keys.map((key) => redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2)));
-    return res.json({ ok: true, tracked: true, bucket });
+    await Promise.all(keys.map((key) => countLiveVisitorsForKey(key, now)));
+    await addLiveVisitorPresence(allKey, session_id, now);
+    if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
+    return res.json({ ok: true, tracked: true, bucket, storage: redisClient ? "redis" : "memory" });
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);
     return res.json({ ok: true, tracked: false });
@@ -3846,8 +3870,6 @@ app.get("/api/live-visitors", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-
-    if (!redisClient) return res.json({ count: 0, tracked: false });
 
     try {
       const allKey = `visitors:${orgId}:all`;
@@ -3864,6 +3886,7 @@ app.get("/api/live-visitors", async (req, res) => {
       return res.json({
         count,
         tracked: true,
+        storage: redisClient ? "redis" : "memory",
         details: { activeCarts, checkingOut, purchased },
       });
     } catch (err) {

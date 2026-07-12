@@ -35,6 +35,14 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain("zcount");
   });
 
+  it("falls back to process memory when Redis is not configured", () => {
+    expect(serverSource).toContain("memoryLiveVisitors");
+    expect(serverSource).toContain("addLiveVisitorPresence");
+    expect(serverSource).toContain("countLiveVisitorsForKey");
+    expect(serverSource).not.toContain("if (!redisClient) return res.json({ count: 0, tracked: false })");
+    expect(serverSource).not.toContain("if (!redisClient) return res.json({ ok: true, tracked: false })");
+  });
+
   it("shows the embed script in Custom Website settings", () => {
     expect(settingsSource).toContain("Live Visitor Tracking");
     expect(settingsSource).toContain("/api/tracker.js?org=");
