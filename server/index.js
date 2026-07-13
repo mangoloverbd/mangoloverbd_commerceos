@@ -8498,7 +8498,7 @@ app.post("/api/products/:id/images", async (req, res) => {
       inserted.push({ ...image, url: image.image_url });
     }
 
-    if (inserted[0]) {
+    if (inserted[0] && inserted[0].is_primary) {
       await supabase
         .from("products")
         .update({ image_url: inserted[0].image_url })
@@ -8515,6 +8515,58 @@ app.post("/api/products/:id/images", async (req, res) => {
     return res.json({ images: inserted });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/products/:id/images/reorder", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const productId = req.params.id;
+    const imageIds = Array.isArray(req.body?.imageIds) ? req.body.imageIds.map(String) : [];
+    if (!imageIds.length) return res.status(400).json({ error: "imageIds array required" });
+
+    const { data: product, error: productError } = await supabase
+      .from("products")
+      .select("id")
+      .eq("id", productId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const { data: existing, error: existingError } = await supabase
+      .from("product_images")
+      .select("id, image_url")
+      .eq("product_id", productId)
+      .eq("org_id", orgId);
+    if (existingError) throw existingError;
+    const existingIds = new Set((existing || []).map((image) => image.id));
+    const requestedIds = new Set(imageIds);
+    if (imageIds.length !== existingIds.size || requestedIds.size !== existingIds.size || imageIds.some((id) => !existingIds.has(id))) {
+      return res.status(400).json({ error: "imageIds must include every image for this product" });
+    }
+
+    for (const [index, imageId] of imageIds.entries()) {
+      const { error } = await supabase
+        .from("product_images")
+        .update({ sort_order: index, is_primary: index === 0 })
+        .eq("id", imageId)
+        .eq("product_id", productId)
+        .eq("org_id", orgId);
+      if (error) throw error;
+    }
+
+    const primary = (existing || []).find((image) => image.id === imageIds[0]);
+    if (primary) {
+      await supabase.from("products").update({ image_url: primary.image_url }).eq("id", productId).eq("org_id", orgId);
+    }
+    const imagesMap = await loadProductImagesMap(supabase, orgId, [productId]);
+    return res.json({ images: imagesMap[productId] || [] });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, SlidersHorizontal, Trash2, PackageSearch,
   Package2, Globe2, RefreshCw, Plus, X,
-  Check, AlertTriangle, ChevronDown,
+  Check, AlertTriangle, ChevronDown, Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -121,6 +121,33 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(reader.error || new Error("Failed to read image"));
     reader.readAsDataURL(file);
   });
+}
+
+async function filesToSelectedImages(files: FileList | null, remainingSlots: number) {
+  if (!files?.length || remainingSlots <= 0) return [];
+  return Promise.all(Array.from(files).slice(0, remainingSlots).map(async (file) => ({
+    id: crypto.randomUUID(),
+    file,
+    dataUrl: await readFileAsDataUrl(file),
+  })));
+}
+
+async function uploadSelectedProductImages(productId: string, selectedImages: SelectedImage[], altText: string) {
+  for (const image of selectedImages) {
+    const res = await apiFetch(`/api/products/${productId}/images`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: [{
+          dataUrl: image.dataUrl,
+          mimeType: image.file.type,
+          alt_text: altText,
+        }],
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || "Failed to upload product images");
+  }
 }
 
 // ── Shared input class — every numeric cell uses this exact height/width ──────
@@ -530,14 +557,8 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
   }
 
   async function selectImages(files: FileList | null) {
-    if (!files?.length) return;
-    const nextFiles = Array.from(files).slice(0, Math.max(0, 8 - selectedImages.length));
     try {
-      const images = await Promise.all(nextFiles.map(async (file) => ({
-        id: crypto.randomUUID(),
-        file,
-        dataUrl: await readFileAsDataUrl(file),
-      })));
+      const images = await filesToSelectedImages(files, 8 - selectedImages.length);
       setSelectedImages((current) => [...current, ...images]);
     } catch {
       toast.error("Failed to read selected images");
@@ -546,21 +567,7 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
   async function uploadProductImages(productId: string) {
     if (!selectedImages.length) return;
-    for (const image of selectedImages) {
-      const res = await apiFetch(`/api/products/${productId}/images`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          files: [{
-            dataUrl: image.dataUrl,
-            mimeType: image.file.type,
-            alt_text: name.trim(),
-          }],
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Failed to upload product images");
-    }
+    await uploadSelectedProductImages(productId, selectedImages, name.trim());
   }
 
   async function submit() {
@@ -725,6 +732,235 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
   );
 }
 
+function ProductImageManager({ product, onChanged }: { product: Product; onChanged: () => Promise<void> }) {
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
+  const [saving, setSaving] = useState(false);
+  const images = product.images ?? [];
+
+  async function selectImages(files: FileList | null) {
+    try {
+      const picked = await filesToSelectedImages(files, 8 - images.length - selectedImages.length);
+      setSelectedImages((current) => [...current, ...picked]);
+    } catch {
+      toast.error("Failed to read selected images");
+    }
+  }
+
+  async function uploadImages() {
+    if (!selectedImages.length) return;
+    setSaving(true);
+    try {
+      await uploadSelectedProductImages(product.id, selectedImages, product.name);
+      setSelectedImages([]);
+      await onChanged();
+      toast.success("Images uploaded");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to upload images");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteImage(imageId: string) {
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/images/${imageId}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to delete image");
+      await onChanged();
+      toast.success("Image removed");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to remove image");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function moveImage(imageId: string, direction: -1 | 1) {
+    const index = images.findIndex((image) => image.id === imageId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= images.length) return;
+    const next = images.map((image) => image.id);
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/images/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageIds: next }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to reorder images");
+      await onChanged();
+      toast.success("Images reordered");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to reorder images");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-[14px] border border-black/[0.08] bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40">Images</p>
+          <p className="text-[12px] text-black/40">First image is used as the public catalog thumbnail. Move images to reorder.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedImages.length > 0 && (
+            <button type="button" onClick={uploadImages} disabled={saving} className="rounded-lg bg-black px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-40">
+              {saving ? "Uploading…" : `Upload ${selectedImages.length}`}
+            </button>
+          )}
+          <label className="cursor-pointer rounded-lg bg-black/[0.06] px-3 py-1.5 text-[11px] font-semibold text-black/60 transition-colors hover:bg-black/[0.1]">
+            Add images
+            <input
+              data-testid={`input-product-images-${product.id}`}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              className="sr-only"
+              onChange={(event) => void selectImages(event.target.files)}
+            />
+          </label>
+        </div>
+      </div>
+      {(images.length > 0 || selectedImages.length > 0) && (
+        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
+          {images.map((image, index) => (
+            <div key={image.id} className="group relative aspect-square overflow-hidden rounded-xl border border-black/[0.08] bg-black/[0.03]">
+              <img src={image.url} alt={image.alt_text || product.name} className="h-full w-full object-cover" />
+              {index === 0 && <span className="absolute left-1 top-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">Primary</span>}
+              <div className="absolute inset-x-1 bottom-1 flex justify-between gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <button type="button" disabled={saving || index === 0} onClick={() => moveImage(image.id, -1)} className="rounded-md bg-white/90 px-1.5 py-1 text-[10px] font-semibold text-black/60 disabled:opacity-30">Left</button>
+                <button type="button" disabled={saving || index === images.length - 1} onClick={() => moveImage(image.id, 1)} className="rounded-md bg-white/90 px-1.5 py-1 text-[10px] font-semibold text-black/60 disabled:opacity-30">Right</button>
+                <button type="button" disabled={saving} onClick={() => deleteImage(image.id)} className="rounded-md bg-white/90 px-1.5 py-1 text-[10px] font-semibold text-red-500 disabled:opacity-30">Del</button>
+              </div>
+            </div>
+          ))}
+          {selectedImages.map((image) => (
+            <div key={image.id} className="group relative aspect-square overflow-hidden rounded-xl border border-dashed border-black/[0.16] bg-black/[0.03]">
+              <img src={image.dataUrl} alt={image.file.name} className="h-full w-full object-cover opacity-70" />
+              <span className="absolute left-1 top-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black/50">New</span>
+              <button
+                type="button"
+                onClick={() => setSelectedImages((current) => current.filter((item) => item.id !== image.id))}
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-black/50 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
+                aria-label={`Remove ${image.file.name}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditProductDrawer({ product, onClose, onSaved }: { product: Product; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [name, setName] = useState(product.name || "");
+  const [description, setDescription] = useState(product.description || "");
+  const [imageUrl, setImageUrl] = useState(product.image_url || "");
+  const [productUrl, setProductUrl] = useState(product.url || "");
+  const [sellingPrice, setSellingPrice] = useState(product.selling_price == null ? "" : String(product.selling_price));
+  const [compareAtPrice, setCompareAtPrice] = useState(product.compare_at_price == null ? "" : String(product.compare_at_price));
+  const [cog, setCog] = useState(String(product.cog ?? 0));
+  const [stock, setStock] = useState(String(product.stock_quantity ?? 0));
+  const [published, setPublished] = useState(product.published === true);
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || null,
+          image_url: imageUrl.trim() || null,
+          url: productUrl.trim() || null,
+          selling_price: sellingPrice ? parseFloat(sellingPrice) || 0 : null,
+          compare_at_price: compareAtPrice ? parseFloat(compareAtPrice) || 0 : null,
+          cog: parseFloat(cog) || 0,
+          stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
+          published,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to save product");
+      await onSaved();
+      toast.success("Product saved");
+      onClose();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save product");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.16 }}
+      className="border-b border-black/[0.08] bg-black/[0.015] px-5 py-5"
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[14px] font-semibold text-black">Edit Product</p>
+          <p className="text-[12px] text-black/40">Update product details, publish state, and image order.</p>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-lg p-2 text-black/35 transition-colors hover:bg-black/[0.05] hover:text-black">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <input data-testid={`input-edit-product-name-${product.id}`} value={name} onChange={e => setName(e.target.value)} placeholder="Product name" className={INPUT_CLS} />
+        <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="Fallback image URL" className={INPUT_CLS} />
+        <input value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="Product URL" className={INPUT_CLS} />
+        <input type="number" min={0} value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} placeholder="Selling price ৳" className={INPUT_CLS} />
+        <input type="number" min={0} value={compareAtPrice} onChange={e => setCompareAtPrice(e.target.value)} placeholder="Compare price ৳" className={INPUT_CLS} />
+        <input type="number" min={0} value={cog} onChange={e => setCog(e.target.value)} placeholder="COG ৳" className={INPUT_CLS} />
+        <input type="number" min={0} value={stock} onChange={e => setStock(e.target.value)} placeholder="Stock quantity" className={INPUT_CLS} />
+        <label className="flex h-9 items-center gap-2 rounded-[12px] border border-black/[0.1] bg-white px-3 text-[12px] text-black/60">
+          <input type="checkbox" checked={published} onChange={e => setPublished(e.target.checked)} className="h-4 w-4 accent-black" />
+          Publish
+        </label>
+      </div>
+
+      <textarea
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        placeholder="Description"
+        className="mt-3 min-h-20 w-full rounded-[12px] border border-black/[0.1] bg-black/[0.04] px-3 py-2 text-[13px] text-black outline-none transition-colors placeholder:text-black/25 focus:bg-white focus-visible:ring-1 focus-visible:ring-black/20"
+      />
+
+      <div className="mt-3">
+        <ProductImageManager product={product} onChanged={onSaved} />
+      </div>
+
+      <div className="mt-5 flex items-center gap-2">
+        <PopButton color="blue" size="sm" type="button" onClick={submit} disabled={saving} className="gap-1.5 px-3 text-[11px] font-bold tracking-normal">
+          {saving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
+          Save changes
+        </PopButton>
+        <PopButton color="default" size="sm" type="button" onClick={onClose} className="px-3 text-[11px] font-bold tracking-normal">
+          Cancel
+        </PopButton>
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Products() {
@@ -742,6 +978,7 @@ export default function Products() {
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [addingProduct, setAddingProduct] = useState(false);
+  const [editingFor, setEditingFor] = useState<string | null>(null);
 
   // Import
   const [crawlUrl, setCrawlUrl] = useState("");
@@ -1167,6 +1404,7 @@ export default function Products() {
                   const isDirty = cogEdits[product.id] !== undefined;
                   const isSaving = savingIds.has(product.id);
                   const isAdding = addingFor === product.id;
+                  const isEditing = editingFor === product.id;
                   const stock = effectiveStock(product);
                   const ss = stockStatus(stock);
 
@@ -1182,7 +1420,7 @@ export default function Products() {
                       {/* Row */}
                       <div className={cn(
                         "group grid items-start border-b border-black/[0.08] transition-colors hover:bg-black/[0.015]",
-                        GRID, isAdding && "bg-black/[0.01]"
+                        GRID, (isAdding || isEditing) && "bg-black/[0.01]"
                       )}>
 
                         {/* Thumbnail */}
@@ -1197,6 +1435,11 @@ export default function Products() {
                                 </div>
                             }
                           </div>
+                          {product.images?.length > 1 && (
+                            <span className="ml-1 rounded-full bg-black px-1.5 py-0.5 text-[9px] font-bold text-white">
+                              +{product.images.length - 1}
+                            </span>
+                          )}
                         </div>
 
                         {/* Name + URL + stock (no-variant) */}
@@ -1304,6 +1547,12 @@ export default function Products() {
                         {/* Publish + delete */}
                         <div className="flex items-start justify-end gap-2 pt-4 pb-3 pr-3">
                           <button
+                            data-testid={`button-edit-product-${product.id}`}
+                            onClick={() => setEditingFor(isEditing ? null : product.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-xl text-black/35 transition-all hover:bg-black/[0.05] hover:text-black">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
                             data-testid={`button-toggle-published-${product.id}`}
                             onClick={() => togglePublished(product)}
                             disabled={isSaving}
@@ -1327,6 +1576,13 @@ export default function Products() {
 
                       {/* Add-variant drawer */}
                       <AnimatePresence>
+                        {isEditing && (
+                          <EditProductDrawer
+                            product={product}
+                            onClose={() => setEditingFor(null)}
+                            onSaved={() => qc.invalidateQueries({ queryKey: ["/api/products"] })}
+                          />
+                        )}
                         {isAdding && (
                           <AddVariantDrawer
                             product={product}

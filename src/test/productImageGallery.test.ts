@@ -28,4 +28,15 @@ describe("product image gallery", () => {
     expect(productsSource).toContain("uploadProductImages");
     expect(productsSource).toContain("/api/products/${productId}/images");
   });
+
+  it("lets merchants edit products and reorder existing images", () => {
+    expect(serverSource).toContain("app.patch(\"/api/products/:id/images/reorder\"");
+    expect(serverSource).toContain("is_primary: index === 0");
+    expect(serverSource).toContain("inserted[0] && inserted[0].is_primary");
+    expect(productsSource).toContain("EditProductDrawer");
+    expect(productsSource).toContain("data-testid={`button-edit-product-${product.id}`}");
+    expect(productsSource).toContain("moveImage(image.id, -1)");
+    expect(productsSource).toContain("moveImage(image.id, 1)");
+    expect(productsSource).toContain("/api/products/${product.id}/images/reorder");
+  });
 });
