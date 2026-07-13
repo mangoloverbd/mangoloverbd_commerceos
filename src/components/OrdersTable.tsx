@@ -26,7 +26,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/components/ui/sonner";
+import { toast, DarkToast } from "@/components/ui/sonner";
 import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldCheck, Truck, Search, StickyNote, Package, Check, FileText, Trash2, Printer, ChevronDown, Copy, MapPin, ShoppingBag } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -535,16 +535,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       console.error("Error updating order status:", error);
       console.error("Error updating order status:", error);
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Update Failed</span>
-            <span className="text-sm font-bold text-black">Could not save status</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Update Failed</span>
+            <span className="text-sm font-bold text-white">Could not save status</span>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     }
   };
 
@@ -572,33 +572,33 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
         onOrderUpdate(data.order);
       }
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
+        <DarkToast className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
             <Truck className="w-5 h-5 text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Dispatched</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Courier Dispatched</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">Order {order.order_number}</span>
-              <span className="text-xs text-black font-medium">Sent to Steadfast</span>
+              <span className="text-sm font-bold text-white">Order {order.order_number}</span>
+              <span className="text-xs text-white/60 font-medium">Sent to Steadfast</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch (error: any) {
       console.error("Error sending to courier:", error);
       const errMsg = error?.message || "Failed to send order";
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Error</span>
-            <span className="text-sm font-bold text-black">{errMsg}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Courier Error</span>
+            <span className="text-sm font-bold text-white">{errMsg}</span>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } finally {
       setSendingIds((prev) => {
         const next = new Set(prev);
@@ -630,33 +630,33 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
         onOrderUpdate(data.order);
       }
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-[#D82128]/10 flex items-center justify-center shrink-0">
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-[#D82128]/15 flex items-center justify-center shrink-0">
             <Truck className="w-5 h-5 text-[#D82128]" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Dispatched</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Courier Dispatched</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">Order {order.order_number}</span>
-              <span className="text-xs text-black font-medium">Sent to Pathao</span>
+              <span className="text-sm font-bold text-white">Order {order.order_number}</span>
+              <span className="text-xs text-white/60 font-medium">Sent to Pathao</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch (error: any) {
       console.error("Error sending to Pathao:", error);
       const errMsg = error?.message || "Failed to send order";
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Pathao Error</span>
-            <span className="text-sm font-bold text-black">{errMsg}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Pathao Error</span>
+            <span className="text-sm font-bold text-white">{errMsg}</span>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } finally {
       setSendingPathaoIds((prev) => {
         const next = new Set(prev);
@@ -693,43 +693,43 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       if (data?.fraudError) {
         // Show the real error from the API so the user can diagnose it
         toast.custom(() => (
-          <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
-            <div className="h-9 w-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
+          <DarkToast className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-red-500/15 border border-red-400/20 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-black">Fraud check failed</p>
-              <p className="text-[11px] text-black/50 mt-0.5 break-words leading-snug">{data.fraudError}</p>
+              <p className="text-[13px] font-medium text-white">Fraud check failed</p>
+              <p className="text-[11px] text-white/50 mt-0.5 break-words leading-snug">{data.fraudError}</p>
             </div>
-          </div>
-        ), { duration: 10000 });
+          </DarkToast>
+        ), { duration: 10000, fit: true });
         return;
       }
 
       toast.custom(() => (
-        <div className="flex items-center gap-3 px-4 py-3.5">
-          <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+        <DarkToast className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-emerald-500/15 border border-emerald-400/20 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <p className="text-[13px] font-medium text-black">Order #{order.order_number} verified</p>
-            <p className="text-[11px] text-black/50 mt-0.5">Fraud analysis complete</p>
+            <p className="text-[13px] font-medium text-white">Order #{order.order_number} verified</p>
+            <p className="text-[11px] text-white/50 mt-0.5">Fraud analysis complete</p>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch (error) {
       console.error("Error checking fraud:", error);
       toast.custom(() => (
-        <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
-          <div className="h-9 w-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-4 h-4 text-red-500" />
+        <DarkToast className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-red-500/15 border border-red-400/20 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-red-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium text-black">Fraud check failed</p>
-            <p className="text-[11px] text-black/50 mt-0.5">Could not verify order</p>
+            <p className="text-[13px] font-medium text-white">Fraud check failed</p>
+            <p className="text-[11px] text-white/50 mt-0.5">Could not verify order</p>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } finally {
       setCheckingFraudIds((prev) => {
         const next = new Set(prev);
@@ -774,16 +774,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
 
       if (successCount > 0) {
         toast.custom(() => (
-          <div className="flex items-center gap-3 px-4 py-3 min-w-[280px]">
-            <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+          <DarkToast className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-emerald-500/15 border border-emerald-400/20 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-black">{successCount} orders verified</p>
-              <p className="text-[11px] text-black/50 mt-0.5">Bulk fraud analysis complete</p>
+              <p className="text-[13px] font-medium text-white">{successCount} orders verified</p>
+              <p className="text-[11px] text-white/50 mt-0.5">Bulk fraud analysis complete</p>
             </div>
-          </div>
-        ));
+          </DarkToast>
+        ), { fit: true });
       }
       setSelectedIds(new Set());
     } finally {
@@ -817,16 +817,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
 
     // Show loading toast
     const toastId = toast.custom((t) => (
-      <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-        <div className="h-10 w-10 rounded-xl bg-black/[0.03] flex items-center justify-center shrink-0">
-          <Spinner size="lg" className="text-black" />
+      <DarkToast className="flex items-center gap-4">
+        <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+          <Spinner size="lg" className="text-white" />
         </div>
         <div className="flex flex-col">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-black">Processing</span>
-          <span className="text-sm font-bold text-black">Generating Invoices...</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Processing</span>
+          <span className="text-sm font-bold text-white">Generating Invoices...</span>
         </div>
-      </div>
-    ), { duration: Infinity }); // Keep open until done
+      </DarkToast>
+    ), { duration: Infinity, fit: true }); // Keep open until done
 
     try {
       // Small delay to ensure UI renders before heavy PDF gen blocks thread
@@ -836,33 +836,33 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
 
       toast.dismiss(toastId);
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
+        <DarkToast className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
             <FileText className="w-5 h-5 text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Complete</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Complete</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{selectedOrders.length} Invoices</span>
-              <span className="text-xs text-black font-medium">Generated</span>
+              <span className="text-sm font-bold text-white">{selectedOrders.length} Invoices</span>
+              <span className="text-xs text-white/60 font-medium">Generated</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch (error) {
       console.error("Invoice generation failed:", error);
       toast.dismiss(toastId);
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Error</span>
-            <span className="text-sm font-bold text-black">Failed to generate PDF</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Error</span>
+            <span className="text-sm font-bold text-white">Failed to generate PDF</span>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     }
   };
 
@@ -894,22 +894,22 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       if (!res.ok) throw new Error(data.error || "Failed to delete orders");
 
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <Trash2 className="w-5 h-5 text-red-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+            <Trash2 className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Deleted</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Deleted</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{idsToDelete.length} Orders</span>
+              <span className="text-sm font-bold text-white">{idsToDelete.length} Orders</span>
               {data.deleted !== idsToDelete.length && (
-                <span className="text-xs text-black font-medium">{data.deleted} deleted</span>
+                <span className="text-xs text-white/60 font-medium">{data.deleted} deleted</span>
               )}
-              <span className="text-xs text-black font-medium">Removed from Dashboard</span>
+              <span className="text-xs text-white/60 font-medium">Removed from Dashboard</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
 
       // Clear selection
       setSelectedIds(new Set());
@@ -919,16 +919,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     } catch (error) {
       console.error("Error deleting orders:", error);
       toast.custom((t) => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Delete Failed</span>
-            <span className="text-sm font-bold text-black">Could not delete orders</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Delete Failed</span>
+            <span className="text-sm font-bold text-white">Could not delete orders</span>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } finally {
       setIsDeletingOrders(false);
     }

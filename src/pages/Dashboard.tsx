@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { OrdersTable } from "@/components/OrdersTable";
-import { toast } from "@/components/ui/sonner";
+import { toast, DarkToast } from "@/components/ui/sonner";
 import {
   RefreshCw, ShieldCheck, Search, AlertTriangle,
   Info, CalendarDays, ChevronDown, Check, X,
@@ -462,16 +462,16 @@ export default function Dashboard() {
       setOrders((data.orders as Order[]) || []);
     } catch {
       toast.custom(() => (
-        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
-          <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-4 h-4 text-destructive" />
+        <DarkToast className="flex items-center gap-3">
+          <div className="flex h-9 w-9 rounded-lg bg-red-500/15 items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-red-400" />
           </div>
           <div>
-            <p className="text-sm font-semibold">Failed to load orders</p>
-            <p className="text-xs text-muted-foreground">Check your connection</p>
+            <p className="text-[13px] font-medium text-white">Failed to load orders</p>
+            <p className="text-[11px] text-white/50">Check your connection</p>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } finally { setLoading(false); }
   }, []);
 
@@ -579,16 +579,16 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data.error || "Fraud check failed");
       await fetchOrders();
       toast.custom(() => (
-        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
-          <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4 h-4 text-blue-500" />
+        <DarkToast className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4 text-blue-400" />
           </div>
           <div>
-            <p className="text-sm font-semibold">{data?.successful ?? 0} verified</p>
-            <p className="text-xs text-muted-foreground">of {data?.checked ?? 0} checked</p>
+            <p className="text-[13px] font-medium text-white">{data?.successful ?? 0} verified</p>
+            <p className="text-[11px] text-white/50">of {data?.checked ?? 0} checked</p>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch { toast.error("Fraud check failed"); }
     finally { setCheckingFraud(false); }
   };

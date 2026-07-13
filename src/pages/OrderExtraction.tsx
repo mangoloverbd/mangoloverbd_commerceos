@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion } from "framer-motion";
-import { toast } from "@/components/ui/sonner";
+import { toast, DarkToast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { RichButton } from "@/components/ui/rich-button";
@@ -242,19 +242,19 @@ export default function OrderExtraction() {
       if (!res.ok) throw new Error(data.error || "Failed to create order");
 
       toast.custom(() => (
-        <div className="flex min-w-[300px] items-center gap-4 rounded-2xl border border-black/10 bg-white p-4 shadow-xl">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-500/10">
-            <CheckCircle2 className="w-5 h-5 text-green-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Order Created</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-white/50">Order Created</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-semibold text-foreground">{extractedOrder.customer_name}</span>
-              <span className="text-xs font-medium text-muted-foreground">added to dashboard</span>
+              <span className="text-sm font-semibold text-white">{extractedOrder.customer_name}</span>
+              <span className="text-xs font-medium text-white/60">added to dashboard</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
 
       setOrderText("");
       setExtractedOrder(null);
