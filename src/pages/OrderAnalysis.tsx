@@ -477,7 +477,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
           </p>
         </div>
       ) : (
-        <div className="grid items-stretch gap-4 p-5 xl:h-[520px] xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid items-stretch gap-4 p-5 xl:h-[640px] xl:grid-cols-[1.15fr_0.85fr]">
           <div className="website-behavior-scroll-card h-full min-h-0 overflow-y-auto rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -542,7 +542,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
             </div>
           </div>
 
-          <div className="grid h-full min-h-0 grid-rows-2 gap-4">
+          <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
             <div className="website-behavior-scroll-card min-h-0 overflow-y-auto rounded-2xl border border-black/10 bg-white p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Conversion Drop-off</p>
               {data?.dropOff ? (
