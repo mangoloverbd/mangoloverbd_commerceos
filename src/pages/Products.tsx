@@ -1199,10 +1199,10 @@ export default function Products() {
     all: "All", in_stock: "In stock", low_stock: "Low stock", out_of_stock: "Out of stock",
   };
 
-  // Column grid — fixed equal-width numeric columns for visual alignment
+  // Column grid — product identity stays together; numeric columns stay fixed for alignment.
   const GRID = isAdmin
-    ? "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_180px_84px_112px]"
-    : "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_84px_112px]";
+    ? "grid-cols-[minmax(280px,1.35fr)_minmax(220px,1.65fr)_112px_168px_80px_128px]"
+    : "grid-cols-[minmax(280px,1.35fr)_minmax(220px,1.65fr)_112px_80px_128px]";
 
   return (
     <div className="min-h-full" style={{ fontFamily: SYS }}>
@@ -1370,10 +1370,10 @@ export default function Products() {
                 <button
                   onClick={() => setFilterOpen(v => !v)}
                   className={cn(
-                    "flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors",
+                    "flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] transition-colors",
                     stockFilter !== "all"
                       ? "border-black/20 bg-black text-white"
-                      : "border-black/[0.1] bg-black/[0.04] text-black/40 hover:text-black"
+                      : "border-black/[0.14] bg-white text-black hover:border-black/25 hover:bg-black/[0.03]"
                   )}>
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   {FILTER_LABELS[stockFilter]}
@@ -1392,16 +1392,19 @@ export default function Products() {
                         <button key={f}
                           onClick={() => { setStockFilter(f); setFilterOpen(false); }}
                           className={cn(
-                            "flex w-full items-center gap-2 px-3 py-2 text-[13px] transition-colors hover:bg-black/[0.04]",
+                            "flex w-full items-center justify-between gap-2 px-3 py-2 text-[13px] transition-colors hover:bg-black/[0.04]",
                             stockFilter === f ? "font-semibold text-black" : "text-black/60"
                           )}>
-                          <span className={cn("h-2 w-2 rounded-full",
-                            f === "in_stock"     && "bg-emerald-500",
-                            f === "low_stock"    && "bg-amber-400",
-                            f === "out_of_stock" && "bg-red-500",
-                            f === "all"          && "bg-black/[0.15]"
-                          )} />
-                          {FILTER_LABELS[f]}
+                          <span className="flex items-center gap-2">
+                            <span className={cn("h-2 w-2 rounded-full",
+                              f === "in_stock"     && "bg-emerald-500",
+                              f === "low_stock"    && "bg-amber-400",
+                              f === "out_of_stock" && "bg-red-500",
+                              f === "all"          && "bg-black"
+                            )} />
+                            {FILTER_LABELS[f]}
+                          </span>
+                          {stockFilter === f && <Check className="h-3 w-3 text-black" />}
                         </button>
                       ))}
                     </motion.div>
@@ -1452,12 +1455,12 @@ export default function Products() {
               {/* Column headers */}
               <div className={cn("grid border-b border-black/[0.06] bg-black/[0.02]", GRID)}>
                 {(isAdmin
-                  ? ["", "Product", "Variants", "Price", "Cost", "Margin", "Publish"]
-                  : ["", "Product", "Variants", "Price", "Margin", "Publish"]
+                  ? ["Product", "Variants", "Price", "Cost", "Margin", "Publish"]
+                  : ["Product", "Variants", "Price", "Margin", "Publish"]
                 ).map((h, i, arr) => {
                   const isNumeric = ["Price", "Cost", "Margin"].includes(h);
                   return (
-                    <div key={i} className={cn("px-4 py-2.5", i === 0 && "pl-5", isNumeric && "text-center")}>
+                    <div key={i} className={cn("px-4 py-2.5", i === 0 && "pl-5", isNumeric && "text-center", i === arr.length - 1 && "text-right pr-5")}>
                       <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-black/40">{h}</span>
                     </div>
                   );
@@ -1486,13 +1489,13 @@ export default function Products() {
                     >
                       {/* Row */}
                       <div className={cn(
-                        "group grid cursor-pointer items-start border-b border-black/[0.08] transition-colors hover:bg-black/[0.015]",
+                        "group grid min-h-[72px] cursor-pointer items-start border-b border-black/[0.08] transition-colors hover:bg-black/[0.015]",
                         GRID, (isAdding || isEditing) && "bg-black/[0.01]"
                       )} onClick={() => { setEditingFor(product.id); setAddingProduct(false); }}>
 
-                        {/* Thumbnail */}
-                        <div className="flex items-center py-4 pl-5">
-                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-black/[0.06] bg-black/[0.03]">
+                        {/* Product identity */}
+                        <div className="flex min-w-0 gap-3 px-4 py-3 pl-5">
+                          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-black/[0.08] bg-black/[0.03]">
                             {product.image_url
                               ? <img src={product.image_url} alt={product.name}
                                   className="h-full w-full object-cover"
@@ -1501,35 +1504,34 @@ export default function Products() {
                                   <Package2 className="h-4 w-4 text-black/20" />
                                 </div>
                             }
+                            {product.images?.length > 1 && (
+                              <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/85 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white shadow-sm">
+                                +{product.images.length - 1}
+                              </span>
+                            )}
                           </div>
-                          {product.images?.length > 1 && (
-                            <span className="ml-1 rounded-full bg-black px-1.5 py-0.5 text-[9px] font-bold text-white">
-                              +{product.images.length - 1}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Name + URL + stock (no-variant) */}
-                        <div className="flex min-w-0 flex-col gap-0.5 px-4 py-4">
-                          <p data-testid={`text-product-name-${product.id}`}
-                            className="truncate text-[13px] font-medium text-black">
-                            {product.name}
-                          </p>
-                          {product.url && (
-                            <a href={product.url} target="_blank" rel="noopener noreferrer"
-                              onClick={(event) => event.stopPropagation()}
-                              data-testid={`link-product-${product.id}`}
-                              className="truncate text-[11px] text-black/30 transition-colors hover:text-black/50">
-                              {product.url.replace(/^https?:\/\//, "").substring(0, 42)}
-                            </a>
-                          )}
-                          {product.published && (
-                            <span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                              Published{product.slug ? ` / ${product.slug}` : ""}
-                            </span>
-                          )}
-                          {product.variants.length === 0 && (
-                            <div className="flex items-center gap-1.5">
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <p data-testid={`text-product-name-${product.id}`}
+                              className="truncate text-[13px] font-medium leading-5 text-black">
+                              {product.name}
+                            </p>
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                              {product.url && (
+                                <a href={product.url} target="_blank" rel="noopener noreferrer"
+                                  onClick={(event) => event.stopPropagation()}
+                                  data-testid={`link-product-${product.id}`}
+                                  className="max-w-[210px] truncate text-[11px] leading-4 text-black/35 transition-colors hover:text-black/55">
+                                  {product.url.replace(/^https?:\/\//, "").substring(0, 42)}
+                                </a>
+                              )}
+                              {product.published && (
+                                <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                                  Live{product.slug ? ` / ${product.slug}` : ""}
+                                </span>
+                              )}
+                            </div>
+                            {product.variants.length === 0 && (
+                              <div className="flex items-center gap-1.5">
                               <span className={cn("h-[5px] w-[5px] rounded-full",
                                 ss === "out" && "bg-red-500",
                                 ss === "low" && "bg-amber-400",
@@ -1542,12 +1544,13 @@ export default function Products() {
                               )}>
                                 {ss === "out" ? "Out of stock" : `${stock} in stock`}
                               </span>
-                            </div>
-                          )}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {/* Variant chips */}
-                        <div className="px-4 py-4">
+                        <div className="px-4 py-3">
                           <VariantStrip
                             product={product}
                             isAdmin={isAdmin}
@@ -1556,7 +1559,7 @@ export default function Products() {
                         </div>
 
                         {/* Price — centered under column header */}
-                        <div className="px-4 pt-4 pb-3 text-center">
+                        <div className="px-4 pt-3.5 pb-3 text-center">
                           <span
                             data-testid={`text-selling-price-${product.id}`}
                             className="font-mono text-[13px] tabular-nums text-black"
@@ -1567,7 +1570,7 @@ export default function Products() {
 
                         {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
-                          <div className="px-4 pt-4 pb-3" onClick={(event) => event.stopPropagation()}>
+                          <div className="px-4 pt-3 pb-3" onClick={(event) => event.stopPropagation()}>
                             <div className="relative flex w-full">
                               <div className="relative flex-1">
                                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
@@ -1599,7 +1602,7 @@ export default function Products() {
                         )}
 
                         {/* Margin — centered under column header */}
-                        <div className="px-4 pt-4 pb-3 text-center">
+                        <div className="px-4 pt-3.5 pb-3 text-center">
                           <span
                             data-testid={`text-margin-${product.id}`}
                             className={cn("text-[13px] tabular-nums font-medium",
@@ -1613,7 +1616,7 @@ export default function Products() {
                         </div>
 
                         {/* Publish + delete */}
-                        <div className="flex items-start justify-end gap-2 pt-4 pb-3 pr-3">
+                        <div className="flex items-start justify-end gap-1.5 pt-3 pb-3 pr-4">
                           <button
                             data-testid={`button-edit-product-${product.id}`}
                             onClick={(event) => { event.stopPropagation(); setEditingFor(product.id); setAddingProduct(false); }}
