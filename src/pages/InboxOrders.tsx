@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PopButton } from "@/components/ui/pop-button";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { toast } from "@/components/ui/sonner";
+import { toast, DarkToast } from "@/components/ui/sonner";
 import { format } from "date-fns";
 import {
   MagnifyingGlass, ShoppingBag, Package, NotePencil, Truck,
@@ -574,19 +574,19 @@ export default function InboxOrders() {
       if (!res.ok) throw new Error(d.error || "Failed to send to Steadfast");
       if (d.order) updateLocalOrder(d.order);
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
+        <DarkToast className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
             <Truck size={20} weight="light" className="text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Dispatched</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Courier Dispatched</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{order.contact_name || "Customer"}</span>
-              <span className="text-xs text-black font-medium">Sent to Steadfast</span>
+              <span className="text-sm font-bold text-white">{order.contact_name || "Customer"}</span>
+              <span className="text-xs text-white/60 font-medium">Sent to Steadfast</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Courier dispatch failed");
     } finally {
@@ -606,19 +606,19 @@ export default function InboxOrders() {
       if (!res.ok) throw new Error(d.error || "Failed to send to Pathao");
       if (d.order) updateLocalOrder(d.order);
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
+        <DarkToast className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-xl bg-[#D82128] flex items-center justify-center shrink-0">
             <Truck size={20} weight="light" className="text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Courier Dispatched</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Courier Dispatched</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{order.contact_name || "Customer"}</span>
-              <span className="text-xs text-black font-medium">Sent to Pathao</span>
+              <span className="text-sm font-bold text-white">{order.contact_name || "Customer"}</span>
+              <span className="text-xs text-white/60 font-medium">Sent to Pathao</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Pathao dispatch failed");
     } finally {
@@ -668,19 +668,19 @@ export default function InboxOrders() {
       }
       if (successCount > 0) {
         toast.custom(() => (
-          <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-            <ShieldCheck size={20} weight="light" className="text-blue-500" />
+          <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0">
+            <ShieldCheck size={20} weight="light" className="text-blue-400" />
           </div>
             <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-black">Bulk Analysis</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Bulk Analysis</span>
               <div className="flex items-baseline gap-1">
-                <span className="text-sm font-bold text-black">{successCount} Orders</span>
-                <span className="text-xs text-black font-medium">Verified Successfully</span>
+                <span className="text-sm font-bold text-white">{successCount} Orders</span>
+                <span className="text-xs text-white/60 font-medium">Verified Successfully</span>
               </div>
             </div>
-          </div>
-        ));
+          </DarkToast>
+        ), { fit: true });
       }
       setSelectedIds(new Set());
     } finally {
@@ -693,34 +693,34 @@ export default function InboxOrders() {
     const selectedOrders = allOrders.filter((o) => selectedIds.has(o.id)).map(toInvoiceOrder);
     if (selectedOrders.length === 0) return;
     const toastId = toast.custom(() => (
-      <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-        <div className="h-10 w-10 rounded-xl bg-black/[0.03] flex items-center justify-center shrink-0">
-          <Spinner size="lg" className="text-black" />
+      <DarkToast className="flex items-center gap-4">
+        <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+          <Spinner size="lg" className="text-white" />
         </div>
         <div className="flex flex-col">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-black">Processing</span>
-          <span className="text-sm font-bold text-black">Generating Invoices...</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Processing</span>
+          <span className="text-sm font-bold text-white">Generating Invoices...</span>
         </div>
-      </div>
-    ), { duration: Infinity });
+      </DarkToast>
+    ), { duration: Infinity, fit: true });
     try {
       await new Promise((r) => setTimeout(r, 100));
       await generateInvoice(selectedOrders as Parameters<typeof generateInvoice>[0], orgName);
       toast.dismiss(toastId);
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
+        <DarkToast className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
             <FileText size={20} weight="light" className="text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Complete</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Complete</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{selectedOrders.length} Invoices</span>
-              <span className="text-xs text-black font-medium">Generated</span>
+              <span className="text-sm font-bold text-white">{selectedOrders.length} Invoices</span>
+              <span className="text-xs text-white/60 font-medium">Generated</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch {
       toast.dismiss(toastId);
       toast.error("Failed to generate invoice");
@@ -745,19 +745,19 @@ export default function InboxOrders() {
       setLocalOrders((prev) => (prev ?? data?.orders ?? []).filter((o) => !ids.includes(o.id)));
       setSelectedIds(new Set());
       toast.custom(() => (
-        <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-            <Trash size={20} weight="light" className="text-red-500" />
+        <DarkToast className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+            <Trash size={20} weight="light" className="text-red-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">Deleted</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Deleted</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-black">{ids.length} Orders</span>
-              <span className="text-xs text-black font-medium">Removed</span>
+              <span className="text-sm font-bold text-white">{ids.length} Orders</span>
+              <span className="text-xs text-white/60 font-medium">Removed</span>
             </div>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch {
       toast.error("Failed to delete orders");
     } finally {

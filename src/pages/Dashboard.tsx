@@ -4,10 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { OrdersTable } from "@/components/OrdersTable";
-import { toast } from "@/components/ui/sonner";
+import { toast, DarkToast } from "@/components/ui/sonner";
 import {
   RefreshCw, ShieldCheck, Search, AlertTriangle,
-  Info, CalendarDays, ChevronDown,
+  Info, CalendarDays, ChevronDown, Check, X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -543,16 +543,16 @@ export default function Dashboard() {
       setOrders((data.orders as Order[]) || []);
     } catch {
       toast.custom(() => (
-        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
-          <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-4 h-4 text-destructive" />
+        <DarkToast className="flex items-center gap-3">
+          <div className="flex h-9 w-9 rounded-lg bg-red-500/15 items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-red-400" />
           </div>
           <div>
-            <p className="text-sm font-semibold">Failed to load orders</p>
-            <p className="text-xs text-muted-foreground">Check your connection</p>
+            <p className="text-[13px] font-medium text-white">Failed to load orders</p>
+            <p className="text-[11px] text-white/50">Check your connection</p>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } finally { setLoading(false); }
   }, []);
 
@@ -629,29 +629,29 @@ export default function Dashboard() {
       fetchOrders();
       fetchAnalytics(dateRange);
       toast.custom(() => (
-        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
-          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <RefreshCw className="w-4 h-4 text-primary" />
+        <div className="bg-[#131316] rounded-[14px] shadow-[0px_32px_64px_-16px_rgba(0,0,0,0.30)] shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.30)] shadow-[0px_8px_16px_-4px_rgba(0,0,0,0.24)] shadow-[0px_4px_8px_-2px_rgba(0,0,0,0.24)] shadow-[0px_-8px_16px_-1px_rgba(0,0,0,0.16)] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.24)] shadow-[0px_0px_0px_1px_rgba(0,0,0,1.00)] shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.08)] shadow-[inset_0px_1px_0px_0px_rgba(255,255,255,0.20)] px-4 py-3 flex items-center gap-3 min-w-[300px]">
+          <div className="p-0.5 bg-white/25 rounded-[99px] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.06)] shadow-[0px_1px_2px_-0.5px_rgba(0,0,0,0.06)] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.16)] border border-white/25 flex items-center justify-center overflow-hidden shrink-0">
+            <Check className="w-3.5 h-3.5 text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold">{data.synced} orders synced</p>
-            <p className="text-xs text-muted-foreground">from Shopify</p>
+            <p className="text-white text-[13px] font-medium leading-tight">{data.synced} orders synced</p>
+            <p className="text-white/50 text-[11px] leading-tight">from Shopify</p>
           </div>
         </div>
-      ));
+      ), { fit: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not sync Shopify";
       toast.custom(() => (
-        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
-          <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-4 h-4 text-destructive" />
+        <div className="bg-[#131316] rounded-[14px] shadow-[0px_32px_64px_-16px_rgba(0,0,0,0.30)] shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.30)] shadow-[0px_8px_16px_-4px_rgba(0,0,0,0.24)] shadow-[0px_4px_8px_-2px_rgba(0,0,0,0.24)] shadow-[0px_-8px_16px_-1px_rgba(0,0,0,0.16)] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.24)] shadow-[0px_0px_0px_1px_rgba(0,0,0,1.00)] shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.08)] shadow-[inset_0px_1px_0px_0px_rgba(255,255,255,0.20)] px-4 py-3 flex items-center gap-3 min-w-[300px]">
+          <div className="p-0.5 bg-red-500/30 rounded-[99px] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.06)] shadow-[0px_1px_2px_-0.5px_rgba(0,0,0,0.06)] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.16)] border border-red-400/30 flex items-center justify-center overflow-hidden shrink-0">
+            <X className="w-3.5 h-3.5 text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold">Sync failed</p>
-            <p className="text-xs text-muted-foreground">{msg}</p>
+            <p className="text-white text-[13px] font-medium leading-tight">Sync failed</p>
+            <p className="text-white/50 text-[11px] leading-tight">{msg}</p>
           </div>
         </div>
-      ));
+      ), { fit: true });
     } finally { setSyncing(false); }
   };
 
@@ -663,16 +663,16 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data.error || "Fraud check failed");
       await fetchOrders();
       toast.custom(() => (
-        <div className="bg-background border border-border shadow-lg rounded-xl p-4 flex items-center gap-3 min-w-[300px]">
-          <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4 h-4 text-blue-500" />
+        <DarkToast className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4 text-blue-400" />
           </div>
           <div>
-            <p className="text-sm font-semibold">{data?.successful ?? 0} verified</p>
-            <p className="text-xs text-muted-foreground">of {data?.checked ?? 0} checked</p>
+            <p className="text-[13px] font-medium text-white">{data?.successful ?? 0} verified</p>
+            <p className="text-[11px] text-white/50">of {data?.checked ?? 0} checked</p>
           </div>
-        </div>
-      ));
+        </DarkToast>
+      ), { fit: true });
     } catch { toast.error("Fraud check failed"); }
     finally { setCheckingFraud(false); }
   };

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { RichButton } from "@/components/ui/rich-button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "@/components/ui/sonner";
+import { toast, DarkToast } from "@/components/ui/sonner";
 import { Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "@/components/ui/sparkles";
@@ -68,24 +68,24 @@ export default function Auth() {
             error.message?.toLowerCase().includes("confirm") ||
             error.message?.toLowerCase().includes("not confirmed");
           toast.custom(() => (
-            <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-              <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-red-500">
+            <DarkToast className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-red-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                 </svg>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-black">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">
                   {isUnconfirmed ? "Email Not Confirmed" : "Authentication Failed"}
                 </span>
-                <span className="text-sm font-bold text-black">
+                <span className="text-sm font-bold text-white">
                   {isUnconfirmed
                     ? "Please check your inbox and confirm your email first."
                     : error.message}
                 </span>
               </div>
-            </div>
-          ));
+            </DarkToast>
+          ), { fit: true });
         } else {
           if (rememberMe) {
             window.localStorage.setItem(rememberedEmailKey, email);
@@ -111,33 +111,33 @@ export default function Auth() {
             error.message?.toLowerCase().includes("exists");
           if (isAlreadyRegistered) {
             toast.custom(() => (
-              <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-                <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-amber-600">
+              <DarkToast className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-amber-400">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                   </svg>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-black">Email Already Registered</span>
-                  <span className="text-sm font-bold text-black">This email has an account — please sign in instead</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Email Already Registered</span>
+                  <span className="text-sm font-bold text-white">This email has an account — please sign in instead</span>
                 </div>
-              </div>
-            ));
+              </DarkToast>
+            ), { fit: true });
             switchMode("signin");
           } else {
             toast.custom(() => (
-              <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-                <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-red-500">
+              <DarkToast className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-red-400">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                   </svg>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-black">Sign Up Failed</span>
-                  <span className="text-sm font-bold text-black">{error.message || "Failed to create account"}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Sign Up Failed</span>
+                  <span className="text-sm font-bold text-white">{error.message || "Failed to create account"}</span>
                 </div>
-              </div>
-            ));
+              </DarkToast>
+            ), { fit: true });
           }
           return;
         }
@@ -150,16 +150,16 @@ export default function Auth() {
         }
 
         toast.custom(() => (
-          <div className="bg-white border border-black/5 shadow-2xl rounded-2xl p-4 flex items-center gap-4 min-w-[300px]">
-            <div className="h-10 w-10 rounded-xl bg-red-700 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5 text-black" />
+          <DarkToast className="flex items-center gap-4">
+            <div className="h-10 w-10 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
             </div>
             <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-black">Workspace Created</span>
-              <span className="text-sm font-bold text-black">Your owner account is ready</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Workspace Created</span>
+              <span className="text-sm font-bold text-white">Your owner account is ready</span>
             </div>
-          </div>
-        ));
+          </DarkToast>
+        ), { fit: true });
         navigate("/");
       }
     } catch (err) {
