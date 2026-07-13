@@ -540,8 +540,6 @@ function AddVariantDrawer({
 function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [productUrl, setProductUrl] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
   const [compareAtPrice, setCompareAtPrice] = useState("");
   const [cog, setCog] = useState("");
@@ -602,8 +600,8 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
           products: [{
             name: name.trim(),
             description: description.trim() || null,
-            image_url: imageUrl.trim() || null,
-            url: productUrl.trim() || null,
+            image_url: null,
+            url: null,
             selling_price: sellingPrice ? parseFloat(sellingPrice) || 0 : null,
             compare_at_price: compareAtPrice ? parseFloat(compareAtPrice) || 0 : null,
             cog: parseFloat(cog) || 0,
@@ -645,10 +643,8 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
         </button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <input data-testid="input-manual-product-name" value={name} onChange={e => setName(e.target.value)} placeholder="Product name" className={INPUT_CLS} />
-        <input data-testid="input-manual-product-image" value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="Image URL" className={INPUT_CLS} />
-        <input data-testid="input-manual-product-url" value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="Product URL" className={INPUT_CLS} />
         <input data-testid="input-manual-product-selling-price" type="number" min={0} value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} placeholder="Selling price ৳" className={INPUT_CLS} />
         <input data-testid="input-manual-product-compare-at-price" type="number" min={0} value={compareAtPrice} onChange={e => setCompareAtPrice(e.target.value)} placeholder="Compare price ৳" className={INPUT_CLS} />
         <input data-testid="input-manual-product-cog" type="number" min={0} value={cog} onChange={e => setCog(e.target.value)} placeholder="COG ৳" className={INPUT_CLS} />
@@ -712,13 +708,28 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
           </button>
         </div>
         {variants.map((variant) => (
-          <div key={variant.id} className="grid gap-2 rounded-xl border border-black/[0.06] bg-white p-3 md:grid-cols-[1fr_1fr_100px_100px_120px_32px]">
-            <input value={variant.optionName} onChange={e => updateVariant(variant.id, { optionName: e.target.value })} placeholder="Option, e.g. Color" className={INPUT_CLS} />
-            <input value={variant.optionValue} onChange={e => updateVariant(variant.id, { optionValue: e.target.value })} placeholder="Value, e.g. Black" className={INPUT_CLS} />
-            <input type="number" min={0} value={variant.stock} onChange={e => updateVariant(variant.id, { stock: e.target.value })} placeholder="Stock" className={INPUT_CLS} />
-            <input type="number" min={0} value={variant.cog} onChange={e => updateVariant(variant.id, { cog: e.target.value })} placeholder="COG" className={INPUT_CLS} />
-            <input type="number" value={variant.priceAdjustment} onChange={e => updateVariant(variant.id, { priceAdjustment: e.target.value })} placeholder="Price +/-" className={INPUT_CLS} />
-            <button type="button" onClick={() => setVariants(current => current.filter(item => item.id !== variant.id))} className="flex h-9 items-center justify-center rounded-lg text-black/30 transition-colors hover:bg-red-50 hover:text-red-500">
+          <div key={variant.id} className="grid gap-2 rounded-xl border border-black/[0.06] bg-white p-3 md:grid-cols-[1fr_1fr_110px_110px_130px_32px]">
+            <label className="space-y-1">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-black/35">Option</span>
+              <input value={variant.optionName} onChange={e => updateVariant(variant.id, { optionName: e.target.value })} placeholder="Option, e.g. Color" className={INPUT_CLS} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-black/35">Value</span>
+              <input value={variant.optionValue} onChange={e => updateVariant(variant.id, { optionValue: e.target.value })} placeholder="Value, e.g. Black" className={INPUT_CLS} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-black/35">Stock</span>
+              <input type="number" min={0} value={variant.stock} onChange={e => updateVariant(variant.id, { stock: e.target.value })} placeholder="Stock" className={INPUT_CLS} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-black/35">COG</span>
+              <input type="number" min={0} value={variant.cog} onChange={e => updateVariant(variant.id, { cog: e.target.value })} placeholder="COG ৳" className={INPUT_CLS} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-black/35">Price +/-</span>
+              <input type="number" value={variant.priceAdjustment} onChange={e => updateVariant(variant.id, { priceAdjustment: e.target.value })} placeholder="Price +/-" className={INPUT_CLS} />
+            </label>
+            <button type="button" onClick={() => setVariants(current => current.filter(item => item.id !== variant.id))} className="flex h-9 items-center justify-center rounded-lg text-black/30 transition-colors hover:bg-red-50 hover:text-red-500 md:mt-[18px]">
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
