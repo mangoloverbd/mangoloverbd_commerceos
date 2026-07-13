@@ -1,3 +1,5 @@
+import { normalizeCustomerPhone } from "./customers.js";
+
 function toDayKey(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -10,13 +12,12 @@ function addDays(date, days) {
   return next;
 }
 
-function customerKeys(order) {
-  const keys = [];
-  const phone = String(order.phone || "").replace(/\D/g, "");
+function customerKey(order) {
+  const phone = normalizeCustomerPhone(order.phone);
   const name = String(order.customer_name || "").trim().toLowerCase();
-  if (phone) keys.push(`phone:${phone}`);
-  if (name) keys.push(`name:${name}`);
-  return keys;
+  if (phone) return `phone:${phone}`;
+  if (name) return `name:${name}`;
+  return "";
 }
 
 export function buildSalesTrend(orders, { now = new Date(), days = 365 } = {}) {
@@ -45,11 +46,11 @@ export function buildSalesTrend(orders, { now = new Date(), days = 365 } = {}) {
     const date = toDayKey(order.created_at);
     const day = date ? dayMap.get(date) : null;
     const revenue = Number.parseFloat(order.price || order.cod_amount || 0) || 0;
-    const keys = customerKeys(order);
-    const isExisting = keys.length > 0 && keys.some((key) => seenCustomers.has(key));
+    const key = customerKey(order);
+    const isExisting = key && seenCustomers.has(key);
 
     if (!day) {
-      for (const key of keys) seenCustomers.add(key);
+      if (key) seenCustomers.add(key);
       continue;
     }
 
@@ -63,7 +64,7 @@ export function buildSalesTrend(orders, { now = new Date(), days = 365 } = {}) {
       day.newCustomerOrders += 1;
     }
 
-    for (const key of keys) seenCustomers.add(key);
+    if (key) seenCustomers.add(key);
   }
 
   const maxRevenue = Math.max(...Array.from(dayMap.values()).map((day) => day.totalRevenue), 0);
