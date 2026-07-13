@@ -42,4 +42,12 @@ describe("product image gallery", () => {
     expect(productsSource).toContain("moveImage(image.id, 1)");
     expect(productsSource).toContain("/api/products/${product.id}/images/reorder");
   });
+
+  it("uploads edit-product images immediately and shows a clear remove control", () => {
+    expect(productsSource).toContain("uploadImagesOnSelect");
+    expect(productsSource).toContain("onChange={(event) => void uploadImagesOnSelect(event.target.files)}");
+    expect(productsSource).not.toContain("Upload ${selectedImages.length}");
+    expect(productsSource).toContain("aria-label={`Remove ${image.alt_text || product.name}`}");
+    expect(productsSource).toContain("Trash2 className=\"h-3 w-3\"");
+  });
 });

@@ -750,25 +750,15 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
 }
 
 function ProductImageManager({ product, onChanged }: { product: Product; onChanged: () => Promise<void> }) {
-  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [saving, setSaving] = useState(false);
   const images = product.images ?? [];
 
-  async function selectImages(files: FileList | null) {
+  async function uploadImagesOnSelect(files: FileList | null) {
     try {
-      const picked = await filesToSelectedImages(files, 8 - images.length - selectedImages.length);
-      setSelectedImages((current) => [...current, ...picked]);
-    } catch {
-      toast.error("Failed to read selected images");
-    }
-  }
-
-  async function uploadImages() {
-    if (!selectedImages.length) return;
-    setSaving(true);
-    try {
-      await uploadSelectedProductImages(product.id, selectedImages, product.name);
-      setSelectedImages([]);
+      const picked = await filesToSelectedImages(files, 8 - images.length);
+      if (!picked.length) return;
+      setSaving(true);
+      await uploadSelectedProductImages(product.id, picked, product.name);
       await onChanged();
       toast.success("Images uploaded");
     } catch (e: unknown) {
@@ -825,49 +815,39 @@ function ProductImageManager({ product, onChanged }: { product: Product; onChang
           <p className="text-[12px] text-black/40">First image is used as the public catalog thumbnail. Move images to reorder.</p>
         </div>
         <div className="flex items-center gap-2">
-          {selectedImages.length > 0 && (
-            <button type="button" onClick={uploadImages} disabled={saving} className="rounded-lg bg-black px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-40">
-              {saving ? "Uploading…" : `Upload ${selectedImages.length}`}
-            </button>
-          )}
           <label className="cursor-pointer rounded-lg bg-black/[0.06] px-3 py-1.5 text-[11px] font-semibold text-black/60 transition-colors hover:bg-black/[0.1]">
-            Add images
+            {saving ? "Uploading..." : "Add images"}
             <input
               data-testid={`input-product-images-${product.id}`}
               type="file"
               accept="image/jpeg,image/png,image/webp"
               multiple
               className="sr-only"
-              onChange={(event) => void selectImages(event.target.files)}
+              disabled={saving}
+              onChange={(event) => void uploadImagesOnSelect(event.target.files)}
             />
           </label>
         </div>
       </div>
-      {(images.length > 0 || selectedImages.length > 0) && (
+      {images.length > 0 && (
         <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
           {images.map((image, index) => (
             <div key={image.id} className="group relative aspect-square overflow-hidden rounded-xl border border-black/[0.08] bg-black/[0.03]">
               <img src={image.url} alt={image.alt_text || product.name} className="h-full w-full object-cover" />
               {index === 0 && <span className="absolute left-1 top-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">Primary</span>}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => deleteImage(image.id)}
+                aria-label={`Remove ${image.alt_text || product.name}`}
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm transition-colors hover:bg-red-50 disabled:opacity-30"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
               <div className="absolute inset-x-1 bottom-1 flex justify-between gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button type="button" disabled={saving || index === 0} onClick={() => moveImage(image.id, -1)} className="rounded-md bg-white/90 px-1.5 py-1 text-[10px] font-semibold text-black/60 disabled:opacity-30">Left</button>
                 <button type="button" disabled={saving || index === images.length - 1} onClick={() => moveImage(image.id, 1)} className="rounded-md bg-white/90 px-1.5 py-1 text-[10px] font-semibold text-black/60 disabled:opacity-30">Right</button>
-                <button type="button" disabled={saving} onClick={() => deleteImage(image.id)} className="rounded-md bg-white/90 px-1.5 py-1 text-[10px] font-semibold text-red-500 disabled:opacity-30">Del</button>
               </div>
-            </div>
-          ))}
-          {selectedImages.map((image) => (
-            <div key={image.id} className="group relative aspect-square overflow-hidden rounded-xl border border-dashed border-black/[0.16] bg-black/[0.03]">
-              <img src={image.dataUrl} alt={image.file.name} className="h-full w-full object-cover opacity-70" />
-              <span className="absolute left-1 top-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black/50">New</span>
-              <button
-                type="button"
-                onClick={() => setSelectedImages((current) => current.filter((item) => item.id !== image.id))}
-                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-black/50 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
-                aria-label={`Remove ${image.file.name}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
             </div>
           ))}
         </div>
@@ -1581,7 +1561,7 @@ export default function Products() {
 
                         {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
-                          <div className="mx-auto max-w-[124px] px-2 pt-3 pb-3" onClick={(event) => event.stopPropagation()}>
+                          <div className="mx-auto max-w-[96px] px-1 pt-3 pb-3" onClick={(event) => event.stopPropagation()}>
                             <div className="relative flex w-full">
                               <div className="relative flex-1">
                                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
@@ -1590,7 +1570,7 @@ export default function Products() {
                                   type="number" min={0} value={cogVal}
                                   onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                   onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                  className="h-9 w-full rounded-[12px] pl-7 pr-11 font-mono text-[13px] outline-none tabular-nums focus-visible:ring-2 focus-visible:ring-black/20 bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 transition-all hover:bg-[#E3E3E3]"
+                                  className="h-9 w-full rounded-[12px] pl-7 pr-3 font-mono text-[13px] outline-none tabular-nums focus-visible:ring-2 focus-visible:ring-black/20 bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 transition-all hover:bg-[#E3E3E3] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 />
                               </div>
                               <AnimatePresence>
