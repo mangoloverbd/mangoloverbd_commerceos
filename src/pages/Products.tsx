@@ -1536,7 +1536,7 @@ export default function Products() {
                                 </a>
                               )}
                               {product.published && (
-                                <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                                <span className="rounded-[8px] bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-emerald-700 ring-1 ring-inset ring-emerald-200">
                                   Live{product.slug ? ` / ${product.slug}` : ""}
                                 </span>
                               )}
@@ -1581,7 +1581,7 @@ export default function Products() {
 
                         {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
-                          <div className="px-4 pt-3 pb-3" onClick={(event) => event.stopPropagation()}>
+                          <div className="mx-auto max-w-[124px] px-2 pt-3 pb-3" onClick={(event) => event.stopPropagation()}>
                             <div className="relative flex w-full">
                               <div className="relative flex-1">
                                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>

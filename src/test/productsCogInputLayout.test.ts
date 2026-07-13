@@ -10,4 +10,9 @@ describe("products COG input layout", () => {
     expect(source).toContain('className="h-9 w-full rounded-[12px] pl-7 pr-11');
     expect(source).toContain("absolute right-0 top-0");
   });
+
+  it("keeps product table cost and live badge visually compact", () => {
+    expect(source).toContain("max-w-[124px]");
+    expect(source).toContain("rounded-[8px] bg-emerald-50");
+  });
 });
