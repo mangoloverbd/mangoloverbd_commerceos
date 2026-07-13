@@ -36,14 +36,27 @@ type ProductVariant = {
 type Product = {
   id: string;
   name: string;
+  slug: string | null;
+  description: string | null;
   url: string | null;
   image_url: string | null;
   selling_price: number | null;
+  compare_at_price: number | null;
   cog: number;
   stock_quantity: number;
   source_url: string | null;
+  published: boolean;
+  published_at: string | null;
   created_at: string;
   variants: ProductVariant[];
+};
+
+type ProductsResponse = {
+  storefront?: {
+    id: string;
+    products_url: string;
+  };
+  products: Product[];
 };
 
 type StockFilter = "all" | "in_stock" | "low_stock" | "out_of_stock";
@@ -490,7 +503,7 @@ export default function Products() {
     return () => document.removeEventListener("mousedown", fn);
   }, [filterOpen]);
 
-  const { data, isLoading, refetch } = useQuery<{ products: Product[] }>({
+  const { data, isLoading, refetch } = useQuery<ProductsResponse>({
     queryKey: ["/api/products"],
     queryFn: async () => {
       const res = await apiFetch("/api/products");
@@ -499,7 +512,8 @@ export default function Products() {
     },
   });
 
-  const allProducts = data?.products ?? [];
+  const allProducts = useMemo(() => data?.products ?? [], [data?.products]);
+  const publishedCount = allProducts.filter(p => p.published).length;
 
   // Derived stats (always from full list)
   const totalProducts = allProducts.length;
@@ -586,6 +600,24 @@ export default function Products() {
     finally { setSavingIds(s => { const n = new Set(s); n.delete(product.id); return n; }); }
   }
 
+  async function togglePublished(product: Product) {
+    setSavingIds(s => new Set(s).add(product.id));
+    try {
+      const res = await apiFetch(`/api/products/${product.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ published: !product.published }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to update publish status");
+      await qc.invalidateQueries({ queryKey: ["/api/products"] });
+      toast.success(product.published ? "Product unpublished" : "Product published");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update publish status");
+    } finally {
+      setSavingIds(s => { const n = new Set(s); n.delete(product.id); return n; });
+    }
+  }
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiFetch(`/api/products/${id}`, { method: "DELETE" });
@@ -601,8 +633,8 @@ export default function Products() {
 
   // Column grid — fixed equal-width numeric columns for visual alignment
   const GRID = isAdmin
-    ? "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_180px_84px_44px]"
-    : "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_84px_44px]";
+    ? "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_180px_84px_112px]"
+    : "grid-cols-[52px_minmax(180px,1fr)_minmax(220px,2fr)_120px_84px_112px]";
 
   return (
     <div className="min-h-full" style={{ fontFamily: SYS }}>
@@ -640,9 +672,26 @@ export default function Products() {
             />
           </div>
           <div className="rounded-xl border border-black/[0.08] bg-white px-5 py-3 shadow-sm">
-            <span className="text-[13px] text-black/60">
-              Total cost value: <span className="font-semibold text-black">{fmt(totalCog)}</span>
-            </span>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-[13px] text-black/60">
+                Total cost value: <span className="font-semibold text-black">{fmt(totalCog)}</span>
+                <span className="mx-2 text-black/20">/</span>
+                Published: <span className="font-semibold text-black">{publishedCount}</span>
+              </span>
+              {data?.storefront?.products_url && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(data.storefront!.products_url);
+                    toast.success("Public catalog URL copied");
+                  }}
+                  className="truncate rounded-lg bg-black px-3 py-1.5 text-left text-[11px] font-medium text-white transition-opacity hover:opacity-80"
+                  title={data.storefront.products_url}
+                >
+                  Copy public catalog API
+                </button>
+              )}
+            </div>
           </div>
         </motion.div>
 
@@ -821,8 +870,8 @@ export default function Products() {
               {/* Column headers */}
               <div className={cn("grid border-b border-black/[0.06] bg-black/[0.02]", GRID)}>
                 {(isAdmin
-                  ? ["", "Product", "Variants", "Price", "Cost", "Margin", ""]
-                  : ["", "Product", "Variants", "Price", "Margin", ""]
+                  ? ["", "Product", "Variants", "Price", "Cost", "Margin", "Publish"]
+                  : ["", "Product", "Variants", "Price", "Margin", "Publish"]
                 ).map((h, i, arr) => {
                   const isNumeric = ["Price", "Cost", "Margin"].includes(h);
                   return (
@@ -885,6 +934,11 @@ export default function Products() {
                               {product.url.replace(/^https?:\/\//, "").substring(0, 42)}
                             </a>
                           )}
+                          {product.published && (
+                            <span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                              Published{product.slug ? ` / ${product.slug}` : ""}
+                            </span>
+                          )}
                           {product.variants.length === 0 && (
                             <div className="flex items-center gap-1.5">
                               <span className={cn("h-[5px] w-[5px] rounded-full",
@@ -933,7 +987,7 @@ export default function Products() {
                                   type="number" min={0} value={cogVal}
                                   onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                   onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                  className="h-9 w-full rounded-[12px] pl-7 pr-11 font-mono text-[13px] outline-none tabular-nums focus-visible:ring-2 focus-visible:ring-black/20 bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 transition-all hover:bg-[#E3E3E3]"
+                                  className={cn(INPUT_CLS, "h-9 pl-7 pr-11")}
                                 />
                               </div>
                               <AnimatePresence>
@@ -969,8 +1023,21 @@ export default function Products() {
                           </span>
                         </div>
 
-                        {/* Delete */}
-                        <div className="flex items-start justify-center pt-4 pb-3 pr-3">
+                        {/* Publish + delete */}
+                        <div className="flex items-start justify-end gap-2 pt-4 pb-3 pr-3">
+                          <button
+                            data-testid={`button-toggle-published-${product.id}`}
+                            onClick={() => togglePublished(product)}
+                            disabled={isSaving}
+                            className={cn(
+                              "flex h-8 items-center justify-center rounded-xl px-3 text-[11px] font-semibold transition-all disabled:opacity-40",
+                              product.published
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 hover:bg-emerald-100"
+                                : "bg-black text-white hover:opacity-80"
+                            )}
+                          >
+                            {isSaving ? <Spinner size="sm" /> : product.published ? "Live" : "Publish"}
+                          </button>
                           <button
                             data-testid={`button-delete-product-${product.id}`}
                             onClick={() => deleteMutation.mutate(product.id)}
