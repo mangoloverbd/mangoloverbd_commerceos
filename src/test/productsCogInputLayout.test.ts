@@ -11,7 +11,8 @@ describe("products COG input layout", () => {
     expect(source).toContain("setCogEdits(p => ({ ...p, [product.id]: String(product.cog ?? 0) }))");
     expect(source).toContain("onKeyDown={e => e.key === \"Enter\" && saveCog(product)}");
     expect(source).toContain("data-testid={`button-edit-cog-${product.id}`}");
-    expect(source).toContain('className="h-8 w-full rounded-[8px] bg-black/[0.04] pl-6 pr-2');
+    expect(source).toContain('className="h-8 w-full border-b border-black/25 bg-transparent pl-6 pr-2');
+    expect(source).not.toContain('rounded-[8px] bg-black/[0.04] pl-6 pr-2');
   });
 
   it("keeps product table cost and live badge visually compact", () => {

@@ -1572,7 +1572,7 @@ export default function Products() {
                                   type="number" min={0} value={cogVal}
                                   onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
                                   onKeyDown={e => e.key === "Enter" && saveCog(product)}
-                                  className="h-8 w-full rounded-[8px] bg-black/[0.04] pl-6 pr-2 font-mono text-[13px] outline-none tabular-nums text-black ring-1 ring-inset ring-black/10 transition-all focus-visible:bg-white focus-visible:ring-black/25 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                  className="h-8 w-full border-b border-black/25 bg-transparent pl-6 pr-2 font-mono text-[13px] outline-none tabular-nums text-black transition-colors focus-visible:border-black [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 />
                               </div>
                             ) : (
