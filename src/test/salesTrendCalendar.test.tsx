@@ -51,10 +51,11 @@ describe("GitHubCalendar", () => {
   });
 
   it("sizes y-axis rows to match the sales trend squares", () => {
-    const { getByText } = render(<GitHubCalendar data={days} />);
+    const { container, getByText } = render(<GitHubCalendar data={days} />);
 
     expect(getByText("60k").parentElement?.parentElement).toHaveStyle({
       gridTemplateRows: "repeat(7, 1rem)",
     });
+    expect(container.querySelector("button[style]")).toHaveClass("h-4", "w-4");
   });
 });

@@ -148,9 +148,9 @@ export function GitHubCalendar({ data, loading = false, monthlyRevenue }: GitHub
         <div className="overflow-visible pb-2">
           <div className="min-w-0">
             <div className="grid grid-cols-[92px_1fr] gap-4">
-              <div className="grid gap-[8px] text-left text-[13px] leading-4 text-black/35" style={{ gridTemplateRows: "repeat(7, 1rem)" }}>
+              <div className="grid gap-[8px] text-left text-[13px] leading-none text-black/35" style={{ gridTemplateRows: "repeat(7, 1rem)" }}>
                 {["60k", "50k", "40k", "30k", "20k", "10k", "0k"].map((label) => (
-                  <div key={label} className="flex items-center gap-3">
+                  <div key={label} className="flex h-4 items-center gap-3">
                     <span className="w-8">{label}</span>
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-black/25" />
                     <span className="h-px flex-1 border-t border-dotted border-black/20" />
@@ -169,7 +169,7 @@ export function GitHubCalendar({ data, loading = false, monthlyRevenue }: GitHub
                           onFocus={(event) => showTooltip(day, event.currentTarget)}
                           onMouseLeave={() => setActive(null)}
                           onBlur={() => setActive(null)}
-                          className="aspect-square w-full max-w-4 rounded-[4px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
+                          className="h-4 w-4 rounded-[4px] transition-transform hover:scale-125 focus:outline-none focus:ring-1 focus:ring-black/30"
                           style={{ backgroundColor: colors[Math.max(0, Math.min(4, day.intensity))] }}
                         />
                       ))}
