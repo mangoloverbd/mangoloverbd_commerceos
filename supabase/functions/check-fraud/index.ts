@@ -69,6 +69,13 @@ function parseFraudShieldError(status: number, body: string): string {
     // FraudShield sometimes returns plain text/HTML on upstream failures.
   }
 
+  if (status === 502) {
+    return "FraudShield server returned a 502 Bad Gateway. This usually indicates their origin database or upstream courier sync service is down.";
+  }
+  if (status === 504) {
+    return "FraudShield server returned a 504 Gateway Timeout. The request timed out while querying courier records.";
+  }
+
   if (/BdCourierService|transformApiResponse|null returned/i.test(message)) {
     return "FraudShield is temporarily failing while reading BD Courier data. Please try again later or contact FraudShield support if it continues.";
   }
@@ -98,14 +105,16 @@ async function checkFraudStatus(
     return { fraudData: null, successRate: null, errorMessage: "No API key provided" };
   }
 
+  const trimmedApiKey = apiKey.trim();
+
   try {
     console.log(`Checking fraud status for: ${cleanedPhone}`);
 
     const response = await fetch("https://fraudshield.bd/api/customer/check", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "X-API-Key": apiKey,
+        "Authorization": `Bearer ${trimmedApiKey}`,
+        "X-API-Key": trimmedApiKey,
         "Content-Type": "application/json",
         "Accept": "application/json",
       },
@@ -201,7 +210,7 @@ Deno.serve(async (req) => {
 
     // Key priority: request body → env var → DB (app_settings table)
     let fraudShieldApiKey: string | null =
-      body.apiKey ?? Deno.env.get("FRAUDSHIELD_API_KEY") ?? null;
+      (body.apiKey ?? Deno.env.get("FRAUDSHIELD_API_KEY") ?? null)?.trim() ?? null;
 
     if (!fraudShieldApiKey) {
       try {
@@ -210,7 +219,7 @@ Deno.serve(async (req) => {
           .select("value")
           .eq("key", "fraudshield_api_key")
           .maybeSingle() as { data: { value: string } | null };
-        fraudShieldApiKey = setting?.value ?? null;
+        fraudShieldApiKey = setting?.value?.trim() ?? null;
       } catch {
         // Table may not exist yet — skip
       }

@@ -11,6 +11,7 @@ import OrderAnalysis from "./pages/OrderAnalysis";
 import OrderExtraction from "./pages/OrderExtraction";
 import OrderChat from "./pages/OrderChat";
 import Products from "./pages/Products";
+import Customers from "./pages/Customers";
 import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 import FacebookInbox from "./pages/FacebookInbox";
@@ -93,6 +94,7 @@ const AppRoutes = () => (
       <Route path="/order-chat" element={<OrderChat />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/products" element={<Products />} />
+      <Route path="/customers" element={<Customers />} />
       <Route path="/inbox/facebook" element={<FacebookInbox />} />
       <Route path="/inbox/instagram" element={<InstagramInbox />} />
       <Route path="/inbox/whatsapp" element={<WhatsappInbox />} />

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { RichButton } from "@/components/ui/rich-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useMe } from "@/hooks/useMe";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 
@@ -1225,6 +1226,10 @@ function DetailView({
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<"idle" | "success" | "error">("idle");
   const Icon = section.icon;
+  const { data: me } = useMe();
+  const trackerSnippet = me?.orgId
+    ? `<script src="${window.location.origin}/api/tracker.js?org=${me.orgId}"></script>`
+    : "";
 
   useEffect(() => {
     const init: Settings = {};
@@ -1324,6 +1329,64 @@ function DetailView({
           </div>
         ))}
       </div>
+
+      {section.id === "custom-store" && me?.orgId && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-emerald-500">
+              <Eye className="h-4 w-4 text-white" strokeWidth={1.8} />
+            </div>
+            <div>
+              <p className="text-[13px] font-semibold text-black">Live Visitor Tracking</p>
+              <p className="text-[11px] text-black/40">Show real-time custom website visitors on the dashboard.</p>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-[14px] border border-black/[0.08] bg-white p-5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/35">Embed this script tag</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-black/45">
+                Paste this before the closing <code className="rounded bg-black/[0.06] px-1 font-mono text-[10px]">&lt;/body&gt;</code> tag on every page of the business website.
+              </p>
+            </div>
+
+            <div className="relative">
+              <code className="block overflow-x-auto rounded-[10px] border border-black/[0.08] bg-black/[0.03] px-3 py-3 pr-14 font-mono text-[11px] leading-relaxed text-black">
+                {trackerSnippet}
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(trackerSnippet);
+                  toast.success("Tracker script copied");
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[10px] font-medium text-black/45 transition-colors hover:bg-black/[0.05] hover:text-black"
+              >
+                Copy
+              </button>
+            </div>
+
+            <div className="rounded-[10px] border border-emerald-500/15 bg-emerald-500/[0.04] p-3">
+              <p className="text-[11px] font-medium text-black/60">PostHog-powered analytics</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-black/45">
+                This same script also sends visitor events to Merchant-Suite's analytics pipeline for PostHog-powered reports, and merchants do not need a PostHog account or any extra PostHog script.
+              </p>
+            </div>
+
+            <div className="rounded-[10px] border border-black/[0.06] bg-black/[0.02] p-3">
+              <p className="text-[11px] font-medium text-black/50">Optional behavior events</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-black/40">
+                Call these from the website when the customer adds to cart, starts checkout, or completes purchase.
+              </p>
+              <code className="mt-2 block whitespace-pre-wrap rounded-[8px] bg-white p-2 font-mono text-[10px] leading-relaxed text-black/70">
+{`window.MerchantSuiteTracker?.track("cart");
+window.MerchantSuiteTracker?.track("checkout");
+window.MerchantSuiteTracker?.track("purchased");`}
+              </code>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-3">

@@ -18,8 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
-    PanelLeftClose,
-    PanelLeftOpen,
     Home,
     Download,
     Package,
@@ -66,6 +64,12 @@ export function AppSidebar() {
                     title: "Products",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 14 14" className={iconCls}><g fill="none" fillRule="evenodd" clipRule="evenodd"><path fill="currentColor" style={{fill: 'var(--fillg)'}} d="M3.496 10.511q.027.283.057.56a3.005 3.005 0 0 0 2.644 2.652c.777.086 1.601.164 2.45.164s1.674-.078 2.45-.164a3.005 3.005 0 0 0 2.645-2.653c.083-.773.155-1.59.155-2.433s-.072-1.66-.155-2.433a3.005 3.005 0 0 0-2.645-2.653a42 42 0 0 0-.593-.062c.056.604.098 1.232.098 1.874c0 .842-.072 1.66-.155 2.433a3.005 3.005 0 0 1-2.645 2.653c-.776.087-1.6.164-2.45.164c-.635 0-1.257-.043-1.856-.102"/><path fill="currentColor" style={{fill: 'var(--fillg)', opacity: 0.4}} d="M2.903.277c.776-.086 1.6-.164 2.45-.164c.849 0 1.673.078 2.45.164a3.005 3.005 0 0 1 2.644 2.653c.083.773.155 1.59.155 2.433s-.072 1.66-.155 2.433a3.005 3.005 0 0 1-2.644 2.653c-.777.086-1.601.164-2.45.164s-1.674-.078-2.45-.164A3.005 3.005 0 0 1 .258 7.796a23 23 0 0 1-.155-2.433c0-.842.072-1.66.155-2.433A3.005 3.005 0 0 1 2.903.277"/></g></svg>,
                     link: "/products",
+                },
+                {
+                    id: "customers",
+                    title: "Customers",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M9 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8" style={{fill: 'var(--fillg)', opacity: 0.4}}/><path fill="currentColor" d="M17 10a3 3 0 1 0 0-6a3 3 0 0 0 0 6M3 19.2C3 15.8 5.686 13 9 13s6 2.8 6 6.2c0 .442-.358.8-.8.8H3.8a.8.8 0 0 1-.8-.8M15.8 19.2c0-1.904-.65-3.66-1.741-5.053A5.4 5.4 0 0 1 17 13.3c2.761 0 5 2.149 5 4.8c0 .497-.403.9-.9.9z" style={{fill: 'var(--fillg)'}}/></svg>,
+                    link: "/customers",
                 },
                 {
                     id: "order-extraction",
@@ -143,9 +147,9 @@ export function AppSidebar() {
                             className="flex min-w-0 items-center gap-1.5 text-[#111] transition-opacity hover:opacity-70"
                             aria-label="Merchant-Suite"
                         >
-                            <Logo className="h-[29px] w-auto shrink-0 -ml-0.5" />
-                            <span className="text-[15.5px] font-bold tracking-tight text-[#111] antialiased">
-                                Merchant-Suite
+                            <Logo className="h-[19px] w-auto shrink-0" />
+                            <span className="text-[19px] font-bold tracking-tight text-[#111] antialiased leading-none">
+                                merchant-suite
                             </span>
                         </Link>
                     )}
@@ -182,7 +186,7 @@ export function AppSidebar() {
                             data-testid="button-sidebar-toggle"
                             title="Collapse sidebar"
                         >
-                            <PanelLeftClose size={17} strokeWidth={1.5} />
+                            <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M6.416 4.767a2.65 2.65 0 0 0-2.65 2.65v8.832a2.65 2.65 0 0 0 2.65 2.65h1.461V4.767h-1.46Zm0-1.767A4.416 4.416 0 0 0 2 7.416v8.833a4.416 4.416 0 0 0 4.416 4.417h11.168A4.416 4.416 0 0 0 22 16.248V7.416A4.416 4.416 0 0 0 17.584 3zm3.228 1.767v14.132h7.94a2.65 2.65 0 0 0 2.65-2.65V7.416a2.65 2.65 0 0 0-2.65-2.65h-7.94Z" clip-rule="evenodd"/></svg>
                         </button>
                     )}
                 </div>
@@ -195,7 +199,7 @@ export function AppSidebar() {
                         data-testid="button-sidebar-toggle-collapsed"
                         title="Expand sidebar"
                     >
-                        <PanelLeftOpen size={17} strokeWidth={1.5} />
+                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" style={{ transform: 'scaleX(-1)' }}><path fill="currentColor" fill-rule="evenodd" d="M6.416 4.767a2.65 2.65 0 0 0-2.65 2.65v8.832a2.65 2.65 0 0 0 2.65 2.65h1.461V4.767h-1.46Zm0-1.767A4.416 4.416 0 0 0 2 7.416v8.833a4.416 4.416 0 0 0 4.416 4.417h11.168A4.416 4.416 0 0 0 22 16.248V7.416A4.416 4.416 0 0 0 17.584 3zm3.228 1.767v14.132h7.94a2.65 2.65 0 0 0 2.65-2.65V7.416a2.65 2.65 0 0 0-2.65-2.65h-7.94Z" clip-rule="evenodd"/></svg>
                     </button>
                 )}
             </SidebarHeader>
@@ -248,8 +252,8 @@ export function AppSidebar() {
                 {/* Copyright */}
                 {!isCollapsed && (
                     <div className="flex items-center justify-between px-4 pb-2">
-                        <p className="text-[9px] text-sidebar-foreground/25">
-                            © 2026 Merchant-Suite
+                        <p className="text-[8px] text-sidebar-foreground/25 whitespace-nowrap">
+                            © 2026 Arc Technology Corporation
                         </p>
                         <Popover>
                             <PopoverTrigger asChild>

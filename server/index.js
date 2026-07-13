@@ -12,6 +12,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
+import { buildCustomers, summarizeCustomers } from "./customers.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -143,6 +144,12 @@ const __dirname = dirname(__filename);
 
 const app = express();
 app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : true }));
+const publicTrackerCors = cors({
+  origin: true,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+  maxAge: 86400,
+});
 
 // Parse JSON and simultaneously capture raw body buffer for webhook HMAC verification.
 // Using the verify callback avoids consuming the stream twice.
@@ -159,6 +166,8 @@ app.use("/api", (req, res, next) => {
   // Exclude webhook endpoints and public config from rate limiting
   if (
     path.startsWith("/webhooks/") ||
+    path === "/tracker.js" ||
+    path === "/live-visitor/ping" ||
     path === "/config"
   ) return next();
   return rateLimitAPI(req, res, next);
@@ -390,6 +399,13 @@ function parseFraudShieldError(status, body) {
     // FraudShield sometimes returns plain text/HTML on upstream failures.
   }
 
+  if (status === 502) {
+    return "FraudShield server returned a 502 Bad Gateway. This usually indicates their origin database or upstream courier sync service is down.";
+  }
+  if (status === 504) {
+    return "FraudShield server returned a 504 Gateway Timeout. The request timed out while querying courier records.";
+  }
+
   if (/BdCourierService|transformApiResponse|null returned/i.test(message)) {
     return "FraudShield is temporarily failing while reading BD Courier data. Please try again later or contact FraudShield support if it continues.";
   }
@@ -410,12 +426,14 @@ async function checkFraudStatus(phone, apiKey) {
     return { fraudData: null, successRate: null, errorMessage: "No API key provided" };
   }
 
+  const trimmedApiKey = apiKey.trim();
+
   try {
     const response = await fetch("https://fraudshield.bd/api/customer/check", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "X-API-Key": apiKey,
+        Authorization: `Bearer ${trimmedApiKey}`,
+        "X-API-Key": trimmedApiKey,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -424,6 +442,7 @@ async function checkFraudStatus(phone, apiKey) {
 
     if (!response.ok) {
       const errorBody = await response.text();
+      console.error(`[FraudShield] API returned error for ${cleanedPhone}: status ${response.status}, body: ${errorBody}`);
       return {
         fraudData: null,
         successRate: null,
@@ -2891,6 +2910,293 @@ async function buildForecastNarrative(payload) {
   }
 }
 
+function emptyWebsiteBehaviorPayload(configured = true, lookbackDays = 30) {
+  return {
+    configured,
+    lookbackDays,
+    funnel: {
+      visitors: 0,
+      productViews: 0,
+      carts: 0,
+      checkouts: 0,
+      purchases: 0,
+      conversionRate: 0,
+    },
+    dropOff: null,
+    productDemand: [],
+    trafficSources: [],
+  };
+}
+
+function productNameFromUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    const parts = url.pathname.split("/").filter(Boolean);
+    const productIndex = parts.findIndex((part) => ["product", "products"].includes(part.toLowerCase()));
+    const slug = productIndex >= 0 ? parts[productIndex + 1] : parts[parts.length - 1];
+    if (!slug) return "Homepage";
+    return decodeURIComponent(slug)
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  } catch {
+    return "Unknown product";
+  }
+}
+
+function extractPostHogTrafficSource(url, referrer) {
+  try {
+    const parsedUrl = new URL(String(url || ""));
+    const utmSource = parsedUrl.searchParams.get("utm_source");
+    if (utmSource) return utmSource.trim().toLowerCase();
+  } catch { /* ignore invalid event URL */ }
+
+  try {
+    const host = new URL(String(referrer || "")).hostname.replace(/^www\./, "");
+    if (!host) return "Direct";
+    if (host.includes("facebook") || host.includes("fb.")) return "Facebook";
+    if (host.includes("instagram")) return "Instagram";
+    if (host.includes("tiktok")) return "TikTok";
+    if (host.includes("google")) return "Google";
+    if (host.includes("youtube")) return "YouTube";
+    return host;
+  } catch {
+    return "Direct";
+  }
+}
+
+async function queryPostHogHogql(query, values = {}) {
+  const personalApiKey = process.env.POSTHOG_PERSONAL_API_KEY;
+  const projectId = process.env.POSTHOG_PROJECT_ID;
+  if (!personalApiKey || !projectId) return null;
+
+  const host = (process.env.POSTHOG_HOST || "https://app.posthog.com").replace(/\/+$/, "");
+  const response = await fetch(`${host}/api/projects/${projectId}/query/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${personalApiKey}`,
+    },
+    body: JSON.stringify({
+      query: {
+        kind: "HogQLQuery",
+        query,
+        values,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`PostHog query failed (${response.status}): ${body.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+function pctDropOff(from, to) {
+  if (!from || from <= 0) return 0;
+  return Math.max(0, Math.min(100, Number((((from - to) / from) * 100).toFixed(1))));
+}
+
+function buildWebsiteBehaviorDropOff(funnel) {
+  const candidates = [
+    {
+      step: "Product View to Cart",
+      rate: pctDropOff(funnel.productViews, funnel.carts),
+      hint: "Improve product page clarity, price trust, and add-to-cart visibility.",
+      summary: "Shoppers are interested enough to view products, but the product page is not giving enough confidence to add items to cart.",
+    },
+    {
+      step: "Cart to Checkout",
+      rate: pctDropOff(funnel.carts, funnel.checkouts),
+      hint: "Review delivery cost, cart friction, and checkout CTA placement.",
+      summary: "Customers are adding items, but something in the cart is making checkout feel unclear or not worth continuing.",
+    },
+    {
+      step: "Checkout to Purchase",
+      rate: pctDropOff(funnel.checkouts, funnel.purchases),
+      hint: "Check payment trust, form length, and courier promise clarity.",
+      summary: "Customers reach checkout, but they still need stronger trust, simpler forms, and clearer delivery expectations before placing the order.",
+    },
+  ];
+  const meaningful = candidates.filter((candidate) => candidate.rate > 0);
+  return meaningful.sort((a, b) => b.rate - a.rate)[0] || null;
+}
+
+function fallbackWebsiteBehaviorDropOffBullets(dropOff) {
+  if (!dropOff) return [];
+  if (dropOff.step === "Checkout to Purchase") {
+    return [
+      "Add COD, delivery time, and return-policy reassurance near the submit button.",
+      "Remove optional fields or split checkout into fewer visible decisions.",
+      "Show a clear courier promise before the final order action.",
+    ];
+  }
+  if (dropOff.step === "Cart to Checkout") {
+    return [
+      "Make delivery fee and total cost visible before checkout starts.",
+      "Keep the checkout CTA sticky or repeated near cart totals.",
+      "Reduce cart distractions that pull shoppers away from checkout.",
+    ];
+  }
+  return [
+    "Put price, benefits, and product proof above the first scroll break.",
+    "Move the add-to-cart button closer to product details on mobile.",
+    "Add trust cues such as reviews, delivery promise, and return clarity.",
+  ];
+}
+
+async function buildWebsiteBehaviorDropOffBullets(dropOff, funnel) {
+  const fallback = fallbackWebsiteBehaviorDropOffBullets(dropOff);
+  if (!dropOff || !process.env.OPENAI_API_KEY) return fallback;
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Return JSON only: {\"bullets\":[\"...\",\"...\",\"...\"]}. Write concise ecommerce operator advice for Bangladesh. No markdown." },
+          { role: "user", content: JSON.stringify({ dropOff, funnel }) },
+        ],
+        temperature: 0.2,
+      }),
+    });
+    if (!response.ok) return fallback;
+    const json = await response.json();
+    const parsed = JSON.parse(json.choices?.[0]?.message?.content || "{}");
+    const bullets = Array.isArray(parsed.bullets) ? parsed.bullets.map((item) => String(item).trim()).filter(Boolean).slice(0, 3) : [];
+    return bullets.length ? bullets : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const lookbackDays = Math.max(7, Math.min(90, parseInt(req.query.days || "30", 10) || 30));
+
+    if (!process.env.POSTHOG_PERSONAL_API_KEY || !process.env.POSTHOG_PROJECT_ID) {
+      return res.json(emptyWebsiteBehaviorPayload(false, lookbackDays));
+    }
+
+    try {
+      const eventFilter = `
+        event = 'merchant_suite_live_visitor'
+        AND properties.org_id = {orgId}
+        AND timestamp >= now() - INTERVAL ${lookbackDays} DAY
+      `;
+      const purchaseFilter = `properties.bucket = 'purchased' AND (properties.explicit = true OR match(coalesce(properties.url, ''), '(thank[-_]?you|order[-_]?received|order[-_]?confirmation|order[-_]?placed|purchase[-_]?complete|payment[-_]?success)'))`;
+      const [funnelRows, demandRows, sourceRows] = await Promise.all([
+        queryPostHogHogql(`
+          SELECT
+            uniq(distinct_id) AS visitors,
+            uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS productViews,
+            uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
+            uniqIf(distinct_id, properties.bucket = 'checkout') AS checkouts,
+            uniqIf(distinct_id, ${purchaseFilter}) AS purchases
+          FROM events
+          WHERE ${eventFilter}
+        `, { orgId }),
+        queryPostHogHogql(`
+          SELECT
+            coalesce(properties.url, 'Unknown page') AS url,
+            uniqIf(distinct_id, coalesce(properties.bucket, '') = '') AS views,
+            uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
+            uniqIf(distinct_id, properties.bucket = 'checkout') AS checkouts,
+            uniqIf(distinct_id, ${purchaseFilter}) AS purchases
+          FROM events
+          WHERE ${eventFilter}
+          GROUP BY url
+          ORDER BY views DESC
+          LIMIT 8
+        `, { orgId }),
+        queryPostHogHogql(`
+          SELECT
+            coalesce(properties.url, '') AS url,
+            coalesce(properties.referrer, '') AS referrer,
+            uniq(distinct_id) AS visitors,
+            uniqIf(distinct_id, properties.bucket = 'cart') AS carts,
+            uniqIf(distinct_id, ${purchaseFilter}) AS purchases
+          FROM events
+          WHERE ${eventFilter}
+          GROUP BY url, referrer
+          ORDER BY visitors DESC
+          LIMIT 50
+        `, { orgId }),
+      ]);
+
+      const funnelRow = funnelRows?.[0] || [];
+      const funnel = {
+        visitors: Number(funnelRow[0]) || 0,
+        productViews: Number(funnelRow[1]) || 0,
+        carts: Number(funnelRow[2]) || 0,
+        checkouts: Number(funnelRow[3]) || 0,
+        purchases: Number(funnelRow[4]) || 0,
+        conversionRate: Number((((Number(funnelRow[4]) || 0) / Math.max(Number(funnelRow[0]) || 0, 1)) * 100).toFixed(1)),
+      };
+      const productDemand = (demandRows || []).map((row) => {
+        const views = Number(row[1]) || 0;
+        const purchases = Number(row[4]) || 0;
+        return {
+          url: String(row[0] || "Unknown page"),
+          productName: productNameFromUrl(row[0]),
+          views,
+          carts: Number(row[2]) || 0,
+          checkouts: Number(row[3]) || 0,
+          purchases,
+          conversionRate: Number(((purchases / Math.max(views, 1)) * 100).toFixed(1)),
+        };
+      });
+      const sourceMap = new Map();
+      for (const row of sourceRows || []) {
+        const source = extractPostHogTrafficSource(row[0], row[1]);
+        const current = sourceMap.get(source) || { source, visitors: 0, carts: 0, purchases: 0 };
+        current.visitors += Number(row[2]) || 0;
+        current.carts += Number(row[3]) || 0;
+        current.purchases += Number(row[4]) || 0;
+        sourceMap.set(source, current);
+      }
+      const trafficSources = [...sourceMap.values()]
+        .map((source) => ({
+          ...source,
+          conversionRate: Number(((source.purchases / Math.max(source.visitors, 1)) * 100).toFixed(1)),
+        }))
+        .sort((a, b) => b.visitors - a.visitors)
+        .slice(0, 6);
+
+      const dropOff = buildWebsiteBehaviorDropOff(funnel);
+      if (dropOff) dropOff.bullets = await buildWebsiteBehaviorDropOffBullets(dropOff, funnel);
+
+      return res.json({
+        configured: true,
+        lookbackDays,
+        funnel,
+        dropOff,
+        productDemand,
+        trafficSources,
+      });
+    } catch (err) {
+      console.warn("[PostHog] website behavior query failed:", err.message);
+      return res.json(emptyWebsiteBehaviorPayload(true, lookbackDays));
+    }
+  } catch (err) {
+    console.error("[Website Behavior] error:", err);
+    return sendError(res, err);
+  }
+});
+
 app.get("/api/business-forecast", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -3728,6 +4034,361 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
   }
 });
 
+// ─── Live Visitor Tracking ──────────────────────────────────────────────────
+const VISITOR_TTL_MS = 60_000;
+const POSTHOG_CAPTURE_TIMEOUT_MS = 900;
+const memoryLiveVisitors = new Map();
+
+function isValidOrgId(value) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function liveVisitorBucketFromUrl(value) {
+  const url = String(value || "").toLowerCase();
+  if (/\/((thank[-_]?you)|(order[-_]?received)|(order[-_]?confirmation)|(purchase[-_]?complete))\b/.test(url)) return "purchased";
+  if (/\/(checkout|checkouts)\b/.test(url)) return "checkout";
+  if (/\/(cart|basket|bag)\b/.test(url)) return "cart";
+  return null;
+}
+
+function validLiveVisitorBucket(value) {
+  return ["cart", "checkout", "purchased"].includes(value) ? value : null;
+}
+
+function pruneMemoryLiveVisitors(key, now) {
+  const visitors = memoryLiveVisitors.get(key);
+  if (!visitors) return new Map();
+  for (const [sessionId, lastSeen] of visitors.entries()) {
+    if (lastSeen < now - VISITOR_TTL_MS) visitors.delete(sessionId);
+  }
+  if (visitors.size === 0) memoryLiveVisitors.delete(key);
+  return visitors;
+}
+
+async function addLiveVisitorPresence(key, sessionId, now) {
+  if (redisClient) {
+    try {
+      await redisClient.zadd(key, { score: now, member: sessionId });
+      await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
+      return;
+    } catch (err) {
+      console.warn("[LiveVisitor] Redis write failed, falling back to memory:", err.message);
+    }
+  }
+
+  const visitors = pruneMemoryLiveVisitors(key, now);
+  visitors.set(sessionId, now);
+  memoryLiveVisitors.set(key, visitors);
+}
+
+async function countLiveVisitorsForKey(key, now) {
+  if (redisClient) {
+    try {
+      await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
+      const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
+      return Number(count) || 0;
+    } catch (err) {
+      console.warn("[LiveVisitor] Redis count failed, falling back to memory:", err.message);
+    }
+  }
+
+  return pruneMemoryLiveVisitors(key, now).size;
+}
+
+async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket, explicit }) {
+  const apiKey = process.env.POSTHOG_PROJECT_API_KEY;
+  if (!apiKey) return;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), POSTHOG_CAPTURE_TIMEOUT_MS);
+  try {
+    const host = (process.env.POSTHOG_HOST || "https://app.posthog.com").replace(/\/+$/, "");
+    const response = await fetch(`${host}/capture/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        api_key: apiKey,
+        event: "merchant_suite_live_visitor",
+        distinct_id: `${orgId}:${sessionId}`,
+        properties: {
+          org_id: orgId,
+          session_id: sessionId,
+          url: typeof url === "string" ? url : "",
+          referrer: typeof referrer === "string" ? referrer : "",
+          bucket: bucket || null,
+          explicit: explicit === true,
+          source: "custom_website_tracker",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("[PostHog] capture failed:", response.status, response.statusText);
+    }
+  } catch (err) {
+    console.warn("[PostHog] capture failed:", err.message);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+app.options("/api/live-visitor/ping", publicTrackerCors);
+
+app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
+  const orgId = req.query.org;
+  if (!isValidOrgId(orgId)) {
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    return res.status(400).send("/* Merchant-Suite tracker: invalid org */");
+  }
+
+  res.set({
+    "Content-Type": "application/javascript; charset=utf-8",
+    "Cache-Control": "public, max-age=300",
+  });
+
+  return res.send(`(function(){
+  var org = ${JSON.stringify(orgId)};
+  var currentScript = document.currentScript;
+  var endpoint = new URL("/api/live-visitor/ping", currentScript && currentScript.src ? currentScript.src : window.location.href).toString();
+  var storageKey = "merchant_suite_live_sid_" + org;
+  function makeId(){
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==="x"?r:(r&3|8);return v.toString(16);});
+  }
+  function getSessionId(){
+    try {
+      var existing = sessionStorage.getItem(storageKey);
+      if (existing) return existing;
+      var next = makeId();
+      sessionStorage.setItem(storageKey, next);
+      return next;
+    } catch (_) {
+      return makeId();
+    }
+  }
+  var sessionId = getSessionId();
+  function detectBucketFromLocation(value){
+    var text = String(value || "").toLowerCase();
+    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("order placed") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
+    return detectBucketFromText(text);
+  }
+  function ping(bucket, explicit){
+    if (document.hidden) return;
+    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true });
+    try {
+      fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
+    } catch (_) {}
+  }
+  function detectBucketFromText(value){
+    var text = String(value || "").toLowerCase();
+    if (!text) return null;
+    if (text.indexOf("checkout") !== -1 || text.indexOf("check out") !== -1 || text.indexOf("buy now") !== -1) return "checkout";
+    if (text.indexOf("add to cart") !== -1 || text.indexOf("add-to-cart") !== -1 || text.indexOf("add_to_cart") !== -1 || text.indexOf("cart") !== -1 || text.indexOf("basket") !== -1 || text.indexOf("bag") !== -1) return "cart";
+    return null;
+  }
+  function bucketFromElement(el){
+    var node = el;
+    for (var i = 0; node && i < 4; i++, node = node.parentElement) {
+      var text = [node.innerText, node.textContent, node.id, node.className, node.name, node.value, node.getAttribute && node.getAttribute("aria-label"), node.getAttribute && node.getAttribute("data-action"), node.getAttribute && node.getAttribute("href")].join(" ");
+      var bucket = detectBucketFromText(text);
+      if (bucket) return bucket;
+    }
+    return null;
+  }
+  function pingCurrentLocation(){
+    ping(detectBucketFromLocation(window.location.pathname + " " + window.location.search + " " + document.title));
+  }
+  window.MerchantSuiteTracker = window.MerchantSuiteTracker || {};
+  window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); };
+  document.addEventListener("click", function(event){
+    var bucket = bucketFromElement(event.target);
+    if (bucket) setTimeout(function(){ ping(bucket); }, 0);
+  }, true);
+  document.addEventListener("submit", function(event){
+    var bucket = bucketFromElement(event.target);
+    if (bucket) ping(bucket);
+  }, true);
+  ["pushState", "replaceState"].forEach(function(method){
+    var original = history[method];
+    if (typeof original !== "function") return;
+    history[method] = function(){
+      var result = original.apply(this, arguments);
+      window.dispatchEvent(new Event("locationchange"));
+      return result;
+    };
+  });
+  window.addEventListener("popstate", function(){ window.dispatchEvent(new Event("locationchange")); });
+  window.addEventListener("locationchange", function(){ setTimeout(pingCurrentLocation, 0); });
+  pingCurrentLocation();
+  setInterval(ping, 15000);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden) ping(); });
+  window.addEventListener("focus", ping);
+})();`);
+});
+
+app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
+  const { org_id, session_id, url, referrer, bucket, explicit } = req.body || {};
+  if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
+    return res.status(400).json({ error: "Invalid live visitor payload" });
+  }
+
+  try {
+    const allKey = `visitors:${org_id}:all`;
+    const behaviorBucket = validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url);
+    const bucketKey = behaviorBucket ? `visitors:${org_id}:${behaviorBucket}` : null;
+    const now = Date.now();
+    const keys = [allKey, `visitors:${org_id}:cart`, `visitors:${org_id}:checkout`, `visitors:${org_id}:purchased`];
+    await Promise.all(keys.map((key) => countLiveVisitorsForKey(key, now)));
+    await addLiveVisitorPresence(allKey, session_id, now);
+    if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
+    await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket, explicit });
+    return res.json({ ok: true, tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" });
+  } catch (err) {
+    console.warn("[LiveVisitor] Redis ping failed:", err.message);
+    return res.json({ ok: true, tracked: false });
+  }
+});
+
+app.get("/api/live-visitors", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    try {
+      const allKey = `visitors:${orgId}:all`;
+      const cartKey = `visitors:${orgId}:cart`;
+      const checkoutKey = `visitors:${orgId}:checkout`;
+      const purchasedKey = `visitors:${orgId}:purchased`;
+      const now = Date.now();
+      const [count, activeCarts, checkingOut, purchased] = await Promise.all([
+        countLiveVisitorsForKey(allKey, now),
+        countLiveVisitorsForKey(cartKey, now),
+        countLiveVisitorsForKey(checkoutKey, now),
+        countLiveVisitorsForKey(purchasedKey, now),
+      ]);
+      return res.json({
+        count,
+        tracked: true,
+        storage: redisClient ? "redis" : "memory",
+        details: { activeCarts, checkingOut, purchased },
+      });
+    } catch (err) {
+      console.warn("[LiveVisitor] Redis count failed:", err.message);
+      return res.json({ count: 0, tracked: false });
+    }
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+function buildCustomerAiInsight(customer) {
+  const sourceLabel = customer.primarySource === "custom_website" ? "custom website webhook" : customer.primarySource;
+  const riskReason = customer.riskLevel === "low"
+    ? "No major cancellation or return pattern is visible."
+    : `${customer.cancelledOrders || 0} cancelled and ${customer.returnedOrders || 0} returned order(s) across ${customer.totalOrders || 0} order(s).`;
+  const nextAction = customer.riskLevel === "high"
+    ? "Confirm before dispatch and prefer prepaid payment."
+    : customer.segments?.includes("vip")
+      ? "Reward with an early-access offer or bundle discount."
+      : customer.segments?.includes("inactive")
+        ? "Send a win-back message with a clear limited-time offer."
+        : "Follow up with a relevant product recommendation.";
+  return {
+    summary: `${customer.name || "This customer"} has ${customer.totalOrders || 0} order(s), ৳${Math.round(customer.totalSpent || 0).toLocaleString("en-BD")} total spend, and was last seen through ${sourceLabel}.`,
+    riskExplanation: riskReason,
+    nextAction,
+  };
+}
+
+app.get("/api/customers", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const [{ data: orders, error: ordersError }, { data: inboxOrders, error: inboxError }] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("*")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("social_inbox_orders")
+        .select("*")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (ordersError) throw ordersError;
+    if (inboxError) throw inboxError;
+
+    const customers = buildCustomers({ orders: orders || [], inboxOrders: inboxOrders || [] });
+    return res.json({ customers, summary: summarizeCustomers(customers) });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/customers/ai-insight", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    await getUserOrg(supabase, user.id);
+
+    const customer = req.body?.customer;
+    if (!customer || typeof customer !== "object") return res.status(400).json({ error: "customer is required" });
+
+    const fallback = buildCustomerAiInsight(customer);
+    if (!process.env.OPENAI_API_KEY) return res.json({ insight: fallback, source: "rules" });
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: process.env.CUSTOMER_INSIGHT_MODEL || "gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 350,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: "You are a Bangladeshi e-commerce customer intelligence analyst. Return only JSON with summary, riskExplanation, nextAction. Be concise. Do not invent facts outside the provided customer object.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              name: customer.name,
+              phone: customer.phone ? "present" : "missing",
+              totalOrders: customer.totalOrders,
+              totalSpent: customer.totalSpent,
+              averageOrderValue: customer.averageOrderValue,
+              primarySource: customer.primarySource,
+              sources: customer.sources,
+              riskLevel: customer.riskLevel,
+              segments: customer.segments,
+              recentTimeline: Array.isArray(customer.timeline) ? customer.timeline.slice(0, 5) : [],
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) return res.json({ insight: fallback, source: "rules" });
+    const data = await response.json();
+    const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    return res.json({ insight: { ...fallback, ...parsed }, source: "ai" });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/orders", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -4451,7 +5112,7 @@ app.post("/api/check-fraud", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     incrementUsage(orgId, "fraud_checks").catch(() => {});
-    const fraudShieldApiKey = process.env.FRAUDSHIELD_API_KEY;
+    const fraudShieldApiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
     if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
     if (orderId) {
@@ -4541,7 +5202,7 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
     const { phone: rawPhone } = parseInboxOrderNotes(order.notes);
     if (!rawPhone) return res.status(400).json({ error: "No phone number found in this order's notes" });
 
-    const fraudShieldApiKey = process.env.FRAUDSHIELD_API_KEY;
+    const fraudShieldApiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
     if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
     const { fraudData, errorMessage } = await checkFraudStatus(rawPhone, fraudShieldApiKey);

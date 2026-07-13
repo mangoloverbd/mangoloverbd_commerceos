@@ -15,6 +15,7 @@ import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-cale
 import { ProductMixDonut } from "@/components/ProductMixDonut";
 
 const FIVE_HOURS_IN_MS = 5 * 60 * 60 * 1000;
+const WEBSITE_BEHAVIOR_REFETCH_MS = 30 * 1000;
 
 type ProductStatus = "stockout" | "shutdown_candidate" | "dead_stock" | "winner" | "stable";
 
@@ -65,8 +66,48 @@ type ForecastResponse = {
   aiSummary: string;
 };
 
+type WebsiteBehaviorResponse = {
+  configured: boolean;
+  lookbackDays: number;
+  funnel: {
+    visitors: number;
+    productViews: number;
+    carts: number;
+    checkouts: number;
+    purchases: number;
+    conversionRate: number;
+  };
+  dropOff: {
+    step: string;
+    rate: number;
+    hint: string;
+    summary?: string;
+    bullets?: string[];
+  } | null;
+  productDemand: Array<{
+    url: string;
+    productName: string;
+    views: number;
+    carts: number;
+    checkouts: number;
+    purchases: number;
+    conversionRate: number;
+  }>;
+  trafficSources: Array<{
+    source: string;
+    visitors: number;
+    carts: number;
+    purchases: number;
+    conversionRate: number;
+  }>;
+};
+
 function fmtBDT(value: number) {
   return "৳" + Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 0 });
+}
+
+function fmtPct(value: number) {
+  return `${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 1 })}%`;
 }
 
 function statusLabel(status: ProductStatus) {
@@ -107,6 +148,18 @@ export default function OrderAnalysis() {
     staleTime: FIVE_HOURS_IN_MS,
   });
 
+  const { data: websiteBehavior, isLoading: behaviorLoading, refetch: refetchWebsiteBehavior } = useQuery<WebsiteBehaviorResponse>({
+    queryKey: ["/api/order-analysis/website-behavior"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/order-analysis/website-behavior");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load website behavior");
+      return json;
+    },
+    staleTime: 0,
+    refetchInterval: WEBSITE_BEHAVIOR_REFETCH_MS,
+  });
+
   const products = data?.productForecasts ?? [];
   const stockoutRisks = data?.stockoutRisks ?? [];
   const shutdownCandidates = data?.shutdownCandidates ?? [];
@@ -131,7 +184,10 @@ export default function OrderAnalysis() {
             <RichButton
               color="default"
               size="default"
-              onClick={() => refetch()}
+              onClick={() => {
+                refetch();
+                refetchWebsiteBehavior();
+              }}
               disabled={isFetching}
             >
               {isFetching ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
@@ -150,6 +206,8 @@ export default function OrderAnalysis() {
             ))}
           </div>
         </motion.div>
+
+        <WebsiteBehaviorPanel data={websiteBehavior} loading={behaviorLoading} />
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -378,6 +436,195 @@ function Metric({ value, muted }: { value: string; muted?: string }) {
   );
 }
 
+function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorResponse; loading: boolean }) {
+  const steps = [
+    { label: "Visitors", value: data?.funnel.visitors ?? 0 },
+    { label: "Product Views", value: data?.funnel.productViews ?? 0 },
+    { label: "Added to Cart", value: data?.funnel.carts ?? 0 },
+    { label: "Checkout", value: data?.funnel.checkouts ?? 0 },
+    { label: "Purchased", value: data?.funnel.purchases ?? 0 },
+  ];
+  const defaultTrafficSources = ["Direct", "Facebook", "Instagram", "Google"];
+  const trafficSources = defaultTrafficSources.map((source) => {
+    const actual = data?.trafficSources.find((item) => item.source.toLowerCase() === source.toLowerCase());
+    return actual || { source, visitors: 0, carts: 0, purchases: 0, conversionRate: 0 };
+  });
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.02 }}
+      className="overflow-hidden rounded-2xl border border-black/10 bg-white"
+    >
+      <div className="flex h-[50px] items-center border-b border-black/10 px-6">
+        <div className="flex items-center gap-2.5">
+          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+          <AnimatedText className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Website Funnel</AnimatedText>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="h-[220px] animate-pulse rounded-2xl bg-black/[0.05]" />
+          <div className="h-[220px] animate-pulse rounded-2xl bg-black/[0.05]" />
+        </div>
+      ) : data?.configured === false ? (
+        <div className="px-6 py-10 text-center">
+          <p className="text-sm font-semibold text-foreground">PostHog query credentials are not configured</p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            Add POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID to unlock Website Funnel, Conversion Drop-off, Product Demand Signals, and Traffic Source Performance.
+          </p>
+        </div>
+      ) : (
+        <div className="grid items-stretch gap-4 p-5 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="h-full rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Conversion Flow</p>
+                <h3 className="mt-2 font-sf-display text-5xl font-light leading-none tracking-[-0.06em] text-foreground">
+                  {fmtPct(data?.funnel.conversionRate ?? 0)}
+                </h3>
+                <p className="mt-3 text-sm font-medium text-muted-foreground">
+                  {(data?.funnel.purchases ?? 0).toLocaleString("en-BD")} purchase{(data?.funnel.purchases ?? 0) === 1 ? "" : "s"} from {(data?.funnel.visitors ?? 0).toLocaleString("en-BD")} tracked visitors
+                </p>
+              </div>
+              <div className="rounded-full bg-black px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+                Live web
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30">Funnel Counters</p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                {steps.map((step) => (
+                  <div key={step.label} className="metric-card rounded-[14px] border border-black/[0.08] bg-white px-3.5 py-3 transition-colors hover:bg-black/[0.025]">
+                    <p className="text-[11px] font-medium leading-tight text-black/50">{step.label}</p>
+                    <p className="mt-2 font-sf-display text-[26px] font-medium leading-none tracking-[-0.045em] text-foreground tabular-nums">
+                      {step.value.toLocaleString("en-BD")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-black/10 bg-white p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Main Leak</p>
+                <p className="mt-3 text-base font-semibold tracking-tight text-foreground">{data?.dropOff?.step || "No drop-off yet"}</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data?.dropOff?.summary || data?.dropOff?.hint || "More traffic is needed before a reliable leak appears."}</p>
+              </div>
+              <div className="rounded-2xl border border-black/10 bg-white p-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Best Signal</p>
+                <p className="mt-3 text-base font-semibold leading-snug tracking-tight text-foreground">{data?.productDemand[0]?.productName || "No product signal"}</p>
+                {data?.productDemand[0]?.url && (
+                  <p className="mt-1 break-all text-[11px] leading-relaxed text-muted-foreground">{data.productDemand[0].url}</p>
+                )}
+                {data?.productDemand[0] ? (
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="best-signal-stat rounded-[12px] border border-black/[0.08] bg-black/[0.025] px-3 py-2">
+                      <p className="text-[10px] font-medium text-black/45">Views</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.productDemand[0].views.toLocaleString("en-BD")}</p>
+                    </div>
+                    <div className="best-signal-stat rounded-[12px] border border-black/[0.08] bg-black/[0.025] px-3 py-2">
+                      <p className="text-[10px] font-medium text-black/45">Carts</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.productDemand[0].carts.toLocaleString("en-BD")}</p>
+                    </div>
+                    <div className="best-signal-stat rounded-[12px] border border-black/[0.08] bg-black/[0.025] px-3 py-2">
+                      <p className="text-[10px] font-medium text-black/45">Purchases</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.productDemand[0].purchases.toLocaleString("en-BD")}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Product demand signals will appear after tracked product visits.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid h-full grid-rows-2 gap-4">
+            <div className="rounded-2xl border border-black/10 bg-white p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Conversion Drop-off</p>
+              {data?.dropOff ? (
+                <>
+                  <div className="mt-3 flex items-end justify-between gap-4">
+                    <div>
+                      <h3 className="font-sf-display text-xl font-light tracking-tight text-foreground">{data.dropOff.step}</h3>
+                      {data.dropOff.bullets?.length ? (
+                        <ul className="mt-3 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-muted-foreground">
+                          {data.dropOff.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{data.dropOff.hint}</p>
+                      )}
+                    </div>
+                    <p className="text-3xl font-light tabular-nums text-red-600">{fmtPct(data.dropOff.rate)}</p>
+                  </div>
+                </>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No meaningful drop-off detected yet.</p>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-black/10 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Product Demand Signals</p>
+                <span className="text-xs text-muted-foreground">{data?.productDemand.length ?? 0} pages</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {data?.productDemand.length ? data.productDemand.slice(0, 4).map((item) => (
+                  <div key={item.url} className="grid gap-2 rounded-xl bg-black/[0.025] p-3 md:grid-cols-[1fr_auto] md:items-center">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground">{item.productName}</p>
+                      <p className="mt-0.5 break-all text-[10px] text-muted-foreground">{item.url}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {item.views.toLocaleString("en-BD")} views · {item.carts.toLocaleString("en-BD")} carts · {item.purchases.toLocaleString("en-BD")} purchases
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold tabular-nums text-foreground">{fmtPct(item.conversionRate)}</p>
+                  </div>
+                )) : (
+                  <p className="text-sm text-muted-foreground">No product demand signals yet. Install the custom website tracker and wait for visitor events.</p>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          <div className="col-span-full rounded-2xl border border-black/10 bg-white p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Traffic Source Performance</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Campaign quality by visitor source, cart intent, and completed purchases.</p>
+              </div>
+              <span className="text-xs text-muted-foreground">{data?.trafficSources.length ?? 0} sources</span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {trafficSources.map((item) => (
+                <div key={item.source} className="rounded-2xl bg-black/[0.025] p-4">
+                  <div className="grid min-h-[112px] content-between gap-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{item.source}</p>
+                      {item.visitors || item.carts || item.purchases ? (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {item.visitors.toLocaleString("en-BD")} visitors · {item.carts.toLocaleString("en-BD")} carts · {item.purchases.toLocaleString("en-BD")} purchases
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-muted-foreground">No tracked purchases yet</p>
+                      )}
+                    </div>
+                    <p className="text-2xl font-medium tracking-[-0.05em] text-foreground tabular-nums">{fmtPct(item.conversionRate)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
 function ExecutiveProductMix({
   products,
   stockoutRisks,
@@ -512,7 +759,7 @@ function ForecastMetricCard({ label, value, loading, icon }: { label: string; va
           background: "#F7F7F6",
           borderRadius: "10px",
           border: "1px solid rgba(0,0,0,0.05)",
-          padding: "12px 14px",
+          padding: "8px 10px",
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
         }}
       >

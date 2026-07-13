@@ -274,6 +274,85 @@ function DashboardTextEffect({
   );
 }
 
+function LiveVisitorsCounter() {
+  const [count, setCount] = useState(0);
+  const [details, setDetails] = useState({ activeCarts: 0, checkingOut: 0, purchased: 0 });
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCount = async () => {
+      try {
+        const res = await apiFetch("/api/live-visitors", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setCount(Number(data.count) || 0);
+          setDetails({
+            activeCarts: Number(data.details?.activeCarts) || 0,
+            checkingOut: Number(data.details?.checkingOut) || 0,
+            purchased: Number(data.details?.purchased) || 0,
+          });
+        }
+      } catch {
+        // Non-critical dashboard signal.
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    };
+
+    fetchCount();
+    const interval = window.setInterval(fetchCount, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  if (!loaded) return null;
+
+  const behaviorRows = [
+    { label: "Active carts", value: details.activeCarts },
+    { label: "Checking out", value: details.checkingOut },
+    { label: "Purchased", value: details.purchased },
+  ];
+
+  return (
+    <div className="group relative">
+      <div className="flex h-8 cursor-default items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
+        <span className="relative flex h-2 w-2">
+          {count > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
+          <span className={cn("relative inline-flex h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/20")} />
+        </span>
+        {count} online
+      </div>
+
+      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 translate-y-1 rounded-xl border border-black/[0.08] bg-white p-4 opacity-0 shadow-[0_10px_30px_rgba(0,0,0,0.08)] transition-all duration-150 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/35">Visitors right now</p>
+            <p className="mt-1 text-2xl font-light leading-none text-black tabular-nums">{count}</p>
+          </div>
+          <span className={cn("mt-1 h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/15")} />
+        </div>
+
+        <div className="mt-4 border-t border-black/[0.06] pt-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-black/30">Customer behavior</p>
+          <div className="space-y-2">
+            {behaviorRows.map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-3 text-[12px]">
+                <span className="text-black/50">{row.label}</span>
+                <span className="font-medium text-black tabular-nums">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FinanceMetric({
   label,
   loading,
@@ -300,7 +379,7 @@ function FinanceMetric({
       style={{
         background: "#E9E8E5",
         borderRadius: "14px",
-        padding: "4px",
+        padding: "3px",
         border: "1.5px solid rgba(0,0,0,0.07)",
         boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
       }}
@@ -315,7 +394,7 @@ function FinanceMetric({
             style={{
               background: "#F7F7F6",
               borderRadius: "10px",
-              padding: "12px 14px",
+              padding: "9px 12px",
             }}
             className="space-y-2"
           >
@@ -335,7 +414,7 @@ function FinanceMetric({
                 background: "#F7F7F6",
                 borderRadius: "10px",
                 border: "1px solid rgba(0,0,0,0.05)",
-                padding: "12px 14px",
+                padding: "9px 12px",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
               }}
             >
@@ -359,7 +438,7 @@ function FinanceMetric({
                   as="p"
                   per="char"
                   delay={0.12}
-                  className="m-0 text-[22px] font-bold leading-none text-[#222A38] tabular-nums"
+                  className="m-0 text-[20px] font-bold leading-none text-[#222A38] tabular-nums"
                 >
                   {value}
                 </DashboardTextEffect>
@@ -372,15 +451,15 @@ function FinanceMetric({
               <div
                 className="flex items-center justify-between"
                 style={{
-                  padding: "6px 12px",
+                  padding: "5px 10px",
                 }}
               >
                 {/* Trend icon */}
                 <div
                   className="flex items-center justify-center"
                   style={{
-                    width: "16px",
-                    height: "16px",
+                    width: "15px",
+                    height: "15px",
                     borderRadius: "50%",
                     background: "rgba(0,0,0,0.08)",
                   }}
@@ -436,6 +515,8 @@ export default function Dashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
+  const ORDER_PAGE_SIZE = 100;
+  const [orderPage, setOrderPage] = useState(0);
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { orgName } = useOrgName();
@@ -489,7 +570,10 @@ export default function Dashboard() {
   }, [fetchAnalytics]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 200);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setOrderPage(0);
+    }, 200);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -623,6 +707,15 @@ export default function Dashboard() {
     );
   }, [orders, debouncedSearch]);
 
+  // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
+  // which keeps interactions like the avatar menu responsive on the dashboard.
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
+  const orderSafePage = Math.min(orderPage, orderTotalPages - 1);
+  const visibleOrders = useMemo(
+    () => filteredOrders.slice(orderSafePage * ORDER_PAGE_SIZE, (orderSafePage + 1) * ORDER_PAGE_SIZE),
+    [filteredOrders, orderSafePage],
+  );
+
   const metricSparklines = useMemo(() => {
     const series = analytics?.series;
     const empty = [0, 0];
@@ -738,6 +831,7 @@ export default function Dashboard() {
             {analytics?.fbError && (
               <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
             )}
+            <LiveVisitorsCounter />
             <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
             <button
               onClick={() => fetchAnalytics(dateRange)}
@@ -754,7 +848,7 @@ export default function Dashboard() {
           </div>
 
           {/* Metric cards grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <FinanceMetric
               label="Revenue"
               loading={analyticsLoading}
@@ -909,11 +1003,35 @@ export default function Dashboard() {
 
         {/* Table */}
         <OrdersTable
-          orders={filteredOrders}
+          orders={visibleOrders}
           loading={loading}
           onStatusUpdate={handleStatusUpdate}
           onOrderUpdate={handleOrderUpdate}
         />
+
+        {orderTotalPages > 1 && (
+          <div className="relative flex items-center justify-between border-t border-black/10 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setOrderPage((p) => Math.max(0, p - 1))}
+              disabled={orderSafePage === 0}
+              className="rounded-[8px] bg-[#E3E3E3]/80 px-5 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="absolute left-1/2 -translate-x-1/2 text-[11px] font-medium text-black/55 tabular-nums">
+              Page {orderSafePage + 1} of {orderTotalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setOrderPage((p) => Math.min(orderTotalPages - 1, p + 1))}
+              disabled={orderSafePage >= orderTotalPages - 1}
+              className="rounded-[8px] bg-[#E3E3E3]/80 px-5 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </motion.div>
 
     </div>
