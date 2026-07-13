@@ -59,6 +59,15 @@ type ProductsResponse = {
   products: Product[];
 };
 
+type ManualVariantDraft = {
+  id: string;
+  optionName: string;
+  optionValue: string;
+  stock: string;
+  cog: string;
+  priceAdjustment: string;
+};
+
 type StockFilter = "all" | "in_stock" | "low_stock" | "out_of_stock";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -471,6 +480,153 @@ function AddVariantDrawer({
   );
 }
 
+function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: () => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [productUrl, setProductUrl] = useState("");
+  const [sellingPrice, setSellingPrice] = useState("");
+  const [compareAtPrice, setCompareAtPrice] = useState("");
+  const [cog, setCog] = useState("");
+  const [stock, setStock] = useState("");
+  const [published, setPublished] = useState(false);
+  const [variants, setVariants] = useState<ManualVariantDraft[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  function addVariant() {
+    setVariants((current) => [
+      ...current,
+      { id: crypto.randomUUID(), optionName: "Color", optionValue: "", stock: "0", cog: "0", priceAdjustment: "0" },
+    ]);
+  }
+
+  function updateVariant(id: string, patch: Partial<ManualVariantDraft>) {
+    setVariants((current) => current.map((variant) => variant.id === id ? { ...variant, ...patch } : variant));
+  }
+
+  async function submit() {
+    if (!name.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const manualVariants = variants
+        .filter((variant) => variant.optionName.trim() && variant.optionValue.trim())
+        .map((variant) => ({
+          attributes: { [variant.optionName.trim().toLowerCase()]: variant.optionValue.trim() },
+          cog: parseFloat(variant.cog) || 0,
+          stock_quantity: Math.max(0, parseInt(variant.stock, 10) || 0),
+          selling_price: sellingPrice
+            ? (parseFloat(sellingPrice) || 0) + (parseFloat(variant.priceAdjustment) || 0)
+            : null,
+        }));
+
+      const res = await apiFetch("/api/products/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceUrl: "manual",
+          products: [{
+            name: name.trim(),
+            description: description.trim() || null,
+            image_url: imageUrl.trim() || null,
+            url: productUrl.trim() || null,
+            selling_price: sellingPrice ? parseFloat(sellingPrice) || 0 : null,
+            compare_at_price: compareAtPrice ? parseFloat(compareAtPrice) || 0 : null,
+            cog: parseFloat(cog) || 0,
+            stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
+            published,
+            variants: manualVariants,
+          }],
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to add product");
+      await onSaved();
+      toast.success(published ? "Product added and published" : "Product added");
+      onClose();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to add product");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.16 }}
+      className="border-b border-black/[0.08] bg-black/[0.015] px-5 py-5"
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[14px] font-semibold text-black">Add Product</p>
+          <p className="text-[12px] text-black/40">Create a product manually, then publish it to the public catalog.</p>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-lg p-2 text-black/35 transition-colors hover:bg-black/[0.05] hover:text-black">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <input data-testid="input-manual-product-name" value={name} onChange={e => setName(e.target.value)} placeholder="Product name" className={INPUT_CLS} />
+        <input data-testid="input-manual-product-image" value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="Image URL" className={INPUT_CLS} />
+        <input data-testid="input-manual-product-url" value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="Product URL" className={INPUT_CLS} />
+        <input data-testid="input-manual-product-selling-price" type="number" min={0} value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} placeholder="Selling price ৳" className={INPUT_CLS} />
+        <input data-testid="input-manual-product-compare-at-price" type="number" min={0} value={compareAtPrice} onChange={e => setCompareAtPrice(e.target.value)} placeholder="Compare price ৳" className={INPUT_CLS} />
+        <input data-testid="input-manual-product-cog" type="number" min={0} value={cog} onChange={e => setCog(e.target.value)} placeholder="COG ৳" className={INPUT_CLS} />
+        <input data-testid="input-manual-product-stock" type="number" min={0} value={stock} onChange={e => setStock(e.target.value)} placeholder="Stock quantity" className={INPUT_CLS} />
+        <label className="flex h-9 items-center gap-2 rounded-[12px] border border-black/[0.1] bg-white px-3 text-[12px] text-black/60">
+          <input type="checkbox" checked={published} onChange={e => setPublished(e.target.checked)} className="h-4 w-4 accent-black" />
+          Publish now
+        </label>
+      </div>
+
+      <textarea
+        data-testid="input-manual-product-description"
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        placeholder="Description"
+        className="mt-3 min-h-20 w-full rounded-[12px] border border-black/[0.1] bg-black/[0.04] px-3 py-2 text-[13px] text-black outline-none transition-colors placeholder:text-black/25 focus:bg-white focus-visible:ring-1 focus-visible:ring-black/20"
+      />
+
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40">Variants</p>
+          <button data-testid="button-add-manual-variant" type="button" onClick={addVariant} className="rounded-lg bg-black px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-80">
+            Add variant
+          </button>
+        </div>
+        {variants.map((variant) => (
+          <div key={variant.id} className="grid gap-2 rounded-xl border border-black/[0.06] bg-white p-3 md:grid-cols-[1fr_1fr_100px_100px_120px_32px]">
+            <input value={variant.optionName} onChange={e => updateVariant(variant.id, { optionName: e.target.value })} placeholder="Option, e.g. Color" className={INPUT_CLS} />
+            <input value={variant.optionValue} onChange={e => updateVariant(variant.id, { optionValue: e.target.value })} placeholder="Value, e.g. Black" className={INPUT_CLS} />
+            <input type="number" min={0} value={variant.stock} onChange={e => updateVariant(variant.id, { stock: e.target.value })} placeholder="Stock" className={INPUT_CLS} />
+            <input type="number" min={0} value={variant.cog} onChange={e => updateVariant(variant.id, { cog: e.target.value })} placeholder="COG" className={INPUT_CLS} />
+            <input type="number" value={variant.priceAdjustment} onChange={e => updateVariant(variant.id, { priceAdjustment: e.target.value })} placeholder="Price +/-" className={INPUT_CLS} />
+            <button type="button" onClick={() => setVariants(current => current.filter(item => item.id !== variant.id))} className="flex h-9 items-center justify-center rounded-lg text-black/30 transition-colors hover:bg-red-50 hover:text-red-500">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 flex items-center gap-2">
+        <PopButton color="blue" size="sm" type="button" onClick={submit} disabled={saving} className="gap-1.5 px-3 text-[11px] font-bold tracking-normal">
+          {saving ? <Spinner size="sm" /> : <Plus className="h-3.5 w-3.5" />}
+          Save product
+        </PopButton>
+        <PopButton color="default" size="sm" type="button" onClick={onClose} className="px-3 text-[11px] font-bold tracking-normal">
+          Cancel
+        </PopButton>
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Products() {
@@ -487,6 +643,7 @@ export default function Products() {
   const [cogEdits, setCogEdits] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [addingProduct, setAddingProduct] = useState(false);
 
   // Import
   const [crawlUrl, setCrawlUrl] = useState("");
@@ -765,6 +922,16 @@ export default function Products() {
 
             {/* Right: search + filter + refresh */}
             <div className="flex flex-wrap items-center gap-2">
+              <RichButton
+                data-testid="button-add-product"
+                color="default"
+                size="default"
+                onClick={() => setAddingProduct(v => !v)}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Product
+              </RichButton>
+
               {/* Search */}
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-black/25" />
@@ -837,6 +1004,15 @@ export default function Products() {
               </button>
             </div>
           </div>
+
+          <AnimatePresence>
+            {addingProduct && (
+              <AddProductDrawer
+                onClose={() => setAddingProduct(false)}
+                onSaved={() => qc.invalidateQueries({ queryKey: ["/api/products"] })}
+              />
+            )}
+          </AnimatePresence>
 
           {/* ── Table body ── */}
           {isLoading ? (

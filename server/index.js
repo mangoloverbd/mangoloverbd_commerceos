@@ -7140,25 +7140,46 @@ app.post("/api/products/save", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
 
     // Insert product rows (without variants)
-    const rows = products.map((p) => ({
-      name: String(p.name || "").trim(),
-      url: p.url || null,
-      image_url: p.image_url || null,
-      selling_price: p.selling_price != null ? parseFloat(p.selling_price) : null,
-      cog: p.cog != null ? parseFloat(p.cog) : 0,
-      source_url: sourceUrl || null,
-      org_id: orgId,
-    })).filter((r) => r.name);
+    const rows = [];
+    const sourceProducts = [];
+    for (const p of products) {
+      const name = String(p.name || "").trim();
+      if (!name) continue;
+      const published = p.published === true;
+      rows.push({
+        name,
+        url: p.url || null,
+        image_url: p.image_url || null,
+        selling_price: p.selling_price != null ? parseFloat(p.selling_price) : null,
+        compare_at_price: p.compare_at_price != null ? parseFloat(p.compare_at_price) : null,
+        cog: p.cog != null ? parseFloat(p.cog) : 0,
+        description: p.description || null,
+        slug: published ? await getUniqueProductSlug(supabase, orgId, crypto.randomUUID(), p.slug, name) : null,
+        published: p.published === true,
+        published_at: published ? new Date().toISOString() : null,
+        source_url: sourceUrl || null,
+        org_id: orgId,
+      });
+      sourceProducts.push(p);
+    }
     if (!rows.length) return res.status(400).json({ error: "No valid products to save" });
 
     const { data, error } = await supabase.from("products").insert(rows).select();
     if (error) throw error;
 
+    for (let i = 0; i < data.length; i++) {
+      const savedProduct = data[i];
+      const sourceProduct = sourceProducts[i];
+      if (sourceProduct.stock_quantity !== undefined) {
+        await saveProductStock(orgId, savedProduct.id, sourceProduct.stock_quantity);
+      }
+    }
+
     // Bulk-insert variants for products that came with extracted variant data
     const variantRows = [];
     for (let i = 0; i < data.length; i++) {
       const savedProduct = data[i];
-      const sourceProduct = products[i];
+      const sourceProduct = sourceProducts[i];
       if (!Array.isArray(sourceProduct.variants) || sourceProduct.variants.length === 0) continue;
       for (const v of sourceProduct.variants) {
         if (!v.attributes || typeof v.attributes !== "object" || Object.keys(v.attributes).length === 0) continue;
@@ -7172,8 +7193,8 @@ app.post("/api/products/save", async (req, res) => {
           attributes: Object.fromEntries(
             Object.entries(v.attributes).map(([k, val]) => [k.trim().toLowerCase(), String(val).trim()])
           ),
-          cog: 0,
-          stock_quantity: 0,
+          cog: v.cog != null ? parseFloat(v.cog) : 0,
+          stock_quantity: Math.max(0, parseInt(v.stock_quantity, 10) || 0),
           price_adjustment: priceAdj,
         });
       }
