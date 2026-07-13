@@ -63,6 +63,9 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain('"Instagram"');
     expect(pageSource).toContain('"Google"');
     expect(pageSource).toContain("grid-rows-2");
+    expect(pageSource).toContain("xl:h-[520px]");
+    expect(pageSource).toContain("website-behavior-scroll-card");
+    expect(pageSource).toContain("min-h-0 overflow-y-auto");
     expect(pageSource).toContain("productName");
     expect(pageSource).toContain("break-all");
     expect(pageSource).toContain("dropOff.bullets");

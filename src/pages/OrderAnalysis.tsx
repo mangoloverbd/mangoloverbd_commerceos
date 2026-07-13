@@ -477,8 +477,8 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
           </p>
         </div>
       ) : (
-        <div className="grid items-stretch gap-4 p-5 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="h-full rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
+        <div className="grid items-stretch gap-4 p-5 xl:h-[520px] xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="website-behavior-scroll-card h-full min-h-0 overflow-y-auto rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-black/35">Conversion Flow</p>
@@ -542,8 +542,8 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
             </div>
           </div>
 
-          <div className="grid h-full grid-rows-2 gap-4">
-            <div className="rounded-2xl border border-black/10 bg-white p-5">
+          <div className="grid h-full min-h-0 grid-rows-2 gap-4">
+            <div className="website-behavior-scroll-card min-h-0 overflow-y-auto rounded-2xl border border-black/10 bg-white p-5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Conversion Drop-off</p>
               {data?.dropOff ? (
                 <>
@@ -566,7 +566,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
               )}
             </div>
 
-            <div className="rounded-2xl border border-black/10 bg-white p-5">
+            <div className="website-behavior-scroll-card min-h-0 overflow-y-auto rounded-2xl border border-black/10 bg-white p-5">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Product Demand Signals</p>
                 <span className="text-xs text-muted-foreground">{data?.productDemand.length ?? 0} pages</span>
@@ -591,7 +591,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
 
           </div>
 
-          <div className="col-span-full rounded-2xl border border-black/10 bg-white p-5">
+          <div className="website-behavior-scroll-card col-span-full max-h-[360px] overflow-y-auto rounded-2xl border border-black/10 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-black/35">Traffic Source Performance</p>
