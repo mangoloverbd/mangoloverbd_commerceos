@@ -477,7 +477,7 @@ function WebsiteBehaviorPanel({ data, loading }: { data?: WebsiteBehaviorRespons
           </p>
         </div>
       ) : (
-        <div className="grid items-stretch gap-4 p-5 xl:h-[640px] xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid items-stretch gap-4 p-5 xl:h-[760px] xl:grid-cols-[1.15fr_0.85fr]">
           <div className="website-behavior-scroll-card h-full min-h-0 overflow-y-auto rounded-2xl border border-black/10 bg-[#FAFAF8] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
