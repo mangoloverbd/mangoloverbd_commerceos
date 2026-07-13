@@ -49,4 +49,12 @@ describe("GitHubCalendar", () => {
     expect(getByText("৳1,700")).toBeInTheDocument();
     expect(getByText("৳500")).toBeInTheDocument();
   });
+
+  it("sizes y-axis rows to match the sales trend squares", () => {
+    const { getByText } = render(<GitHubCalendar data={days} />);
+
+    expect(getByText("60k").parentElement?.parentElement).toHaveStyle({
+      gridTemplateRows: "repeat(7, 1rem)",
+    });
+  });
 });
