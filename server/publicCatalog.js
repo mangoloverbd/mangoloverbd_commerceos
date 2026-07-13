@@ -1,0 +1,37 @@
+function toNumber(value, fallback = null) {
+  if (value == null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function toPublicProduct(product, variants = [], stockQuantity = 0) {
+  const basePrice = toNumber(product.selling_price, null);
+  const safeVariants = variants.map((variant) => {
+    const adjustment = toNumber(variant.price_adjustment, 0) || 0;
+    const variantStock = Math.max(0, parseInt(variant.stock_quantity || 0, 10) || 0);
+    return {
+      id: variant.id,
+      attributes: variant.attributes || {},
+      price: basePrice == null ? null : basePrice + adjustment,
+      available: variantStock > 0,
+      stock_quantity: variantStock,
+    };
+  });
+
+  const baseStock = Math.max(0, parseInt(stockQuantity || 0, 10) || 0);
+  const hasVariants = safeVariants.length > 0;
+
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug || product.id,
+    description: product.description || null,
+    url: product.url || null,
+    image_url: product.image_url || null,
+    price: basePrice,
+    compare_at_price: toNumber(product.compare_at_price, null),
+    available: hasVariants ? safeVariants.some((variant) => variant.available) : baseStock > 0,
+    stock_quantity: hasVariants ? safeVariants.reduce((sum, variant) => sum + variant.stock_quantity, 0) : baseStock,
+    variants: safeVariants,
+  };
+}

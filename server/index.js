@@ -13,6 +13,7 @@ import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
+import { toPublicProduct } from "./publicCatalog.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -1012,6 +1013,32 @@ async function getProductStockMap(orgId, productIds) {
 
 async function saveProductStock(orgId, productId, quantity) {
   return saveSettings({ [`${orgId}:product_stock:${productId}`]: Math.max(0, parseInt(quantity, 10) || 0) });
+}
+
+function slugifyProductName(value = "") {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "product";
+}
+
+async function getUniqueProductSlug(supabase, orgId, productId, preferredSlug, fallbackName) {
+  const base = slugifyProductName(preferredSlug || fallbackName || productId);
+  let slug = base;
+  for (let i = 2; i < 100; i++) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("slug", slug)
+      .neq("id", productId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return slug;
+    slug = `${base}-${i}`;
+  }
+  return `${base}-${Date.now()}`;
 }
 
 // ─── Secret Storage Helpers ─────────────────────────────────────────────────
@@ -7240,6 +7267,22 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
+DO $$ BEGIN
+  ALTER TABLE public.products ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT false;
+  ALTER TABLE public.products ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+  ALTER TABLE public.products ADD COLUMN IF NOT EXISTS slug TEXT;
+  ALTER TABLE public.products ADD COLUMN IF NOT EXISTS description TEXT;
+  ALTER TABLE public.products ADD COLUMN IF NOT EXISTS compare_at_price NUMERIC;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS products_org_slug_unique_idx
+    ON public.products(org_id, slug)
+    WHERE slug IS NOT NULL;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
 -- Social conversations must be unique per organization, not globally.
 DO $$ BEGIN
   ALTER TABLE public.social_conversations DROP CONSTRAINT IF EXISTS social_conversations_platform_contact_id_key;
@@ -7610,6 +7653,14 @@ CREATE TABLE IF NOT EXISTS public.products (
 );
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS org_id UUID;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS compare_at_price NUMERIC;
+CREATE UNIQUE INDEX IF NOT EXISTS products_org_slug_unique_idx
+  ON public.products(org_id, slug)
+  WHERE slug IS NOT NULL;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   CREATE POLICY "service_role_all_products" ON public.products TO service_role USING (true) WITH CHECK (true);
@@ -7654,12 +7705,85 @@ app.get("/api/products", async (req, res) => {
     }
 
     return res.json({
+      storefront: {
+        id: orgId,
+        products_url: `${req.protocol}://${req.get("host")}/api/public/storefronts/${orgId}/products`,
+      },
       products: (data || []).map((p) => ({
         ...p,
         stock_quantity: stockMap[p.id] || 0,
         variants: variantsMap[p.id] || [],
       })),
     });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/public/storefronts/:storefrontId/products", async (req, res) => {
+  try {
+    const supabase = getServiceSupabase();
+    const orgId = req.params.storefrontId;
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("published", true)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    const products = data || [];
+    const productIds = products.map((p) => p.id);
+    const stockMap = productIds.length > 0 ? await getProductStockMap(orgId, productIds) : {};
+    const variantsMap = {};
+    if (productIds.length > 0) {
+      const { data: variantRows, error: variantsError } = await supabase
+        .from("product_variants")
+        .select("id, product_id, attributes, stock_quantity, price_adjustment")
+        .in("product_id", productIds)
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: true });
+      if (variantsError) throw variantsError;
+      for (const variant of variantRows || []) {
+        if (!variantsMap[variant.product_id]) variantsMap[variant.product_id] = [];
+        variantsMap[variant.product_id].push(variant);
+      }
+    }
+
+    return res.json({
+      products: products.map((product) => toPublicProduct(product, variantsMap[product.id] || [], stockMap[product.id] || 0)),
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/public/storefronts/:storefrontId/products/:slug", async (req, res) => {
+  try {
+    const supabase = getServiceSupabase();
+    const orgId = req.params.storefrontId;
+    const { data: product, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("published", true)
+      .eq("slug", req.params.slug)
+      .maybeSingle();
+    if (error) throw error;
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const [stockMap, { data: variants, error: variantsError }] = await Promise.all([
+      getProductStockMap(orgId, [product.id]),
+      supabase
+        .from("product_variants")
+        .select("id, product_id, attributes, stock_quantity, price_adjustment")
+        .eq("product_id", product.id)
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: true }),
+    ]);
+    if (variantsError) throw variantsError;
+
+    return res.json({ product: toPublicProduct(product, variants || [], stockMap[product.id] || 0) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -7677,25 +7801,46 @@ app.post("/api/products/save", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
 
     // Insert product rows (without variants)
-    const rows = products.map((p) => ({
-      name: String(p.name || "").trim(),
-      url: p.url || null,
-      image_url: p.image_url || null,
-      selling_price: p.selling_price != null ? parseFloat(p.selling_price) : null,
-      cog: p.cog != null ? parseFloat(p.cog) : 0,
-      source_url: sourceUrl || null,
-      org_id: orgId,
-    })).filter((r) => r.name);
+    const rows = [];
+    const sourceProducts = [];
+    for (const p of products) {
+      const name = String(p.name || "").trim();
+      if (!name) continue;
+      const published = p.published === true;
+      rows.push({
+        name,
+        url: p.url || null,
+        image_url: p.image_url || null,
+        selling_price: p.selling_price != null ? parseFloat(p.selling_price) : null,
+        compare_at_price: p.compare_at_price != null ? parseFloat(p.compare_at_price) : null,
+        cog: p.cog != null ? parseFloat(p.cog) : 0,
+        description: p.description || null,
+        slug: published ? await getUniqueProductSlug(supabase, orgId, crypto.randomUUID(), p.slug, name) : null,
+        published: p.published === true,
+        published_at: published ? new Date().toISOString() : null,
+        source_url: sourceUrl || null,
+        org_id: orgId,
+      });
+      sourceProducts.push(p);
+    }
     if (!rows.length) return res.status(400).json({ error: "No valid products to save" });
 
     const { data, error } = await supabase.from("products").insert(rows).select();
     if (error) throw error;
 
+    for (let i = 0; i < data.length; i++) {
+      const savedProduct = data[i];
+      const sourceProduct = sourceProducts[i];
+      if (sourceProduct.stock_quantity !== undefined) {
+        await saveProductStock(orgId, savedProduct.id, sourceProduct.stock_quantity);
+      }
+    }
+
     // Bulk-insert variants for products that came with extracted variant data
     const variantRows = [];
     for (let i = 0; i < data.length; i++) {
       const savedProduct = data[i];
-      const sourceProduct = products[i];
+      const sourceProduct = sourceProducts[i];
       if (!Array.isArray(sourceProduct.variants) || sourceProduct.variants.length === 0) continue;
       for (const v of sourceProduct.variants) {
         if (!v.attributes || typeof v.attributes !== "object" || Object.keys(v.attributes).length === 0) continue;
@@ -7709,8 +7854,8 @@ app.post("/api/products/save", async (req, res) => {
           attributes: Object.fromEntries(
             Object.entries(v.attributes).map(([k, val]) => [k.trim().toLowerCase(), String(val).trim()])
           ),
-          cog: 0,
-          stock_quantity: 0,
+          cog: v.cog != null ? parseFloat(v.cog) : 0,
+          stock_quantity: Math.max(0, parseInt(v.stock_quantity, 10) || 0),
           price_adjustment: priceAdj,
         });
       }
@@ -8091,13 +8236,28 @@ app.patch("/api/products/:id", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const allowed = ["name", "url", "image_url", "selling_price", "cog"];
+    const allowed = ["name", "url", "image_url", "selling_price", "cog", "published", "slug", "description", "compare_at_price"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
     const hasStockUpdate = req.body.stock_quantity !== undefined;
     if (!Object.keys(update).length && !hasStockUpdate) return res.status(400).json({ error: "Nothing to update" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    if (update.published === true) {
+      const { data: current, error: currentError } = await supabase
+        .from("products")
+        .select("id, name, slug")
+        .eq("id", req.params.id)
+        .eq("org_id", orgId)
+        .single();
+      if (currentError) throw currentError;
+      update.slug = await getUniqueProductSlug(supabase, orgId, req.params.id, update.slug || current.slug, update.name || current.name);
+      update.published_at = new Date().toISOString();
+    } else if (update.published === false) {
+      update.published_at = null;
+    } else if (update.slug !== undefined) {
+      update.slug = await getUniqueProductSlug(supabase, orgId, req.params.id, update.slug, update.name);
+    }
     let data = null;
     if (Object.keys(update).length) {
       const result = await supabase
@@ -8396,6 +8556,17 @@ async function migrateProductsForecastColumns() {
     const migrationSql = `
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS org_id UUID;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS compare_at_price NUMERIC;
+DO $$ BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS products_org_slug_unique_idx
+    ON public.products(org_id, slug)
+    WHERE slug IS NOT NULL;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 NOTIFY pgrst, 'reload schema';
     `;
 
