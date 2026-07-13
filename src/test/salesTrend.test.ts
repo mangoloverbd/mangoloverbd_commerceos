@@ -101,4 +101,28 @@ describe("buildSalesTrend", () => {
       existingCustomerOrders: 1,
     });
   });
+
+  it("groups orders by Bangladesh business date for hover values", () => {
+    const result = buildSalesTrend(
+      [
+        { created_at: "2026-06-01T20:30:00.000Z", phone: "01744444444", customer_name: "Late Order", price: "900" },
+      ],
+      { now: new Date("2026-06-02T12:00:00.000Z"), days: 2 }
+    );
+
+    expect(result.days).toMatchObject([
+      {
+        date: "2026-06-01",
+        totalRevenue: 0,
+        newCustomerRevenue: 0,
+        totalOrders: 0,
+      },
+      {
+        date: "2026-06-02",
+        totalRevenue: 900,
+        newCustomerRevenue: 900,
+        totalOrders: 1,
+      },
+    ]);
+  });
 });

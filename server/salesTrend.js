@@ -3,13 +3,20 @@ import { normalizeCustomerPhone } from "./customers.js";
 function toDayKey(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
 }
 
-function addDays(date, days) {
-  const next = new Date(date);
+function addDays(dayKey, days) {
+  const next = new Date(`${dayKey}T00:00:00.000Z`);
   next.setUTCDate(next.getUTCDate() + days);
-  return next;
+  return next.toISOString().slice(0, 10);
 }
 
 function customerKey(order) {
@@ -21,12 +28,12 @@ function customerKey(order) {
 }
 
 export function buildSalesTrend(orders, { now = new Date(), days = 365 } = {}) {
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const end = toDayKey(now) || new Date().toISOString().slice(0, 10);
   const start = addDays(end, -(days - 1));
   const dayMap = new Map();
 
   for (let i = 0; i < days; i += 1) {
-    const date = addDays(start, i).toISOString().slice(0, 10);
+    const date = addDays(start, i);
     dayMap.set(date, {
       date,
       totalRevenue: 0,
