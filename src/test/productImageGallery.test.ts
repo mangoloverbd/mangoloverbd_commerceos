@@ -34,6 +34,9 @@ describe("product image gallery", () => {
     expect(serverSource).toContain("is_primary: index === 0");
     expect(serverSource).toContain("inserted[0] && inserted[0].is_primary");
     expect(productsSource).toContain("EditProductDrawer");
+    expect(productsSource).toContain("ProductBloomPopover");
+    expect(productsSource).toContain("product-bloom-backdrop");
+    expect(productsSource).toContain("fixed inset-0 z-50 grid place-items-center");
     expect(productsSource).toContain("data-testid={`button-edit-product-${product.id}`}");
     expect(productsSource).toContain("moveImage(image.id, -1)");
     expect(productsSource).toContain("moveImage(image.id, 1)");

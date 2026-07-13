@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion, type Transition } from "framer-motion";
 import {
   Search, SlidersHorizontal, Trash2, PackageSearch,
   Package2, Globe2, RefreshCw, Plus, X,
@@ -88,6 +88,12 @@ type StockFilter = "all" | "in_stock" | "low_stock" | "out_of_stock";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const SYS = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
+const PRODUCT_POPOVER_TRANSITION: Transition = {
+  type: "spring",
+  stiffness: 240,
+  damping: 28,
+  mass: 0.9,
+};
 
 function fmt(n: number | null | undefined) {
   if (n == null) return "—";
@@ -240,7 +246,7 @@ function VariantChip({
 
   return (
     <div className="relative inline-block" ref={ref}>
-      <button className={chipCls} onClick={() => setOpen(v => !v)}>
+      <button className={chipCls} onClick={(event) => { event.stopPropagation(); setOpen(v => !v); }}>
         <span className={cn("h-[5px] w-[5px] rounded-full shrink-0",
           status === "out" && "bg-red-500",
           status === "low" && "bg-amber-400",
@@ -326,7 +332,7 @@ function VariantStrip({
 
   if (variants.length === 0) {
     return (
-      <button onClick={onAdd}
+      <button onClick={(event) => { event.stopPropagation(); onAdd(); }}
         className="inline-flex items-center gap-1 rounded-full border border-dashed border-black/[0.15] px-3 py-[5px] text-[11px] text-black/40 transition-colors hover:border-black/30 hover:text-black"
         style={{ fontFamily: SYS }}>
         <Plus className="h-3 w-3" /> Add variants
@@ -340,7 +346,7 @@ function VariantStrip({
         <VariantChip key={v.id} variant={v} productId={product.id} isAdmin={isAdmin} />
       ))}
       {!showAll && overflow > 0 && (
-        <button onClick={() => setShowAll(true)}
+        <button onClick={(event) => { event.stopPropagation(); setShowAll(true); }}
           className={cn(
             "inline-flex items-center gap-1 rounded-full px-2.5 py-[5px] text-[11px] font-medium ring-1 ring-inset transition-colors",
             hasAlert
@@ -352,13 +358,13 @@ function VariantStrip({
         </button>
       )}
       {showAll && overflow > 0 && (
-        <button onClick={() => setShowAll(false)}
+        <button onClick={(event) => { event.stopPropagation(); setShowAll(false); }}
           className="rounded-full bg-black/[0.04] px-2.5 py-[5px] text-[11px] text-black/40 ring-1 ring-inset ring-black/[0.08] hover:text-black"
           style={{ fontFamily: SYS }}>
           Less
         </button>
       )}
-      <button onClick={onAdd}
+      <button onClick={(event) => { event.stopPropagation(); onAdd(); }}
         className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-black/[0.15] text-black/40 transition-colors hover:border-black/30 hover:text-black">
         <Plus className="h-3 w-3" />
       </button>
@@ -627,7 +633,7 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.16 }}
-      className="border-b border-black/[0.08] bg-black/[0.015] px-5 py-5"
+      className="bg-[#FAFAF8] px-5 py-5"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
@@ -911,7 +917,7 @@ function EditProductDrawer({ product, onClose, onSaved }: { product: Product; on
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.16 }}
-      className="border-b border-black/[0.08] bg-black/[0.015] px-5 py-5"
+      className="bg-[#FAFAF8] px-5 py-5"
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
@@ -961,6 +967,75 @@ function EditProductDrawer({ product, onClose, onSaved }: { product: Product; on
   );
 }
 
+function ProductBloomPopover({
+  mode,
+  product,
+  onClose,
+  onSaved,
+}: {
+  mode: "create" | "edit" | null;
+  product: Product | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const open = mode === "create" || (mode === "edit" && product);
+  const morph = reduce ? { duration: 0.16 } : PRODUCT_POPOVER_TRANSITION;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const onPointer = (event: PointerEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="product-bloom-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.3, ease: "easeOut" } }}
+          exit={{ opacity: 0, transition: { duration: 0.2, ease: "easeIn" } }}
+          className="fixed inset-0 z-50 grid place-items-center bg-black/12 px-4 backdrop-blur-[3px]"
+        >
+          <motion.div
+            ref={ref}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.96, filter: "blur(8px)" }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: morph }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96, filter: "blur(4px)", transition: { duration: 0.2, ease: "easeIn" } }}
+            style={{ borderRadius: 18 }}
+            className="max-h-[88vh] w-[min(94vw,980px)] overflow-hidden border border-black/10 bg-[#FAFAF8] shadow-2xl shadow-black/15"
+          >
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: { delay: reduce ? 0 : 0.08, duration: 0.2, ease: "easeOut" } }}
+              exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeIn" } }}
+              className="max-h-[88vh] overflow-y-auto"
+            >
+              {mode === "create" ? (
+                <AddProductDrawer onClose={onClose} onSaved={onSaved} />
+              ) : product ? (
+                <EditProductDrawer product={product} onClose={onClose} onSaved={onSaved} />
+              ) : null}
+            </motion.div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Products() {
@@ -1005,6 +1080,7 @@ export default function Products() {
   });
 
   const allProducts = useMemo(() => data?.products ?? [], [data?.products]);
+  const editingProduct = useMemo(() => allProducts.find((product) => product.id === editingFor) || null, [allProducts, editingFor]);
   const publishedCount = allProducts.filter(p => p.published).length;
 
   // Derived stats (always from full list)
@@ -1265,7 +1341,7 @@ export default function Products() {
                 data-testid="button-add-product"
                 color="default"
                 size="default"
-                onClick={() => setAddingProduct(v => !v)}
+                onClick={() => { setAddingProduct(true); setEditingFor(null); }}
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Add Product
@@ -1344,15 +1420,6 @@ export default function Products() {
             </div>
           </div>
 
-          <AnimatePresence>
-            {addingProduct && (
-              <AddProductDrawer
-                onClose={() => setAddingProduct(false)}
-                onSaved={() => qc.invalidateQueries({ queryKey: ["/api/products"] })}
-              />
-            )}
-          </AnimatePresence>
-
           {/* ── Table body ── */}
           {isLoading ? (
             <div className="flex items-center justify-center py-24 text-black/40">
@@ -1419,9 +1486,9 @@ export default function Products() {
                     >
                       {/* Row */}
                       <div className={cn(
-                        "group grid items-start border-b border-black/[0.08] transition-colors hover:bg-black/[0.015]",
+                        "group grid cursor-pointer items-start border-b border-black/[0.08] transition-colors hover:bg-black/[0.015]",
                         GRID, (isAdding || isEditing) && "bg-black/[0.01]"
-                      )}>
+                      )} onClick={() => { setEditingFor(product.id); setAddingProduct(false); }}>
 
                         {/* Thumbnail */}
                         <div className="flex items-center py-4 pl-5">
@@ -1450,6 +1517,7 @@ export default function Products() {
                           </p>
                           {product.url && (
                             <a href={product.url} target="_blank" rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
                               data-testid={`link-product-${product.id}`}
                               className="truncate text-[11px] text-black/30 transition-colors hover:text-black/50">
                               {product.url.replace(/^https?:\/\//, "").substring(0, 42)}
@@ -1483,7 +1551,7 @@ export default function Products() {
                           <VariantStrip
                             product={product}
                             isAdmin={isAdmin}
-                            onAdd={() => setAddingFor(isAdding ? null : product.id)}
+                            onAdd={() => { setAddingFor(isAdding ? null : product.id); setEditingFor(null); }}
                           />
                         </div>
 
@@ -1499,7 +1567,7 @@ export default function Products() {
 
                         {/* COG — admin editable, centered under column header */}
                         {isAdmin && (
-                          <div className="px-4 pt-4 pb-3">
+                          <div className="px-4 pt-4 pb-3" onClick={(event) => event.stopPropagation()}>
                             <div className="relative flex w-full">
                               <div className="relative flex-1">
                                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
@@ -1548,13 +1616,13 @@ export default function Products() {
                         <div className="flex items-start justify-end gap-2 pt-4 pb-3 pr-3">
                           <button
                             data-testid={`button-edit-product-${product.id}`}
-                            onClick={() => setEditingFor(isEditing ? null : product.id)}
+                            onClick={(event) => { event.stopPropagation(); setEditingFor(product.id); setAddingProduct(false); }}
                             className="flex h-8 w-8 items-center justify-center rounded-xl text-black/35 transition-all hover:bg-black/[0.05] hover:text-black">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
                             data-testid={`button-toggle-published-${product.id}`}
-                            onClick={() => togglePublished(product)}
+                            onClick={(event) => { event.stopPropagation(); togglePublished(product); }}
                             disabled={isSaving}
                             className={cn(
                               "flex h-8 items-center justify-center rounded-xl px-3 text-[11px] font-semibold transition-all disabled:opacity-40",
@@ -1567,7 +1635,7 @@ export default function Products() {
                           </button>
                           <button
                             data-testid={`button-delete-product-${product.id}`}
-                            onClick={() => deleteMutation.mutate(product.id)}
+                            onClick={(event) => { event.stopPropagation(); deleteMutation.mutate(product.id); }}
                             className="flex h-8 w-8 items-center justify-center rounded-xl text-black/25 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -1576,13 +1644,6 @@ export default function Products() {
 
                       {/* Add-variant drawer */}
                       <AnimatePresence>
-                        {isEditing && (
-                          <EditProductDrawer
-                            product={product}
-                            onClose={() => setEditingFor(null)}
-                            onSaved={() => qc.invalidateQueries({ queryKey: ["/api/products"] })}
-                          />
-                        )}
                         {isAdding && (
                           <AddVariantDrawer
                             product={product}
@@ -1612,6 +1673,12 @@ export default function Products() {
             </>
           )}
         </motion.div>
+        <ProductBloomPopover
+          mode={addingProduct ? "create" : editingProduct ? "edit" : null}
+          product={editingProduct}
+          onClose={() => { setAddingProduct(false); setEditingFor(null); }}
+          onSaved={() => qc.invalidateQueries({ queryKey: ["/api/products"] })}
+        />
       </div>
     </div>
   );
