@@ -4,8 +4,15 @@ function toNumber(value, fallback = null) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function toPublicProduct(product, variants = [], stockQuantity = 0) {
+export function toPublicProduct(product, variants = [], stockQuantity = 0, images = []) {
   const basePrice = toNumber(product.selling_price, null);
+  const safeImages = images.map((image) => ({
+    id: image.id,
+    url: image.url || image.image_url,
+    alt_text: image.alt_text || null,
+    sort_order: image.sort_order || 0,
+    is_primary: image.is_primary === true,
+  })).filter((image) => image.url);
   const safeVariants = variants.map((variant) => {
     const adjustment = toNumber(variant.price_adjustment, 0) || 0;
     const variantStock = Math.max(0, parseInt(variant.stock_quantity || 0, 10) || 0);
@@ -27,7 +34,8 @@ export function toPublicProduct(product, variants = [], stockQuantity = 0) {
     slug: product.slug || product.id,
     description: product.description || null,
     url: product.url || null,
-    image_url: product.image_url || null,
+    image_url: safeImages[0]?.url || product.image_url || null,
+    images: safeImages,
     price: basePrice,
     compare_at_price: toNumber(product.compare_at_price, null),
     available: hasVariants ? safeVariants.some((variant) => variant.available) : baseStock > 0,

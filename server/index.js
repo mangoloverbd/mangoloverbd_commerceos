@@ -113,6 +113,10 @@ function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
 const rateLimitAI   = makeRateLimitMiddleware(rlAI,   "user");
 const rateLimitAuth = makeRateLimitMiddleware(rlAuth,  "ip");
 const rateLimitAPI  = makeRateLimitMiddleware(rlAPI,   "user");
+const PRODUCT_IMAGES_BUCKET = "product-images";
+const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const PRODUCT_IMAGE_MAX_COUNT = 8;
+const PRODUCT_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 // ─── Stripe ─────────────────────────────────────────────────────────────────
 
@@ -1013,6 +1017,71 @@ async function getProductStockMap(orgId, productIds) {
 
 async function saveProductStock(orgId, productId, quantity) {
   return saveSettings({ [`${orgId}:product_stock:${productId}`]: Math.max(0, parseInt(quantity, 10) || 0) });
+}
+
+async function loadProductImagesMap(supabase, orgId, productIds) {
+  if (!productIds.length) return {};
+  const { data, error } = await supabase
+    .from("product_images")
+    .select("id, product_id, image_url, alt_text, sort_order, is_primary, created_at")
+    .eq("org_id", orgId)
+    .in("product_id", productIds)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  const map = {};
+  for (const image of data || []) {
+    if (!map[image.product_id]) map[image.product_id] = [];
+    map[image.product_id].push({
+      id: image.id,
+      url: image.image_url,
+      alt_text: image.alt_text || null,
+      sort_order: image.sort_order || 0,
+      is_primary: image.is_primary === true,
+    });
+  }
+  return map;
+}
+
+async function ensureProductImagesBucket(supabase) {
+  const { data: bucket, error: getError } = await supabase.storage.getBucket(PRODUCT_IMAGES_BUCKET);
+  if (bucket && !getError) return;
+  const { error } = await supabase.storage.createBucket(PRODUCT_IMAGES_BUCKET, {
+    public: true,
+    allowedMimeTypes: Array.from(PRODUCT_IMAGE_MIME_TYPES),
+    fileSizeLimit: PRODUCT_IMAGE_MAX_BYTES,
+  });
+  if (error && !/already exists/i.test(error.message || "")) throw error;
+}
+
+function parseProductImagePayload(file) {
+  const dataUrl = String(file?.dataUrl || file?.data_url || "");
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  const mimeType = String(file?.mimeType || file?.type || match?.[1] || "").toLowerCase();
+  if (!PRODUCT_IMAGE_MIME_TYPES.has(mimeType)) {
+    const err = new Error("Only JPEG, PNG, and WebP images are allowed");
+    err.status = 400;
+    throw err;
+  }
+  const base64 = match ? match[2] : String(file?.base64 || "");
+  if (!base64) {
+    const err = new Error("Image data is required");
+    err.status = 400;
+    throw err;
+  }
+  const buffer = Buffer.from(base64, "base64");
+  if (!buffer.length || buffer.length > PRODUCT_IMAGE_MAX_BYTES) {
+    const err = new Error("Each product image must be 5MB or smaller");
+    err.status = 400;
+    throw err;
+  }
+  return { buffer, mimeType };
+}
+
+function productImageExtension(mimeType) {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  return "jpg";
 }
 
 function slugifyProductName(value = "") {
@@ -7283,6 +7352,28 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
+DO $$ BEGIN
+  CREATE TABLE IF NOT EXISTS public.product_images (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID NOT NULL,
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    image_url TEXT NOT NULL,
+    storage_path TEXT NOT NULL,
+    alt_text TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_primary BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  ALTER TABLE public.product_images ENABLE ROW LEVEL SECURITY;
+  CREATE INDEX IF NOT EXISTS product_images_org_product_idx ON public.product_images(org_id, product_id, sort_order);
+  CREATE POLICY "service_role_all_product_images" ON public.product_images TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE POLICY "auth_users_product_images" ON public.product_images FOR ALL TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text)) WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+
 -- Social conversations must be unique per organization, not globally.
 DO $$ BEGIN
   ALTER TABLE public.social_conversations DROP CONSTRAINT IF EXISTS social_conversations_platform_contact_id_key;
@@ -7670,6 +7761,28 @@ DO $$ BEGIN
   CREATE POLICY "auth_users_products" ON public.products FOR ALL TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text)) WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+CREATE TABLE IF NOT EXISTS public.product_images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL,
+  product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  alt_text TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_primary BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.product_images ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS product_images_org_product_idx ON public.product_images(org_id, product_id, sort_order);
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_product_images" ON public.product_images TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE POLICY "auth_users_product_images" ON public.product_images FOR ALL TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text)) WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 `;
 
 // ─── Products Catalog ────────────────────────────────────────────────────────
@@ -7688,6 +7801,7 @@ app.get("/api/products", async (req, res) => {
     if (error) throw error;
     const productIds = (data || []).map((p) => p.id);
     const stockMap = await getProductStockMap(orgId, productIds);
+    const imagesMap = await loadProductImagesMap(supabase, orgId, productIds);
 
     // Load all variants for this org's products in one query
     let variantsMap = {};
@@ -7711,8 +7825,10 @@ app.get("/api/products", async (req, res) => {
       },
       products: (data || []).map((p) => ({
         ...p,
+        image_url: imagesMap[p.id]?.[0]?.url || p.image_url,
         stock_quantity: stockMap[p.id] || 0,
         variants: variantsMap[p.id] || [],
+        images: imagesMap[p.id] || [],
       })),
     });
   } catch (e) {
@@ -7735,6 +7851,7 @@ app.get("/api/public/storefronts/:storefrontId/products", async (req, res) => {
     const products = data || [];
     const productIds = products.map((p) => p.id);
     const stockMap = productIds.length > 0 ? await getProductStockMap(orgId, productIds) : {};
+    const imagesMap = await loadProductImagesMap(supabase, orgId, productIds);
     const variantsMap = {};
     if (productIds.length > 0) {
       const { data: variantRows, error: variantsError } = await supabase
@@ -7751,7 +7868,7 @@ app.get("/api/public/storefronts/:storefrontId/products", async (req, res) => {
     }
 
     return res.json({
-      products: products.map((product) => toPublicProduct(product, variantsMap[product.id] || [], stockMap[product.id] || 0)),
+      products: products.map((product) => toPublicProduct(product, variantsMap[product.id] || [], stockMap[product.id] || 0, imagesMap[product.id] || [])),
     });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -7772,8 +7889,9 @@ app.get("/api/public/storefronts/:storefrontId/products/:slug", async (req, res)
     if (error) throw error;
     if (!product) return res.status(404).json({ error: "Product not found" });
 
-    const [stockMap, { data: variants, error: variantsError }] = await Promise.all([
+    const [stockMap, imagesMap, { data: variants, error: variantsError }] = await Promise.all([
       getProductStockMap(orgId, [product.id]),
+      loadProductImagesMap(supabase, orgId, [product.id]),
       supabase
         .from("product_variants")
         .select("id, product_id, attributes, stock_quantity, price_adjustment")
@@ -7783,7 +7901,7 @@ app.get("/api/public/storefronts/:storefrontId/products/:slug", async (req, res)
     ]);
     if (variantsError) throw variantsError;
 
-    return res.json({ product: toPublicProduct(product, variants || [], stockMap[product.id] || 0) });
+    return res.json({ product: toPublicProduct(product, variants || [], stockMap[product.id] || 0, imagesMap[product.id] || []) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -8300,8 +8418,152 @@ app.delete("/api/products/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: images } = await supabase
+      .from("product_images")
+      .select("storage_path")
+      .eq("product_id", req.params.id)
+      .eq("org_id", orgId);
     const { error } = await supabase.from("products").delete().eq("id", req.params.id).eq("org_id", orgId);
     if (error) throw error;
+    const paths = (images || []).map((image) => image.storage_path).filter(Boolean);
+    if (paths.length) {
+      await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove(paths);
+    }
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/products/:id/images", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const productId = req.params.id;
+    const { files } = req.body || {};
+    if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: "files array required" });
+
+    const { data: product, error: productError } = await supabase
+      .from("products")
+      .select("id, name")
+      .eq("id", productId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const { count, error: countError } = await supabase
+      .from("product_images")
+      .select("id", { count: "exact", head: true })
+      .eq("product_id", productId)
+      .eq("org_id", orgId);
+    if (countError) throw countError;
+    const currentCount = count || 0;
+    if (currentCount + files.length > PRODUCT_IMAGE_MAX_COUNT) {
+      return res.status(400).json({ error: `A product can have up to ${PRODUCT_IMAGE_MAX_COUNT} images` });
+    }
+
+    await ensureProductImagesBucket(supabase);
+    const inserted = [];
+    for (let i = 0; i < files.length; i++) {
+      const { buffer, mimeType } = parseProductImagePayload(files[i]);
+      const ext = productImageExtension(mimeType);
+      const storagePath = `${orgId}/${productId}/${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from(PRODUCT_IMAGES_BUCKET)
+        .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = supabase.storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(storagePath);
+      const imageUrl = publicData.publicUrl;
+      const isPrimary = currentCount === 0 && i === 0;
+      const { data: image, error: insertError } = await supabase
+        .from("product_images")
+        .insert({
+          org_id: orgId,
+          product_id: productId,
+          image_url: imageUrl,
+          storage_path: storagePath,
+          alt_text: files[i]?.alt_text || product.name,
+          sort_order: currentCount + i,
+          is_primary: isPrimary,
+        })
+        .select("id, product_id, image_url, alt_text, sort_order, is_primary, created_at")
+        .single();
+      if (insertError) {
+        await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove([storagePath]);
+        throw insertError;
+      }
+      inserted.push({ ...image, url: image.image_url });
+    }
+
+    if (inserted[0]) {
+      await supabase
+        .from("products")
+        .update({ image_url: inserted[0].image_url })
+        .eq("id", productId)
+        .eq("org_id", orgId);
+      generateProductEmbedding(inserted[0].image_url).then(({ embedding, description }) => {
+        if (!embedding) return;
+        const vectorStr = `[${embedding.join(",")}]`;
+        supabase.from("products").update({ image_embedding: vectorStr, image_description: description })
+          .eq("id", productId).eq("org_id", orgId).then(() => {});
+      }).catch(() => {});
+    }
+
+    return res.json({ images: inserted });
+  } catch (e) {
+    return res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/products/:id/images/:imageId", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const productId = req.params.id;
+    const { data: image, error: imageError } = await supabase
+      .from("product_images")
+      .select("id, storage_path, is_primary")
+      .eq("id", req.params.imageId)
+      .eq("product_id", productId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (imageError) throw imageError;
+    if (!image) return res.status(404).json({ error: "Image not found" });
+
+    const { error: deleteError } = await supabase
+      .from("product_images")
+      .delete()
+      .eq("id", req.params.imageId)
+      .eq("product_id", productId)
+      .eq("org_id", orgId);
+    if (deleteError) throw deleteError;
+    if (image.storage_path) {
+      await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove([image.storage_path]);
+    }
+
+    if (image.is_primary) {
+      const { data: remaining } = await supabase
+        .from("product_images")
+        .select("id, image_url")
+        .eq("product_id", productId)
+        .eq("org_id", orgId)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(1);
+      const nextPrimary = remaining?.[0];
+      if (nextPrimary) {
+        await supabase.from("product_images").update({ is_primary: true }).eq("id", nextPrimary.id).eq("org_id", orgId);
+        await supabase.from("products").update({ image_url: nextPrimary.image_url }).eq("id", productId).eq("org_id", orgId);
+      } else {
+        await supabase.from("products").update({ image_url: null }).eq("id", productId).eq("org_id", orgId);
+      }
+    }
+
     return res.json({ success: true });
   } catch (e) {
     return res.status(500).json({ error: e.message });

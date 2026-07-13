@@ -33,6 +33,14 @@ type ProductVariant = {
   created_at: string;
 };
 
+type ProductImage = {
+  id: string;
+  url: string;
+  alt_text: string | null;
+  sort_order: number;
+  is_primary: boolean;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -49,6 +57,7 @@ type Product = {
   published_at: string | null;
   created_at: string;
   variants: ProductVariant[];
+  images: ProductImage[];
 };
 
 type ProductsResponse = {
@@ -66,6 +75,12 @@ type ManualVariantDraft = {
   stock: string;
   cog: string;
   priceAdjustment: string;
+};
+
+type SelectedImage = {
+  id: string;
+  file: File;
+  dataUrl: string;
 };
 
 type StockFilter = "all" | "in_stock" | "low_stock" | "out_of_stock";
@@ -97,6 +112,15 @@ function effectiveStock(p: Product): number {
 
 function attrLabel(a: Record<string, string>): string {
   return Object.values(a).filter(Boolean).join(" · ");
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read image"));
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── Shared input class — every numeric cell uses this exact height/width ──────
@@ -491,6 +515,7 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const [stock, setStock] = useState("");
   const [published, setPublished] = useState(false);
   const [variants, setVariants] = useState<ManualVariantDraft[]>([]);
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [saving, setSaving] = useState(false);
 
   function addVariant() {
@@ -502,6 +527,40 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
   function updateVariant(id: string, patch: Partial<ManualVariantDraft>) {
     setVariants((current) => current.map((variant) => variant.id === id ? { ...variant, ...patch } : variant));
+  }
+
+  async function selectImages(files: FileList | null) {
+    if (!files?.length) return;
+    const nextFiles = Array.from(files).slice(0, Math.max(0, 8 - selectedImages.length));
+    try {
+      const images = await Promise.all(nextFiles.map(async (file) => ({
+        id: crypto.randomUUID(),
+        file,
+        dataUrl: await readFileAsDataUrl(file),
+      })));
+      setSelectedImages((current) => [...current, ...images]);
+    } catch {
+      toast.error("Failed to read selected images");
+    }
+  }
+
+  async function uploadProductImages(productId: string) {
+    if (!selectedImages.length) return;
+    for (const image of selectedImages) {
+      const res = await apiFetch(`/api/products/${productId}/images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          files: [{
+            dataUrl: image.dataUrl,
+            mimeType: image.file.type,
+            alt_text: name.trim(),
+          }],
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to upload product images");
+    }
   }
 
   async function submit() {
@@ -543,8 +602,10 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Failed to add product");
+      const productId = json.products?.[0]?.id;
+      if (productId) await uploadProductImages(productId);
       await onSaved();
-      toast.success(published ? "Product added and published" : "Product added");
+      toast.success(selectedImages.length ? "Product added with images" : published ? "Product added and published" : "Product added");
       onClose();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to add product");
@@ -592,6 +653,43 @@ function AddProductDrawer({ onClose, onSaved }: { onClose: () => void; onSaved: 
         placeholder="Description"
         className="mt-3 min-h-20 w-full rounded-[12px] border border-black/[0.1] bg-black/[0.04] px-3 py-2 text-[13px] text-black outline-none transition-colors placeholder:text-black/25 focus:bg-white focus-visible:ring-1 focus-visible:ring-black/20"
       />
+
+      <div className="mt-3 rounded-[14px] border border-black/[0.08] bg-white p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40">Images</p>
+            <p className="text-[12px] text-black/40">Upload up to 8 product images. The first image becomes the public catalog thumbnail.</p>
+          </div>
+          <label className="cursor-pointer rounded-lg bg-black px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-80">
+            Choose images
+            <input
+              data-testid="input-manual-product-images"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              className="sr-only"
+              onChange={(event) => void selectImages(event.target.files)}
+            />
+          </label>
+        </div>
+        {selectedImages.length > 0 && (
+          <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
+            {selectedImages.map((image) => (
+              <div key={image.id} className="group relative aspect-square overflow-hidden rounded-xl border border-black/[0.08] bg-black/[0.03]">
+                <img src={image.dataUrl} alt={image.file.name} className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setSelectedImages((current) => current.filter((item) => item.id !== image.id))}
+                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-black/50 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
+                  aria-label={`Remove ${image.file.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="mt-4 space-y-2">
         <div className="flex items-center justify-between">
