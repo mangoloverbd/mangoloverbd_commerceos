@@ -4,6 +4,7 @@ import React, { useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { UnsavedChangesToast } from "./unsaved-changes-toast";
 
 type ToastType = "success" | "error" | "info" | "loading" | "custom";
 
@@ -14,6 +15,7 @@ interface ToastItem {
   description?: string;
   render?: (id: string) => React.ReactNode;
   duration: number;
+  fit?: boolean;
 }
 
 let toastId = 0;
@@ -41,6 +43,15 @@ function addToast(item: Omit<ToastItem, "id">): string {
 function removeToast(id: string) {
   toasts = toasts.filter((t) => t.id !== id);
   notify();
+}
+
+function dismiss(id?: string) {
+  if (id) {
+    removeToast(id);
+  } else {
+    toasts = [];
+    notify();
+  }
 }
 
 function useToastStore() {
@@ -111,16 +122,36 @@ const toast = Object.assign(
     warning: (message: string) => {
       return addToast({ type: "info", title: message, duration: 4000 });
     },
-    custom: (render: (id: string) => React.ReactNode, opts?: { duration?: number }) => {
-      return addToast({ type: "custom", render, duration: opts?.duration ?? 4000 });
+    custom: (render: (id: string) => React.ReactNode, opts?: { duration?: number; fit?: boolean }) => {
+      return addToast({ type: "custom", render, duration: opts?.duration ?? 4000, fit: opts?.fit });
+    },
+    unsaved: (opts: {
+      message?: string;
+      savingText?: string;
+      savedText?: string;
+      onSave?: () => void | Promise<void>;
+      onReset?: () => void;
+      onSaved?: () => void;
+    }) => {
+      return addToast({
+        type: "custom",
+        duration: Infinity,
+        fit: true,
+        render: (id) => (
+          <UnsavedChangesToast
+            id={id}
+            message={opts.message}
+            savingText={opts.savingText}
+            savedText={opts.savedText}
+            onSave={opts.onSave}
+            onReset={opts.onReset}
+            onSaved={opts.onSaved}
+          />
+        ),
+      });
     },
     dismiss: (id?: string) => {
-      if (id) {
-        removeToast(id);
-      } else {
-        toasts = [];
-        notify();
-      }
+      dismiss(id);
     },
   }
 );
@@ -134,7 +165,11 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
         animate={{ opacity: 1, x: 0, scale: 1 }}
         exit={{ opacity: 0, x: 24, scale: 0.96 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="rounded-xl bg-white border border-gray-200 shadow-lg overflow-hidden min-w-[320px]"
+        className={
+          item.fit
+            ? "w-fit"
+            : "rounded-xl bg-white border border-gray-200 shadow-lg overflow-hidden min-w-[320px]"
+        }
       >
         {item.render(item.id)}
       </motion.div>
@@ -190,4 +225,4 @@ function Toaster() {
   );
 }
 
-export { Toaster, toast };
+export { Toaster, toast, dismiss };
