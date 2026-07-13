@@ -13,6 +13,11 @@ export function toPublicProduct(product, variants = [], stockQuantity = 0, image
     sort_order: image.sort_order || 0,
     is_primary: image.is_primary === true,
   })).filter((image) => image.url);
+  const galleryImages = safeImages.length > 0
+    ? safeImages
+    : product.image_url
+      ? [{ id: null, url: product.image_url, alt_text: product.name || null, sort_order: 0, is_primary: true }]
+      : [];
   const safeVariants = variants.map((variant) => {
     const adjustment = toNumber(variant.price_adjustment, 0) || 0;
     const variantStock = Math.max(0, parseInt(variant.stock_quantity || 0, 10) || 0);
@@ -34,8 +39,9 @@ export function toPublicProduct(product, variants = [], stockQuantity = 0, image
     slug: product.slug || product.id,
     description: product.description || null,
     url: product.url || null,
-    image_url: safeImages[0]?.url || product.image_url || null,
-    images: safeImages,
+    image_url: galleryImages[0]?.url || null,
+    images: galleryImages,
+    image_urls: galleryImages.map((image) => image.url),
     price: basePrice,
     compare_at_price: toNumber(product.compare_at_price, null),
     available: hasVariants ? safeVariants.some((variant) => variant.available) : baseStock > 0,

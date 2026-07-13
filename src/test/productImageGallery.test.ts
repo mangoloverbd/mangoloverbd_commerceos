@@ -18,8 +18,8 @@ describe("product image gallery", () => {
   it("returns image galleries from private and public product APIs", () => {
     expect(serverSource).toContain("loadProductImagesMap");
     expect(serverSource).toContain("images: imagesMap[p.id] || []");
-    expect(publicCatalogSource).toContain("images: safeImages");
-    expect(publicCatalogSource).toContain("image_url: safeImages[0]?.url || product.image_url || null");
+    expect(publicCatalogSource).toContain("images: galleryImages");
+    expect(publicCatalogSource).toContain("image_urls: galleryImages.map((image) => image.url)");
   });
 
   it("lets merchants select and upload product images from the Add Product drawer", () => {

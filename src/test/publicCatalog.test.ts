@@ -38,7 +38,16 @@ describe("toPublicProduct", () => {
       description: "Soft summer shirt",
       url: "https://merchant.test/products/linen-shirt",
       image_url: "https://merchant.test/linen.jpg",
-      images: [],
+      images: [
+        {
+          id: null,
+          url: "https://merchant.test/linen.jpg",
+          alt_text: "Linen Shirt",
+          sort_order: 0,
+          is_primary: true,
+        },
+      ],
+      image_urls: ["https://merchant.test/linen.jpg"],
       price: 1250,
       compare_at_price: 1500,
       available: true,
@@ -59,7 +68,7 @@ describe("toPublicProduct", () => {
     expect(product.variants[0]).not.toHaveProperty("org_id");
   });
 
-  it("uses safe gallery images as public product images", () => {
+  it("uses every safe gallery image as public product images", () => {
     const product = toPublicProduct(
       { id: "p3", name: "Bag", image_url: "https://legacy.test/bag.jpg", selling_price: 900 },
       [],
@@ -73,6 +82,14 @@ describe("toPublicProduct", () => {
           sort_order: 0,
           is_primary: true,
         },
+        {
+          id: "img-2",
+          image_url: "https://cdn.test/bag-2.webp",
+          storage_path: "org/p3/internal-2.webp",
+          alt_text: "Canvas bag detail",
+          sort_order: 1,
+          is_primary: false,
+        },
       ],
     );
 
@@ -85,8 +102,17 @@ describe("toPublicProduct", () => {
         sort_order: 0,
         is_primary: true,
       },
+      {
+        id: "img-2",
+        url: "https://cdn.test/bag-2.webp",
+        alt_text: "Canvas bag detail",
+        sort_order: 1,
+        is_primary: false,
+      },
     ]);
+    expect(product.image_urls).toEqual(["https://cdn.test/bag-1.webp", "https://cdn.test/bag-2.webp"]);
     expect(product.images[0]).not.toHaveProperty("storage_path");
+    expect(product.images[1]).not.toHaveProperty("storage_path");
   });
 
   it("uses base stock when a product has no variants", () => {
