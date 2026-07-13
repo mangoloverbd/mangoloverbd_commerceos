@@ -4,6 +4,16 @@ import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-cale
 
 const days: SalesTrendDay[] = [
   {
+    date: "2026-05-31",
+    totalRevenue: 1000,
+    newCustomerRevenue: 1000,
+    existingCustomerRevenue: 0,
+    totalOrders: 1,
+    newCustomerOrders: 1,
+    existingCustomerOrders: 0,
+    intensity: 1,
+  },
+  {
     date: "2026-06-01",
     totalRevenue: 1200,
     newCustomerRevenue: 700,
@@ -29,5 +39,14 @@ describe("GitHubCalendar", () => {
     expect(getByText("Existing Customer")).toBeInTheDocument();
     expect(queryByText("New User")).not.toBeInTheDocument();
     expect(queryByText("Existing User")).not.toBeInTheDocument();
+  });
+
+  it("renders selected-period customer revenue totals in the footer", () => {
+    const { getByText } = render(<GitHubCalendar data={days} />);
+
+    expect(getByText("New Customer Total")).toBeInTheDocument();
+    expect(getByText("Existing Customer Total")).toBeInTheDocument();
+    expect(getByText("৳1,700")).toBeInTheDocument();
+    expect(getByText("৳500")).toBeInTheDocument();
   });
 });
