@@ -1045,6 +1045,7 @@ export default function Products() {
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [addingProduct, setAddingProduct] = useState(false);
   const [editingFor, setEditingFor] = useState<string | null>(null);
+  const [editingCogFor, setEditingCogFor] = useState<string | null>(null);
 
   // Import
   const [crawlUrl, setCrawlUrl] = useState("");
@@ -1154,6 +1155,7 @@ export default function Products() {
       if (!res.ok) throw new Error();
       await qc.invalidateQueries({ queryKey: ["/api/products"] });
       setCogEdits(e => { const n = { ...e }; delete n[product.id]; return n; });
+      setEditingCogFor(null);
       toast.success("COG updated");
     } catch { toast.error("Failed to save"); }
     finally { setSavingIds(s => { const n = new Set(s); n.delete(product.id); return n; }); }
@@ -1462,7 +1464,6 @@ export default function Products() {
                 {products.map((product, idx) => {
                   const cogVal = cogEdits[product.id] ?? String(product.cog ?? 0);
                   const mgn = pct(product.selling_price, parseFloat(cogVal) || 0);
-                  const isDirty = cogEdits[product.id] !== undefined;
                   const isSaving = savingIds.has(product.id);
                   const isAdding = addingFor === product.id;
                   const isEditing = editingFor === product.id;
@@ -1559,36 +1560,34 @@ export default function Products() {
                           </span>
                         </div>
 
-                        {/* COG — admin editable, centered under column header */}
+                        {/* COG — click the text value to edit, Enter saves */}
                         {isAdmin && (
-                          <div className="mx-auto max-w-[96px] px-1 pt-3 pb-3" onClick={(event) => event.stopPropagation()}>
-                            <div className="relative flex w-full">
-                              <div className="relative flex-1">
-                                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
+                          <div className="px-4 pt-3.5 pb-3 text-center" onClick={(event) => event.stopPropagation()}>
+                            {editingCogFor === product.id ? (
+                              <div className="relative mx-auto w-[88px]">
+                                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
                                 <input
                                   data-testid={`input-cog-${product.id}`}
+                                  autoFocus
                                   type="number" min={0} value={cogVal}
                                   onChange={e => setCogEdits(p => ({ ...p, [product.id]: e.target.value }))}
-                                  onKeyDown={e => e.key === "Enter" && isDirty && saveCog(product)}
-                                  className="h-9 w-full rounded-[12px] pl-7 pr-3 font-mono text-[13px] outline-none tabular-nums focus-visible:ring-2 focus-visible:ring-black/20 bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 transition-all hover:bg-[#E3E3E3] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                  onKeyDown={e => e.key === "Enter" && saveCog(product)}
+                                  className="h-8 w-full rounded-[8px] bg-black/[0.04] pl-6 pr-2 font-mono text-[13px] outline-none tabular-nums text-black ring-1 ring-inset ring-black/10 transition-all focus-visible:bg-white focus-visible:ring-black/25 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 />
                               </div>
-                              <AnimatePresence>
-                                {isDirty && (
-                                  <motion.button
-                                    initial={{ opacity: 0, scale: 0.8 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.8 }}
-                                    data-testid={`button-save-metrics-${product.id}`}
-                                    onClick={() => saveCog(product)}
-                                    disabled={isSaving}
-                                    className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-md bg-black text-white transition-opacity hover:opacity-80 disabled:opacity-40"
-                                  >
-                                    {isSaving ? <Spinner size="sm" /> : <Check className="h-3.5 w-3.5" />}
-                                  </motion.button>
-                                )}
-                              </AnimatePresence>
-                            </div>
+                            ) : (
+                              <button
+                                type="button"
+                                data-testid={`button-edit-cog-${product.id}`}
+                                onClick={() => {
+                                  setEditingCogFor(product.id);
+                                  setCogEdits(p => ({ ...p, [product.id]: String(product.cog ?? 0) }));
+                                }}
+                                className="font-mono text-[13px] tabular-nums text-black transition-colors hover:text-black/60"
+                              >
+                                {fmt(product.cog)}
+                              </button>
+                            )}
                           </div>
                         )}
 
