@@ -5,7 +5,7 @@ import { toast } from "@/components/ui/sonner";
 import { motion, AnimatePresence, useReducedMotion, type Transition } from "framer-motion";
 import {
   Search, SlidersHorizontal, Trash2, PackageSearch,
-  Package2, Globe2, RefreshCw, Plus, X,
+  Package2, RefreshCw, Plus, X,
   Check, AlertTriangle, ChevronDown, Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -129,6 +129,29 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function WebsiteImportIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <g clipPath="url(#clip0_4418_8228)">
+        <path d="M7.65006 20.9098C7.62006 20.9098 7.58006 20.9298 7.55006 20.9298C5.61006 19.9698 4.03006 18.3798 3.06006 16.4398C3.06006 16.4098 3.08006 16.3698 3.08006 16.3398C4.30006 16.6998 5.56006 16.9698 6.81006 17.1798C7.03006 18.4398 7.29006 19.6898 7.65006 20.9098Z" />
+        <path d="M20.94 16.4498C19.95 18.4398 18.3 20.0498 16.29 21.0198C16.67 19.7498 16.99 18.4698 17.2 17.1798C18.46 16.9698 19.7 16.6998 20.92 16.3398C20.91 16.3798 20.94 16.4198 20.94 16.4498Z" />
+        <path d="M21.02 7.71047C19.76 7.33047 18.49 7.02047 17.2 6.80047C16.99 5.51047 16.68 4.23047 16.29 2.98047C18.36 3.97047 20.03 5.64047 21.02 7.71047Z" />
+        <path d="M7.64998 3.09055C7.28998 4.31055 7.02998 5.55055 6.81998 6.81055C5.52998 7.01055 4.24998 7.33055 2.97998 7.71055C3.94998 5.70055 5.55998 4.05055 7.54998 3.06055C7.57998 3.06055 7.61998 3.09055 7.64998 3.09055Z" />
+        <path d="M15.49 6.59C13.17 6.33 10.83 6.33 8.51001 6.59C8.76001 5.22 9.08001 3.85 9.53001 2.53C9.55001 2.45 9.54001 2.39 9.55001 2.31C10.34 2.12 11.15 2 12 2C12.84 2 13.66 2.12 14.44 2.31C14.45 2.39 14.45 2.45 14.47 2.53C14.92 3.86 15.24 5.22 15.49 6.59Z" />
+        <path d="M6.59 15.4898C5.21 15.2398 3.85 14.9198 2.53 14.4698C2.45 14.4498 2.39 14.4598 2.31 14.4498C2.12 13.6598 2 12.8498 2 11.9998C2 11.1598 2.12 10.3398 2.31 9.55977C2.39 9.54977 2.45 9.54977 2.53 9.52977C3.86 9.08977 5.21 8.75977 6.59 8.50977C6.34 10.8298 6.34 13.1698 6.59 15.4898Z" />
+        <path d="M21.9999 11.9998C21.9999 12.8498 21.8799 13.6598 21.6899 14.4498C21.6099 14.4598 21.5499 14.4498 21.4699 14.4698C20.1399 14.9098 18.7799 15.2398 17.4099 15.4898C17.6699 13.1698 17.6699 10.8298 17.4099 8.50977C18.7799 8.75977 20.1499 9.07977 21.4699 9.52977C21.5499 9.54977 21.6099 9.55977 21.6899 9.55977C21.8799 10.3498 21.9999 11.1598 21.9999 11.9998Z" />
+        <path d="M15.49 17.4102C15.24 18.7902 14.92 20.1502 14.47 21.4702C14.45 21.5502 14.45 21.6102 14.44 21.6902C13.66 21.8802 12.84 22.0002 12 22.0002C11.15 22.0002 10.34 21.8802 9.55001 21.6902C9.54001 21.6102 9.55001 21.5502 9.53001 21.4702C9.09001 20.1402 8.76001 18.7902 8.51001 17.4102C9.67001 17.5402 10.83 17.6302 12 17.6302C13.17 17.6302 14.34 17.5402 15.49 17.4102Z" />
+        <path d="M15.7633 15.7633C13.2622 16.0789 10.7378 16.0789 8.23667 15.7633C7.92111 13.2622 7.92111 10.7378 8.23667 8.23667C10.7378 7.92111 13.2622 7.92111 15.7633 8.23667C16.0789 10.7378 16.0789 13.2622 15.7633 15.7633Z" />
+      </g>
+      <defs>
+        <clipPath id="clip0_4418_8228">
+          <rect width="24" height="24" fill="white" />
+        </clipPath>
+      </defs>
+    </svg>
+  );
+}
+
 async function filesToSelectedImages(files: FileList | null, remainingSlots: number) {
   if (!files?.length || remainingSlots <= 0) return [];
   return Promise.all(Array.from(files).slice(0, remainingSlots).map(async (file) => ({
@@ -237,7 +260,7 @@ function VariantChip({
   }
 
   const chipCls = cn(
-    "inline-flex cursor-pointer select-none items-center gap-1.5 rounded-[12px] px-2.5 py-[5px] text-[11px] font-medium leading-none transition-all",
+    "inline-flex cursor-pointer select-none items-center gap-1.5 rounded-[8px] px-2.5 py-[5px] text-[11px] font-medium leading-none transition-all",
     status === "out" && "bg-red-50 text-red-600 ring-1 ring-inset ring-red-200",
     status === "low" && "bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-200",
     status === "ok"  && "bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 hover:bg-[#E3E3E3]",
@@ -333,7 +356,7 @@ function VariantStrip({
   if (variants.length === 0) {
     return (
       <button onClick={(event) => { event.stopPropagation(); onAdd(); }}
-        className="inline-flex items-center gap-1 rounded-full border border-dashed border-black/[0.15] px-3 py-[5px] text-[11px] text-black/40 transition-colors hover:border-black/30 hover:text-black"
+        className="inline-flex items-center gap-1 rounded-[8px] border border-dashed border-black/[0.15] px-3 py-[5px] text-[11px] text-black/40 transition-colors hover:border-black/30 hover:text-black"
         style={{ fontFamily: SYS }}>
         <Plus className="h-3 w-3" /> Add variants
       </button>
@@ -348,7 +371,7 @@ function VariantStrip({
       {!showAll && overflow > 0 && (
         <button onClick={(event) => { event.stopPropagation(); setShowAll(true); }}
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2.5 py-[5px] text-[11px] font-medium ring-1 ring-inset transition-colors",
+            "inline-flex items-center gap-1 rounded-[8px] px-2.5 py-[5px] text-[11px] font-medium ring-1 ring-inset transition-colors",
             hasAlert
               ? "bg-amber-50 text-amber-600 ring-amber-200 hover:bg-amber-100"
               : "bg-black/[0.04] text-black/40 ring-black/[0.08] hover:text-black"
@@ -359,13 +382,13 @@ function VariantStrip({
       )}
       {showAll && overflow > 0 && (
         <button onClick={(event) => { event.stopPropagation(); setShowAll(false); }}
-          className="rounded-full bg-black/[0.04] px-2.5 py-[5px] text-[11px] text-black/40 ring-1 ring-inset ring-black/[0.08] hover:text-black"
+          className="rounded-[8px] bg-black/[0.04] px-2.5 py-[5px] text-[11px] text-black/40 ring-1 ring-inset ring-black/[0.08] hover:text-black"
           style={{ fontFamily: SYS }}>
           Less
         </button>
       )}
       <button onClick={(event) => { event.stopPropagation(); onAdd(); }}
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-black/[0.15] text-black/40 transition-colors hover:border-black/30 hover:text-black">
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] border border-dashed border-black/[0.15] text-black/40 transition-colors hover:border-black/30 hover:text-black">
         <Plus className="h-3 w-3" />
       </button>
     </div>
@@ -1264,7 +1287,9 @@ export default function Products() {
           className="rounded-xl border border-black/[0.16] bg-white p-5 shadow-[0_1px_1px_0_rgba(0,0,0,0.04)]"
         >
           <div className="mb-4 flex items-center gap-2">
-            <Globe2 className="h-4 w-4 text-black/60" />
+            <span className="flex h-6 w-6 items-center justify-center rounded-[8px] bg-black text-white [&_svg]:h-4 [&_svg]:w-4">
+              <WebsiteImportIcon />
+            </span>
             <span className="text-[14px] font-semibold text-black">Import from Website</span>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

@@ -21,4 +21,14 @@ describe("products COG input layout", () => {
     expect(source).toContain("font-mono text-[13px] tabular-nums text-black");
     expect(source).toContain("rounded-[8px] bg-emerald-50");
   });
+
+  it("uses the custom website import icon and 8px variant corners", () => {
+    expect(source).toContain("function WebsiteImportIcon()");
+    expect(source).toContain('clipPath id="clip0_4418_8228"');
+    expect(source).toContain("<WebsiteImportIcon />");
+    expect(source).not.toContain("<Globe2 className=\"h-4 w-4 text-black/60\" />");
+    expect(source).toContain("items-center gap-1.5 rounded-[8px]");
+    expect(source).not.toContain("items-center gap-1.5 rounded-[12px]");
+    expect(source).not.toContain("rounded-full border border-dashed");
+  });
 });
