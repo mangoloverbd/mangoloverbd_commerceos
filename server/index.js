@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { readFile } from "fs/promises";
@@ -2678,6 +2679,7 @@ app.get("/api/analytics", async (req, res) => {
     const cfg = await getOrgSettings(orgId, ["facebook_access_token", "facebook_ad_account_id", "usd_to_bdt_rate"]);
     let fbToken = cfg["facebook_access_token"];
     let fbAccountId = cfg["facebook_ad_account_id"];
+    let fbAccountCurrency = null;
     if (!fbToken || !fbAccountId) {
       try {
         const { data: connection } = await supabase
@@ -2687,16 +2689,35 @@ app.get("/api/analytics", async (req, res) => {
           .maybeSingle();
         const { data: adAccount } = await supabase
           .from("meta_ad_accounts")
-          .select("ad_account_id")
+          .select("ad_account_id, currency")
           .eq("org_id", orgId)
           .limit(1)
           .maybeSingle();
         if (connection?.encrypted_user_access_token && adAccount?.ad_account_id) {
           fbToken = decryptToken(connection.encrypted_user_access_token);
           fbAccountId = adAccount.ad_account_id;
+          fbAccountCurrency = adAccount.currency;
         }
       } catch (err) {
         console.warn("[Meta Analytics] OAuth ad account fallback unavailable:", errorMessage(err));
+      }
+    }
+    if (fbAccountId && !fbAccountCurrency) {
+      try {
+        const storedAccountIds = [
+          fbAccountId,
+          fbAccountId.startsWith("act_") ? fbAccountId.slice(4) : `act_${fbAccountId}`,
+        ];
+        const { data: adAccount } = await supabase
+          .from("meta_ad_accounts")
+          .select("currency")
+          .eq("org_id", orgId)
+          .in("ad_account_id", storedAccountIds)
+          .limit(1)
+          .maybeSingle();
+        fbAccountCurrency = adAccount?.currency || null;
+      } catch (err) {
+        console.warn("[Meta Analytics] Ad account currency unavailable:", errorMessage(err));
       }
     }
     const usdToBdt = parseFloat(cfg["usd_to_bdt_rate"] || "0") || 110; // default 110
@@ -2745,16 +2766,30 @@ app.get("/api/analytics", async (req, res) => {
           pages++;
         }
 
-        adSpend = parseFloat((totalSpendUsd * usdToBdt).toFixed(2));
+        adSpend = convertMetaSpendToBdt(totalSpendUsd, fbAccountCurrency, usdToBdt);
+        if (adSpend === null) {
+          fbError = `Unsupported or missing Meta ad account currency: ${fbAccountCurrency || "unknown"}`;
+        }
         if (singleDaySeries) {
-          const dailySpend = parseFloat(((spendByDayUsd.get(seriesStart) || totalSpendUsd) * usdToBdt).toFixed(2));
-          for (const bucket of seriesBuckets) bucket.adSpend = dailySpend;
+          const dailySpend = convertMetaSpendToBdt(
+            spendByDayUsd.get(seriesStart) || totalSpendUsd,
+            fbAccountCurrency,
+            usdToBdt,
+          );
+          if (dailySpend !== null) {
+            for (const bucket of seriesBuckets) bucket.adSpend = dailySpend;
+          }
         } else {
           for (const bucket of seriesBuckets) {
-            bucket.adSpend = parseFloat(((spendByDayUsd.get(bucket.key) || 0) * usdToBdt).toFixed(2));
+            const dailySpend = convertMetaSpendToBdt(
+              spendByDayUsd.get(bucket.key) || 0,
+              fbAccountCurrency,
+              usdToBdt,
+            );
+            if (dailySpend !== null) bucket.adSpend = dailySpend;
           }
         }
-        console.log(`[FB Analytics] total USD spend: ${totalSpendUsd}, rate: ${usdToBdt}, BDT: ${adSpend}`);
+        console.log(`[FB Analytics] total ${fbAccountCurrency || "unknown"} spend: ${totalSpendUsd}, rate: ${usdToBdt}, BDT: ${adSpend}`);
       } catch (e) {
         fbError = e.message || "Failed to reach Facebook API";
       }
