@@ -15,6 +15,12 @@ import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
 import { toPublicProduct } from "./publicCatalog.js";
+import {
+  HANDLE_REGEX,
+  RESERVED_HANDLES,
+  normalizeStorefrontHandle,
+  validateStorefrontHandle,
+} from "./storefrontHandle.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -29,6 +35,8 @@ let redisClient = null;
 let rlAI = null;
 let rlAuth = null;
 let rlAPI = null;
+let rlHandleClaimUser = null;
+let rlHandleClaimIp = null;
 
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
   try {
@@ -50,6 +58,16 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       redis: redisClient,
       limiter: Ratelimit.slidingWindow(120, "60 s"),
       prefix: "rl:api",
+    });
+    rlHandleClaimUser = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(5, "1 h"),
+      prefix: "rl:handle:user",
+    });
+    rlHandleClaimIp = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(20, "1 h"),
+      prefix: "rl:handle:ip",
     });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
@@ -114,6 +132,8 @@ function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
 const rateLimitAI   = makeRateLimitMiddleware(rlAI,   "user");
 const rateLimitAuth = makeRateLimitMiddleware(rlAuth,  "ip");
 const rateLimitAPI  = makeRateLimitMiddleware(rlAPI,   "user");
+const rateLimitHandleUser = makeRateLimitMiddleware(rlHandleClaimUser, "user");
+const rateLimitHandleIp   = makeRateLimitMiddleware(rlHandleClaimIp,   "ip");
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const PRODUCT_IMAGE_MAX_COUNT = 8;
@@ -942,6 +962,75 @@ async function getOrgSettings(orgId, keys) {
     map[key] = settings[orgSettingKey(orgId, key)];
   }
   return map;
+}
+
+// ─── Public Storefront Handle ────────────────────────────────────────────────
+//
+// Handles let merchants advertise storefronts as /:handle instead of a raw
+// orgId UUID. Two app_settings keys back each handle:
+//   storefront_handle:<handle>          -> orgId   (forward: handle -> org)
+//   <orgId>:public_storefront_handle    -> handle  (reverse: org -> handle)
+// Claiming a handle races: we rely on the app_settings PK to make the forward
+// insert atomic (ON CONFLICT DO NOTHING via Supabase's ignoreDuplicates).
+
+async function resolveStorefrontHandle(handle) {
+  const check = validateStorefrontHandle(handle);
+  if (!check.ok) return null;
+  const key = `storefront_handle:${check.handle}`;
+  const settings = await getSettings([key]);
+  return settings[key] || null;
+}
+
+async function getStorefrontHandle(orgId) {
+  const key = `${orgId}:public_storefront_handle`;
+  const settings = await getSettings([key]);
+  return settings[key] || null;
+}
+
+async function setStorefrontHandle(orgId, handle) {
+  if (!orgId) throw new Error("orgId required");
+  const validation = validateStorefrontHandle(handle);
+  if (!validation.ok) {
+    const message = validation.reason === "reserved"
+      ? `"${normalizeStorefrontHandle(handle)}" is a reserved handle`
+      : "Handle must be 2-50 characters, lowercase letters, numbers, and hyphens only (no leading/trailing hyphen)";
+    const err = new Error(message);
+    err.code = validation.reason === "reserved" ? "HANDLE_RESERVED" : "HANDLE_INVALID";
+    throw err;
+  }
+  const clean = validation.handle;
+
+  const supabase = getServiceSupabase();
+  const forwardKey = `storefront_handle:${clean}`;
+  const reverseKey = `${orgId}:public_storefront_handle`;
+
+  // Atomic claim: insert the forward key; on conflict, do nothing.
+  // If nothing was inserted and the existing row belongs to a different org, 409.
+  const nowIso = new Date().toISOString();
+  const { data: inserted, error: insertError } = await supabase
+    .from("app_settings")
+    .insert({ key: forwardKey, value: orgId, updated_at: nowIso })
+    .select();
+  if (insertError && insertError.code !== "23505") throw insertError;
+
+  if (!inserted || inserted.length === 0) {
+    const existing = await getSettings([forwardKey]);
+    if (existing[forwardKey] && existing[forwardKey] !== orgId) {
+      const err = new Error(`Storefront handle "${clean}" is already taken`);
+      err.code = "HANDLE_TAKEN";
+      throw err;
+    }
+    // Already owned by this org — idempotent, fall through.
+  }
+
+  // Update reverse mapping. If the org previously had a different handle,
+  // free that forward key so it can be reclaimed and doesn't keep resolving.
+  const previous = await getStorefrontHandle(orgId);
+  if (previous && previous !== clean) {
+    await supabase.from("app_settings").delete().eq("key", `storefront_handle:${previous}`);
+  }
+  await saveSettings({ [reverseKey]: clean });
+  return clean;
 }
 
 async function saveOrgSettings(orgId, settings) {
@@ -1853,6 +1942,47 @@ app.post("/api/auth/shopify/disconnect", async (req, res) => {
       shopify_connected_scope: "",
     });
     return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ─── Storefront Handle ───────────────────────────────────────────────────────
+
+app.post("/api/storefront/handle", rateLimitHandleUser, rateLimitHandleIp, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const raw = typeof req.body?.handle === "string" ? req.body.handle : "";
+    try {
+      const handle = await setStorefrontHandle(orgId, raw);
+      return res.json({ success: true, handle });
+    } catch (err) {
+      if (err.code === "HANDLE_TAKEN") {
+        return res.status(409).json({ error: err.message });
+      }
+      if (err.message?.startsWith("Handle must be") || err.message?.includes("reserved handle")) {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/storefront/handle", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const handle = await getStorefrontHandle(orgId);
+    return res.json({ handle: handle || null });
   } catch (err) {
     return sendError(res, err);
   }
@@ -7853,10 +7983,15 @@ app.get("/api/products", async (req, res) => {
       }
     }
 
+    const handle = await getStorefrontHandle(orgId);
+    const origin = `${req.protocol}://${req.get("host")}`;
     return res.json({
       storefront: {
         id: orgId,
-        products_url: `${req.protocol}://${req.get("host")}/api/public/v1/storefronts/${orgId}/products`,
+        handle: handle || null,
+        products_url: handle
+          ? `${origin}/api/public/v1/${handle}/products`
+          : `${origin}/api/public/v1/storefronts/${orgId}/products`,
       },
       products: (data || []).map((p) => ({
         ...p,
@@ -7882,40 +8017,70 @@ function setDeprecationHeaders(res, canonicalPath) {
   res.set("Link", `<${canonicalPath}>; rel="successor-version"`);
 }
 
+async function loadPublicProducts(orgId) {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("published", true)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const products = data || [];
+  const productIds = products.map((p) => p.id);
+  const stockMap = productIds.length > 0 ? await getProductStockMap(orgId, productIds) : {};
+  const imagesMap = await loadProductImagesMap(supabase, orgId, productIds);
+  const variantsMap = {};
+  if (productIds.length > 0) {
+    const { data: variantRows, error: variantsError } = await supabase
+      .from("product_variants")
+      .select("id, product_id, attributes, stock_quantity, price_adjustment")
+      .in("product_id", productIds)
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+    if (variantsError) throw variantsError;
+    for (const variant of variantRows || []) {
+      if (!variantsMap[variant.product_id]) variantsMap[variant.product_id] = [];
+      variantsMap[variant.product_id].push(variant);
+    }
+  }
+  return products.map((product) =>
+    toPublicProduct(product, variantsMap[product.id] || [], stockMap[product.id] || 0, imagesMap[product.id] || []),
+  );
+}
+
+async function loadPublicProductBySlug(orgId, slug) {
+  const supabase = getServiceSupabase();
+  const { data: product, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("published", true)
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) throw error;
+  if (!product) return null;
+
+  const [stockMap, imagesMap, { data: variants, error: variantsError }] = await Promise.all([
+    getProductStockMap(orgId, [product.id]),
+    loadProductImagesMap(supabase, orgId, [product.id]),
+    supabase
+      .from("product_variants")
+      .select("id, product_id, attributes, stock_quantity, price_adjustment")
+      .eq("product_id", product.id)
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true }),
+  ]);
+  if (variantsError) throw variantsError;
+
+  return toPublicProduct(product, variants || [], stockMap[product.id] || 0, imagesMap[product.id] || []);
+}
+
 async function handlePublicStorefrontProducts(req, res) {
   try {
-    const supabase = getServiceSupabase();
-    const orgId = req.params.storefrontId;
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("org_id", orgId)
-      .eq("published", true)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-
-    const products = data || [];
-    const productIds = products.map((p) => p.id);
-    const stockMap = productIds.length > 0 ? await getProductStockMap(orgId, productIds) : {};
-    const imagesMap = await loadProductImagesMap(supabase, orgId, productIds);
-    const variantsMap = {};
-    if (productIds.length > 0) {
-      const { data: variantRows, error: variantsError } = await supabase
-        .from("product_variants")
-        .select("id, product_id, attributes, stock_quantity, price_adjustment")
-        .in("product_id", productIds)
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: true });
-      if (variantsError) throw variantsError;
-      for (const variant of variantRows || []) {
-        if (!variantsMap[variant.product_id]) variantsMap[variant.product_id] = [];
-        variantsMap[variant.product_id].push(variant);
-      }
-    }
-
-    return res.json({
-      products: products.map((product) => toPublicProduct(product, variantsMap[product.id] || [], stockMap[product.id] || 0, imagesMap[product.id] || [])),
-    });
+    const products = await loadPublicProducts(req.params.storefrontId);
+    return res.json({ products });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -7923,35 +8088,41 @@ async function handlePublicStorefrontProducts(req, res) {
 
 async function handlePublicStorefrontProductDetail(req, res) {
   try {
-    const supabase = getServiceSupabase();
-    const orgId = req.params.storefrontId;
-    const { data: product, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("org_id", orgId)
-      .eq("published", true)
-      .eq("slug", req.params.slug)
-      .maybeSingle();
-    if (error) throw error;
+    const product = await loadPublicProductBySlug(req.params.storefrontId, req.params.slug);
     if (!product) return res.status(404).json({ error: "Product not found" });
-
-    const [stockMap, imagesMap, { data: variants, error: variantsError }] = await Promise.all([
-      getProductStockMap(orgId, [product.id]),
-      loadProductImagesMap(supabase, orgId, [product.id]),
-      supabase
-        .from("product_variants")
-        .select("id, product_id, attributes, stock_quantity, price_adjustment")
-        .eq("product_id", product.id)
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: true }),
-    ]);
-    if (variantsError) throw variantsError;
-
-    return res.json({ product: toPublicProduct(product, variants || [], stockMap[product.id] || 0, imagesMap[product.id] || []) });
+    return res.json({ product });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 }
+
+async function handlePublicHandleProducts(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    // Same 404 shape whether the handle is unknown or the catalog is empty:
+    // don't let attackers enumerate handles by comparing responses.
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+    const products = await loadPublicProducts(orgId);
+    return res.json({ products });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function handlePublicHandleProductDetail(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+    const product = await loadPublicProductBySlug(orgId, req.params.slug);
+    if (!product) return res.status(404).json({ error: "not_found" });
+    return res.json({ product });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+app.get("/api/public/v1/:handle/products", handlePublicHandleProducts);
+app.get("/api/public/v1/:handle/products/:slug", handlePublicHandleProductDetail);
 
 app.get("/api/public/v1/storefronts/:storefrontId/products", handlePublicStorefrontProducts);
 app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", handlePublicStorefrontProductDetail);
