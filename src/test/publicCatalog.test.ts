@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PublicProductSchema, toPublicProduct } from "../../server/publicCatalog.js";
+import {
+  PublicProductSchema,
+  toPublicProduct,
+  toPublicInventoryEntry,
+  PublicInventoryEntrySchema,
+  PublicInventoryResponseSchema,
+} from "../../server/publicCatalog.js";
 
 const LEAKY_FIELDS = [
   "cog",
@@ -214,5 +220,62 @@ describe("toPublicProduct", () => {
     const result = toPublicProduct({ id: "p-schema", name: "S", slug: "s", selling_price: 100 }, [], []);
     // toPublicProduct already runs .parse() internally; re-validating must pass.
     expect(() => PublicProductSchema.parse(result)).not.toThrow();
+  });
+});
+
+describe("toPublicInventoryEntry", () => {
+  it("sums variant stock and sets available when some variants are in stock", () => {
+    const entry = toPublicInventoryEntry({
+      stockQuantity: 0,
+      variants: [
+        { id: "v-a", stock_quantity: 0 },
+        { id: "v-b", stock_quantity: 4 },
+      ],
+    });
+    expect(entry).toEqual({
+      available: true,
+      stock_quantity: 4,
+      variants: {
+        "v-a": { available: false, stock_quantity: 0 },
+        "v-b": { available: true, stock_quantity: 4 },
+      },
+    });
+  });
+
+  it("falls back to base stock when the product has no variants", () => {
+    const entry = toPublicInventoryEntry({ stockQuantity: 7, variants: [] });
+    expect(entry.available).toBe(true);
+    expect(entry.stock_quantity).toBe(7);
+    expect(entry.variants).toEqual({});
+  });
+
+  it("is unavailable when both base and all variants are out of stock", () => {
+    const entry = toPublicInventoryEntry({
+      stockQuantity: 0,
+      variants: [
+        { id: "v-a", stock_quantity: 0 },
+        { id: "v-b", stock_quantity: 0 },
+      ],
+    });
+    expect(entry.available).toBe(false);
+    expect(entry.stock_quantity).toBe(0);
+  });
+
+  it("rejects a leaked field through the strict Zod schema", () => {
+    const entry = toPublicInventoryEntry({ stockQuantity: 1, variants: [] }) as Record<string, unknown>;
+    expect(() => PublicInventoryEntrySchema.parse({ ...entry, org_id: "x" })).toThrow();
+  });
+});
+
+describe("PublicInventoryResponseSchema", () => {
+  it("accepts a keyed-by-id inventory object and rejects leaks", () => {
+    const inventory = {
+      "prod-1": toPublicInventoryEntry({ stockQuantity: 3, variants: [] }),
+    };
+    const body = { inventory, as_of: new Date().toISOString() };
+    expect(() => PublicInventoryResponseSchema.parse(body)).not.toThrow();
+
+    const leaked = { inventory: { "prod-1": { ...inventory["prod-1"], internal: 1 } }, as_of: body.as_of };
+    expect(() => PublicInventoryResponseSchema.parse(leaked)).toThrow();
   });
 });

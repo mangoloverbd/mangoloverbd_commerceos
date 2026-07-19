@@ -14,7 +14,7 @@ import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
-import { toPublicProduct, toPublicInventoryEntry } from "./publicCatalog.js";
+import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
   HANDLE_REGEX,
   RESERVED_HANDLES,
@@ -38,6 +38,12 @@ let rlAPI = null;
 let rlHandleClaimUser = null;
 let rlHandleClaimIp = null;
 let rlPublicRead = null;
+
+// Cloudflare edge-cache purge + warm-token bypass (Task 1).
+const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
+const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || "";
+const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN || "";
+const WARM_TOKEN = process.env.WARM_TOKEN || "";
 
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
   try {
@@ -192,6 +198,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+// Cloudflare -> Railway proxy -> Express. Trust 2 hops so req.ip
+// reflects the real client behind Cloudflare, not the proxy IP.
+app.set("trust proxy", 2);
 app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : true }));
 const publicTrackerCors = cors({
   origin: true,
@@ -210,8 +219,14 @@ app.use(express.json({
 // Apply general API rate limit to all /api/* routes.
 // AI-specific routes apply their own stricter rateLimitAI middleware on top.
 // Webhook routes are excluded — they are server-to-server and must not be blocked.
+// Public storefront routes set their own caching + rate limiting and are exempt
+// here so the global /api limiter can't defeat the warm-token bypass.
 app.use("/api", (req, res, next) => {
   const path = req.path;
+  // Public v1 routes set their own caching + rate limiting.
+  if (path.startsWith("/public/")) return next();
+  // Everything else under /api is per-user data — never cache.
+  res.set("Cache-Control", "private, no-store");
   // Exclude webhook endpoints and public config from rate limiting
   if (
     path.startsWith("/webhooks/") ||
@@ -1008,6 +1023,59 @@ async function getStorefrontHandle(orgId) {
   const key = `${orgId}:public_storefront_handle`;
   const settings = await getSettings([key]);
   return settings[key] || null;
+}
+
+// Fire-and-forget edge purge. URL-based (tag-based purge is Cloudflare
+// Enterprise-only); Cache-Tag headers still ship so the future switch is a
+// config change, not a code change. Failures log + drop — the outbox
+// replay job is a separate plan.
+async function purgeProductCache(orgId, productId, { listChanged = false, warm = true } = {}) {
+  if (!CLOUDFLARE_ZONE_ID || !CLOUDFLARE_API_TOKEN || !PUBLIC_DOMAIN) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn("[Purge] Cloudflare not configured — skipping purge");
+    }
+    return;
+  }
+  const handle = await getStorefrontHandle(orgId);
+  if (!handle) return;
+
+  const urls = [];
+  if (productId) {
+    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products/${productId}`);
+    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products/${productId}/inventory`);
+  }
+  if (listChanged) {
+    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products`);
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ files: urls }),
+      },
+    );
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(`[Purge] Cloudflare purge failed: ${body}`);
+    } else {
+      console.log(`[Purge] Purged ${urls.length} URL(s) for org ${orgId} product ${productId || "*"}`);
+    }
+  } catch (e) {
+    console.warn("[Purge] Cloudflare purge error:", e.message);
+  }
+
+  if (warm && WARM_TOKEN) {
+    const warmHeaders = { headers: { "X-Warm-Token": WARM_TOKEN } };
+    for (const url of urls) {
+      fetch(url, warmHeaders).catch(() => {});
+    }
+  }
 }
 
 async function setStorefrontHandle(orgId, handle) {
@@ -8255,35 +8323,72 @@ async function handlePublicHandleProductDetail(req, res) {
   }
 }
 
-// Short-TTL stock-truth endpoint. Reads `?ids=uuid,uuid` (capped at 100)
-// or the whole published catalog when omitted. The storefront renders the
-// catalog from the cached list and hydrates stock from here — that's the
-// two-tier split that makes a merchant's edit show instantly without
-// turning stock into a distributed-systems problem.
-async function handlePublicInventory(req, res) {
+// Short-TTL stock-truth endpoint. Bulk `?ids=a,b,c` covers the PLP
+// add-to-cart case; per-slug covers the PDP. The storefront renders
+// the catalog from the cached list and hydrates stock from here — that's
+// the two-tier split that makes a merchant's edit show instantly
+// without turning stock into a distributed-systems problem.
+async function handlePublicHandleInventory(req, res) {
   try {
     const orgId = await resolveStorefrontHandle(req.params.handle);
-    if (!orgId) return res.status(404).json({ error: "not_found" });
+    if (!orgId) {
+      res.set("Cache-Control", "no-store");
+      return res.status(404).json({ error: "not_found" });
+    }
 
     const ids = (req.query.ids ? String(req.query.ids).split(",") : [])
       .map((s) => s.trim()).filter(Boolean);
     if (ids.length > 100) return res.status(413).json({ error: "ids: max 100" });
+    if (!ids.length) return res.status(400).json({ error: "ids_required" });
 
-    let productIds = ids;
-    if (!productIds.length) {
-      const { data, error } = await getServiceSupabase()
-        .from("products").select("id").eq("org_id", orgId).eq("published", true);
-      if (error) throw error;
-      productIds = (data || []).map((r) => r.id);
-    }
-    const inventory = await loadPublicInventory(orgId, productIds);
+    const inventory = await loadPublicInventory(orgId, ids);
     const body = { inventory, as_of: new Date().toISOString() };
     if (respondCached(res, {
       etag: inventoryEtag(inventory),
       cacheControl: "public, max-age=5, stale-while-revalidate=30, s-maxage=5",
-      cacheTag: cacheTagHeader(req.params.handle, productIds),
+      cacheTag: cacheTagHeader(req.params.handle, ids),
     })) return;
-    return res.json(body);
+    // Validate through Zod so a leaked field is a staging 500, not a
+    // contract break shipped to storefronts.
+    return res.json(PublicInventoryResponseSchema.parse(body));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function handlePublicHandleProductInventory(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) {
+      res.set("Cache-Control", "no-store");
+      return res.status(404).json({ error: "not_found" });
+    }
+    const supabase = getServiceSupabase();
+    const { data: product, error } = await supabase
+      .from("products")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("published", true)
+      .eq("slug", req.params.slug)
+      .maybeSingle();
+    if (error) throw error;
+    if (!product) {
+      res.set("Cache-Control", "no-store");
+      return res.status(404).json({ error: "not_found" });
+    }
+    const inventory = await loadPublicInventory(orgId, [product.id]);
+    const entry = inventory[product.id] || null;
+    const body = { inventory: entry, as_of: new Date().toISOString() };
+    if (respondCached(res, {
+      etag: inventoryEtag(inventory),
+      cacheControl: "public, max-age=5, stale-while-revalidate=30, s-maxage=5",
+      cacheTag: cacheTagHeader(req.params.handle, [product.id]),
+    })) return;
+    // Validates the entry (or null) shape through Zod.
+    return res.json({
+      inventory: entry === null ? null : PublicInventoryEntrySchema.parse(entry),
+      as_of: body.as_of,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -8291,11 +8396,12 @@ async function handlePublicInventory(req, res) {
 
 app.get("/api/public/v1/:handle/products", rateLimitPublicRead, handlePublicHandleProducts);
 app.get("/api/public/v1/:handle/products/:slug", rateLimitPublicRead, handlePublicHandleProductDetail);
-app.get("/api/public/v1/:handle/products/:slug/inventory", rateLimitPublicRead, handlePublicInventory);
+app.get("/api/public/v1/:handle/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
+app.get("/api/public/v1/:handle/inventory", rateLimitPublicRead, handlePublicHandleInventory);
 
 app.get("/api/public/v1/storefronts/:storefrontId/products", rateLimitPublicRead, handlePublicStorefrontProducts);
 app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", rateLimitPublicRead, handlePublicStorefrontProductDetail);
-app.get("/api/public/v1/storefronts/:storefrontId/products/:slug/inventory", rateLimitPublicRead, handlePublicInventory);
+app.get("/api/public/v1/storefronts/:storefrontId/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
 
 app.get("/api/public/storefronts/:storefrontId/products", (req, res) => {
   setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products`);
@@ -8794,6 +8900,21 @@ app.patch("/api/products/:id", async (req, res) => {
     if (hasStockUpdate) await saveProductStock(orgId, req.params.id, req.body.stock_quantity);
     data = { ...data, stock_quantity: hasStockUpdate ? Math.max(0, parseInt(req.body.stock_quantity, 10) || 0) : 0 };
 
+    // Edge purge: skip if only stock_quantity changed (5s inventory TTL
+    // self-heals). Purge when the published state flips or the product
+    // is already published (any catalog field edit must go live).
+    const changedFields = Object.keys(update);
+    const onlyStockChanged = hasStockUpdate && changedFields.length === 0;
+    const isUnpublishing = update.published === false;
+    if (!onlyStockChanged && (data.published || isUnpublishing)) {
+      const isPublishing = update.published === true;
+      const listChanged = isPublishing || isUnpublishing;
+      purgeProductCache(orgId, req.params.id, {
+        listChanged,
+        warm: !isUnpublishing,
+      }).catch(() => {});
+    }
+
     // Regenerate embedding if image_url changed
     if (update.image_url && data.image_url) {
       generateProductEmbedding(data.image_url).then(({ embedding, description }) => {
@@ -8824,11 +8945,40 @@ app.delete("/api/products/:id", async (req, res) => {
       .eq("org_id", orgId);
     const { error } = await supabase.from("products").delete().eq("id", req.params.id).eq("org_id", orgId);
     if (error) throw error;
+    // List changed + detail stale: purge with warm:false (warming an
+    // unpublished 404 would pollute the edge with a negative entry).
+    purgeProductCache(orgId, req.params.id, { listChanged: true, warm: false }).catch(() => {});
     const paths = (images || []).map((image) => image.storage_path).filter(Boolean);
     if (paths.length) {
       await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove(paths);
     }
     return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// Publishes every unpublished product for the org in one shot (Dashboard
+// "Publish All" button). Single list purge — detail warms happen on
+// first real visitor (60s catalog TTL).
+app.post("/api/products/publish-all", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { data, error } = await supabase
+      .from("products")
+      .update({ published: true, published_at: new Date().toISOString() })
+      .eq("org_id", orgId)
+      .eq("published", false)
+      .select("id");
+    if (error) throw error;
+
+    purgeProductCache(orgId, null, { listChanged: true, warm: true }).catch(() => {});
+
+    return res.json({ success: true, published: (data || []).length });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
