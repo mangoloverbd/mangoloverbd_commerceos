@@ -7856,7 +7856,7 @@ app.get("/api/products", async (req, res) => {
     return res.json({
       storefront: {
         id: orgId,
-        products_url: `${req.protocol}://${req.get("host")}/api/public/storefronts/${orgId}/products`,
+        products_url: `${req.protocol}://${req.get("host")}/api/public/v1/storefronts/${orgId}/products`,
       },
       products: (data || []).map((p) => ({
         ...p,
@@ -7871,7 +7871,18 @@ app.get("/api/products", async (req, res) => {
   }
 });
 
-app.get("/api/public/storefronts/:storefrontId/products", async (req, res) => {
+// Canonical public storefront routes are versioned under /api/public/v1/.
+// The unversioned /api/public/storefronts/... paths remain for one deprecation
+// window and set Deprecation + Sunset headers on every response.
+const PUBLIC_STOREFRONT_SUNSET = "Sat, 17 Oct 2026 00:00:00 GMT";
+
+function setDeprecationHeaders(res, canonicalPath) {
+  res.set("Deprecation", "true");
+  res.set("Sunset", PUBLIC_STOREFRONT_SUNSET);
+  res.set("Link", `<${canonicalPath}>; rel="successor-version"`);
+}
+
+async function handlePublicStorefrontProducts(req, res) {
   try {
     const supabase = getServiceSupabase();
     const orgId = req.params.storefrontId;
@@ -7908,9 +7919,9 @@ app.get("/api/public/storefronts/:storefrontId/products", async (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
-});
+}
 
-app.get("/api/public/storefronts/:storefrontId/products/:slug", async (req, res) => {
+async function handlePublicStorefrontProductDetail(req, res) {
   try {
     const supabase = getServiceSupabase();
     const orgId = req.params.storefrontId;
@@ -7940,6 +7951,18 @@ app.get("/api/public/storefronts/:storefrontId/products/:slug", async (req, res)
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
+}
+
+app.get("/api/public/v1/storefronts/:storefrontId/products", handlePublicStorefrontProducts);
+app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", handlePublicStorefrontProductDetail);
+
+app.get("/api/public/storefronts/:storefrontId/products", (req, res) => {
+  setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products`);
+  return handlePublicStorefrontProducts(req, res);
+});
+app.get("/api/public/storefronts/:storefrontId/products/:slug", (req, res) => {
+  setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products/${req.params.slug}`);
+  return handlePublicStorefrontProductDetail(req, res);
 });
 
 app.post("/api/products/save", async (req, res) => {

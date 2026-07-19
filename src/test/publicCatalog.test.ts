@@ -1,5 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { toPublicProduct } from "../../server/publicCatalog.js";
+import { PublicProductSchema, toPublicProduct } from "../../server/publicCatalog.js";
+
+const LEAKY_FIELDS = [
+  "cog",
+  "cost_price",
+  "internal_sku",
+  "org_id",
+  "source_url",
+  "supplier_id",
+  "supplier_name",
+  "supplier_url",
+  "storage_path",
+  "created_at",
+  "updated_at",
+  "published_at",
+];
+
+const ALLOWED_PRODUCT_KEYS = new Set([
+  "id",
+  "name",
+  "slug",
+  "description",
+  "url",
+  "image_url",
+  "images",
+  "image_urls",
+  "price",
+  "compare_at_price",
+  "available",
+  "stock_quantity",
+  "variants",
+]);
+
+const ALLOWED_VARIANT_KEYS = new Set(["id", "attributes", "price", "available", "stock_quantity"]);
+const ALLOWED_IMAGE_KEYS = new Set(["id", "url", "alt_text", "sort_order", "is_primary"]);
 
 describe("toPublicProduct", () => {
   it("returns only storefront-safe fields for a published product", () => {
@@ -121,5 +155,69 @@ describe("toPublicProduct", () => {
       stock_quantity: 0,
       variants: [],
     });
+  });
+
+  it("strips every known internal field from the payload", () => {
+    const noise = LEAKY_FIELDS.reduce((acc, key) => ({ ...acc, [key]: `leak-${key}` }), {});
+    const result = toPublicProduct(
+      {
+        id: "p-leak",
+        name: "Sensitive",
+        slug: "sensitive",
+        selling_price: 100,
+        ...noise,
+      },
+      [{ id: "v-leak", attributes: { size: "M" }, stock_quantity: 5, price_adjustment: 0, ...noise }],
+      5,
+      [{ id: "i-leak", url: "https://cdn.test/x.webp", alt_text: null, sort_order: 0, is_primary: true, ...noise }],
+    );
+
+    for (const key of LEAKY_FIELDS) {
+      expect(result, `product must not expose ${key}`).not.toHaveProperty(key);
+      expect(result.variants[0], `variant must not expose ${key}`).not.toHaveProperty(key);
+      expect(result.images[0], `image must not expose ${key}`).not.toHaveProperty(key);
+    }
+  });
+
+  it("emits only allowlisted keys at every level", () => {
+    const result = toPublicProduct(
+      {
+        id: "p-shape",
+        name: "Shape",
+        slug: "shape",
+        description: "d",
+        url: "https://merchant.test/p",
+        image_url: "https://cdn.test/a.webp",
+        selling_price: 200,
+        compare_at_price: 250,
+      },
+      [{ id: "v-shape", attributes: { size: "S" }, stock_quantity: 2, price_adjustment: 10 }],
+      2,
+    );
+
+    for (const key of Object.keys(result)) {
+      expect(ALLOWED_PRODUCT_KEYS.has(key), `unexpected product key: ${key}`).toBe(true);
+    }
+    for (const variant of result.variants) {
+      for (const key of Object.keys(variant)) {
+        expect(ALLOWED_VARIANT_KEYS.has(key), `unexpected variant key: ${key}`).toBe(true);
+      }
+    }
+    for (const image of result.images) {
+      for (const key of Object.keys(image)) {
+        expect(ALLOWED_IMAGE_KEYS.has(key), `unexpected image key: ${key}`).toBe(true);
+      }
+    }
+  });
+
+  it("throws when the serializer output contains an unexpected field", () => {
+    const bad = { id: "x", name: "x", slug: "x" } as unknown as Parameters<typeof PublicProductSchema.parse>[0];
+    expect(() => PublicProductSchema.parse({ ...bad, leaked_field: 1 })).toThrow();
+  });
+
+  it("exports a strict Zod schema that matches the runtime shape", () => {
+    const result = toPublicProduct({ id: "p-schema", name: "S", slug: "s", selling_price: 100 }, [], 0);
+    // toPublicProduct already runs .parse() internally; re-validating must pass.
+    expect(() => PublicProductSchema.parse(result)).not.toThrow();
   });
 });
