@@ -62,7 +62,7 @@ describe("toPublicProduct", () => {
           org_id: "org-1",
         },
       ],
-      12,
+      [],
     );
 
     expect(product).toEqual({
@@ -85,14 +85,12 @@ describe("toPublicProduct", () => {
       price: 1250,
       compare_at_price: 1500,
       available: true,
-      stock_quantity: 3,
       variants: [
         {
           id: "variant-1",
           attributes: { color: "Black", size: "M" },
           price: 1350,
           available: true,
-          stock_quantity: 3,
         },
       ],
     });
@@ -106,7 +104,6 @@ describe("toPublicProduct", () => {
     const product = toPublicProduct(
       { id: "p3", name: "Bag", image_url: "https://legacy.test/bag.jpg", selling_price: 900 },
       [],
-      4,
       [
         {
           id: "img-1",
@@ -149,10 +146,9 @@ describe("toPublicProduct", () => {
     expect(product.images[1]).not.toHaveProperty("storage_path");
   });
 
-  it("uses base stock when a product has no variants", () => {
-    expect(toPublicProduct({ id: "p2", name: "Hat", selling_price: 300 }, [], 0)).toMatchObject({
-      available: false,
-      stock_quantity: 0,
+  it("is sellable by price when a product has no variants", () => {
+    expect(toPublicProduct({ id: "p2", name: "Hat", selling_price: 300 }, [], [])).toMatchObject({
+      available: true,
       variants: [],
     });
   });
@@ -168,7 +164,6 @@ describe("toPublicProduct", () => {
         ...noise,
       },
       [{ id: "v-leak", attributes: { size: "M" }, stock_quantity: 5, price_adjustment: 0, ...noise }],
-      5,
       [{ id: "i-leak", url: "https://cdn.test/x.webp", alt_text: null, sort_order: 0, is_primary: true, ...noise }],
     );
 
@@ -192,7 +187,7 @@ describe("toPublicProduct", () => {
         compare_at_price: 250,
       },
       [{ id: "v-shape", attributes: { size: "S" }, stock_quantity: 2, price_adjustment: 10 }],
-      2,
+      [],
     );
 
     for (const key of Object.keys(result)) {
@@ -216,7 +211,7 @@ describe("toPublicProduct", () => {
   });
 
   it("exports a strict Zod schema that matches the runtime shape", () => {
-    const result = toPublicProduct({ id: "p-schema", name: "S", slug: "s", selling_price: 100 }, [], 0);
+    const result = toPublicProduct({ id: "p-schema", name: "S", slug: "s", selling_price: 100 }, [], []);
     // toPublicProduct already runs .parse() internally; re-validating must pass.
     expect(() => PublicProductSchema.parse(result)).not.toThrow();
   });

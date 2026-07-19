@@ -14,7 +14,7 @@ import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
-import { toPublicProduct } from "./publicCatalog.js";
+import { toPublicProduct, toPublicInventoryEntry } from "./publicCatalog.js";
 import {
   HANDLE_REGEX,
   RESERVED_HANDLES,
@@ -37,6 +37,7 @@ let rlAuth = null;
 let rlAPI = null;
 let rlHandleClaimUser = null;
 let rlHandleClaimIp = null;
+let rlPublicRead = null;
 
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
   try {
@@ -69,6 +70,11 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       limiter: Ratelimit.slidingWindow(20, "1 h"),
       prefix: "rl:handle:ip",
     });
+    rlPublicRead = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(60, "60 s"),
+      prefix: "rl:public:read",
+    });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
     console.warn("[RateLimit] Failed to init Upstash — rate limiting disabled:", err.message);
@@ -85,6 +91,9 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
 function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
   return async (req, res, next) => {
     if (!limiter) return next(); // disabled — pass through
+
+    // Allow a caller to force the identifier (e.g. IP+handle for public reads).
+    if (req.__forceId) return runRateLimit(limiter, req.__forceId, res, next);
 
     let identifier;
     if (keyStrategy === "ip") {
@@ -106,27 +115,32 @@ function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
       }
     }
 
-    try {
-      const { success, limit, remaining, reset } = await limiter.limit(identifier);
-      res.setHeader("X-RateLimit-Limit", limit);
-      res.setHeader("X-RateLimit-Remaining", remaining);
-      res.setHeader("X-RateLimit-Reset", reset);
-
-      if (!success) {
-        const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
-        res.setHeader("Retry-After", retryAfterSecs);
-        return res.status(429).json({
-          error: "Too many requests. Please slow down.",
-          retryAfter: retryAfterSecs,
-        });
-      }
-      next();
-    } catch (err) {
-      // Redis error — fail open (don't block the user)
-      console.warn("[RateLimit] Redis check failed, allowing request:", err.message);
-      next();
-    }
+    return runRateLimit(limiter, identifier, res, next);
   };
+}
+
+// Shared execution + 429 path for both the JWT/IP and forced-identifier strategies.
+async function runRateLimit(limiter, identifier, res, next) {
+  if (!limiter) return next();
+  try {
+    const { success, limit, remaining, reset } = await limiter.limit(identifier);
+    res.setHeader("X-RateLimit-Limit", limit);
+    res.setHeader("X-RateLimit-Remaining", remaining);
+    res.setHeader("X-RateLimit-Reset", reset);
+
+    if (!success) {
+      const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
+      res.setHeader("Retry-After", retryAfterSecs);
+      return res.status(429).json({
+        error: "Too many requests. Please slow down.",
+        retryAfter: retryAfterSecs,
+      });
+    }
+    next();
+  } catch (err) {
+    console.warn("[RateLimit] Redis check failed, allowing request:", err.message);
+    next();
+  }
 }
 
 const rateLimitAI   = makeRateLimitMiddleware(rlAI,   "user");
@@ -134,6 +148,15 @@ const rateLimitAuth = makeRateLimitMiddleware(rlAuth,  "ip");
 const rateLimitAPI  = makeRateLimitMiddleware(rlAPI,   "user");
 const rateLimitHandleUser = makeRateLimitMiddleware(rlHandleClaimUser, "user");
 const rateLimitHandleIp   = makeRateLimitMiddleware(rlHandleClaimIp,   "ip");
+// Public storefront reads are unauthenticated. Key by IP+handle so a scraper
+// hammering one handle from one IP is throttled, but a merchant's busy storefront
+// (many visitors, many IPs) and a scraper rotating IPs per handle stay usable.
+const rateLimitPublicRead = (req, res, next) => {
+  if (!rlPublicRead) return next();
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  const handle = req.params.handle || req.params.storefrontId || "*";
+  return makeRateLimitMiddleware(rlPublicRead, "ip")({ ...req, __forceId: `${ip}:${handle}` }, res, next);
+};
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const PRODUCT_IMAGE_MAX_COUNT = 8;
@@ -8017,6 +8040,60 @@ function setDeprecationHeaders(res, canonicalPath) {
   res.set("Link", `<${canonicalPath}>; rel="successor-version"`);
 }
 
+// ─── Public cache helpers ───────────────────────────────────────────────
+// Two-tier cache for the storefront:
+//   • Catalog  — s-maxage=60, stale-while-revalidate=86400. Static-ish;
+//     invalidated by Cache-Tag purge on product write.
+//   • Inventory — s-maxage=5,  SWR=30. Stock truth; short so the
+//     add-to-cart button is never more than ~5s stale on a hard refresh.
+// Cache-Tag uses storefront:<handle> / product:<id> (never org_id) so a
+// purge can target one product or one merchant without leaking the tenant id.
+function cacheTagHeader(handle, ids = []) {
+  const tags = [`storefront=${handle}`];
+  for (const id of ids) tags.push(`product=${id}`);
+  return tags.join(",");
+}
+
+function computeEtag(fingerprint) {
+  return "W/\"" + crypto.createHash("sha1").update(fingerprint).digest("base64url").slice(0, 16) + "\"";
+}
+
+// Weak ETag keyed on only render-affecting fields. Includes updated_at
+// so a save that touches no price/slug field still invalidates.
+function catalogEtag(products) {
+  const fp = products
+    .map((p) => `${p.id}:${p.updated_at ?? ""}:${p.slug}:${p.price ?? ""}`)
+    .join("|");
+  return computeEtag(fp);
+}
+
+function inventoryEtag(inventory) {
+  const fp = Object.entries(inventory)
+    .map(([id, e]) => `${id}:${e.stock_quantity}:${e.available}`)
+    .sort()
+    .join("|");
+  return computeEtag(fp);
+}
+
+// Sets cache headers + honours If-None-Match. Returns true if a 304 was sent
+// (caller should then return without writing a body).
+function respondCached(res, { etag, cacheControl, cacheTag }) {
+  res.set("Cache-Control", cacheControl);
+  res.set("ETag", etag);
+  res.set("Vary", "Accept-Encoding");
+  if (cacheTag) res.set("Cache-Tag", cacheTag);
+  res.set("X-Merchant-Suite-API-Version", "2026-07-19");
+  const inm = res.req.headers["if-none-match"];
+  if (inm && inm.split(",").map((s) => s.trim()).includes(etag)) {
+    res.status(304).end();
+    return true;
+  }
+  return false;
+}
+
+// Catalog is stock-free: no getProductStockMap here. Stock lives on
+// /inventory with its own short TTL so a cached catalog + fresh stock renders
+// correctly on the merchant site.
 async function loadPublicProducts(orgId) {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
@@ -8029,13 +8106,12 @@ async function loadPublicProducts(orgId) {
 
   const products = data || [];
   const productIds = products.map((p) => p.id);
-  const stockMap = productIds.length > 0 ? await getProductStockMap(orgId, productIds) : {};
   const imagesMap = await loadProductImagesMap(supabase, orgId, productIds);
   const variantsMap = {};
   if (productIds.length > 0) {
     const { data: variantRows, error: variantsError } = await supabase
       .from("product_variants")
-      .select("id, product_id, attributes, stock_quantity, price_adjustment")
+      .select("id, product_id, attributes, price_adjustment")
       .in("product_id", productIds)
       .eq("org_id", orgId)
       .order("created_at", { ascending: true });
@@ -8046,7 +8122,7 @@ async function loadPublicProducts(orgId) {
     }
   }
   return products.map((product) =>
-    toPublicProduct(product, variantsMap[product.id] || [], stockMap[product.id] || 0, imagesMap[product.id] || []),
+    toPublicProduct(product, variantsMap[product.id] || [], imagesMap[product.id] || []),
   );
 }
 
@@ -8062,24 +8138,67 @@ async function loadPublicProductBySlug(orgId, slug) {
   if (error) throw error;
   if (!product) return null;
 
-  const [stockMap, imagesMap, { data: variants, error: variantsError }] = await Promise.all([
-    getProductStockMap(orgId, [product.id]),
+  const [imagesMap, { data: variants, error: variantsError }] = await Promise.all([
     loadProductImagesMap(supabase, orgId, [product.id]),
     supabase
       .from("product_variants")
-      .select("id, product_id, attributes, stock_quantity, price_adjustment")
+      .select("id, product_id, attributes, price_adjustment")
       .eq("product_id", product.id)
       .eq("org_id", orgId)
       .order("created_at", { ascending: true }),
   ]);
   if (variantsError) throw variantsError;
 
-  return toPublicProduct(product, variants || [], stockMap[product.id] || 0, imagesMap[product.id] || []);
+  return toPublicProduct(product, variants || [], imagesMap[product.id] || []);
+}
+
+async function loadPublicInventory(orgId, ids) {
+  if (!ids.length) return {};
+  const supabase = getServiceSupabase();
+  const { data: rows, error } = await supabase
+    .from("products")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("published", true)
+    .in("id", ids);
+  if (error) throw error;
+  const validIds = (rows || []).map((r) => r.id);
+  if (!validIds.length) return {};
+
+  const [stockMap, variantsResult] = await Promise.all([
+    getProductStockMap(orgId, validIds),
+    supabase
+      .from("product_variants")
+      .select("id, product_id, stock_quantity")
+      .in("product_id", validIds)
+      .eq("org_id", orgId),
+  ]);
+  if (variantsResult.error) throw variantsResult.error;
+
+  const variantsByProduct = {};
+  for (const v of variantsResult.data || []) {
+    if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
+    variantsByProduct[v.product_id].push(v);
+  }
+
+  const inventory = {};
+  for (const id of validIds) {
+    inventory[id] = toPublicInventoryEntry({
+      stockQuantity: stockMap[id] || 0,
+      variants: variantsByProduct[id] || [],
+    });
+  }
+  return inventory;
 }
 
 async function handlePublicStorefrontProducts(req, res) {
   try {
     const products = await loadPublicProducts(req.params.storefrontId);
+    if (respondCached(res, {
+      etag: catalogEtag(products),
+      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheTag: cacheTagHeader(req.params.storefrontId),
+    })) return;
     return res.json({ products });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -8090,6 +8209,11 @@ async function handlePublicStorefrontProductDetail(req, res) {
   try {
     const product = await loadPublicProductBySlug(req.params.storefrontId, req.params.slug);
     if (!product) return res.status(404).json({ error: "Product not found" });
+    if (respondCached(res, {
+      etag: catalogEtag([product]),
+      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheTag: cacheTagHeader(req.params.storefrontId, [product.id]),
+    })) return;
     return res.json({ product });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -8103,6 +8227,11 @@ async function handlePublicHandleProducts(req, res) {
     // don't let attackers enumerate handles by comparing responses.
     if (!orgId) return res.status(404).json({ error: "not_found" });
     const products = await loadPublicProducts(orgId);
+    if (respondCached(res, {
+      etag: catalogEtag(products),
+      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheTag: cacheTagHeader(req.params.handle),
+    })) return;
     return res.json({ products });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -8115,17 +8244,58 @@ async function handlePublicHandleProductDetail(req, res) {
     if (!orgId) return res.status(404).json({ error: "not_found" });
     const product = await loadPublicProductBySlug(orgId, req.params.slug);
     if (!product) return res.status(404).json({ error: "not_found" });
+    if (respondCached(res, {
+      etag: catalogEtag([product]),
+      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheTag: cacheTagHeader(req.params.handle, [product.id]),
+    })) return;
     return res.json({ product });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
 }
 
-app.get("/api/public/v1/:handle/products", handlePublicHandleProducts);
-app.get("/api/public/v1/:handle/products/:slug", handlePublicHandleProductDetail);
+// Short-TTL stock-truth endpoint. Reads `?ids=uuid,uuid` (capped at 100)
+// or the whole published catalog when omitted. The storefront renders the
+// catalog from the cached list and hydrates stock from here — that's the
+// two-tier split that makes a merchant's edit show instantly without
+// turning stock into a distributed-systems problem.
+async function handlePublicInventory(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) return res.status(404).json({ error: "not_found" });
 
-app.get("/api/public/v1/storefronts/:storefrontId/products", handlePublicStorefrontProducts);
-app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", handlePublicStorefrontProductDetail);
+    const ids = (req.query.ids ? String(req.query.ids).split(",") : [])
+      .map((s) => s.trim()).filter(Boolean);
+    if (ids.length > 100) return res.status(413).json({ error: "ids: max 100" });
+
+    let productIds = ids;
+    if (!productIds.length) {
+      const { data, error } = await getServiceSupabase()
+        .from("products").select("id").eq("org_id", orgId).eq("published", true);
+      if (error) throw error;
+      productIds = (data || []).map((r) => r.id);
+    }
+    const inventory = await loadPublicInventory(orgId, productIds);
+    const body = { inventory, as_of: new Date().toISOString() };
+    if (respondCached(res, {
+      etag: inventoryEtag(inventory),
+      cacheControl: "public, max-age=5, stale-while-revalidate=30, s-maxage=5",
+      cacheTag: cacheTagHeader(req.params.handle, productIds),
+    })) return;
+    return res.json(body);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+app.get("/api/public/v1/:handle/products", rateLimitPublicRead, handlePublicHandleProducts);
+app.get("/api/public/v1/:handle/products/:slug", rateLimitPublicRead, handlePublicHandleProductDetail);
+app.get("/api/public/v1/:handle/products/:slug/inventory", rateLimitPublicRead, handlePublicInventory);
+
+app.get("/api/public/v1/storefronts/:storefrontId/products", rateLimitPublicRead, handlePublicStorefrontProducts);
+app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", rateLimitPublicRead, handlePublicStorefrontProductDetail);
+app.get("/api/public/v1/storefronts/:storefrontId/products/:slug/inventory", rateLimitPublicRead, handlePublicInventory);
 
 app.get("/api/public/storefronts/:storefrontId/products", (req, res) => {
   setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products`);
