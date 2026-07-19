@@ -157,9 +157,14 @@ const rateLimitHandleIp   = makeRateLimitMiddleware(rlHandleClaimIp,   "ip");
 // Public storefront reads are unauthenticated. Key by IP+handle so a scraper
 // hammering one handle from one IP is throttled, but a merchant's busy storefront
 // (many visitors, many IPs) and a scraper rotating IPs per handle stay usable.
+// Warm-token requests (purge re-warms) bypass the limiter entirely so a
+// write storm can't lock out its own cache warming.
+import { isWarmRequest } from "./warmToken.js";
+
 const rateLimitPublicRead = (req, res, next) => {
+  if (isWarmRequest(req)) return next();
   if (!rlPublicRead) return next();
-  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  const ip = req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
   const handle = req.params.handle || req.params.storefrontId || "*";
   return makeRateLimitMiddleware(rlPublicRead, "ip")({ ...req, __forceId: `${ip}:${handle}` }, res, next);
 };
