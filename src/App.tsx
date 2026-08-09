@@ -22,6 +22,7 @@ import Studio from "./pages/Studio";
 import Billing from "./pages/Billing";
 import Returns from "./pages/Returns";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import OnlineStore from "./pages/OnlineStore";
 import { Spinner } from "@/components/ui/ios-spinner";
 
 const queryClient = new QueryClient();
@@ -93,6 +94,7 @@ const AppRoutes = () => (
       <Route path="/order-extraction" element={<OrderExtraction />} />
       <Route path="/order-chat" element={<OrderChat />} />
       <Route path="/settings" element={<Settings />} />
+      <Route path="/online-store" element={<AdminRoute><OnlineStore /></AdminRoute>} />
       <Route path="/products" element={<Products />} />
       <Route path="/customers" element={<Customers />} />
       <Route path="/inbox/facebook" element={<FacebookInbox />} />

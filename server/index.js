@@ -13,6 +13,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
+import { calculateShippingCost } from "./shippingCalculation.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
 import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
@@ -2083,6 +2084,134 @@ app.get("/api/storefront/handle", async (req, res) => {
     return sendError(res, err);
   }
 });
+
+// ─── Storefront Settings ──────────────────────────────────────────────────────
+// Authenticated CRUD for the merchant's storefront branding and configuration.
+// Reads/writes the storefront_settings table (one row per org_id).
+
+app.get("/api/storefront/settings", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("storefront_settings")
+      .select("*")
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (error) throw error;
+    // Return defaults if no row exists yet (merchant hasn't configured storefront)
+    return res.json({
+      settings: data ? {
+        enabled: data.enabled,
+        storeName: data.store_name,
+        tagline: data.tagline,
+        logoUrl: data.logo_url,
+        faviconUrl: data.favicon_url,
+        primaryColor: data.primary_color,
+        backgroundColor: data.background_color,
+        fontFamily: data.font_family,
+        contactPhone: data.contact_phone,
+        contactEmail: data.contact_email,
+        socialFacebook: data.social_facebook,
+        socialInstagram: data.social_instagram,
+        socialTiktok: data.social_tiktok,
+        seoTitleTemplate: data.seo_title_template,
+        seoDescriptionTemplate: data.seo_description_template,
+        shippingZones: data.shipping_zones,
+      } : {
+        enabled: false,
+        storeName: "",
+        tagline: "",
+        logoUrl: null,
+        faviconUrl: null,
+        primaryColor: "#000000",
+        backgroundColor: "#FAFAF8",
+        fontFamily: "Geist Sans",
+        contactPhone: null,
+        contactEmail: null,
+        socialFacebook: null,
+        socialInstagram: null,
+        socialTiktok: null,
+        seoTitleTemplate: "{product_name} | {store_name}",
+        seoDescriptionTemplate: "{product_description}",
+        shippingZones: [],
+      },
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.post("/api/storefront/settings", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const s = req.body?.settings || {};
+    const row = {
+      org_id: orgId,
+      enabled: Boolean(s.enabled),
+      store_name: s.storeName || null,
+      tagline: s.tagline || null,
+      logo_url: s.logoUrl || null,
+      favicon_url: s.faviconUrl || null,
+      primary_color: s.primaryColor || "#000000",
+      background_color: s.backgroundColor || "#FAFAF8",
+      font_family: s.fontFamily || "Geist Sans",
+      contact_phone: s.contactPhone || null,
+      contact_email: s.contactEmail || null,
+      social_facebook: s.socialFacebook || null,
+      social_instagram: s.socialInstagram || null,
+      social_tiktok: s.socialTiktok || null,
+      seo_title_template: s.seoTitleTemplate || "{product_name} | {store_name}",
+      seo_description_template: s.seoDescriptionTemplate || "{product_description}",
+      shipping_zones: Array.isArray(s.shippingZones) ? s.shippingZones : [],
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from("storefront_settings")
+      .upsert(row, { onConflict: "org_id" });
+    if (error) throw error;
+
+    // Purge the cached config so the storefront picks up changes quickly
+    await purgeStorefrontConfigCache(orgId);
+
+    return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// Purge Cloudflare cache for the storefront config endpoint.
+// Called after settings are saved so the storefront reflects changes immediately.
+async function purgeStorefrontConfigCache(orgId) {
+  if (!CLOUDFLARE_ZONE_ID || !CLOUDFLARE_API_TOKEN || !PUBLIC_DOMAIN) return;
+  const handle = await getStorefrontHandle(orgId);
+  if (!handle) return;
+  try {
+    await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          files: [`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/config`],
+        }),
+      },
+    );
+  } catch (e) {
+    console.warn("[Purge] Could not purge storefront config cache:", e.message);
+  }
+}
 
 // ─── Integration Test Endpoints ──────────────────────────────────────────────
 
@@ -8293,6 +8422,236 @@ async function handlePublicStorefrontProductDetail(req, res) {
   }
 }
 
+// ─── Public Storefront Config ────────────────────────────────────────────────
+// Returns merchant branding configuration (name, logo, colors, shipping zones)
+// for the storefront app to render. Cacheable with the same catalog-tier headers.
+async function loadPublicStorefrontConfig(orgId) {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("storefront_settings")
+    .select("*")
+    .eq("org_id", orgId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function configEtag(config) {
+  if (!config) return computeEtag("empty");
+  return computeEtag(`${config.org_id}:${config.updated_at || ""}:${config.store_name || ""}`);
+}
+
+async function handlePublicHandleConfig(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+    const config = await loadPublicStorefrontConfig(orgId);
+    // Return defaults when storefront settings haven't been configured yet —
+    // the storefront still needs to render even if the merchant hasn't customized.
+    const payload = {
+      storeName: config?.store_name || "",
+      tagline: config?.tagline || "",
+      logoUrl: config?.logo_url || null,
+      faviconUrl: config?.favicon_url || null,
+      primaryColor: config?.primary_color || "#000000",
+      backgroundColor: config?.background_color || "#FAFAF8",
+      fontFamily: config?.font_family || "Geist Sans",
+      contactPhone: config?.contact_phone || null,
+      contactEmail: config?.contact_email || null,
+      socialLinks: {
+        facebook: config?.social_facebook || null,
+        instagram: config?.social_instagram || null,
+        tiktok: config?.social_tiktok || null,
+      },
+      shippingZones: config?.shipping_zones || [],
+    };
+    if (respondCached(res, {
+      etag: configEtag(config),
+      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheTag: cacheTagHeader(req.params.handle),
+    })) return;
+    return res.json(payload);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─── Public Storefront Order Submission ──────────────────────────────────────
+// Accepts orders from the storefront checkout flow. No authentication required —
+// the storefront is public. Validates stock, calculates shipping from zones,
+// creates the order, and decrements variant stock.
+async function handlePublicHandleOrderSubmit(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+
+    const supabase = getServiceSupabase();
+    const { customerName, phone, address, items, shippingZoneId, notes } = req.body || {};
+
+    // ── Validate required fields ─────────────────────────────────────────
+    if (!customerName || typeof customerName !== "string") {
+      return res.status(400).json({ error: "customer_name is required" });
+    }
+    const cleanPhone = normalizeBdPhone(phone);
+    if (!cleanPhone) {
+      return res.status(400).json({ error: "A valid Bangladeshi phone number is required" });
+    }
+    if (!address || typeof address !== "string") {
+      return res.status(400).json({ error: "address is required" });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "At least one item is required" });
+    }
+
+    // ── Validate items and check stock ───────────────────────────────────
+    const variantIds = items.map((i) => i.variantId).filter(Boolean);
+    if (variantIds.length !== items.length) {
+      return res.status(400).json({ error: "Each item must have a variantId" });
+    }
+
+    // Fetch all variants + their parent products in one pass
+    const { data: variants, error: vErr } = await supabase
+      .from("product_variants")
+      .select("id, product_id, org_id, attributes, price_adjustment, stock_quantity")
+      .in("id", variantIds)
+      .eq("org_id", orgId);
+    if (vErr) throw vErr;
+
+    const variantMap = {};
+    for (const v of variants || []) variantMap[v.id] = v;
+
+    // Fetch parent products for base prices and names
+    const productIds = [...new Set(Object.values(variantMap).map((v) => v.product_id))];
+    const { data: products, error: pErr } = await supabase
+      .from("products")
+      .select("id, name, selling_price, published")
+      .in("id", productIds)
+      .eq("org_id", orgId)
+      .eq("published", true);
+    if (pErr) throw pErr;
+
+    const productMap = {};
+    for (const p of products || []) productMap[p.id] = p;
+
+    // Build line items with pricing and stock validation
+    const orderItems = [];
+    let subtotal = 0;
+
+    for (const item of items) {
+      const variant = variantMap[item.variantId];
+      if (!variant) {
+        return res.status(400).json({ error: `Variant not found or doesn't belong to this store` });
+      }
+      const product = productMap[variant.product_id];
+      if (!product) {
+        return res.status(400).json({ error: `Product is no longer available` });
+      }
+
+      const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+      if (variant.stock_quantity < qty) {
+        const attrStr = Object.entries(variant.attributes || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
+        return res.status(400).json({
+          error: `Insufficient stock for "${product.name}"${attrStr ? ` (${attrStr})` : ""}. Available: ${variant.stock_quantity}`,
+        });
+      }
+
+      const basePrice = parseFloat(product.selling_price) || 0;
+      const adjustment = parseFloat(variant.price_adjustment) || 0;
+      const unitPrice = basePrice + adjustment;
+      const lineTotal = unitPrice * qty;
+
+      orderItems.push({
+        variantId: variant.id,
+        productId: product.id,
+        productName: product.name,
+        attributes: variant.attributes || {},
+        quantity: qty,
+        unitPrice,
+        lineTotal,
+      });
+      subtotal += lineTotal;
+    }
+
+    // ── Shipping calculation ─────────────────────────────────────────────
+    let shipping = 0;
+    if (shippingZoneId) {
+      const { data: settings } = await supabase
+        .from("storefront_settings")
+        .select("shipping_zones")
+        .eq("org_id", orgId)
+        .maybeSingle();
+
+      const zones = settings?.shipping_zones || [];
+      const shippingResult = calculateShippingCost(subtotal, shippingZoneId, zones);
+      if (shippingResult.error) {
+        return res.status(400).json({ error: shippingResult.error });
+      }
+      shipping = shippingResult.cost;
+    }
+
+    const total = subtotal + shipping;
+
+    // ── Build order product string (summary of all items) ───────────────
+    const productSummary = orderItems
+      .map((item) => {
+        const attrs = Object.values(item.attributes).join(", ");
+        return `${item.productName}${attrs ? ` (${attrs})` : ""} x${item.quantity}`;
+      })
+      .join(", ");
+
+    // ── Insert order ─────────────────────────────────────────────────────
+    const orderSeq = await getNextManualOrderSeq(orgId);
+    const orderNumber = `#S${orderSeq}`;
+    const shopifyOrderId = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
+
+    const orderRow = {
+      org_id: orgId,
+      shopify_order_id: shopifyOrderId,
+      order_number: orderNumber,
+      customer_name: customerName,
+      phone: cleanPhone,
+      address,
+      product: productSummary,
+      quantity: orderItems.reduce((sum, i) => sum + i.quantity, 0),
+      price: subtotal,
+      delivery_rate: shipping,
+      status: "pending",
+      source: "storefront",
+      notes: notes || null,
+    };
+
+    const { data: order, error: orderErr } = await supabase
+      .from("orders")
+      .insert(orderRow)
+      .select("*")
+      .single();
+    if (orderErr) throw orderErr;
+
+    // ── Decrement variant stock ──────────────────────────────────────────
+    for (const item of orderItems) {
+      await supabase
+        .from("product_variants")
+        .update({ stock_quantity: Math.max(0, variantMap[item.variantId].stock_quantity - item.quantity) })
+        .eq("id", item.variantId)
+        .eq("org_id", orgId);
+    }
+
+    // ── Purge inventory cache so storefront reflects new stock ───────────
+    await purgeProductCache(orgId, null, { listChanged: false, warm: false });
+
+    return res.json({
+      success: true,
+      orderId: orderNumber,
+      total,
+      shipping,
+      message: "Order placed successfully! We'll contact you shortly.",
+    });
+  } catch (e) {
+    console.error("[Storefront Order] Error:", e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
 async function handlePublicHandleProducts(req, res) {
   try {
     const orgId = await resolveStorefrontHandle(req.params.handle);
@@ -8399,7 +8758,9 @@ async function handlePublicHandleProductInventory(req, res) {
   }
 }
 
+app.get("/api/public/v1/:handle/config", rateLimitPublicRead, handlePublicHandleConfig);
 app.get("/api/public/v1/:handle/products", rateLimitPublicRead, handlePublicHandleProducts);
+app.post("/api/public/v1/:handle/orders", rateLimitPublicRead, handlePublicHandleOrderSubmit);
 app.get("/api/public/v1/:handle/products/:slug", rateLimitPublicRead, handlePublicHandleProductDetail);
 app.get("/api/public/v1/:handle/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
 app.get("/api/public/v1/:handle/inventory", rateLimitPublicRead, handlePublicHandleInventory);
@@ -9454,6 +9815,68 @@ NOTIFY pgrst, 'reload schema';
   }
 }
 
+// ─── Storefront Settings Migration ────────────────────────────────────────────
+// Creates the storefront_settings table for merchant branding, shipping zones,
+// and storefront configuration. One row per org (org_id is UNIQUE).
+async function migrateStorefrontSettingsTable() {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+    if (!projectRef || !serviceKey) return;
+
+    const migrationSql = `
+CREATE TABLE IF NOT EXISTS public.storefront_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL UNIQUE,
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  store_name TEXT,
+  tagline TEXT,
+  logo_url TEXT,
+  favicon_url TEXT,
+  primary_color TEXT DEFAULT '#000000',
+  background_color TEXT DEFAULT '#FAFAF8',
+  font_family TEXT DEFAULT 'Geist Sans',
+  contact_phone TEXT,
+  contact_email TEXT,
+  social_facebook TEXT,
+  social_instagram TEXT,
+  social_tiktok TEXT,
+  seo_title_template TEXT DEFAULT '{product_name} | {store_name}',
+  seo_description_template TEXT DEFAULT '{product_description}',
+  shipping_zones JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS storefront_settings_org_id_idx
+    ON public.storefront_settings(org_id);
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+-- Ensure orders table has source column for storefront orders
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS source TEXT;
+
+NOTIFY pgrst, 'reload schema';
+    `;
+
+    const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ query: migrationSql }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("[Migrate] storefront_settings failed:", text);
+      return;
+    }
+    console.log("[Migrate] storefront_settings table ensured.");
+  } catch (e) {
+    console.warn("[Migrate] Could not run storefront settings migration:", e.message);
+  }
+}
+
 async function ensureAppSettingsTable() {
   try {
     const supabase = getServiceSupabase();
@@ -9735,6 +10158,7 @@ if (!process.env.VERCEL) {
         await ensureAppSettingsTable();
         await migrateInboxOrdersTable();
         await migrateMultiTenancy();
+        await migrateStorefrontSettingsTable();
         await bootstrapAiProductContext();
         backfillProductEmbeddings().catch((err) => console.warn("[Embedding Backfill] Error:", err.message));
       });
@@ -9749,6 +10173,7 @@ if (!process.env.VERCEL) {
   ensureAppSettingsTable().catch(() => {});
   migrateMultiTenancy().catch(() => {});
   migrateInboxOrdersTable().catch(() => {});
+  migrateStorefrontSettingsTable().catch(() => {});
 }
 
 export default app;

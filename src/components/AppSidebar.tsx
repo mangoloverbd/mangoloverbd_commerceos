@@ -66,6 +66,13 @@ export function AppSidebar() {
                     link: "/products",
                 },
                 {
+                    id: "online-store",
+                    title: "Online Store",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M2 2.5A1.5 1.5 0 0 1 3.5 1h17A1.5 1.5 0 0 1 22 2.5V5H2V2.5ZM3 6.5h18l-1.5 15a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8L3 6.5Z" style={{fill: 'var(--fillg)', opacity: 0.4}}/><path fill="currentColor" d="M9 10a3 3 0 0 0 6 0" style={{fill: 'var(--fillg)'}} stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>,
+                    link: "/online-store",
+                    disabled: !isAdmin,
+                },
+                {
                     id: "customers",
                     title: "Customers",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M9 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8" style={{fill: 'var(--fillg)', opacity: 0.4}}/><path fill="currentColor" d="M17 10a3 3 0 1 0 0-6a3 3 0 0 0 0 6M3 19.2C3 15.8 5.686 13 9 13s6 2.8 6 6.2c0 .442-.358.8-.8.8H3.8a.8.8 0 0 1-.8-.8M15.8 19.2c0-1.904-.65-3.66-1.741-5.053A5.4 5.4 0 0 1 17 13.3c2.761 0 5 2.149 5 4.8c0 .497-.403.9-.9.9z" style={{fill: 'var(--fillg)'}}/></svg>,
