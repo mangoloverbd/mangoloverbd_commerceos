@@ -13,8 +13,15 @@ import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildSalesTrend } from "./salesTrend.js";
+import { calculateShippingCost } from "./shippingCalculation.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
-import { toPublicProduct } from "./publicCatalog.js";
+import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
+import {
+  HANDLE_REGEX,
+  RESERVED_HANDLES,
+  normalizeStorefrontHandle,
+  validateStorefrontHandle,
+} from "./storefrontHandle.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -29,6 +36,15 @@ let redisClient = null;
 let rlAI = null;
 let rlAuth = null;
 let rlAPI = null;
+let rlHandleClaimUser = null;
+let rlHandleClaimIp = null;
+let rlPublicRead = null;
+
+// Cloudflare edge-cache purge + warm-token bypass (Task 1).
+const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
+const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || "";
+const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN || "";
+const WARM_TOKEN = process.env.WARM_TOKEN || "";
 
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
   try {
@@ -51,6 +67,21 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       limiter: Ratelimit.slidingWindow(120, "60 s"),
       prefix: "rl:api",
     });
+    rlHandleClaimUser = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(5, "1 h"),
+      prefix: "rl:handle:user",
+    });
+    rlHandleClaimIp = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(20, "1 h"),
+      prefix: "rl:handle:ip",
+    });
+    rlPublicRead = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(60, "60 s"),
+      prefix: "rl:public:read",
+    });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
     console.warn("[RateLimit] Failed to init Upstash — rate limiting disabled:", err.message);
@@ -67,6 +98,9 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
 function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
   return async (req, res, next) => {
     if (!limiter) return next(); // disabled — pass through
+
+    // Allow a caller to force the identifier (e.g. IP+handle for public reads).
+    if (req.__forceId) return runRateLimit(limiter, req.__forceId, res, next);
 
     let identifier;
     if (keyStrategy === "ip") {
@@ -88,32 +122,53 @@ function makeRateLimitMiddleware(limiter, keyStrategy = "user") {
       }
     }
 
-    try {
-      const { success, limit, remaining, reset } = await limiter.limit(identifier);
-      res.setHeader("X-RateLimit-Limit", limit);
-      res.setHeader("X-RateLimit-Remaining", remaining);
-      res.setHeader("X-RateLimit-Reset", reset);
-
-      if (!success) {
-        const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
-        res.setHeader("Retry-After", retryAfterSecs);
-        return res.status(429).json({
-          error: "Too many requests. Please slow down.",
-          retryAfter: retryAfterSecs,
-        });
-      }
-      next();
-    } catch (err) {
-      // Redis error — fail open (don't block the user)
-      console.warn("[RateLimit] Redis check failed, allowing request:", err.message);
-      next();
-    }
+    return runRateLimit(limiter, identifier, res, next);
   };
+}
+
+// Shared execution + 429 path for both the JWT/IP and forced-identifier strategies.
+async function runRateLimit(limiter, identifier, res, next) {
+  if (!limiter) return next();
+  try {
+    const { success, limit, remaining, reset } = await limiter.limit(identifier);
+    res.setHeader("X-RateLimit-Limit", limit);
+    res.setHeader("X-RateLimit-Remaining", remaining);
+    res.setHeader("X-RateLimit-Reset", reset);
+
+    if (!success) {
+      const retryAfterSecs = Math.ceil((reset - Date.now()) / 1000);
+      res.setHeader("Retry-After", retryAfterSecs);
+      return res.status(429).json({
+        error: "Too many requests. Please slow down.",
+        retryAfter: retryAfterSecs,
+      });
+    }
+    next();
+  } catch (err) {
+    console.warn("[RateLimit] Redis check failed, allowing request:", err.message);
+    next();
+  }
 }
 
 const rateLimitAI   = makeRateLimitMiddleware(rlAI,   "user");
 const rateLimitAuth = makeRateLimitMiddleware(rlAuth,  "ip");
 const rateLimitAPI  = makeRateLimitMiddleware(rlAPI,   "user");
+const rateLimitHandleUser = makeRateLimitMiddleware(rlHandleClaimUser, "user");
+const rateLimitHandleIp   = makeRateLimitMiddleware(rlHandleClaimIp,   "ip");
+// Public storefront reads are unauthenticated. Key by IP+handle so a scraper
+// hammering one handle from one IP is throttled, but a merchant's busy storefront
+// (many visitors, many IPs) and a scraper rotating IPs per handle stay usable.
+// Warm-token requests (purge re-warms) bypass the limiter entirely so a
+// write storm can't lock out its own cache warming.
+import { isWarmRequest } from "./warmToken.js";
+
+const rateLimitPublicRead = (req, res, next) => {
+  if (isWarmRequest(req)) return next();
+  if (!rlPublicRead) return next();
+  const ip = req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  const handle = req.params.handle || req.params.storefrontId || "*";
+  return makeRateLimitMiddleware(rlPublicRead, "ip")({ ...req, __forceId: `${ip}:${handle}` }, res, next);
+};
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const PRODUCT_IMAGE_MAX_COUNT = 8;
@@ -149,6 +204,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+// Cloudflare -> Railway proxy -> Express. Trust 2 hops so req.ip
+// reflects the real client behind Cloudflare, not the proxy IP.
+app.set("trust proxy", 2);
 app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : true }));
 const publicTrackerCors = cors({
   origin: true,
@@ -167,8 +225,14 @@ app.use(express.json({
 // Apply general API rate limit to all /api/* routes.
 // AI-specific routes apply their own stricter rateLimitAI middleware on top.
 // Webhook routes are excluded — they are server-to-server and must not be blocked.
+// Public storefront routes set their own caching + rate limiting and are exempt
+// here so the global /api limiter can't defeat the warm-token bypass.
 app.use("/api", (req, res, next) => {
   const path = req.path;
+  // Public v1 routes set their own caching + rate limiting.
+  if (path.startsWith("/public/")) return next();
+  // Everything else under /api is per-user data — never cache.
+  res.set("Cache-Control", "private, no-store");
   // Exclude webhook endpoints and public config from rate limiting
   if (
     path.startsWith("/webhooks/") ||
@@ -942,6 +1006,128 @@ async function getOrgSettings(orgId, keys) {
     map[key] = settings[orgSettingKey(orgId, key)];
   }
   return map;
+}
+
+// ─── Public Storefront Handle ────────────────────────────────────────────────
+//
+// Handles let merchants advertise storefronts as /:handle instead of a raw
+// orgId UUID. Two app_settings keys back each handle:
+//   storefront_handle:<handle>          -> orgId   (forward: handle -> org)
+//   <orgId>:public_storefront_handle    -> handle  (reverse: org -> handle)
+// Claiming a handle races: we rely on the app_settings PK to make the forward
+// insert atomic (ON CONFLICT DO NOTHING via Supabase's ignoreDuplicates).
+
+async function resolveStorefrontHandle(handle) {
+  const check = validateStorefrontHandle(handle);
+  if (!check.ok) return null;
+  const key = `storefront_handle:${check.handle}`;
+  const settings = await getSettings([key]);
+  return settings[key] || null;
+}
+
+async function getStorefrontHandle(orgId) {
+  const key = `${orgId}:public_storefront_handle`;
+  const settings = await getSettings([key]);
+  return settings[key] || null;
+}
+
+// Fire-and-forget edge purge. URL-based (tag-based purge is Cloudflare
+// Enterprise-only); Cache-Tag headers still ship so the future switch is a
+// config change, not a code change. Failures log + drop — the outbox
+// replay job is a separate plan.
+async function purgeProductCache(orgId, productId, { listChanged = false, warm = true } = {}) {
+  if (!CLOUDFLARE_ZONE_ID || !CLOUDFLARE_API_TOKEN || !PUBLIC_DOMAIN) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn("[Purge] Cloudflare not configured — skipping purge");
+    }
+    return;
+  }
+  const handle = await getStorefrontHandle(orgId);
+  if (!handle) return;
+
+  const urls = [];
+  if (productId) {
+    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products/${productId}`);
+    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products/${productId}/inventory`);
+  }
+  if (listChanged) {
+    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products`);
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ files: urls }),
+      },
+    );
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(`[Purge] Cloudflare purge failed: ${body}`);
+    } else {
+      console.log(`[Purge] Purged ${urls.length} URL(s) for org ${orgId} product ${productId || "*"}`);
+    }
+  } catch (e) {
+    console.warn("[Purge] Cloudflare purge error:", e.message);
+  }
+
+  if (warm && WARM_TOKEN) {
+    const warmHeaders = { headers: { "X-Warm-Token": WARM_TOKEN } };
+    for (const url of urls) {
+      fetch(url, warmHeaders).catch(() => {});
+    }
+  }
+}
+
+async function setStorefrontHandle(orgId, handle) {
+  if (!orgId) throw new Error("orgId required");
+  const validation = validateStorefrontHandle(handle);
+  if (!validation.ok) {
+    const message = validation.reason === "reserved"
+      ? `"${normalizeStorefrontHandle(handle)}" is a reserved handle`
+      : "Handle must be 2-50 characters, lowercase letters, numbers, and hyphens only (no leading/trailing hyphen)";
+    const err = new Error(message);
+    err.code = validation.reason === "reserved" ? "HANDLE_RESERVED" : "HANDLE_INVALID";
+    throw err;
+  }
+  const clean = validation.handle;
+
+  const supabase = getServiceSupabase();
+  const forwardKey = `storefront_handle:${clean}`;
+  const reverseKey = `${orgId}:public_storefront_handle`;
+
+  // Atomic claim: insert the forward key; on conflict, do nothing.
+  // If nothing was inserted and the existing row belongs to a different org, 409.
+  const nowIso = new Date().toISOString();
+  const { data: inserted, error: insertError } = await supabase
+    .from("app_settings")
+    .insert({ key: forwardKey, value: orgId, updated_at: nowIso })
+    .select();
+  if (insertError && insertError.code !== "23505") throw insertError;
+
+  if (!inserted || inserted.length === 0) {
+    const existing = await getSettings([forwardKey]);
+    if (existing[forwardKey] && existing[forwardKey] !== orgId) {
+      const err = new Error(`Storefront handle "${clean}" is already taken`);
+      err.code = "HANDLE_TAKEN";
+      throw err;
+    }
+    // Already owned by this org — idempotent, fall through.
+  }
+
+  // Update reverse mapping. If the org previously had a different handle,
+  // free that forward key so it can be reclaimed and doesn't keep resolving.
+  const previous = await getStorefrontHandle(orgId);
+  if (previous && previous !== clean) {
+    await supabase.from("app_settings").delete().eq("key", `storefront_handle:${previous}`);
+  }
+  await saveSettings({ [reverseKey]: clean });
+  return clean;
 }
 
 async function saveOrgSettings(orgId, settings) {
@@ -1857,6 +2043,175 @@ app.post("/api/auth/shopify/disconnect", async (req, res) => {
     return sendError(res, err);
   }
 });
+
+// ─── Storefront Handle ───────────────────────────────────────────────────────
+
+app.post("/api/storefront/handle", rateLimitHandleUser, rateLimitHandleIp, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const raw = typeof req.body?.handle === "string" ? req.body.handle : "";
+    try {
+      const handle = await setStorefrontHandle(orgId, raw);
+      return res.json({ success: true, handle });
+    } catch (err) {
+      if (err.code === "HANDLE_TAKEN") {
+        return res.status(409).json({ error: err.message });
+      }
+      if (err.message?.startsWith("Handle must be") || err.message?.includes("reserved handle")) {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/storefront/handle", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const handle = await getStorefrontHandle(orgId);
+    return res.json({ handle: handle || null });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ─── Storefront Settings ──────────────────────────────────────────────────────
+// Authenticated CRUD for the merchant's storefront branding and configuration.
+// Reads/writes the storefront_settings table (one row per org_id).
+
+app.get("/api/storefront/settings", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("storefront_settings")
+      .select("*")
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (error) throw error;
+    // Return defaults if no row exists yet (merchant hasn't configured storefront)
+    return res.json({
+      settings: data ? {
+        enabled: data.enabled,
+        storeName: data.store_name,
+        tagline: data.tagline,
+        logoUrl: data.logo_url,
+        faviconUrl: data.favicon_url,
+        primaryColor: data.primary_color,
+        backgroundColor: data.background_color,
+        fontFamily: data.font_family,
+        contactPhone: data.contact_phone,
+        contactEmail: data.contact_email,
+        socialFacebook: data.social_facebook,
+        socialInstagram: data.social_instagram,
+        socialTiktok: data.social_tiktok,
+        seoTitleTemplate: data.seo_title_template,
+        seoDescriptionTemplate: data.seo_description_template,
+        shippingZones: data.shipping_zones,
+      } : {
+        enabled: false,
+        storeName: "",
+        tagline: "",
+        logoUrl: null,
+        faviconUrl: null,
+        primaryColor: "#000000",
+        backgroundColor: "#FAFAF8",
+        fontFamily: "Geist Sans",
+        contactPhone: null,
+        contactEmail: null,
+        socialFacebook: null,
+        socialInstagram: null,
+        socialTiktok: null,
+        seoTitleTemplate: "{product_name} | {store_name}",
+        seoDescriptionTemplate: "{product_description}",
+        shippingZones: [],
+      },
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.post("/api/storefront/settings", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const s = req.body?.settings || {};
+    const row = {
+      org_id: orgId,
+      enabled: Boolean(s.enabled),
+      store_name: s.storeName || null,
+      tagline: s.tagline || null,
+      logo_url: s.logoUrl || null,
+      favicon_url: s.faviconUrl || null,
+      primary_color: s.primaryColor || "#000000",
+      background_color: s.backgroundColor || "#FAFAF8",
+      font_family: s.fontFamily || "Geist Sans",
+      contact_phone: s.contactPhone || null,
+      contact_email: s.contactEmail || null,
+      social_facebook: s.socialFacebook || null,
+      social_instagram: s.socialInstagram || null,
+      social_tiktok: s.socialTiktok || null,
+      seo_title_template: s.seoTitleTemplate || "{product_name} | {store_name}",
+      seo_description_template: s.seoDescriptionTemplate || "{product_description}",
+      shipping_zones: Array.isArray(s.shippingZones) ? s.shippingZones : [],
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from("storefront_settings")
+      .upsert(row, { onConflict: "org_id" });
+    if (error) throw error;
+
+    // Purge the cached config so the storefront picks up changes quickly
+    await purgeStorefrontConfigCache(orgId);
+
+    return res.json({ success: true });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// Purge Cloudflare cache for the storefront config endpoint.
+// Called after settings are saved so the storefront reflects changes immediately.
+async function purgeStorefrontConfigCache(orgId) {
+  if (!CLOUDFLARE_ZONE_ID || !CLOUDFLARE_API_TOKEN || !PUBLIC_DOMAIN) return;
+  const handle = await getStorefrontHandle(orgId);
+  if (!handle) return;
+  try {
+    await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          files: [`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/config`],
+        }),
+      },
+    );
+  } catch (e) {
+    console.warn("[Purge] Could not purge storefront config cache:", e.message);
+  }
+}
 
 // ─── Integration Test Endpoints ──────────────────────────────────────────────
 
@@ -7853,10 +8208,15 @@ app.get("/api/products", async (req, res) => {
       }
     }
 
+    const handle = await getStorefrontHandle(orgId);
+    const origin = `${req.protocol}://${req.get("host")}`;
     return res.json({
       storefront: {
         id: orgId,
-        products_url: `${req.protocol}://${req.get("host")}/api/public/storefronts/${orgId}/products`,
+        handle: handle || null,
+        products_url: handle
+          ? `${origin}/api/public/v1/${handle}/products`
+          : `${origin}/api/public/v1/storefronts/${orgId}/products`,
       },
       products: (data || []).map((p) => ({
         ...p,
@@ -7871,75 +8231,551 @@ app.get("/api/products", async (req, res) => {
   }
 });
 
-app.get("/api/public/storefronts/:storefrontId/products", async (req, res) => {
-  try {
-    const supabase = getServiceSupabase();
-    const orgId = req.params.storefrontId;
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
+// Canonical public storefront routes are versioned under /api/public/v1/.
+// The unversioned /api/public/storefronts/... paths remain for one deprecation
+// window and set Deprecation + Sunset headers on every response.
+const PUBLIC_STOREFRONT_SUNSET = "Sat, 17 Oct 2026 00:00:00 GMT";
+
+function setDeprecationHeaders(res, canonicalPath) {
+  res.set("Deprecation", "true");
+  res.set("Sunset", PUBLIC_STOREFRONT_SUNSET);
+  res.set("Link", `<${canonicalPath}>; rel="successor-version"`);
+}
+
+// ─── Public cache helpers ───────────────────────────────────────────────
+// Two-tier cache for the storefront:
+//   • Catalog  — s-maxage=60, stale-while-revalidate=86400. Static-ish;
+//     invalidated by Cache-Tag purge on product write.
+//   • Inventory — s-maxage=5,  SWR=30. Stock truth; short so the
+//     add-to-cart button is never more than ~5s stale on a hard refresh.
+// Cache-Tag uses storefront:<handle> / product:<id> (never org_id) so a
+// purge can target one product or one merchant without leaking the tenant id.
+function cacheTagHeader(handle, ids = []) {
+  const tags = [`storefront=${handle}`];
+  for (const id of ids) tags.push(`product=${id}`);
+  return tags.join(",");
+}
+
+function computeEtag(fingerprint) {
+  return "W/\"" + crypto.createHash("sha1").update(fingerprint).digest("base64url").slice(0, 16) + "\"";
+}
+
+// Weak ETag keyed on only render-affecting fields. Includes updated_at
+// so a save that touches no price/slug field still invalidates.
+function catalogEtag(products) {
+  const fp = products
+    .map((p) => `${p.id}:${p.updated_at ?? ""}:${p.slug}:${p.price ?? ""}`)
+    .join("|");
+  return computeEtag(fp);
+}
+
+function inventoryEtag(inventory) {
+  const fp = Object.entries(inventory)
+    .map(([id, e]) => `${id}:${e.stock_quantity}:${e.available}`)
+    .sort()
+    .join("|");
+  return computeEtag(fp);
+}
+
+// Sets cache headers + honours If-None-Match. Returns true if a 304 was sent
+// (caller should then return without writing a body).
+function respondCached(res, { etag, cacheControl, cacheTag }) {
+  res.set("Cache-Control", cacheControl);
+  res.set("ETag", etag);
+  res.set("Vary", "Accept-Encoding");
+  if (cacheTag) res.set("Cache-Tag", cacheTag);
+  res.set("X-Merchant-Suite-API-Version", "2026-07-19");
+  const inm = res.req.headers["if-none-match"];
+  if (inm && inm.split(",").map((s) => s.trim()).includes(etag)) {
+    res.status(304).end();
+    return true;
+  }
+  return false;
+}
+
+// Catalog is stock-free: no getProductStockMap here. Stock lives on
+// /inventory with its own short TTL so a cached catalog + fresh stock renders
+// correctly on the merchant site.
+async function loadPublicProducts(orgId) {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("published", true)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const products = data || [];
+  const productIds = products.map((p) => p.id);
+  const imagesMap = await loadProductImagesMap(supabase, orgId, productIds);
+  const variantsMap = {};
+  if (productIds.length > 0) {
+    const { data: variantRows, error: variantsError } = await supabase
+      .from("product_variants")
+      .select("id, product_id, attributes, price_adjustment")
+      .in("product_id", productIds)
       .eq("org_id", orgId)
-      .eq("published", true)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-
-    const products = data || [];
-    const productIds = products.map((p) => p.id);
-    const stockMap = productIds.length > 0 ? await getProductStockMap(orgId, productIds) : {};
-    const imagesMap = await loadProductImagesMap(supabase, orgId, productIds);
-    const variantsMap = {};
-    if (productIds.length > 0) {
-      const { data: variantRows, error: variantsError } = await supabase
-        .from("product_variants")
-        .select("id, product_id, attributes, stock_quantity, price_adjustment")
-        .in("product_id", productIds)
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: true });
-      if (variantsError) throw variantsError;
-      for (const variant of variantRows || []) {
-        if (!variantsMap[variant.product_id]) variantsMap[variant.product_id] = [];
-        variantsMap[variant.product_id].push(variant);
-      }
+      .order("created_at", { ascending: true });
+    if (variantsError) throw variantsError;
+    for (const variant of variantRows || []) {
+      if (!variantsMap[variant.product_id]) variantsMap[variant.product_id] = [];
+      variantsMap[variant.product_id].push(variant);
     }
+  }
+  return products.map((product) =>
+    toPublicProduct(product, variantsMap[product.id] || [], imagesMap[product.id] || []),
+  );
+}
 
-    return res.json({
-      products: products.map((product) => toPublicProduct(product, variantsMap[product.id] || [], stockMap[product.id] || 0, imagesMap[product.id] || [])),
+async function loadPublicProductBySlug(orgId, slug) {
+  const supabase = getServiceSupabase();
+  const { data: product, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("published", true)
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) throw error;
+  if (!product) return null;
+
+  const [imagesMap, { data: variants, error: variantsError }] = await Promise.all([
+    loadProductImagesMap(supabase, orgId, [product.id]),
+    supabase
+      .from("product_variants")
+      .select("id, product_id, attributes, price_adjustment")
+      .eq("product_id", product.id)
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true }),
+  ]);
+  if (variantsError) throw variantsError;
+
+  return toPublicProduct(product, variants || [], imagesMap[product.id] || []);
+}
+
+async function loadPublicInventory(orgId, ids) {
+  if (!ids.length) return {};
+  const supabase = getServiceSupabase();
+  const { data: rows, error } = await supabase
+    .from("products")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("published", true)
+    .in("id", ids);
+  if (error) throw error;
+  const validIds = (rows || []).map((r) => r.id);
+  if (!validIds.length) return {};
+
+  const [stockMap, variantsResult] = await Promise.all([
+    getProductStockMap(orgId, validIds),
+    supabase
+      .from("product_variants")
+      .select("id, product_id, stock_quantity")
+      .in("product_id", validIds)
+      .eq("org_id", orgId),
+  ]);
+  if (variantsResult.error) throw variantsResult.error;
+
+  const variantsByProduct = {};
+  for (const v of variantsResult.data || []) {
+    if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
+    variantsByProduct[v.product_id].push(v);
+  }
+
+  const inventory = {};
+  for (const id of validIds) {
+    inventory[id] = toPublicInventoryEntry({
+      stockQuantity: stockMap[id] || 0,
+      variants: variantsByProduct[id] || [],
     });
+  }
+  return inventory;
+}
+
+async function handlePublicStorefrontProducts(req, res) {
+  try {
+    const products = await loadPublicProducts(req.params.storefrontId);
+    if (respondCached(res, {
+      etag: catalogEtag(products),
+      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheTag: cacheTagHeader(req.params.storefrontId),
+    })) return;
+    return res.json({ products });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
-});
+}
 
-app.get("/api/public/storefronts/:storefrontId/products/:slug", async (req, res) => {
+async function handlePublicStorefrontProductDetail(req, res) {
   try {
+    const product = await loadPublicProductBySlug(req.params.storefrontId, req.params.slug);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+    if (respondCached(res, {
+      etag: catalogEtag([product]),
+      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheTag: cacheTagHeader(req.params.storefrontId, [product.id]),
+    })) return;
+    return res.json({ product });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─── Public Storefront Config ────────────────────────────────────────────────
+// Returns merchant branding configuration (name, logo, colors, shipping zones)
+// for the storefront app to render. Cacheable with the same catalog-tier headers.
+async function loadPublicStorefrontConfig(orgId) {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("storefront_settings")
+    .select("*")
+    .eq("org_id", orgId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function configEtag(config) {
+  if (!config) return computeEtag("empty");
+  return computeEtag(`${config.org_id}:${config.updated_at || ""}:${config.store_name || ""}`);
+}
+
+async function handlePublicHandleConfig(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+    const config = await loadPublicStorefrontConfig(orgId);
+    // Return defaults when storefront settings haven't been configured yet —
+    // the storefront still needs to render even if the merchant hasn't customized.
+    const payload = {
+      storeName: config?.store_name || "",
+      tagline: config?.tagline || "",
+      logoUrl: config?.logo_url || null,
+      faviconUrl: config?.favicon_url || null,
+      primaryColor: config?.primary_color || "#000000",
+      backgroundColor: config?.background_color || "#FAFAF8",
+      fontFamily: config?.font_family || "Geist Sans",
+      contactPhone: config?.contact_phone || null,
+      contactEmail: config?.contact_email || null,
+      socialLinks: {
+        facebook: config?.social_facebook || null,
+        instagram: config?.social_instagram || null,
+        tiktok: config?.social_tiktok || null,
+      },
+      shippingZones: config?.shipping_zones || [],
+    };
+    if (respondCached(res, {
+      etag: configEtag(config),
+      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheTag: cacheTagHeader(req.params.handle),
+    })) return;
+    return res.json(payload);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// ─── Public Storefront Order Submission ──────────────────────────────────────
+// Accepts orders from the storefront checkout flow. No authentication required —
+// the storefront is public. Validates stock, calculates shipping from zones,
+// creates the order, and decrements variant stock.
+async function handlePublicHandleOrderSubmit(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+
     const supabase = getServiceSupabase();
-    const orgId = req.params.storefrontId;
+    const { customerName, phone, address, items, shippingZoneId, notes } = req.body || {};
+
+    // ── Validate required fields ─────────────────────────────────────────
+    if (!customerName || typeof customerName !== "string") {
+      return res.status(400).json({ error: "customer_name is required" });
+    }
+    const cleanPhone = normalizeBdPhone(phone);
+    if (!cleanPhone) {
+      return res.status(400).json({ error: "A valid Bangladeshi phone number is required" });
+    }
+    if (!address || typeof address !== "string") {
+      return res.status(400).json({ error: "address is required" });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "At least one item is required" });
+    }
+
+    // ── Validate items and check stock ───────────────────────────────────
+    const variantIds = items.map((i) => i.variantId).filter(Boolean);
+    if (variantIds.length !== items.length) {
+      return res.status(400).json({ error: "Each item must have a variantId" });
+    }
+
+    // Fetch all variants + their parent products in one pass
+    const { data: variants, error: vErr } = await supabase
+      .from("product_variants")
+      .select("id, product_id, org_id, attributes, price_adjustment, stock_quantity")
+      .in("id", variantIds)
+      .eq("org_id", orgId);
+    if (vErr) throw vErr;
+
+    const variantMap = {};
+    for (const v of variants || []) variantMap[v.id] = v;
+
+    // Fetch parent products for base prices and names
+    const productIds = [...new Set(Object.values(variantMap).map((v) => v.product_id))];
+    const { data: products, error: pErr } = await supabase
+      .from("products")
+      .select("id, name, selling_price, published")
+      .in("id", productIds)
+      .eq("org_id", orgId)
+      .eq("published", true);
+    if (pErr) throw pErr;
+
+    const productMap = {};
+    for (const p of products || []) productMap[p.id] = p;
+
+    // Build line items with pricing and stock validation
+    const orderItems = [];
+    let subtotal = 0;
+
+    for (const item of items) {
+      const variant = variantMap[item.variantId];
+      if (!variant) {
+        return res.status(400).json({ error: `Variant not found or doesn't belong to this store` });
+      }
+      const product = productMap[variant.product_id];
+      if (!product) {
+        return res.status(400).json({ error: `Product is no longer available` });
+      }
+
+      const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+      if (variant.stock_quantity < qty) {
+        const attrStr = Object.entries(variant.attributes || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
+        return res.status(400).json({
+          error: `Insufficient stock for "${product.name}"${attrStr ? ` (${attrStr})` : ""}. Available: ${variant.stock_quantity}`,
+        });
+      }
+
+      const basePrice = parseFloat(product.selling_price) || 0;
+      const adjustment = parseFloat(variant.price_adjustment) || 0;
+      const unitPrice = basePrice + adjustment;
+      const lineTotal = unitPrice * qty;
+
+      orderItems.push({
+        variantId: variant.id,
+        productId: product.id,
+        productName: product.name,
+        attributes: variant.attributes || {},
+        quantity: qty,
+        unitPrice,
+        lineTotal,
+      });
+      subtotal += lineTotal;
+    }
+
+    // ── Shipping calculation ─────────────────────────────────────────────
+    let shipping = 0;
+    if (shippingZoneId) {
+      const { data: settings } = await supabase
+        .from("storefront_settings")
+        .select("shipping_zones")
+        .eq("org_id", orgId)
+        .maybeSingle();
+
+      const zones = settings?.shipping_zones || [];
+      const shippingResult = calculateShippingCost(subtotal, shippingZoneId, zones);
+      if (shippingResult.error) {
+        return res.status(400).json({ error: shippingResult.error });
+      }
+      shipping = shippingResult.cost;
+    }
+
+    const total = subtotal + shipping;
+
+    // ── Build order product string (summary of all items) ───────────────
+    const productSummary = orderItems
+      .map((item) => {
+        const attrs = Object.values(item.attributes).join(", ");
+        return `${item.productName}${attrs ? ` (${attrs})` : ""} x${item.quantity}`;
+      })
+      .join(", ");
+
+    // ── Insert order ─────────────────────────────────────────────────────
+    const orderSeq = await getNextManualOrderSeq(orgId);
+    const orderNumber = `#S${orderSeq}`;
+    const shopifyOrderId = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
+
+    const orderRow = {
+      org_id: orgId,
+      shopify_order_id: shopifyOrderId,
+      order_number: orderNumber,
+      customer_name: customerName,
+      phone: cleanPhone,
+      address,
+      product: productSummary,
+      quantity: orderItems.reduce((sum, i) => sum + i.quantity, 0),
+      price: subtotal,
+      delivery_rate: shipping,
+      status: "pending",
+      source: "storefront",
+      notes: notes || null,
+    };
+
+    const { data: order, error: orderErr } = await supabase
+      .from("orders")
+      .insert(orderRow)
+      .select("*")
+      .single();
+    if (orderErr) throw orderErr;
+
+    // ── Decrement variant stock ──────────────────────────────────────────
+    for (const item of orderItems) {
+      await supabase
+        .from("product_variants")
+        .update({ stock_quantity: Math.max(0, variantMap[item.variantId].stock_quantity - item.quantity) })
+        .eq("id", item.variantId)
+        .eq("org_id", orgId);
+    }
+
+    // ── Purge inventory cache so storefront reflects new stock ───────────
+    await purgeProductCache(orgId, null, { listChanged: false, warm: false });
+
+    return res.json({
+      success: true,
+      orderId: orderNumber,
+      total,
+      shipping,
+      message: "Order placed successfully! We'll contact you shortly.",
+    });
+  } catch (e) {
+    console.error("[Storefront Order] Error:", e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function handlePublicHandleProducts(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    // Same 404 shape whether the handle is unknown or the catalog is empty:
+    // don't let attackers enumerate handles by comparing responses.
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+    const products = await loadPublicProducts(orgId);
+    if (respondCached(res, {
+      etag: catalogEtag(products),
+      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheTag: cacheTagHeader(req.params.handle),
+    })) return;
+    return res.json({ products });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function handlePublicHandleProductDetail(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+    const product = await loadPublicProductBySlug(orgId, req.params.slug);
+    if (!product) return res.status(404).json({ error: "not_found" });
+    if (respondCached(res, {
+      etag: catalogEtag([product]),
+      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheTag: cacheTagHeader(req.params.handle, [product.id]),
+    })) return;
+    return res.json({ product });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+// Short-TTL stock-truth endpoint. Bulk `?ids=a,b,c` covers the PLP
+// add-to-cart case; per-slug covers the PDP. The storefront renders
+// the catalog from the cached list and hydrates stock from here — that's
+// the two-tier split that makes a merchant's edit show instantly
+// without turning stock into a distributed-systems problem.
+async function handlePublicHandleInventory(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) {
+      res.set("Cache-Control", "no-store");
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    const ids = (req.query.ids ? String(req.query.ids).split(",") : [])
+      .map((s) => s.trim()).filter(Boolean);
+    if (ids.length > 100) return res.status(413).json({ error: "ids: max 100" });
+    if (!ids.length) return res.status(400).json({ error: "ids_required" });
+
+    const inventory = await loadPublicInventory(orgId, ids);
+    const body = { inventory, as_of: new Date().toISOString() };
+    if (respondCached(res, {
+      etag: inventoryEtag(inventory),
+      cacheControl: "public, max-age=5, stale-while-revalidate=30, s-maxage=5",
+      cacheTag: cacheTagHeader(req.params.handle, ids),
+    })) return;
+    // Validate through Zod so a leaked field is a staging 500, not a
+    // contract break shipped to storefronts.
+    return res.json(PublicInventoryResponseSchema.parse(body));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+async function handlePublicHandleProductInventory(req, res) {
+  try {
+    const orgId = await resolveStorefrontHandle(req.params.handle);
+    if (!orgId) {
+      res.set("Cache-Control", "no-store");
+      return res.status(404).json({ error: "not_found" });
+    }
+    const supabase = getServiceSupabase();
     const { data: product, error } = await supabase
       .from("products")
-      .select("*")
+      .select("id")
       .eq("org_id", orgId)
       .eq("published", true)
       .eq("slug", req.params.slug)
       .maybeSingle();
     if (error) throw error;
-    if (!product) return res.status(404).json({ error: "Product not found" });
-
-    const [stockMap, imagesMap, { data: variants, error: variantsError }] = await Promise.all([
-      getProductStockMap(orgId, [product.id]),
-      loadProductImagesMap(supabase, orgId, [product.id]),
-      supabase
-        .from("product_variants")
-        .select("id, product_id, attributes, stock_quantity, price_adjustment")
-        .eq("product_id", product.id)
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: true }),
-    ]);
-    if (variantsError) throw variantsError;
-
-    return res.json({ product: toPublicProduct(product, variants || [], stockMap[product.id] || 0, imagesMap[product.id] || []) });
+    if (!product) {
+      res.set("Cache-Control", "no-store");
+      return res.status(404).json({ error: "not_found" });
+    }
+    const inventory = await loadPublicInventory(orgId, [product.id]);
+    const entry = inventory[product.id] || null;
+    const body = { inventory: entry, as_of: new Date().toISOString() };
+    if (respondCached(res, {
+      etag: inventoryEtag(inventory),
+      cacheControl: "public, max-age=5, stale-while-revalidate=30, s-maxage=5",
+      cacheTag: cacheTagHeader(req.params.handle, [product.id]),
+    })) return;
+    // Validates the entry (or null) shape through Zod.
+    return res.json({
+      inventory: entry === null ? null : PublicInventoryEntrySchema.parse(entry),
+      as_of: body.as_of,
+    });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
+}
+
+app.get("/api/public/v1/:handle/config", rateLimitPublicRead, handlePublicHandleConfig);
+app.get("/api/public/v1/:handle/products", rateLimitPublicRead, handlePublicHandleProducts);
+app.post("/api/public/v1/:handle/orders", rateLimitPublicRead, handlePublicHandleOrderSubmit);
+app.get("/api/public/v1/:handle/products/:slug", rateLimitPublicRead, handlePublicHandleProductDetail);
+app.get("/api/public/v1/:handle/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
+app.get("/api/public/v1/:handle/inventory", rateLimitPublicRead, handlePublicHandleInventory);
+
+app.get("/api/public/v1/storefronts/:storefrontId/products", rateLimitPublicRead, handlePublicStorefrontProducts);
+app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", rateLimitPublicRead, handlePublicStorefrontProductDetail);
+app.get("/api/public/v1/storefronts/:storefrontId/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
+
+app.get("/api/public/storefronts/:storefrontId/products", (req, res) => {
+  setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products`);
+  return handlePublicStorefrontProducts(req, res);
+});
+app.get("/api/public/storefronts/:storefrontId/products/:slug", (req, res) => {
+  setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products/${req.params.slug}`);
+  return handlePublicStorefrontProductDetail(req, res);
 });
 
 app.post("/api/products/save", async (req, res) => {
@@ -8430,6 +9266,21 @@ app.patch("/api/products/:id", async (req, res) => {
     if (hasStockUpdate) await saveProductStock(orgId, req.params.id, req.body.stock_quantity);
     data = { ...data, stock_quantity: hasStockUpdate ? Math.max(0, parseInt(req.body.stock_quantity, 10) || 0) : 0 };
 
+    // Edge purge: skip if only stock_quantity changed (5s inventory TTL
+    // self-heals). Purge when the published state flips or the product
+    // is already published (any catalog field edit must go live).
+    const changedFields = Object.keys(update);
+    const onlyStockChanged = hasStockUpdate && changedFields.length === 0;
+    const isUnpublishing = update.published === false;
+    if (!onlyStockChanged && (data.published || isUnpublishing)) {
+      const isPublishing = update.published === true;
+      const listChanged = isPublishing || isUnpublishing;
+      purgeProductCache(orgId, req.params.id, {
+        listChanged,
+        warm: !isUnpublishing,
+      }).catch(() => {});
+    }
+
     // Regenerate embedding if image_url changed
     if (update.image_url && data.image_url) {
       generateProductEmbedding(data.image_url).then(({ embedding, description }) => {
@@ -8460,11 +9311,40 @@ app.delete("/api/products/:id", async (req, res) => {
       .eq("org_id", orgId);
     const { error } = await supabase.from("products").delete().eq("id", req.params.id).eq("org_id", orgId);
     if (error) throw error;
+    // List changed + detail stale: purge with warm:false (warming an
+    // unpublished 404 would pollute the edge with a negative entry).
+    purgeProductCache(orgId, req.params.id, { listChanged: true, warm: false }).catch(() => {});
     const paths = (images || []).map((image) => image.storage_path).filter(Boolean);
     if (paths.length) {
       await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove(paths);
     }
     return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// Publishes every unpublished product for the org in one shot (Dashboard
+// "Publish All" button). Single list purge — detail warms happen on
+// first real visitor (60s catalog TTL).
+app.post("/api/products/publish-all", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { data, error } = await supabase
+      .from("products")
+      .update({ published: true, published_at: new Date().toISOString() })
+      .eq("org_id", orgId)
+      .eq("published", false)
+      .select("id");
+    if (error) throw error;
+
+    purgeProductCache(orgId, null, { listChanged: true, warm: true }).catch(() => {});
+
+    return res.json({ success: true, published: (data || []).length });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -8935,6 +9815,68 @@ NOTIFY pgrst, 'reload schema';
   }
 }
 
+// ─── Storefront Settings Migration ────────────────────────────────────────────
+// Creates the storefront_settings table for merchant branding, shipping zones,
+// and storefront configuration. One row per org (org_id is UNIQUE).
+async function migrateStorefrontSettingsTable() {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+    if (!projectRef || !serviceKey) return;
+
+    const migrationSql = `
+CREATE TABLE IF NOT EXISTS public.storefront_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL UNIQUE,
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  store_name TEXT,
+  tagline TEXT,
+  logo_url TEXT,
+  favicon_url TEXT,
+  primary_color TEXT DEFAULT '#000000',
+  background_color TEXT DEFAULT '#FAFAF8',
+  font_family TEXT DEFAULT 'Geist Sans',
+  contact_phone TEXT,
+  contact_email TEXT,
+  social_facebook TEXT,
+  social_instagram TEXT,
+  social_tiktok TEXT,
+  seo_title_template TEXT DEFAULT '{product_name} | {store_name}',
+  seo_description_template TEXT DEFAULT '{product_description}',
+  shipping_zones JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS storefront_settings_org_id_idx
+    ON public.storefront_settings(org_id);
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+-- Ensure orders table has source column for storefront orders
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS source TEXT;
+
+NOTIFY pgrst, 'reload schema';
+    `;
+
+    const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ query: migrationSql }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("[Migrate] storefront_settings failed:", text);
+      return;
+    }
+    console.log("[Migrate] storefront_settings table ensured.");
+  } catch (e) {
+    console.warn("[Migrate] Could not run storefront settings migration:", e.message);
+  }
+}
+
 async function ensureAppSettingsTable() {
   try {
     const supabase = getServiceSupabase();
@@ -9216,6 +10158,7 @@ if (!process.env.VERCEL) {
         await ensureAppSettingsTable();
         await migrateInboxOrdersTable();
         await migrateMultiTenancy();
+        await migrateStorefrontSettingsTable();
         await bootstrapAiProductContext();
         backfillProductEmbeddings().catch((err) => console.warn("[Embedding Backfill] Error:", err.message));
       });
@@ -9230,6 +10173,7 @@ if (!process.env.VERCEL) {
   ensureAppSettingsTable().catch(() => {});
   migrateMultiTenancy().catch(() => {});
   migrateInboxOrdersTable().catch(() => {});
+  migrateStorefrontSettingsTable().catch(() => {});
 }
 
 export default app;
