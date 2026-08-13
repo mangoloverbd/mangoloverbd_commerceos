@@ -25,6 +25,7 @@ const accountMenuItemClass =
 
 const routeBreadcrumbLabels: Record<string, string> = {
     "/": "Overview",
+    "/overview": "Overview",
     "/returns": "Returns",
     "/products": "Products",
     "/customers": "Customers",

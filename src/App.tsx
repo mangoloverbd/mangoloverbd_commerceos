@@ -23,6 +23,7 @@ import Billing from "./pages/Billing";
 import Returns from "./pages/Returns";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import OnlineStore from "./pages/OnlineStore";
+import Overview from "./pages/Overview";
 import { Spinner } from "@/components/ui/ios-spinner";
 
 const queryClient = new QueryClient();
@@ -90,6 +91,7 @@ const AppRoutes = () => (
       }
     >
       <Route path="/" element={<Dashboard />} />
+      <Route path="/overview" element={<Overview />} />
       <Route path="/order-analysis" element={<AdminRoute><OrderAnalysis /></AdminRoute>} />
       <Route path="/order-extraction" element={<OrderExtraction />} />
       <Route path="/order-chat" element={<OrderChat />} />
