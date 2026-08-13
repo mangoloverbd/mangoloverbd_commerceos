@@ -12,6 +12,7 @@ import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
+import { buildOverviewData } from "./overview.js";
 import { buildSalesTrend } from "./salesTrend.js";
 import { calculateShippingCost } from "./shippingCalculation.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
@@ -2897,6 +2898,79 @@ app.delete("/api/meta/assets/:type/:id", async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     return sendError(res, err);
+  }
+});
+
+// ─── Overview ────────────────────────────────────────────────────────────────
+
+app.get("/api/overview", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const since = req.query.since || null;
+    const until = req.query.until || null;
+
+    const todayDhaka = () => {
+      const dhakaMs = Date.now() + 6 * 60 * 60 * 1000;
+      const d = new Date(dhakaMs);
+      return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    };
+    const today = todayDhaka();
+    const defaultUntil = today.toISOString().slice(0, 10);
+    const defaultSince = new Date(today.getTime() - 6 * 86400000).toISOString().slice(0, 10);
+
+    const rangeSince = since || defaultSince;
+    const rangeUntil = until || defaultUntil;
+
+    const rangeDays = Math.round((new Date(`${rangeUntil}T00:00:00Z`) - new Date(`${rangeSince}T00:00:00Z`)) / 86400000) + 1;
+    const prevUntil = new Date(new Date(`${rangeSince}T00:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10);
+    const prevSince = new Date(new Date(`${prevUntil}T00:00:00Z`).getTime() - (rangeDays - 1) * 86400000).toISOString().slice(0, 10);
+
+    const { data: allOrders, error: ordersError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("org_id", orgId)
+      .gte("created_at", `${prevSince}T00:00:00+06:00`)
+      .lte("created_at", `${rangeUntil}T23:59:59+06:00`);
+    if (ordersError) throw ordersError;
+
+    const { data: products } = await supabase
+      .from("products")
+      .select("id, name, selling_price, cog")
+      .eq("org_id", orgId);
+
+    const { data: socialConversations } = await supabase
+      .from("social_conversations")
+      .select("id, platform, unread_count, created_at")
+      .eq("org_id", orgId);
+
+    const convIds = (socialConversations || []).map((c) => c.id);
+    let socialMessages = [];
+    if (convIds.length > 0) {
+      const { data: msgs } = await supabase
+        .from("social_messages")
+        .select("id, conversation_id, sender, created_at")
+        .in("conversation_id", convIds);
+      socialMessages = msgs || [];
+    }
+
+    const overview = buildOverviewData(
+      allOrders || [],
+      products || [],
+      socialConversations || [],
+      socialMessages,
+      { since: rangeSince, until: rangeUntil, prevSince, prevUntil }
+    );
+
+    console.log(`[Overview] range: ${rangeSince} to ${rangeUntil}, prev: ${prevSince} to ${prevUntil}, orders: ${(allOrders || []).length}`);
+
+    res.json(overview);
+  } catch (err) {
+    console.error("[Overview] Error:", err.message);
+    res.status(500).json({ error: "Failed to load overview data" });
   }
 });
 
