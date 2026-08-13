@@ -7,8 +7,8 @@ interface CourierData {
 export function CourierPanel({ data }: { data: CourierData }) {
   const couriers = Object.entries(data).map(([name, stats]) => {
     const total = stats.delivered + stats.in_transit + stats.failed + stats.pending;
-    const successRate = stats.delivered + stats.failed > 0
-      ? (stats.delivered / (stats.delivered + stats.failed)) * 100
+    const successRate = total > 0
+      ? ((stats.delivered + stats.in_transit * 0.5) / total) * 100
       : 0;
     return { name: name.charAt(0).toUpperCase() + name.slice(1), ...stats, total, successRate: Math.round(successRate * 10) / 10 };
   });
