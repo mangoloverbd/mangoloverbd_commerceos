@@ -255,6 +255,7 @@ function FinanceMetric({
   metaClassName,
   values,
   endDate,
+  positive,
 }: {
   label: string;
   loading: boolean;
@@ -356,6 +357,55 @@ function FinanceMetric({
                   <MiniBarChart values={values} endDate={endDate} />
                 </div>
               </div>
+
+              {/* Bottom section */}
+              {meta && (
+                <div
+                  className="flex items-center justify-between"
+                  style={{
+                    padding: "5px 10px",
+                  }}
+                >
+                  <div
+                    className="flex items-center justify-center"
+                    style={{
+                      width: "15px",
+                      height: "15px",
+                      borderRadius: "50%",
+                      background: "rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="8"
+                      height="8"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      {positive ? (
+                        <polyline points="18 15 12 9 6 15" />
+                      ) : (
+                        <polyline points="6 9 12 15 18 9" />
+                      )}
+                    </svg>
+                  </div>
+
+                  <span
+                    className={cn("", metaClassName)}
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 500,
+                      color: "#1BA475",
+                    }}
+                  >
+                    {meta}
+                  </span>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
