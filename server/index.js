@@ -3232,16 +3232,19 @@ app.get("/api/analytics", async (req, res) => {
     }
 
     // Net Profit = Revenue − Ad Spend − Shipping − COG
+    // When ads aren't connected adSpend is null; treat it as 0 so Net Profit
+    // still reflects revenue − shipping − COG rather than collapsing to "—".
     const shippingCost = parseFloat(shipping.toFixed(2));
-    const profit = adSpend !== null
-      ? revenue - adSpend - shippingCost - totalCog
-      : null;
+    const adSpendForCalc = adSpend ?? 0;
+    const profit = parseFloat(
+      (revenue - adSpendForCalc - shippingCost - totalCog).toFixed(2),
+    );
     for (const bucket of seriesBuckets) {
       bucket.revenue = parseFloat(bucket.revenue.toFixed(2));
       bucket.shipping = parseFloat(bucket.shipping.toFixed(2));
-      bucket.profit = adSpend !== null
-        ? parseFloat((bucket.revenue - bucket.totalCog - bucket.adSpend - bucket.shipping).toFixed(2))
-        : null;
+      bucket.profit = parseFloat(
+        (bucket.revenue - bucket.totalCog - (bucket.adSpend ?? 0) - bucket.shipping).toFixed(2),
+      );
     }
 
     return res.json({
@@ -3250,7 +3253,7 @@ app.get("/api/analytics", async (req, res) => {
       adSpend,
       totalCog: parseFloat(totalCog.toFixed(2)),
       cogCoverage,
-      profit: profit !== null ? parseFloat(profit.toFixed(2)) : null,
+      profit: parseFloat(profit.toFixed(2)),
       fbConfigured: !!(fbToken && fbAccountId),
       usdToBdt,
       fbError,
