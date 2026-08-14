@@ -85,7 +85,7 @@ export function DashboardLayout() {
             <div className="flex min-h-screen w-full bg-[#dedede] text-[#202020]">
                 <AppSidebar />
                 <SidebarInset className="flex min-w-0 flex-col bg-transparent">
-                    <header className="flex h-[58px] shrink-0 items-center justify-between px-5 text-[#202020]">
+                    <header className="flex h-[52px] shrink-0 items-center justify-between px-5 text-[#202020]">
                         <nav aria-label="Breadcrumb" className="flex min-w-0 items-center">
                             <div className="flex min-w-0 items-center gap-2 text-[13px] leading-none">
                                 <span className="truncate text-[#8a8a88]">Dashboard</span>

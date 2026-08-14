@@ -7838,6 +7838,28 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
 END $$;
 
+-- Product variants (sizes / option combos). Multi-tenant via org_id.
+DO $$ BEGIN
+  CREATE TABLE IF NOT EXISTS public.product_variants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID NOT NULL,
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    attributes JSONB NOT NULL DEFAULT '{}'::jsonb,
+    cog NUMERIC NOT NULL DEFAULT 0,
+    stock_quantity INTEGER NOT NULL DEFAULT 0,
+    price_adjustment NUMERIC NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
+  CREATE INDEX IF NOT EXISTS product_variants_org_product_idx ON public.product_variants(org_id, product_id);
+  CREATE POLICY "service_role_all_product_variants" ON public.product_variants TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE POLICY "auth_users_product_variants" ON public.product_variants FOR ALL TO authenticated USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text)) WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id = auth.uid()::text));
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+
 -- Social conversations must be unique per organization, not globally.
 DO $$ BEGIN
   ALTER TABLE public.social_conversations DROP CONSTRAINT IF EXISTS social_conversations_platform_contact_id_key;

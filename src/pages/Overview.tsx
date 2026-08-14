@@ -51,11 +51,13 @@ function fmtBDT(n: number) {
 export default function Overview() {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const todayRange = useMemo<DateRange>(() => ({ from: subDays(TODAY, 6), to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
 
   const fetchData = useCallback(async (range?: DateRange | null) => {
     setLoading(true);
+    setError(false);
     try {
       const params = new URLSearchParams({ t: String(Date.now()) });
       if (range?.from) params.set("since", format(range.from, "yyyy-MM-dd"));
@@ -63,7 +65,8 @@ export default function Overview() {
       const res = await apiFetch(`/api/overview?${params}`, { cache: "no-store" });
       const json = await res.json();
       if (res.ok) setData(json);
-    } catch { /* non-critical */ }
+      else setError(true);
+    } catch { setError(true); }
     finally { setLoading(false); }
   }, []);
 
@@ -75,12 +78,28 @@ export default function Overview() {
     setDateRange(range);
   }, []);
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="min-h-[calc(100vh-96px)] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Spinner size="lg" className="text-foreground" />
           <span className="text-sm font-medium text-foreground/60">Loading Overview</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="min-h-[calc(100vh-96px)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <p className="text-sm font-medium text-foreground/60">Failed to load overview</p>
+          <button
+            onClick={() => fetchData(dateRange)}
+            className="text-xs text-foreground/50 hover:text-foreground underline"
+          >
+            Try again
+          </button>
         </div>
       </div>
     );
@@ -92,7 +111,10 @@ export default function Overview() {
   return (
     <div className="space-y-6 p-1 lg:p-2">
       <div className="flex items-center justify-between">
-        <h1 className="text-[22px] font-bold text-black tracking-tight">Overview</h1>
+        <div>
+          <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Overview</p>
+          <h1 className="mt-1 font-sf-display text-[22px] font-bold tracking-tight text-black">Overview</h1>
+        </div>
         <div className="flex items-center gap-2">
           <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
           <button

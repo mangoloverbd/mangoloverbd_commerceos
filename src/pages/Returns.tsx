@@ -66,9 +66,9 @@ function ReturnsMetric({
   return (
     <div
       style={{
-        background: "#E9E8E5",
+        background: "#F5F5F5",
         borderRadius: "14px",
-        padding: "4px",
+        padding: "3px",
         border: "1.5px solid rgba(0,0,0,0.07)",
         boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
       }}
@@ -84,9 +84,7 @@ function ReturnsMetric({
             style={{
               background: "#F7F7F6",
               borderRadius: "10px",
-              border: "1px solid rgba(0,0,0,0.05)",
-              padding: "12px 14px",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
+              padding: "9px 12px",
             }}
             className="space-y-2"
           >
@@ -106,7 +104,7 @@ function ReturnsMetric({
                 background: "#F7F7F6",
                 borderRadius: "10px",
                 border: "1px solid rgba(0,0,0,0.05)",
-                padding: "12px 14px",
+                padding: "9px 12px",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
               }}
             >
@@ -128,7 +126,7 @@ function ReturnsMetric({
                   as="p"
                   per="char"
                   delay={0.12}
-                  className={`m-0 text-[22px] font-bold leading-none tabular-nums ${valueClassName}`}
+                  className={`m-0 text-[20px] font-bold leading-none tabular-nums ${valueClassName}`}
                 >
                   {value}
                 </TextEffect>
@@ -155,39 +153,11 @@ function ReturnsMetric({
                 )}
               </div>
 
-        {subValue && (
-          <div className="flex items-center justify-between mt-3 pt-2 border-t border-black/[0.05]">
-            <div
-              className="flex items-center justify-center"
-              style={{
-                width: "16px",
-                height: "16px",
-                borderRadius: "50%",
-                background: "rgba(0,0,0,0.08)",
-              }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="8"
-                height="8"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#FFFFFF"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="18 15 12 9 6 15" />
-              </svg>
-            </div>
-            <span
-              className="text-[10px] font-medium"
-              style={{ color: "#1BA475" }}
-            >
-              {subValue}
-            </span>
-          </div>
-        )}
+              {subValue && (
+                <p className="mt-1.5 text-[10px] font-medium text-black/40">
+                  {subValue}
+                </p>
+              )}
             </div>
           </motion.div>
         )}
@@ -285,36 +255,38 @@ export default function Returns() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8] p-1 lg:p-2">
+    <div className="space-y-3 p-1 lg:p-2">
+      {/* ─ Returns Panel ───────────────────────────────────────────────────── */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-black/10 bg-white"
+        transition={{ duration: 0.4 }}
+        className="relative rounded-2xl bg-[#F3F3F3]"
       >
-        {/* Header */}
-        <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-4 lg:px-6">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/10 text-red-500">
-              <ArrowUUpLeft size={15} weight="light" />
+        {/* Header row */}
+        <div className="flex items-center justify-between pt-3 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10 text-red-500">
+              <ArrowUUpLeft size={14} weight="light" />
             </span>
             <div>
-              <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Returns</AnimatedText>
-              <p className="text-[11px] text-muted-foreground">Manage courier returns and cancellations</p>
+              <AnimatedText as="p" className="font-sf-display text-[14px] font-semibold tracking-normal text-foreground">Returns</AnimatedText>
+              <p className="text-[10px] text-muted-foreground">Manage courier returns and cancellations</p>
             </div>
           </div>
           <RichButton
             color="default"
-            size="default"
+            size="sm"
             onClick={async () => { await handleBackfillFees(); await handleSync(); }}
             disabled={syncing}
           >
-            {syncing ? <Spinner size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            {syncing ? <Spinner size="sm" className="mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />}
             {syncing ? "Syncing..." : "Sync"}
           </RichButton>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-4 border-b border-black/10 px-4 py-4 lg:px-6">
+        <div className="grid grid-cols-3 gap-3 pb-3">
           <ReturnsMetric
             label="Lost Revenue"
             value={isLoading ? "—" : `৳${summary.totalLostRevenue.toLocaleString()}`}
@@ -335,16 +307,24 @@ export default function Returns() {
             loading={isLoading}
           />
         </div>
+      </motion.div>
 
+      {/* ── Returns table card ────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.4 }}
+        className="overflow-hidden rounded-xl border border-black/10 bg-white"
+      >
         {/* Filter Tabs */}
-        <div className="flex items-center gap-1 border-b border-black/10 px-4 py-2 lg:px-6">
-          <div className="flex w-fit items-center rounded-xl border border-black/[0.08] bg-[#F8F8F6] p-1">
+        <div className="flex items-center gap-1 border-b border-black/10 px-3 py-2">
+          <div className="flex w-fit items-center rounded-lg border border-black/[0.08] bg-[#F8F8F6] p-0.5">
             {(["all", "pending", "processing", "completed"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-[10px] font-semibold capitalize transition-colors",
+                  "rounded-md px-2.5 py-1 text-[9px] font-semibold capitalize transition-colors",
                   filter === f ? "bg-black text-white" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
                 )}
               >
@@ -357,70 +337,70 @@ export default function Returns() {
         {/* Table */}
         <div className="overflow-x-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center py-20">
+            <div className="flex items-center justify-center py-16">
               <Spinner className="h-5 w-5 text-black/30" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-20">
-              <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-black/[0.045]">
-                <Package size={28} weight="light" className="text-muted-foreground" />
+            <div className="text-center py-16">
+              <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-black/[0.045]">
+                <Package size={24} weight="light" className="text-muted-foreground" />
               </span>
-              <p className="text-sm font-semibold text-foreground">No returns found</p>
-              <p className="mt-1 text-[12px] text-muted-foreground">Returns will appear here when orders are returned or cancelled by courier.</p>
+              <p className="text-[13px] font-semibold text-foreground">No returns found</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Returns will appear here when orders are returned or cancelled by courier.</p>
             </div>
           ) : (
             <table className="w-full">
               <thead>
                 <tr className="border-b border-black/10 bg-[#F8F8F6]">
-                  <th className="text-left text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 px-4">Order</th>
-                  <th className="text-left text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3">Customer</th>
-                  <th className="text-left text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3">Product</th>
-                  <th className="text-right text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3">COD</th>
-                  <th className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3">Courier</th>
-                  <th className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3">Status</th>
-                  <th className="text-right text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3">Fee Lost</th>
-                  <th className="text-right text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 pr-4">Date</th>
-                  <th className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 pr-4">Action</th>
+                  <th className="text-left text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5 px-4">Order</th>
+                  <th className="text-left text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5">Customer</th>
+                  <th className="text-left text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5">Product</th>
+                  <th className="text-right text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5">COD</th>
+                  <th className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5">Courier</th>
+                  <th className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5">Status</th>
+                  <th className="text-right text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5">Fee Lost</th>
+                  <th className="text-right text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5 pr-4">Date</th>
+                  <th className="text-center text-[10px] font-bold uppercase tracking-[0.15em] text-black py-2.5 pr-4">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((order) => (
                   <tr key={order.id} className="border-b border-black/[0.04] hover:bg-black/[0.01] transition-colors">
-                    <td className="py-3 px-4">
+                    <td className="py-2.5 px-4">
                       <span className="text-[12px] font-medium text-black">{order.order_number}</span>
                       <span className="ml-1.5 text-[9px] text-black/30 uppercase">{order.source}</span>
                     </td>
-                    <td className="py-3">
+                    <td className="py-2.5">
                       <p className="text-[12px] font-medium text-black truncate max-w-[120px]">{order.customer_name}</p>
                       <p className="text-[10px] text-black/40 font-mono">{order.phone || "—"}</p>
                     </td>
-                    <td className="py-3 max-w-[180px]">
+                    <td className="py-2.5 max-w-[180px]">
                       <p className="text-[11px] text-black truncate">{order.product || "—"}</p>
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-2.5 text-right">
                       <span className="text-[12px] font-medium text-black tabular-nums">৳{(order.cod_amount || 0).toLocaleString()}</span>
                     </td>
-                    <td className="py-3 text-center">
+                    <td className="py-2.5 text-center">
                       <div className="flex items-center justify-center">
                         <CourierBadge name={order.courier_name} />
                       </div>
                     </td>
-                    <td className="py-3 text-center">
+                    <td className="py-2.5 text-center">
                       <ReturnStatusBadge status={order.return_status} />
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-2.5 text-right">
                       <span className="text-[12px] font-medium text-red-600 tabular-nums">
                         {order.courier_fee ? `৳${order.courier_fee.toLocaleString()}` : "—"}
                       </span>
                     </td>
-                    <td className="py-3 text-right pr-4">
+                    <td className="py-2.5 text-right pr-4">
                       <span className="text-[10px] text-black/40">
                         {order.return_requested_at
                           ? format(new Date(order.return_requested_at), "MMM dd")
                           : format(new Date(order.created_at), "MMM dd")}
                       </span>
                     </td>
-                    <td className="py-3 text-center pr-4">
+                    <td className="py-2.5 text-center pr-4">
                       {!order.return_status || order.return_status === "cancelled" ? (
                         <Popover>
                           <PopoverTrigger asChild>

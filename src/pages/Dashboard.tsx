@@ -18,6 +18,7 @@ import { Spinner } from "@/components/ui/ios-spinner";
 import { TextEffect } from "@/components/ui/text-effect";
 import { PopButton } from "@/components/ui/pop-button";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import PixelBlast from "@/components/ui/pixel-blast";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -87,26 +88,34 @@ function fmtBDT(n: number) {
 
 
 
-function MiniBarChart({ values }: { values: number[]; color?: string; gradientId?: string }) {
+function MiniBarChart({ values, endDate }: { values: number[]; endDate?: Date }) {
   const bars = values.length === 0 ? [0, 0, 0, 0, 0, 0, 0] : values.slice(-7);
   const max = Math.max(...bars, 1);
+  const end = endDate ?? TODAY;
 
   return (
     <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
       {bars.map((v, i) => {
         const isActive = i === bars.length - 1;
-        const height = Math.max(10, (v / max) * 100);
+        // Zero renders as a near-invisible dot at the baseline — never a fake small bar
+        const height = v === 0 ? 8 : Math.max(12, (v / max) * 100);
+        const day = subDays(end, bars.length - 1 - i);
         return (
-          <div
-            key={i}
-            className="rounded-full"
-            style={{
-              width: isActive ? "4px" : "3px",
-              height: `${height}%`,
-              backgroundColor: isActive ? "#232323" : "#BFBFBC",
-              opacity: isActive ? 1 : 0.4,
-            }}
-          />
+          <div key={i} className="group/bar relative flex h-full items-end">
+            <div
+              className="rounded-full transition-[height,background-color,opacity] duration-700 ease-out"
+              style={{
+                width: isActive ? "4px" : "3px",
+                height: `${height}%`,
+                backgroundColor: isActive ? "#232323" : "#BFBFBC",
+                opacity: isActive ? 1 : v === 0 ? 0.25 : 0.4,
+              }}
+            />
+            <div className="pointer-events-none absolute bottom-full right-1/2 z-20 mb-1.5 translate-x-1/2 whitespace-nowrap rounded-md bg-[#131316] px-2 py-1 text-[10px] leading-tight text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/bar:opacity-100">
+              <span className="text-white/50">{format(day, "MMM d")} · </span>
+              <span className="font-medium tabular-nums">{fmtBDT(v)}</span>
+            </div>
+          </div>
         );
       })}
     </div>
@@ -245,7 +254,7 @@ function FinanceMetric({
   meta,
   metaClassName,
   values,
-  positive = true,
+  endDate,
 }: {
   label: string;
   loading: boolean;
@@ -257,16 +266,16 @@ function FinanceMetric({
   color?: string;
   gradientId?: string;
   positive?: boolean;
+  endDate?: Date;
 }) {
   return (
     <div
       className="flex-1 min-w-[140px] overflow-hidden"
       style={{
-        background: "#E9E8E5",
-        borderRadius: "14px",
+        background: "#F5F5F5",
+        borderRadius: "8px",
         padding: "3px",
         border: "1.5px solid rgba(0,0,0,0.07)",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
       }}
     >
       <AnimatePresence mode="wait">
@@ -295,92 +304,59 @@ function FinanceMetric({
           >
             {/* Inner white panel */}
             <div
+              className="relative"
               style={{
                 background: "#F7F7F6",
-                borderRadius: "10px",
+                borderRadius: "8px",
                 border: "1px solid rgba(0,0,0,0.05)",
                 padding: "9px 12px",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
               }}
             >
-              {/* Label */}
-              <p
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 500,
-                  letterSpacing: "0.08em",
-                  color: "#7F7F7D",
-                  textTransform: "uppercase",
-                  margin: 0,
-                }}
-              >
-                {label}
-              </p>
-
-              {/* Value + Bar chart row */}
-              <div className="mt-1.5 flex items-end justify-between">
-                <DashboardTextEffect
-                  as="p"
-                  per="char"
-                  delay={0.12}
-                  className="m-0 text-[20px] font-bold leading-none text-[#222A38] tabular-nums"
-                >
-                  {value}
-                </DashboardTextEffect>
-                <MiniBarChart values={values} />
+              {/* PixelBlast background */}
+              <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "10px", maskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)" }}>
+                <PixelBlast
+                  variant="square"
+                  pixelSize={2}
+                  color="#B9B5AE"
+                  patternScale={4}
+                  patternDensity={0.6}
+                  enableRipples={false}
+                  speed={0}
+                  transparent
+                  edgeFade={0.4}
+                  seed={42}
+                />
               </div>
-            </div>
-
-            {/* Bottom section */}
-            {meta && (
-              <div
-                className="flex items-center justify-between"
-                style={{
-                  padding: "5px 10px",
-                }}
-              >
-                {/* Trend icon */}
-                <div
-                  className="flex items-center justify-center"
-                  style={{
-                    width: "15px",
-                    height: "15px",
-                    borderRadius: "50%",
-                    background: "rgba(0,0,0,0.08)",
-                  }}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="8"
-                    height="8"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#FFFFFF"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    {positive ? (
-                      <polyline points="18 15 12 9 6 15" />
-                    ) : (
-                      <polyline points="6 9 12 15 18 9" />
-                    )}
-                  </svg>
-                </div>
-
-                {/* Growth text */}
-                <span
-                  className={cn("", metaClassName)}
+              {/* Content */}
+              <div className="relative" style={{ zIndex: 1 }}>
+                {/* Label */}
+                <p
                   style={{
                     fontSize: "10px",
                     fontWeight: 500,
-                    color: "#1BA475",
+                    letterSpacing: "0.08em",
+                    color: "#7F7F7D",
+                    textTransform: "uppercase",
+                    margin: 0,
                   }}
                 >
-                  {meta}
-                </span>
+                  {label}
+                </p>
+
+                {/* Value + Bar chart row */}
+                <div className="mt-1.5 flex items-end justify-between">
+                  <DashboardTextEffect
+                    as="p"
+                    per="char"
+                    delay={0.12}
+                    className="m-0 text-[20px] font-bold leading-none text-[#222A38] tabular-nums"
+                  >
+                    {value}
+                  </DashboardTextEffect>
+                  <MiniBarChart values={values} endDate={endDate} />
+                </div>
               </div>
-            )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -406,8 +382,8 @@ export default function Dashboard() {
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { orgName } = useOrgName();
 
-  const fetchAnalytics = useCallback(async (range?: DateRange | null) => {
-    setAnalyticsLoading(true);
+  const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false) => {
+    if (!silent) setAnalyticsLoading(true);
     try {
       const params = new URLSearchParams({ t: String(Date.now()) });
       if (range?.from) params.set("since", toYMD(range.from));
@@ -416,7 +392,7 @@ export default function Dashboard() {
       const data = await res.json();
       if (res.ok) setAnalytics(data);
     } catch { /* non-critical */ }
-    finally { setAnalyticsLoading(false); }
+    finally { if (!silent) setAnalyticsLoading(false); }
   }, []);
 
   // Hoisted to useCallback so effects can reference it without stale closures
@@ -503,6 +479,13 @@ export default function Dashboard() {
     const intervalId = setInterval(() => fetchOrders(), 30000);
     return () => clearInterval(intervalId);
   }, [user?.id, roleLoading, fetchOrders, fetchAnalytics, todayRange]);
+
+  // Silent analytics tick — keeps today's metric values and sparkline bars
+  // growing live without flashing the skeleton loader.
+  useEffect(() => {
+    const id = setInterval(() => fetchAnalytics(dateRange, true), 30000);
+    return () => clearInterval(id);
+  }, [dateRange, fetchAnalytics]);
 
   const syncOrders = async () => {
     setSyncing(true);
@@ -605,19 +588,9 @@ export default function Dashboard() {
     const series = analytics?.series;
     const empty = [0, 0];
 
-    // For flat series (like ad spend with no hourly breakdown), add slight
-    // variation so the sparkline renders as a gentle wave instead of a dead line.
-    const addVariation = (arr: number[]) => {
-      if (!arr || arr.length < 2) return empty;
-      const allSame = arr.every(v => v === arr[0]);
-      if (!allSame || arr[0] === 0) return arr;
-      const base = arr[0];
-      return arr.map((_, i) => base * (0.97 + 0.06 * Math.sin(i * 0.8)));
-    };
-
     return {
       revenue: series?.revenue?.length ? series.revenue : empty,
-      adSpend: series?.adSpend?.length ? addVariation(series.adSpend) : empty,
+      adSpend: series?.adSpend?.length ? series.adSpend : empty,
       shipping: series?.shipping?.length ? series.shipping : empty,
       cog: series?.totalCog?.length ? series.totalCog : empty,
       profit: series?.profit?.length ? series.profit : empty,
@@ -740,6 +713,7 @@ export default function Dashboard() {
               value={fmtBDT(analytics?.revenue ?? 0)}
               meta="Live sales"
               values={metricSparklines.revenue}
+              endDate={dateRange?.to}
             />
             <FinanceMetric
               label="Ad Spend"
@@ -748,6 +722,7 @@ export default function Dashboard() {
               meta={!analytics?.fbConfigured && !analyticsLoading ? "Ads not connected" : "Marketing spend"}
               metaClassName={!analytics?.fbConfigured ? "color-[#7D7D7B]" : undefined}
               values={metricSparklines.adSpend}
+              endDate={dateRange?.to}
             />
             <FinanceMetric
               label="Shipping"
@@ -755,6 +730,7 @@ export default function Dashboard() {
               value={fmtBDT(analytics?.shipping ?? 0)}
               meta="Delivery cost"
               values={metricSparklines.shipping}
+              endDate={dateRange?.to}
             />
             <FinanceMetric
               label="Cost of Goods"
@@ -762,6 +738,7 @@ export default function Dashboard() {
               value={fmtBDT(analytics?.totalCog ?? 0)}
               meta={analytics?.cogCoverage ? `${analytics.cogCoverage.set}/${analytics.cogCoverage.total} priced` : "Product cost"}
               values={metricSparklines.cog}
+              endDate={dateRange?.to}
             />
             <FinanceMetric
               label="Net Profit"
@@ -770,6 +747,7 @@ export default function Dashboard() {
               meta={profitMargin != null ? `${analytics?.profit != null && analytics.profit >= 0 ? "+" : ""}${Math.abs(profitMargin).toFixed(1)}% margin` : "Profit health"}
               metaClassName={analytics?.profit != null && analytics.profit < 0 ? "!text-red-500" : undefined}
               values={metricSparklines.profit}
+              endDate={dateRange?.to}
               positive={analytics?.profit == null || analytics.profit >= 0}
             />
           </div>

@@ -74,10 +74,10 @@ export function DateRangePicker({
           <ChevronDown className="h-3 w-3 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-auto p-0 rounded-xl border border-border shadow-xl">
+      <PopoverContent align="end" className="w-auto p-0 rounded-xl border border-black/10 bg-white shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
         <div className="flex">
-          <div className="border-r border-border py-2.5 w-32 flex flex-col">
-            <p className="text-[8px] font-semibold tracking-widest text-muted-foreground uppercase px-3 pb-1.5">Preset</p>
+          <div className="border-r border-black/[0.06] py-3 w-32 flex flex-col">
+            <p className="text-[8px] font-semibold tracking-widest text-black/30 uppercase px-3 pb-2">Preset</p>
             {PRESETS.map((p) => {
               const isActive = p.label === (activePreset?.label ?? "All Time");
               return (
@@ -85,10 +85,10 @@ export function DateRangePicker({
                   key={p.label}
                   onClick={() => apply(p.range)}
                   className={cn(
-                    "text-left px-3 py-1 text-[11px] transition-colors",
+                    "text-left px-3 py-[7px] text-[11px] transition-colors rounded-md mx-1",
                     isActive
-                      ? "text-foreground font-semibold bg-muted"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      ? "text-[#202020] font-semibold bg-[#F3F3F3]"
+                      : "text-black/50 hover:text-[#202020] hover:bg-black/[0.04]"
                   )}
                 >
                   {p.label}
@@ -96,8 +96,8 @@ export function DateRangePicker({
               );
             })}
           </div>
-          <div className="p-2.5">
-            <p className="text-[8px] font-semibold tracking-widest text-muted-foreground uppercase px-1 pb-1.5">Custom Range</p>
+          <div className="p-3">
+            <p className="text-[8px] font-semibold tracking-widest text-black/30 uppercase px-1 pb-2">Custom Range</p>
             <Calendar
               mode="range"
               selected={pending}
@@ -105,24 +105,33 @@ export function DateRangePicker({
                 setPending(r);
                 if (r?.from && r?.to) apply(r);
               }}
-              className="p-1.5"
+              className="p-0"
               classNames={{
-                months: "flex flex-col sm:flex-row space-y-3 sm:space-x-3 sm:space-y-0",
-                month: "space-y-2.5",
+                months: "flex flex-col sm:flex-row space-y-3 sm:space-x-4 sm:space-y-0",
+                month: "space-y-2",
                 caption: "flex justify-center pt-0.5 relative items-center",
-                caption_label: "text-xs font-semibold",
-                nav_button: "h-6 w-6 bg-transparent p-0 opacity-50 hover:opacity-100",
+                caption_label: "text-[13px] font-semibold text-[#202020]",
+                nav_button: "h-7 w-7 bg-transparent p-0 opacity-40 hover:opacity-100 transition-opacity",
+                nav_button_previous: "absolute left-1",
+                nav_button_next: "absolute right-1",
                 table: "w-full border-collapse space-y-0",
-                head_cell: "text-muted-foreground rounded-md w-7 font-normal text-[10px]",
-                row: "flex w-full mt-1",
-                cell: "h-7 w-7 text-center text-xs p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                day: "h-7 w-7 p-0 text-xs font-normal aria-selected:opacity-100",
+                head_row: "flex",
+                head_cell: "text-black/30 rounded-md w-8 font-medium text-[10px] uppercase",
+                row: "flex w-full mt-0.5",
+                cell: "h-8 w-8 text-center text-xs p-0 relative first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                day: "h-8 w-8 p-0 text-xs font-normal rounded-md transition-colors duration-150",
+                day_range_middle: "bg-black/[0.06] rounded-none aria-selected:bg-black/[0.06] aria-selected:text-[#202020]",
+                day_selected: "bg-[#202020] text-white hover:bg-[#202020]/90 focus:bg-[#202020] focus:text-white",
+                day_today: "font-bold text-[#202020]",
+                day_outside: "text-black/20",
+                day_disabled: "text-black/15",
+                day_hidden: "invisible",
               }}
               numberOfMonths={2}
               toDate={TODAY}
             />
             {pending?.from && !pending?.to && (
-              <p className="text-[10px] text-muted-foreground text-center pb-0.5">Select an end date</p>
+              <p className="text-[10px] text-black/40 text-center pt-1">Select an end date</p>
             )}
           </div>
         </div>

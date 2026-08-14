@@ -14,9 +14,9 @@ apiFetch.mockImplementation(async (url: string) => {
       ok: true,
       json: async () => ({
         plan: {
-          id: "growth",
-          name: "Growth",
-          price: 3499,
+          id: "pro",
+          name: "Pro",
+          price: 7999,
           interval: "monthly",
           status: "trialing",
           renewsAt: "2026-07-17T00:00:00.000Z",
@@ -81,26 +81,24 @@ describe("Billing plans", () => {
     expect(screen.getByText("500 orders")).toBeInTheDocument();
   });
 
-  it("shows Starter and Growth while hiding Pro and Enterprise", async () => {
+  it("shows Essential and Pro plans", async () => {
     renderBilling();
 
-    expect(await screen.findByTestId("plan-starter")).toBeInTheDocument();
-    expect(screen.getByTestId("plan-growth")).toBeInTheDocument();
-    expect(screen.queryByTestId("plan-pro")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("plan-enterprise")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("plan-essential")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-pro")).toBeInTheDocument();
   });
 
-  it("gives Growth more included feature rows without enlarging its width", async () => {
+  it("gives Pro more included feature rows without enlarging its width", async () => {
     renderBilling();
 
-    const starter = await screen.findByTestId("plan-starter");
-    const growth = screen.getByTestId("plan-growth");
+    const essential = await screen.findByTestId("plan-essential");
+    const pro = screen.getByTestId("plan-pro");
 
-    expect(within(growth).getAllByTestId("included-feature").length).toBeGreaterThan(
-      within(starter).getAllByTestId("included-feature").length,
+    expect(within(pro).getAllByTestId("included-feature").length).toBeGreaterThan(
+      within(essential).getAllByTestId("included-feature").length,
     );
-    expect(starter).toHaveClass("w-full");
-    expect(growth).toHaveClass("w-full");
+    expect(essential).toHaveClass("w-full");
+    expect(pro).toHaveClass("w-full");
   });
 
   it("preserves the existing Stripe checkout endpoint", () => {

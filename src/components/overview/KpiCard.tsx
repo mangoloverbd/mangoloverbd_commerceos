@@ -65,20 +65,20 @@ export function KpiCard({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="rounded-xl border border-black/[0.06] bg-white p-4"
+      transition={{ duration: 0.35 }}
+      className="min-h-[112px] rounded-xl border border-black/10 bg-white px-5 py-4"
     >
       <div className="flex items-center justify-between">
-        <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">{label}</p>
+        <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
         <IconComponent weight="light" size={16} className="text-black/30" />
       </div>
 
       <div className="mt-2 flex items-end justify-between">
-        <p className="text-2xl font-light text-black tabular-nums">{value}</p>
+        <p className="text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
         <MiniSparkline values={sparklineValues} />
       </div>
 
-      <div className="mt-2 flex items-center gap-1">
+      <div className="mt-1 flex items-center gap-1">
         {isPositive ? (
           <TrendUp weight="light" size={12} className="text-emerald-600" />
         ) : (
@@ -86,14 +86,14 @@ export function KpiCard({
         )}
         <span
           className={cn(
-            "text-[10px] font-medium tabular-nums",
+            "text-[11px] tabular-nums",
             isPositive ? "text-emerald-600" : "text-red-500"
           )}
         >
           {isPositive ? "+" : ""}
           {trend.toFixed(1)}%
         </span>
-        <span className="text-[10px] text-black/30">vs prev</span>
+        <span className="text-[11px] text-black/40">vs prev</span>
       </div>
     </motion.div>
   );

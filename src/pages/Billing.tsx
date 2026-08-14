@@ -47,122 +47,76 @@ interface Invoice {
 
 const PLANS = [
   {
-    id: "starter",
-    name: "Starter",
-    subtitle: "Solo sellers, 1-3 orders/day",
-    price: 1499,
+    id: "essential",
+    name: "Essential",
+    subtitle: "Brands doing 100-300 orders/month",
+    price: 2999,
     features: [
-      { category: "Team", value: "1 member" },
-      { category: "Orders", value: "500/mo" },
-      { category: "Courier", value: "1 courier (Steadfast or Pathao)" },
-      { category: "Fraud Checks", value: "50/mo" },
-      { category: "Social Inbox", value: "1 platform" },
-      { category: "AI Inbox Replies", value: "300/mo" },
-      { category: "AI Order Capture", value: "50/mo" },
-      { category: "AI Extractions", value: "100/mo" },
-      { category: "AI Analysis", value: "5 runs/mo" },
-      { category: "Products", value: "50" },
-      { category: "Brand Doc", value: "500 words" },
-      { category: "Auto-reply", value: "Manual trigger" },
-      { category: "Dashboard", value: "Basic (weekly)" },
-      { category: "Support", value: "Email (48hr)" },
-    ],
-  },
-  {
-    id: "growth",
-    name: "Growth",
-    subtitle: "Growing sellers, 5-15 orders/day",
-    price: 3499,
-    features: [
-      { category: "Team", value: "3 members" },
-      { category: "Orders", value: "2,000/mo" },
-      { category: "Courier", value: "All (Steadfast + Pathao)" },
-      { category: "Fraud Checks", value: "300/mo" },
-      { category: "Social Inbox", value: "2 platforms" },
-      { category: "AI Inbox Replies", value: "1,500/mo" },
-      { category: "AI Order Capture", value: "300/mo" },
-      { category: "AI Extractions", value: "500/mo" },
-      { category: "AI Analysis", value: "20 runs/mo" },
-      { category: "Products", value: "200" },
-      { category: "Brand Doc", value: "2,000 words" },
-      { category: "Auto-reply", value: "Business hours" },
-      { category: "Dashboard", value: "Full (daily + weekly)" },
-      { category: "Support", value: "Email (24hr) + WhatsApp" },
+      { category: "Team", value: "2 members" },
+      { category: "Orders", value: "300/mo" },
+      { category: "Ad Spend Tracked", value: "৳150K" },
+      { category: "Courier", value: "2 couriers" },
+      { category: "Fraud Checks", value: "200/mo" },
+      { category: "Social Inbox", value: "All platforms" },
+      { category: "AI Order Extraction", value: "300/mo" },
+      { category: "P&L Analytics", value: "Full" },
+      { category: "Basic Ad Metrics", value: "Spend, impressions, clicks" },
+      { category: "Support", value: "Email (24hr)" },
     ],
   },
   {
     id: "pro",
     name: "Pro",
-    subtitle: "Established brands, 30-60 orders/day",
+    subtitle: "Growing brands who want ad intelligence",
     price: 7999,
     popular: true,
     features: [
-      { category: "Team", value: "10 members" },
-      { category: "Orders", value: "10,000/mo" },
-      { category: "Courier", value: "All + bulk dispatch" },
-      { category: "Fraud Checks", value: "1,500/mo" },
-      { category: "Social Inbox", value: "All 3 platforms" },
-      { category: "AI Inbox Replies", value: "7,000/mo" },
-      { category: "AI Order Capture", value: "1,500/mo" },
-      { category: "AI Extractions", value: "2,000/mo" },
-      { category: "AI Analysis", value: "100 runs/mo" },
-      { category: "Products", value: "1,000" },
-      { category: "Brand Doc", value: "Full + catalog context" },
-      { category: "Auto-reply", value: "24/7 auto-reply" },
-      { category: "Premium AI", value: "200 GPT-4o replies/mo" },
-      { category: "Dashboard", value: "Full + export (CSV/PDF)" },
-      { category: "Support", value: "Priority WhatsApp (4hr)" },
-    ],
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    subtitle: "Large operations, 100+ orders/day",
-    price: 14999,
-    features: [
-      { category: "Team", value: "Unlimited" },
-      { category: "Orders", value: "Unlimited" },
-      { category: "Courier", value: "All + custom courier API" },
+      { category: "Team", value: "8 members" },
+      { category: "Orders", value: "1,500/mo" },
+      { category: "Ad Spend Tracked", value: "৳500K" },
+      { category: "Courier", value: "All + custom" },
       { category: "Fraud Checks", value: "Unlimited" },
-      { category: "Social Inbox", value: "All + multi-page" },
-      { category: "AI Inbox Replies", value: "30,000/mo" },
-      { category: "AI Order Capture", value: "Unlimited" },
-      { category: "AI Extractions", value: "10,000/mo" },
-      { category: "AI Analysis", value: "Unlimited" },
-      { category: "Products", value: "Unlimited" },
-      { category: "Brand Doc", value: "Full + custom training" },
-      { category: "Auto-reply", value: "24/7 + escalation rules" },
-      { category: "Premium AI", value: "1,000 GPT-4o replies/mo" },
-      { category: "Dashboard", value: "Full + API access" },
-      { category: "Support", value: "Dedicated manager + phone" },
+      { category: "Social Inbox", value: "All platforms" },
+      { category: "AI Order Extraction", value: "1,500/mo" },
+      { category: "P&L Analytics", value: "Full + custom reports" },
+      { category: "Per-Ad Profit Calculator", value: "Real ROAS after returns/fraud" },
+      { category: "RTO Predictor → Ad Optimizer", value: "AI-powered" },
+      { category: "Ad-to-Chat Attribution", value: "Know which ad drove each message" },
+      { category: "Smart Audience Builder", value: "From social inbox conversations" },
+      { category: "AI Creative Forecaster", value: "Product + copy suggestions" },
+      { category: "Support", value: "Priority chat (4hr)" },
     ],
   },
 ];
 
-const VISIBLE_PLAN_IDS = new Set(["starter", "growth"]);
+const VISIBLE_PLAN_IDS = new Set(["essential", "pro"]);
 
 const PLAN_CARD_FEATURES: Record<string, { included: string[]; locked?: string[] }> = {
-  starter: {
+  essential: {
     included: [
-      "500 orders and 50 fraud checks each month",
-      "One team member and one courier connection",
-      "300 AI inbox replies and 100 extractions",
-      "One social platform and basic weekly analytics",
+      "300 orders and 200 fraud checks each month",
+      "Two team members with two courier connections",
+      "300 AI order extractions and full P&L analytics",
+      "Social inbox across all platforms",
+      "Basic ad metrics (spend, impressions, clicks)",
     ],
     locked: [
-      "Both courier integrations and three team members",
-      "Daily analytics and priority WhatsApp support",
+      "Per-Ad Profit Calculator and RTO Predictor",
+      "Ad-to-Chat Attribution and Smart Audience Builder",
+      "AI Creative Forecaster and priority support",
     ],
   },
-  growth: {
+  pro: {
     included: [
-      "2,000 orders and 300 fraud checks each month",
-      "Three team members with Steadfast and Pathao",
-      "1,500 AI inbox replies and 500 AI extractions",
-      "300 AI order captures and 20 analysis runs",
-      "Two social inbox platforms with business-hours automation",
-      "200 products and a 2,000-word brand document",
-      "Full daily analytics and priority WhatsApp support",
+      "1,500 orders and unlimited fraud checks",
+      "Eight team members with all couriers + custom",
+      "1,500 AI order extractions and custom reports",
+      "Per-Ad Profit Calculator — see real profit after returns and fraud",
+      "RTO Predictor → Ad Optimizer — pause unprofitable campaigns",
+      "Ad-to-Chat Attribution — know which ad drove each message",
+      "Smart Audience Builder — create audiences from social conversations",
+      "AI Creative Forecaster — product and copy suggestions",
+      "Priority chat support (4hr response)",
     ],
   },
 };
@@ -266,7 +220,7 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
           {PLANS.filter((plan) => VISIBLE_PLAN_IDS.has(plan.id)).map((plan) => {
             const isCurrent = currentPlan?.id === plan.id;
             const display = PLAN_CARD_FEATURES[plan.id];
-            const PlanIcon = plan.id === "growth" ? TrendUp : Storefront;
+            const PlanIcon = plan.id === "pro" ? TrendUp : Storefront;
 
             return (
               <PricingCard.Card
@@ -275,19 +229,19 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
                 className={cn(
                   "w-full border-transparent transition-all duration-300 hover:-translate-y-0.5",
                   "shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD]",
-                  plan.id === "growth" && "bg-blue-50/40",
+                  plan.id === "pro" && "bg-blue-50/40",
                 )}
               >
-                <PricingCard.Header className={cn(plan.id === "growth" && "bg-blue-50/70")}>
+                <PricingCard.Header className={cn(plan.id === "pro" && "bg-blue-50/70")}>
                   <PricingCard.Plan>
                     <PricingCard.PlanName>
                       <PlanIcon weight="light" />
                       <span>{plan.name}</span>
                     </PricingCard.PlanName>
                     <PricingCard.Badge
-                      className={cn(plan.id === "growth" && "border-blue-500/20 text-blue-600")}
+                      className={cn(plan.id === "pro" && "border-blue-500/20 text-blue-600")}
                     >
-                      {plan.id === "growth" ? "Recommended" : "Solo sellers"}
+                      {plan.id === "pro" ? "Most merchants choose this" : "Get organized"}
                     </PricingCard.Badge>
                   </PricingCard.Plan>
 
@@ -317,7 +271,7 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
 
                 <PricingCard.Body>
                   <p className="mb-3 text-[11px] font-medium text-black">
-                    {plan.id === "growth" ? "More capacity and automation" : "Everything you need to start"}
+                    {plan.id === "pro" ? "Ad intelligence that pays for itself" : "Everything you need to start"}
                   </p>
                   <PricingCard.List>
                     {display.included.map((feature) => (
