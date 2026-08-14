@@ -3206,7 +3206,14 @@ app.get("/api/analytics", async (req, res) => {
             usdToBdt,
           );
           if (dailySpend !== null) {
-            for (const bucket of seriesBuckets) bucket.adSpend = dailySpend;
+            // Meta reports spend daily, not hourly. Spread it evenly across
+            // the 24 hourly buckets so the ad-spend sparkline reads as a flat
+            // line (honest — no intraday breakdown) instead of 24 bars each
+            // pinned to the full daily total. Keeps sum(buckets) == dailySpend
+            // and makes per-bucket profit (revenue_hr − cog_hr − adSpend_hr −
+            // shipping_hr) meaningful instead of deeply negative.
+            const hourlySpend = dailySpend / seriesBuckets.length;
+            for (const bucket of seriesBuckets) bucket.adSpend = hourlySpend;
           }
         } else {
           for (const bucket of seriesBuckets) {
