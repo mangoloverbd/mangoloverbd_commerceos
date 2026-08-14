@@ -12,13 +12,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { format, subDays } from "date-fns";
+import { format, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { TextEffect } from "@/components/ui/text-effect";
 import { PopButton } from "@/components/ui/pop-button";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import PixelBlast from "@/components/ui/pixel-blast";
+import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -48,6 +49,15 @@ interface Analytics {
     adSpend: number[];
     totalCog: number[];
     profit: number[];
+    buckets: Array<{
+      key: string;
+      label: string;
+      revenue: number;
+      shipping: number;
+      adSpend: number;
+      totalCog: number;
+      profit: number;
+    }>;
   };
 }
 
@@ -88,36 +98,42 @@ function fmtBDT(n: number) {
 
 
 
-function MiniBarChart({ values, endDate }: { values: number[]; endDate?: Date }) {
-  const bars = values.length === 0 ? [0, 0, 0, 0, 0, 0, 0] : values.slice(-7);
-  const max = Math.max(...bars, 1);
-  const end = endDate ?? TODAY;
+function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
+  const max = Math.max(...data.map((d) => d.value), 1);
+  // Zero renders as a small baseline tick so the chart reads as "no data that
+  // period" rather than a blank chart. Tooltip still shows the real value (0).
+  const chartData = data.map((d) => ({
+    label: d.label,
+    value: d.value,
+    display: d.value === 0 ? max * 0.18 : d.value,
+  }));
 
   return (
-    <div className="flex items-end shrink-0" style={{ gap: "3px", height: "26px" }}>
-      {bars.map((v, i) => {
-        const isActive = i === bars.length - 1;
-        // Zero renders as a small baseline tick — visible but clearly "no data"
-        const height = v === 0 ? 18 : Math.max(20, (v / max) * 100);
-        const day = subDays(end, bars.length - 1 - i);
-        return (
-          <div key={i} className="group/bar relative flex h-full items-end">
-            <div
-              className="rounded-full transition-[height,background-color,opacity] duration-700 ease-out"
-              style={{
-                width: isActive ? "4px" : "3px",
-                height: `${height}%`,
-                backgroundColor: isActive ? "#232323" : "#8E8E88",
-                opacity: isActive ? 1 : v === 0 ? 0.45 : 0.75,
-              }}
-            />
-            <div className="pointer-events-none absolute bottom-full right-1/2 z-20 mb-1.5 translate-x-1/2 whitespace-nowrap rounded-md bg-[#131316] px-2 py-1 text-[10px] leading-tight text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/bar:opacity-100">
-              <span className="text-white/50">{format(day, "MMM d")} · </span>
-              <span className="font-medium tabular-nums">{fmtBDT(v)}</span>
-            </div>
-          </div>
-        );
-      })}
+    <div className="shrink-0" style={{ width: "72px", height: "28px" }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }} barCategoryGap={1}>
+          <Tooltip
+            cursor={false}
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null;
+              return (
+                <div className="whitespace-nowrap rounded-md bg-[#131316] px-2 py-1 text-[10px] leading-tight text-white shadow-lg">
+                  <span className="text-white/50">{label} · </span>
+                  <span className="font-medium tabular-nums">{fmtBDT((payload[0].payload as { value: number }).value)}</span>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="display" radius={[3, 3, 0, 0]} isAnimationActive animationDuration={600} animationEasing="ease-out">
+            {chartData.map((d, i) => {
+              const isLast = i === chartData.length - 1;
+              const fill = isLast ? "#232323" : "#8E8E88";
+              const opacity = isLast ? 1 : d.value === 0 ? 0.45 : 0.75;
+              return <Cell key={i} fill={fill} fillOpacity={opacity} />;
+            })}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -251,17 +267,15 @@ function FinanceMetric({
   label,
   loading,
   value,
-  values,
-  endDate,
+  data,
 }: {
   label: string;
   loading: boolean;
   value: string;
-  values: number[];
+  data: { label: string; value: number }[];
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
   color?: string;
   gradientId?: string;
-  endDate?: Date;
 }) {
   return (
     <div
@@ -348,7 +362,7 @@ function FinanceMetric({
                   >
                     {value}
                   </DashboardTextEffect>
-                  <MiniBarChart values={values} endDate={endDate} />
+                  <MiniBarChart data={data} />
                 </div>
               </div>
             </div>
@@ -580,15 +594,24 @@ export default function Dashboard() {
   );
 
   const metricSparklines = useMemo(() => {
-    const series = analytics?.series;
-    const empty = [0, 0];
-
+    const buckets = analytics?.series?.buckets;
+    const empty: { label: string; value: number }[] = [{ label: "—", value: 0 }];
+    if (!buckets?.length) {
+      return { revenue: empty, adSpend: empty, shipping: empty, cog: empty, profit: empty };
+    }
+    // Hourly buckets have a 4-segment key ("2026-08-15-14"); daily have 3 ("2026-08-15").
+    const isHourly = buckets[0].key.split("-").length === 4;
+    const pts = (key: "revenue" | "adSpend" | "shipping" | "totalCog" | "profit") =>
+      buckets.map((b) => ({
+        label: isHourly ? b.label : format(parseISO(b.key), "MMM d"),
+        value: b[key] ?? 0,
+      }));
     return {
-      revenue: series?.revenue?.length ? series.revenue : empty,
-      adSpend: series?.adSpend?.length ? series.adSpend : empty,
-      shipping: series?.shipping?.length ? series.shipping : empty,
-      cog: series?.totalCog?.length ? series.totalCog : empty,
-      profit: series?.profit?.length ? series.profit : empty,
+      revenue: pts("revenue"),
+      adSpend: pts("adSpend"),
+      shipping: pts("shipping"),
+      cog: pts("totalCog"),
+      profit: pts("profit"),
     };
   }, [analytics]);
 
@@ -702,36 +725,31 @@ export default function Dashboard() {
               label="Revenue"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.revenue ?? 0)}
-              values={metricSparklines.revenue}
-              endDate={dateRange?.to}
+              data={metricSparklines.revenue}
             />
             <FinanceMetric
               label="Ad Spend"
               loading={analyticsLoading}
               value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
-              values={metricSparklines.adSpend}
-              endDate={dateRange?.to}
+              data={metricSparklines.adSpend}
             />
             <FinanceMetric
               label="Shipping"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.shipping ?? 0)}
-              values={metricSparklines.shipping}
-              endDate={dateRange?.to}
+              data={metricSparklines.shipping}
             />
             <FinanceMetric
               label="Cost of Goods"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.totalCog ?? 0)}
-              values={metricSparklines.cog}
-              endDate={dateRange?.to}
+              data={metricSparklines.cog}
             />
             <FinanceMetric
               label="Net Profit"
               loading={analyticsLoading}
               value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
-              values={metricSparklines.profit}
-              endDate={dateRange?.to}
+              data={metricSparklines.profit}
             />
           </div>
         </div>
