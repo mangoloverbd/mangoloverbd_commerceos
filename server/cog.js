@@ -1,16 +1,49 @@
-const LINE_ITEM_RE = /^\s*(\d+)\s*x\s+(.+?)\s*$/;
+// Two product-string formats exist in the codebase:
+//   Shopify sync:  "2x Product Name"           (qty first)
+//   Storefront:    "ProductName (attrs) x2"     (name first, qty last)
+// Handle both. Comma separates multiple line items, but NOT commas
+// inside "(attrs)" — a storefront item can be "T-Shirt (Black, M) x1".
+const QTY_FIRST_RE = /^\s*(\d+)\s*x\s+(.+?)\s*$/;
+const QTY_LAST_RE = /^\s*(.+?)\s+x\s*(\d+)\s*$/;
+
+// Split on commas that are NOT inside parentheses.
+function splitLineItems(productStr) {
+  const parts = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of productStr) {
+    if (ch === "(") depth += 1;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
 
 export function parseLineItems(productStr) {
   if (!productStr || typeof productStr !== "string") return [];
-  return productStr
-    .split(",")
+  return splitLineItems(productStr)
     .map((part) => {
-      const match = part.match(LINE_ITEM_RE);
-      if (!match) return null;
-      const qty = parseInt(match[1], 10);
-      const name = match[2].trim();
-      if (!qty || !name) return null;
-      return { qty, name };
+      const m1 = part.match(QTY_FIRST_RE);
+      if (m1) {
+        const qty = parseInt(m1[1], 10);
+        const name = m1[2].trim();
+        if (!qty || !name) return null;
+        return { qty, name };
+      }
+      const m2 = part.match(QTY_LAST_RE);
+      if (m2) {
+        const name = m2[1].trim();
+        const qty = parseInt(m2[2], 10);
+        if (!qty || !name) return null;
+        return { qty, name };
+      }
+      return null;
     })
     .filter(Boolean);
 }
@@ -49,7 +82,14 @@ export function fuzzyLookup(cogByName, itemName) {
     const stripped = cogByName.get(base);
     if (stripped) return stripped;
   }
-  // 3. Check if any catalog name is a prefix of the item name
+  // 3. Strip "(attrs)" suffix (storefront format) and try again
+  const parenIdx = key.indexOf(" (");
+  if (parenIdx > 0) {
+    const base = key.slice(0, parenIdx).trim();
+    const stripped = cogByName.get(base);
+    if (stripped) return stripped;
+  }
+  // 4. Check if any catalog name is a prefix of the item name
   for (const [catalogName, entry] of cogByName) {
     if (key.startsWith(catalogName) && key.length > catalogName.length) {
       // Ensure the match ends at a word boundary (space, dash, paren, slash)
@@ -57,6 +97,14 @@ export function fuzzyLookup(cogByName, itemName) {
       if (nextChar === " " || nextChar === "-" || nextChar === "/" || nextChar === "(") {
         return entry;
       }
+    }
+  }
+  // 5. Lenient fallback: bidirectional substring match (same approach as
+  //    orderMentionsProduct). Catches "Cotton T-Shirt Black" catalog vs
+  //    "T-Shirt" order item, or vice versa.
+  for (const [catalogName, entry] of cogByName) {
+    if (entry.cog > 0 && (key.includes(catalogName) || catalogName.includes(key))) {
+      return entry;
     }
   }
   return null;

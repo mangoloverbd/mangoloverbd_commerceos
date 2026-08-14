@@ -38,6 +38,30 @@ describe("parseLineItems", () => {
   it("returns an empty list when the quantity is missing a name", () => {
     expect(parseLineItems("3x")).toEqual([]);
   });
+
+  it("parses the storefront qty-last format (Name xN)", () => {
+    expect(parseLineItems("T-Shirt x2")).toEqual([{ qty: 2, name: "T-Shirt" }]);
+  });
+
+  it("parses the storefront qty-last format with attributes (Name (attrs) xN)", () => {
+    expect(parseLineItems("T-Shirt (Black) x1")).toEqual([
+      { qty: 1, name: "T-Shirt (Black)" },
+    ]);
+  });
+
+  it("parses mixed qty-first and qty-last line items", () => {
+    expect(parseLineItems("2x Mug, Hat x1")).toEqual([
+      { qty: 2, name: "Mug" },
+      { qty: 1, name: "Hat" },
+    ]);
+  });
+
+  it("does not split on commas inside (attrs) parentheses", () => {
+    expect(parseLineItems("T-Shirt (Black, M) x1, Mug x2")).toEqual([
+      { qty: 1, name: "T-Shirt (Black, M)" },
+      { qty: 2, name: "Mug" },
+    ]);
+  });
 });
 
 describe("buildCogLookup", () => {
@@ -155,6 +179,33 @@ describe("computeOrderCogs", () => {
     );
     expect(result.totalCog).toBe(200);
     expect(result.coverage).toEqual({ set: 1, total: 1 });
+  });
+
+  it("matches a storefront item with (attrs) suffix to the catalog base name", () => {
+    const result = computeOrderCogs(
+      [{ id: "o1", product: "T-Shirt (Black, M) x1" }],
+      products,
+    );
+    expect(result.totalCog).toBe(200);
+    expect(result.coverage).toEqual({ set: 1, total: 1 });
+  });
+
+  it("matches via bidirectional substring when names differ", () => {
+    const result = computeOrderCogs(
+      [{ id: "o1", product: "1x Cotton T-Shirt Black" }],
+      products,
+    );
+    expect(result.totalCog).toBe(200);
+    expect(result.coverage).toEqual({ set: 1, total: 1 });
+  });
+
+  it("keeps a comma-separated multi-item order's total cog correct", () => {
+    const result = computeOrderCogs(
+      [{ id: "o1", product: "T-Shirt (Black, M) x1, Mug x2" }],
+      products,
+    );
+    expect(result.totalCog).toBe(200 + 2 * 50);
+    expect(result.coverage).toEqual({ set: 2, total: 2 });
   });
 
   it("returns zero totals for an empty order list", () => {
