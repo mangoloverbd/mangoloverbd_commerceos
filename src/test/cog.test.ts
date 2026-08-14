@@ -31,8 +31,10 @@ describe("parseLineItems", () => {
     expect(parseLineItems("")).toEqual([]);
   });
 
-  it("returns an empty list for a string with no quantity marker", () => {
-    expect(parseLineItems("plain text")).toEqual([]);
+  it("treats a bare product name (no quantity marker) as a single unit", () => {
+    expect(parseLineItems("Linen Baggy Trouser - Earthy Olive - Default")).toEqual([
+      { qty: 1, name: "Linen Baggy Trouser - Earthy Olive - Default" },
+    ]);
   });
 
   it("returns an empty list when the quantity is missing a name", () => {

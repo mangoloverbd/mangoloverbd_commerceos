@@ -1,7 +1,8 @@
-// Two product-string formats exist in the codebase:
-//   Shopify sync:  "2x Product Name"           (qty first)
-//   Storefront:    "ProductName (attrs) x2"     (name first, qty last)
-// Handle both. Comma separates multiple line items, but NOT commas
+// Three product-string formats exist in the codebase:
+//   Shopify sync:  "2x Product Name"              (qty first)
+//   Storefront:    "ProductName (attrs) x2"        (name first, qty last)
+//   Manual/social: "Product Name"                  (bare name, qty implied 1)
+// Handle all three. Comma separates multiple line items, but NOT commas
 // inside "(attrs)" — a storefront item can be "T-Shirt (Black, M) x1".
 const QTY_FIRST_RE = /^\s*(\d+)\s*x\s+(.+?)\s*$/;
 const QTY_LAST_RE = /^\s*(.+?)\s+x\s*(\d+)\s*$/;
@@ -29,21 +30,28 @@ export function parseLineItems(productStr) {
   if (!productStr || typeof productStr !== "string") return [];
   return splitLineItems(productStr)
     .map((part) => {
-      const m1 = part.match(QTY_FIRST_RE);
+      const trimmed = part.trim();
+      if (!trimmed) return null;
+      const m1 = trimmed.match(QTY_FIRST_RE);
       if (m1) {
         const qty = parseInt(m1[1], 10);
         const name = m1[2].trim();
         if (!qty || !name) return null;
         return { qty, name };
       }
-      const m2 = part.match(QTY_LAST_RE);
+      const m2 = trimmed.match(QTY_LAST_RE);
       if (m2) {
         const name = m2[1].trim();
         const qty = parseInt(m2[2], 10);
         if (!qty || !name) return null;
         return { qty, name };
       }
-      return null;
+      // Looks like an incomplete quantity marker (e.g. "3x", "3 x") with no
+      // product name — not a bare product name, so skip it.
+      if (/^\s*\d+\s*x\b/.test(trimmed)) return null;
+      // Bare product name with no quantity marker — treat as a single unit.
+      // Real orders (manual/social/inbox) often store just the product name.
+      return { qty: 1, name: trimmed };
     })
     .filter(Boolean);
 }
