@@ -94,11 +94,11 @@ function MiniBarChart({ values, endDate }: { values: number[]; endDate?: Date })
   const end = endDate ?? TODAY;
 
   return (
-    <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
+    <div className="flex items-end shrink-0" style={{ gap: "3px", height: "26px" }}>
       {bars.map((v, i) => {
         const isActive = i === bars.length - 1;
-        // Zero renders as a near-invisible dot at the baseline — never a fake small bar
-        const height = v === 0 ? 8 : Math.max(12, (v / max) * 100);
+        // Zero renders as a small baseline tick — visible but clearly "no data"
+        const height = v === 0 ? 18 : Math.max(20, (v / max) * 100);
         const day = subDays(end, bars.length - 1 - i);
         return (
           <div key={i} className="group/bar relative flex h-full items-end">
@@ -107,8 +107,8 @@ function MiniBarChart({ values, endDate }: { values: number[]; endDate?: Date })
               style={{
                 width: isActive ? "4px" : "3px",
                 height: `${height}%`,
-                backgroundColor: isActive ? "#232323" : "#BFBFBC",
-                opacity: isActive ? 1 : v === 0 ? 0.25 : 0.4,
+                backgroundColor: isActive ? "#232323" : "#8E8E88",
+                opacity: isActive ? 1 : v === 0 ? 0.45 : 0.75,
               }}
             />
             <div className="pointer-events-none absolute bottom-full right-1/2 z-20 mb-1.5 translate-x-1/2 whitespace-nowrap rounded-md bg-[#131316] px-2 py-1 text-[10px] leading-tight text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover/bar:opacity-100">
@@ -308,13 +308,13 @@ function FinanceMetric({
               }}
             >
               {/* PixelBlast background */}
-              <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "10px", maskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)" }}>
+              <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "10px", opacity: 0.35, maskImage: "linear-gradient(to right, transparent 0%, transparent 55%, black 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 55%, black 100%)" }}>
                 <PixelBlast
                   variant="square"
                   pixelSize={2}
                   color="#B9B5AE"
                   patternScale={4}
-                  patternDensity={0.6}
+                  patternDensity={0.4}
                   enableRipples={false}
                   speed={0}
                   transparent
