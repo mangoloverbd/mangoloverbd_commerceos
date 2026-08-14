@@ -308,13 +308,13 @@ function FinanceMetric({
               }}
             >
               {/* PixelBlast background */}
-              <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "10px", opacity: 0.35, maskImage: "linear-gradient(to right, transparent 0%, transparent 55%, black 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 55%, black 100%)" }}>
+              <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "10px", maskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)" }}>
                 <PixelBlast
                   variant="square"
                   pixelSize={2}
                   color="#B9B5AE"
                   patternScale={4}
-                  patternDensity={0.4}
+                  patternDensity={0.6}
                   enableRipples={false}
                   speed={0}
                   transparent
