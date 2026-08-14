@@ -23,7 +23,6 @@ describe("dashboard P&L metric animation", () => {
     expect(financeMetricSource).toContain('padding: "3px"');
     expect(financeMetricSource).toContain('padding: "9px 12px"');
     expect(financeMetricSource).toContain('className="m-0 text-[20px] font-bold leading-none text-[#222A38] tabular-nums"');
-    expect(financeMetricSource).toContain('padding: "5px 10px"');
     expect(source).toContain('className="grid grid-cols-2 lg:grid-cols-5 gap-3"');
   });
 });

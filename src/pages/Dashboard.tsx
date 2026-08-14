@@ -251,22 +251,16 @@ function FinanceMetric({
   label,
   loading,
   value,
-  meta,
-  metaClassName,
   values,
   endDate,
-  positive,
 }: {
   label: string;
   loading: boolean;
   value: string;
-  meta?: string;
-  metaClassName?: string;
   values: number[];
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
   color?: string;
   gradientId?: string;
-  positive?: boolean;
   endDate?: Date;
 }) {
   return (
@@ -357,55 +351,6 @@ function FinanceMetric({
                   <MiniBarChart values={values} endDate={endDate} />
                 </div>
               </div>
-
-              {/* Bottom section */}
-              {meta && (
-                <div
-                  className="flex items-center justify-between"
-                  style={{
-                    padding: "5px 10px",
-                  }}
-                >
-                  <div
-                    className="flex items-center justify-center"
-                    style={{
-                      width: "15px",
-                      height: "15px",
-                      borderRadius: "50%",
-                      background: "rgba(0,0,0,0.08)",
-                    }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="8"
-                      height="8"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#FFFFFF"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      {positive ? (
-                        <polyline points="18 15 12 9 6 15" />
-                      ) : (
-                        <polyline points="6 9 12 15 18 9" />
-                      )}
-                    </svg>
-                  </div>
-
-                  <span
-                    className={cn("", metaClassName)}
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 500,
-                      color: "#1BA475",
-                    }}
-                  >
-                    {meta}
-                  </span>
-                </div>
-              )}
             </div>
           </motion.div>
         )}
@@ -697,10 +642,6 @@ export default function Dashboard() {
     );
   }
 
-  const profitMargin = analytics?.profit != null && analytics.revenue > 0
-    ? (analytics.profit / analytics.revenue) * 100
-    : null;
-
   return (
     <div className="space-y-6 p-1 lg:p-2">
 
@@ -761,7 +702,6 @@ export default function Dashboard() {
               label="Revenue"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.revenue ?? 0)}
-              meta="Live sales"
               values={metricSparklines.revenue}
               endDate={dateRange?.to}
             />
@@ -769,8 +709,6 @@ export default function Dashboard() {
               label="Ad Spend"
               loading={analyticsLoading}
               value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
-              meta={!analytics?.fbConfigured && !analyticsLoading ? "Ads not connected" : "Marketing spend"}
-              metaClassName={!analytics?.fbConfigured ? "color-[#7D7D7B]" : undefined}
               values={metricSparklines.adSpend}
               endDate={dateRange?.to}
             />
@@ -778,7 +716,6 @@ export default function Dashboard() {
               label="Shipping"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.shipping ?? 0)}
-              meta="Delivery cost"
               values={metricSparklines.shipping}
               endDate={dateRange?.to}
             />
@@ -786,7 +723,6 @@ export default function Dashboard() {
               label="Cost of Goods"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.totalCog ?? 0)}
-              meta={analytics?.cogCoverage ? `${analytics.cogCoverage.set}/${analytics.cogCoverage.total} priced` : "Product cost"}
               values={metricSparklines.cog}
               endDate={dateRange?.to}
             />
@@ -794,11 +730,8 @@ export default function Dashboard() {
               label="Net Profit"
               loading={analyticsLoading}
               value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
-              meta={profitMargin != null ? `${analytics?.profit != null && analytics.profit >= 0 ? "+" : ""}${Math.abs(profitMargin).toFixed(1)}% margin` : "Profit health"}
-              metaClassName={analytics?.profit != null && analytics.profit < 0 ? "!text-red-500" : undefined}
               values={metricSparklines.profit}
               endDate={dateRange?.to}
-              positive={analytics?.profit == null || analytics.profit >= 0}
             />
           </div>
         </div>
