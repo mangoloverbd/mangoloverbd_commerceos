@@ -25,7 +25,7 @@ interface ToastItem {
 
 let toastId = 0;
 let toasts: ToastItem[] = [];
-let listeners: Set<() => void> = new Set();
+const listeners: Set<() => void> = new Set();
 
 function notify() {
   listeners.forEach((l) => l());

@@ -585,7 +585,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
           </div>
         </DarkToast>
       ), { fit: true });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error sending to courier:", error);
       const errMsg = error?.message || "Failed to send order";
       toast.custom((t) => (
@@ -643,7 +643,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
           </div>
         </DarkToast>
       ), { fit: true });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error sending to Pathao:", error);
       const errMsg = error?.message || "Failed to send order";
       toast.custom((t) => (

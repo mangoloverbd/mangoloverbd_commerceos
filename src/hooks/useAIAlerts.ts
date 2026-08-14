@@ -27,7 +27,7 @@ export function useAIAlerts() {
           setData(value);
           return;
         }
-      } catch {}
+      } catch { /* ignore malformed cache */ }
     }
 
     const fetch = async () => {

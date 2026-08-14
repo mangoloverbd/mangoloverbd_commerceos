@@ -173,10 +173,10 @@ serve(async (req) => {
 
 Total orders: ${orders.length}
 Item breakdown:
-${summary.map((s: any) => `- ${s.item}: ${s.quantity} units ordered across ${s.orderCount} orders (Revenue: ৳${s.revenue.toFixed(2)})`).join("\n")}
+${summary.map((s) => `- ${s.item}: ${s.quantity} units ordered across ${s.orderCount} orders (Revenue: ৳${s.revenue.toFixed(2)})`).join("\n")}
 
 Orders with statuses:
-${orders.map((o: any) => `- Order #${o.order_number}: ${o.product || "Unknown"} x${o.quantity || 1} — Status: ${o.status}, Fulfillment: ${o.fulfillment_status || "N/A"}`).join("\n")}
+${orders.map((o) => `- Order #${o.order_number}: ${o.product || "Unknown"} x${o.quantity || 1} — Status: ${o.status}, Fulfillment: ${o.fulfillment_status || "N/A"}`).join("\n")}
 
 Provide a concise summary of:
 1. Which items were ordered and in what quantities

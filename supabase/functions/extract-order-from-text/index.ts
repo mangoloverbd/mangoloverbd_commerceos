@@ -112,7 +112,7 @@ If any field is genuinely not present in the text, use reasonable defaults but t
       JSON.stringify({ extractedOrder }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
-  } catch (error: any) {
+  } catch (error) {
     console.error("Extraction error:", error.message)
     return new Response(
       JSON.stringify({ error: error.message }),

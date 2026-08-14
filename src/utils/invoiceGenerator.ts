@@ -52,7 +52,7 @@ function cleanPdfText(text: string | null | undefined, fallback = ""): string {
     .replace(/[–—]/g, "-")
     .replace(/[•·]/g, "-")
     .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "")
-    .replace(/[\u200D\uFE0E\uFE0F]/g, "")
+    .replace(/(\u200D|\uFE0E|\uFE0F)/g, "")
     .replace(/[^\x20-\x7E]/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -222,7 +222,7 @@ const buildInvoicePdf = async (orders: Order[], businessName?: string) => {
     y = 17;
     const invoiceNo = order.order_number.replace("#", "");
     const courierName = order.courier_message?.toLowerCase().includes("pathao") ? "Pathao" : "Steadfast";
-    const consignmentId = order.consignment_id ?? (order as any).consignment_id;
+    const consignmentId = order.consignment_id;
 
     drawLabel("Invoice No.", margin, y + 1.5);
     doc.setFont("helvetica", "bold");
@@ -381,7 +381,7 @@ const escapeHtml = (value: string) =>
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
 const formatMoney = (value: number | null | undefined) =>
@@ -400,7 +400,7 @@ export const printInvoice = (orders: Order[], businessName?: string) => {
       const subtotal = order.price || 0;
       const shipping = order.delivery_rate || 0;
       const total = subtotal + shipping;
-      const consignmentId = order.consignment_id ?? (order as any).consignment_id;
+      const consignmentId = order.consignment_id;
       const courierName = order.courier_message?.toLowerCase().includes("pathao") ? "Pathao" : "Steadfast";
       const lines = splitProductLines(order.product);
       const fallbackQty = order.quantity || 1;
@@ -582,7 +582,7 @@ export const printInvoice = (orders: Order[], businessName?: string) => {
       iframe.contentWindow?.print();
       // Clean up after a delay
       setTimeout(() => {
-        try { document.body.removeChild(iframe); } catch (_) {}
+        try { document.body.removeChild(iframe); } catch (_) { /* iframe already removed */ }
       }, 5000);
     }, 300);
   };

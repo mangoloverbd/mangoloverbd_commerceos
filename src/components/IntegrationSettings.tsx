@@ -14,6 +14,17 @@ import { useMe } from "@/hooks/useMe";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 
+// ── Minimal Facebook SDK typings (no @types installed) ─────────────────────
+type FBAuthResponse = { code?: string; accessToken?: string };
+type FBLoginResponse = { authResponse?: FBAuthResponse; status?: string };
+type FBApiResponse = { access_token?: string; [key: string]: unknown };
+interface FBSdk {
+  init(opts: Record<string, unknown>): void;
+  login(cb: (response: FBLoginResponse) => void, opts: Record<string, unknown>): void;
+  api(path: string, method: string, params: Record<string, unknown>, cb: (res: FBApiResponse) => void): void;
+}
+type FBSdkWindow = Window & { FB?: FBSdk };
+
 // ── Brand icons ──────────────────────────────────────────────────────────────
 
 function ShopifyIcon({ className }: { className?: string }) {
@@ -338,7 +349,7 @@ function MetaBusinessPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start Meta OAuth");
       window.location.href = data.url;
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to start Meta OAuth");
       setConnecting(false);
     }
@@ -357,7 +368,7 @@ function MetaBusinessPanel() {
           if (!res.ok) throw new Error(data.error || "Failed to disconnect Meta");
           toast.success("Meta Business disconnected");
           refresh();
-        } catch (err: any) {
+        } catch (err) {
           toast.error(err?.message || "Failed to disconnect Meta");
         } finally {
           setDisconnecting(false);
@@ -380,7 +391,7 @@ function MetaBusinessPanel() {
           if (!res.ok) throw new Error(data.error || "Failed to disconnect asset");
           toast.success(`${label} disconnected`);
           refresh();
-        } catch (err: any) {
+        } catch (err) {
           toast.error(err?.message || "Failed to disconnect asset");
         } finally {
           setAssetBusy(null);
@@ -411,7 +422,7 @@ function MetaBusinessPanel() {
         return { ...prev, aiAutomation: updated };
       });
       toast.success("AI automation updated");
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to update");
     } finally {
       setAiSaving(false);
@@ -434,7 +445,7 @@ function MetaBusinessPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       toast.success(data.message || "WhatsApp webhook subscriptions refreshed");
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to resubscribe WhatsApp");
     } finally {
       setResubscribing(false);
@@ -448,7 +459,7 @@ function MetaBusinessPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       toast.success(data.message || "Pages re-subscribed with Instagram DM fields");
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to resubscribe pages");
     } finally {
       setResubscribingPages(false);
@@ -504,12 +515,12 @@ function MetaBusinessPanel() {
 
       // Load FB SDK if not already loaded
       await new Promise<void>((resolve, reject) => {
-        if ((window as any).FB) { resolve(); return; }
+        if ((window as unknown as FBSdkWindow).FB) { resolve(); return; }
         // Check if script already added (avoid duplicates)
         if (document.getElementById("fb-sdk-script")) {
           // Wait for it to load
           const check = setInterval(() => {
-            if ((window as any).FB) { clearInterval(check); resolve(); }
+            if ((window as unknown as FBSdkWindow).FB) { clearInterval(check); resolve(); }
           }, 100);
           setTimeout(() => { clearInterval(check); reject(new Error("Facebook SDK timeout")); }, 10000);
           return;
@@ -524,7 +535,7 @@ function MetaBusinessPanel() {
       });
 
       // Init FB SDK (safe to call multiple times)
-      (window as any).FB.init({
+      (window as unknown as FBSdkWindow).FB.init({
         appId,
         autoLogAppEvents: true,
         xfbml: false,
@@ -539,9 +550,9 @@ function MetaBusinessPanel() {
       // exchange it client-side using FB.api() which handles the xd_arbiter
       // relay internally and returns an accessToken we can then extend
       // server-side via grant_type=fb_exchange_token.
-      const loginResult = await new Promise<any>((resolve) => {
-        (window as any).FB.login(
-          (response: any) => resolve(response),
+      const loginResult = await new Promise<FBLoginResponse>((resolve) => {
+        (window as unknown as FBSdkWindow).FB.login(
+          (response: FBLoginResponse) => resolve(response),
           {
             config_id: configId,
             response_type: "code",
@@ -567,14 +578,14 @@ function MetaBusinessPanel() {
         if (authCode && !shortLivedToken) {
           console.log("[WA Signup] exchanging code client-side via FB.api");
           shortLivedToken = await new Promise<string | null>((resolve) => {
-            (window as any).FB.api(
+            (window as unknown as FBSdkWindow).FB.api(
               "/oauth/access_token",
               "get",
               {
                 client_id: appId,
                 code: authCode,
               },
-              (apiRes: any) => {
+              (apiRes: FBApiResponse) => {
                 if (apiRes?.access_token) {
                   resolve(apiRes.access_token);
                 } else {
@@ -615,7 +626,7 @@ function MetaBusinessPanel() {
         // User closed the popup — not an error
         toast("WhatsApp signup was cancelled.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("[WA Signup]", err);
       toast.error(err?.message || "WhatsApp signup failed. Please try again.");
     } finally {
@@ -1034,7 +1045,7 @@ function ShopifyDetailView({
     try {
       await onSave(values);
       toast.success("Shopify credentials saved");
-    } catch (e: any) {
+    } catch (e) {
       toast.error(e?.message || "Failed to save");
     } finally {
       setSaving(false);
@@ -1051,7 +1062,7 @@ function ShopifyDetailView({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start Shopify OAuth");
       window.location.href = data.url;
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to connect Shopify");
       setConnecting(false);
     }
@@ -1070,7 +1081,7 @@ function ShopifyDetailView({
       if (!res.ok) throw new Error(data.error || "Failed to disconnect");
       toast.success("Shopify disconnected");
       refresh();
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to disconnect");
     } finally {
       setDisconnecting(false);
@@ -1247,7 +1258,7 @@ function DetailView({
     try {
       await onSave(values);
       toast.success(`${section.label} saved`);
-    } catch (e: any) {
+    } catch (e) {
       toast.error(e?.message || "Failed to save");
     } finally {
       setSaving(false);

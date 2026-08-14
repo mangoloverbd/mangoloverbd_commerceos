@@ -13,7 +13,7 @@ type ShippingZone = {
   price: number;
   min_order_amount: number;
   free_above: number;
-  conditions: any[];
+  conditions: unknown[];
 };
 
 const DEFAULT_ZONES: ShippingZone[] = [
@@ -161,7 +161,7 @@ export default function OnlineStore() {
       if (!res.ok) throw new Error((await res.json()).error || "Failed to save");
       setDirty({});
       toast.success("Storefront settings saved");
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to save settings");
     } finally {
       setSaving(false);

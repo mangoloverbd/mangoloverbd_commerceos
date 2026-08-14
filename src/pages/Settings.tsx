@@ -62,7 +62,7 @@ function AIAutoReplySection() {
       if (body.enabled !== undefined) setEnabled(body.enabled);
       if (body.channels !== undefined) setChannels(body.channels);
       toast.success("AI auto-reply updated");
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err?.message || "Failed to update");
     } finally {
       setSaving(null);

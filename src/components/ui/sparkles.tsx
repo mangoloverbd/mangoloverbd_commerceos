@@ -93,8 +93,8 @@ export function Sparkles({
   return (
     <Particles
       id={id}
-      init={particlesInit as any}
-      options={{ ...defaultOptions, ...options } as any}
+      init={particlesInit as unknown as never}
+      options={{ ...defaultOptions, ...options } as unknown as never}
       className={className}
     />
   )

@@ -122,7 +122,7 @@ export default function OrderExtraction() {
   };
 
   const filterAndSortProducts = () => {
-    let filtered = products.filter((product) =>
+    const filtered = products.filter((product) =>
       product.name.toLowerCase().includes(productSearch.toLowerCase())
     );
 
