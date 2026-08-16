@@ -24,7 +24,7 @@ describe("manual order numbering", () => {
   it("seeds manual order numbers from the highest Shopify-style order number", () => {
     expect(source).toContain("async function getHighestShopifyStyleOrderNumber(orgId)");
     expect(source).toContain('Number(order.order_number.replace("#", ""))');
-    expect(source).toContain("Math.max(current, highestShopifyStyleOrderNumber)");
+    expect(source).toContain("Math.max(current, highestShopifyStyleOrderNumber, 1000)");
   });
 
   it("stores Shopify order creation time as the business order date", () => {
