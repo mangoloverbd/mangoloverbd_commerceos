@@ -2,12 +2,15 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useOrgName } from "@/hooks/useOrgName";
+import { useLiveVisitors } from "@/hooks/useLiveVisitors";
+import { getDhakaGreeting } from "@/lib/greeting";
+import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
+import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import {
-  RefreshCw, ShieldCheck, Search, AlertTriangle,
-  Info, Check, X,
+  ShieldCheck, Search, AlertTriangle,
+  Info, Check, X, Plus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -184,42 +187,15 @@ function DashboardTextEffect({
   );
 }
 
-function LiveVisitorsCounter() {
-  const [count, setCount] = useState(0);
-  const [details, setDetails] = useState({ activeCarts: 0, checkingOut: 0, purchased: 0 });
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchCount = async () => {
-      try {
-        const res = await apiFetch("/api/live-visitors", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) {
-          setCount(Number(data.count) || 0);
-          setDetails({
-            activeCarts: Number(data.details?.activeCarts) || 0,
-            checkingOut: Number(data.details?.checkingOut) || 0,
-            purchased: Number(data.details?.purchased) || 0,
-          });
-        }
-      } catch {
-        // Non-critical dashboard signal.
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
-    };
-
-    fetchCount();
-    const interval = window.setInterval(fetchCount, 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, []);
-
+function LiveVisitorsCounter({
+  count,
+  details,
+  loaded,
+}: {
+  count: number;
+  details: { activeCarts: number; checkingOut: number; purchased: number };
+  loaded: boolean;
+}) {
   if (!loaded) return null;
 
   const behaviorRows = [
@@ -268,11 +244,13 @@ function FinanceMetric({
   loading,
   value,
   data,
+  seed = 42,
 }: {
   label: string;
   loading: boolean;
   value: string;
   data: { label: string; value: number }[];
+  seed?: number;
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
   color?: string;
   gradientId?: string;
@@ -321,19 +299,28 @@ function FinanceMetric({
                 padding: "9px 12px",
               }}
             >
-              {/* PixelBlast background */}
-              <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "10px", maskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 45%, black 100%)" }}>
+              {/* PixelBlast background — static ink-texture, faded in from the left */}
+              <div
+                className="absolute inset-0 overflow-hidden"
+                style={{
+                  borderRadius: "10px",
+                  opacity: 0.16,
+                  maskImage: "linear-gradient(to right, transparent 0%, transparent 22%, black 72%)",
+                  WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 22%, black 72%)",
+                }}
+              >
                 <PixelBlast
                   variant="square"
-                  pixelSize={2}
-                  color="#B9B5AE"
+                  pixelSize={3}
+                  color="#222A38"
                   patternScale={4}
-                  patternDensity={0.6}
+                  patternDensity={1.2}
+                  pixelSizeJitter={0.5}
                   enableRipples={false}
                   speed={0}
                   transparent
-                  edgeFade={0.4}
-                  seed={42}
+                  edgeFade={0}
+                  seed={seed}
                 />
               </div>
               {/* Content */}
@@ -377,7 +364,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoSyncing, setAutoSyncing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [checkingFraud, setCheckingFraud] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -389,7 +376,7 @@ export default function Dashboard() {
   const [orderPage, setOrderPage] = useState(0);
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
-  const { orgName } = useOrgName();
+  const liveVisitors = useLiveVisitors();
 
   const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false) => {
     if (!silent) setAnalyticsLoading(true);
@@ -495,42 +482,6 @@ export default function Dashboard() {
     const id = setInterval(() => fetchAnalytics(dateRange, true), 30000);
     return () => clearInterval(id);
   }, [dateRange, fetchAnalytics]);
-
-  const syncOrders = async () => {
-    setSyncing(true);
-    try {
-      const res = await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.details ? `${data.error}: ${data.details}` : (data.error || "Sync failed"));
-      // Refresh orders and analytics in parallel — don't await sequentially
-      fetchOrders();
-      fetchAnalytics(dateRange);
-      toast.custom(() => (
-        <div className="bg-[#131316] rounded-[14px] shadow-[0px_32px_64px_-16px_rgba(0,0,0,0.30)] shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.30)] shadow-[0px_8px_16px_-4px_rgba(0,0,0,0.24)] shadow-[0px_4px_8px_-2px_rgba(0,0,0,0.24)] shadow-[0px_-8px_16px_-1px_rgba(0,0,0,0.16)] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.24)] shadow-[0px_0px_0px_1px_rgba(0,0,0,1.00)] shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.08)] shadow-[inset_0px_1px_0px_0px_rgba(255,255,255,0.20)] px-4 py-3 flex items-center gap-3 min-w-[300px]">
-          <div className="p-0.5 bg-white/25 rounded-[99px] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.06)] shadow-[0px_1px_2px_-0.5px_rgba(0,0,0,0.06)] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.16)] border border-white/25 flex items-center justify-center overflow-hidden shrink-0">
-            <Check className="w-3.5 h-3.5 text-white" />
-          </div>
-          <div>
-            <p className="text-white text-[13px] font-medium leading-tight">{data.synced} orders synced</p>
-            <p className="text-white/50 text-[11px] leading-tight">from Shopify</p>
-          </div>
-        </div>
-      ), { fit: true });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not sync Shopify";
-      toast.custom(() => (
-        <div className="bg-[#131316] rounded-[14px] shadow-[0px_32px_64px_-16px_rgba(0,0,0,0.30)] shadow-[0px_16px_32px_-8px_rgba(0,0,0,0.30)] shadow-[0px_8px_16px_-4px_rgba(0,0,0,0.24)] shadow-[0px_4px_8px_-2px_rgba(0,0,0,0.24)] shadow-[0px_-8px_16px_-1px_rgba(0,0,0,0.16)] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.24)] shadow-[0px_0px_0px_1px_rgba(0,0,0,1.00)] shadow-[inset_0px_0px_0px_1px_rgba(255,255,255,0.08)] shadow-[inset_0px_1px_0px_0px_rgba(255,255,255,0.20)] px-4 py-3 flex items-center gap-3 min-w-[300px]">
-          <div className="p-0.5 bg-red-500/30 rounded-[99px] shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.06)] shadow-[0px_1px_2px_-0.5px_rgba(0,0,0,0.06)] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.16)] border border-red-400/30 flex items-center justify-center overflow-hidden shrink-0">
-            <X className="w-3.5 h-3.5 text-white" />
-          </div>
-          <div>
-            <p className="text-white text-[13px] font-medium leading-tight">Sync failed</p>
-            <p className="text-white/50 text-[11px] leading-tight">{msg}</p>
-          </div>
-        </div>
-      ), { fit: true });
-    } finally { setSyncing(false); }
-  };
 
   const checkFraud = async () => {
     setCheckingFraud(true);
@@ -685,10 +636,7 @@ export default function Dashboard() {
         )}
         <div className={!isAdmin ? "blur-[8px] pointer-events-none select-none" : ""}>
           {/* Header row */}
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[22px] font-bold text-black tracking-tight">
-              Welcome back, {orgName || "there"}
-            </h2>
+          <div className="flex items-center justify-end mb-3">
             <div className="flex items-center gap-2">
             {!analytics?.fbConfigured && !analyticsLoading && (
               <a
@@ -703,7 +651,7 @@ export default function Dashboard() {
             {analytics?.fbError && (
               <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
             )}
-            <LiveVisitorsCounter />
+            <LiveVisitorsCounter count={liveVisitors.count} details={liveVisitors.details} loaded={liveVisitors.loaded} />
             <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
             <button
               onClick={() => fetchAnalytics(dateRange)}
@@ -726,34 +674,72 @@ export default function Dashboard() {
               loading={analyticsLoading}
               value={fmtBDT(analytics?.revenue ?? 0)}
               data={metricSparklines.revenue}
+              seed={11}
             />
             <FinanceMetric
               label="Ad Spend"
               loading={analyticsLoading}
               value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
               data={metricSparklines.adSpend}
+              seed={27}
             />
             <FinanceMetric
               label="Shipping"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.shipping ?? 0)}
               data={metricSparklines.shipping}
+              seed={43}
             />
             <FinanceMetric
               label="Cost of Goods"
               loading={analyticsLoading}
               value={fmtBDT(analytics?.totalCog ?? 0)}
               data={metricSparklines.cog}
+              seed={59}
             />
             <FinanceMetric
               label="Net Profit"
               loading={analyticsLoading}
               value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
               data={metricSparklines.profit}
+              seed={75}
             />
           </div>
         </div>
         </motion.div>
+
+      {/* ── Greeting band ─────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05, duration: 0.4 }}
+        className="grid items-center md:grid-cols-[1fr_auto_1fr]"
+      >
+        <div className="hidden md:block" />
+        <div className="text-center">
+          <h2 className="text-3xl font-light text-black">{getDhakaGreeting()}!</h2>
+          <p className="mt-1.5 text-[13px] font-light text-black/45">
+            Let&apos;s continue growing your business.
+          </p>
+        </div>
+        <div className="hidden md:flex flex-col items-center justify-self-end">
+          <GlobeAnalytics className="w-[220px]" />
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-foreground/60 tabular-nums">
+            <span className="relative flex h-2 w-2">
+              {liveVisitors.count > 0 && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+              )}
+              <span
+                className={cn(
+                  "relative inline-flex h-2 w-2 rounded-full",
+                  liveVisitors.count > 0 ? "bg-emerald-500" : "bg-black/20",
+                )}
+              />
+            </span>
+            {liveVisitors.count} visiting now
+          </div>
+        </div>
+      </motion.div>
 
       {/* ── Orders table card ────────────────────────────────────────────── */}
       <motion.div
@@ -840,22 +826,22 @@ export default function Dashboard() {
             <div className="w-px h-4 bg-black/10" />
 
             <PopButton
-              color="amber"
+              color="yellow"
               size="sm"
-              onClick={syncOrders}
-              disabled={syncing || checkingFraud || autoSyncing}
-              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
-              data-testid="button-sync-orders"
+              onClick={() => setCreateOrderOpen(true)}
+              disabled={checkingFraud || autoSyncing}
+              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black"
+              data-testid="button-create-order"
             >
-              {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              Sync
+              <Plus className="h-3.5 w-3.5" />
+              Create Order
             </PopButton>
 
             <PopButton
               color="sky"
               size="sm"
               onClick={checkFraud}
-              disabled={checkingFraud || syncing}
+              disabled={checkingFraud}
               className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
               data-testid="button-check-fraud"
             >
@@ -898,6 +884,14 @@ export default function Dashboard() {
         )}
       </motion.div>
 
+      <OrderCreatorModal
+        open={createOrderOpen}
+        onOpenChange={setCreateOrderOpen}
+        onCreated={() => {
+          fetchOrders();
+          fetchAnalytics(dateRange);
+        }}
+      />
     </div>
   );
 }

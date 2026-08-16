@@ -27,33 +27,41 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain("validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url)");
     expect(trackerRoute).toContain("window.MerchantSuiteTracker");
     expect(trackerRoute).toContain("track = function(bucket)");
-    expect(trackerRoute).toContain("ping(bucket)");
+    expect(trackerRoute).toContain("ping(bucket, true)");
   });
 
-  it("auto-detects common ecommerce behavior signals in the tracker", () => {
+  it("records behavior via explicit track calls, not DOM text sniffing", () => {
     const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
     const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
     const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
 
-    expect(trackerRoute).toContain("detectBucketFromText");
-    expect(trackerRoute).toContain("addEventListener(\"click\"");
-    expect(trackerRoute).toContain("addEventListener(\"submit\"");
-    expect(trackerRoute).toContain('"pushState", "replaceState"');
-    expect(trackerRoute).toContain("locationchange");
-    expect(trackerRoute).toContain("add to cart");
-    expect(trackerRoute).toContain("checkout");
-    expect(trackerRoute).toContain("thank you");
+    // exposes the explicit tracking API custom websites call on real actions
+    expect(trackerRoute).toContain("window.MerchantSuiteTracker");
+    expect(trackerRoute).toContain("track = function(bucket)");
+    expect(trackerRoute).toContain("function pingCurrentLocation()");
+    // must NOT guess behavior from arbitrary clicks/DOM text (false "Active carts")
+    expect(trackerRoute).not.toContain("detectBucketFromText");
+    expect(trackerRoute).not.toContain("bucketFromElement");
+    expect(trackerRoute).not.toContain('addEventListener("click"');
+    expect(trackerRoute).not.toContain('addEventListener("submit"');
+    // server still classifies cart/checkout/purchased from real page URLs
+    expect(serverSource).toContain("liveVisitorBucketFromUrl");
   });
 
-  it("does not treat order submission attempts as completed purchases", () => {
+  it("treats purchases only via explicit track or a real confirmation URL", () => {
     const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
     const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
     const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
 
     expect(trackerRoute).toContain('window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); }');
-    expect(trackerRoute).toContain('detectBucketFromLocation');
+    // no client-side text sniffing that could mislabel an order attempt as purchased
+    expect(trackerRoute).not.toContain("detectBucketFromText");
+    expect(trackerRoute).not.toContain('addEventListener("click"');
     expect(trackerRoute).not.toContain('text.indexOf("place order") !== -1) return "purchased"');
     expect(trackerRoute).not.toContain('text.indexOf("complete order") !== -1) return "purchased"');
+    // purchases are driven by explicit track("purchased") or server-side URL match
+    expect(serverSource).toContain("liveVisitorBucketFromUrl");
+    expect(serverSource).toContain('return "purchased"');
   });
 
   it("keeps live visitor counts isolated to the authenticated user's org", () => {
@@ -111,11 +119,13 @@ describe("live visitor tracking", () => {
   });
 
   it("renders a live visitors counter left of the date picker", () => {
-    const headerStart = dashboardSource.indexOf("<LiveVisitorsCounter />");
+    const hookSource = readFileSync(resolve(process.cwd(), "src/hooks/useLiveVisitors.ts"), "utf8");
+    const headerStart = dashboardSource.indexOf("<LiveVisitorsCounter");
     const pickerStart = dashboardSource.indexOf("<DateRangePicker", headerStart);
 
     expect(dashboardSource).toContain("function LiveVisitorsCounter");
-    expect(dashboardSource).toContain('/api/live-visitors');
+    expect(hookSource).toContain("/api/live-visitors");
+    expect(hookSource).toContain("setInterval");
     expect(dashboardSource).toContain("Visitors right now");
     expect(dashboardSource).toContain("Customer behavior");
     expect(dashboardSource).toContain("Active carts");
