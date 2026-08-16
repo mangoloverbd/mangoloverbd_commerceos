@@ -133,6 +133,225 @@ function AIAutoReplySection() {
   );
 }
 
+function StorefrontDomainSection() {
+  const { isAdmin } = useUserRole();
+  const [settings, setSettings] = useState<{
+    customDomain: string | null;
+    customDomainStatus: string | null;
+    dnsRecord: { type: string; host: string; value: string } | null;
+  } | null>(null);
+  const [input, setInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<{
+    domain: string;
+    status: string;
+    cnameTarget: string | null;
+    dnsRecord: { type: string; host: string; value: string } | null;
+    error: string | null;
+  } | null>(null);
+  const [polling, setPolling] = useState(false);
+  const [provisioned, setProvisioned] = useState<{ url: string } | null>(null);
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
+
+  const loadProvision = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/storefront/provision");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.provisioned) setProvisioned({ url: data.url });
+      }
+    } catch {
+      // silent
+    }
+  }, []);
+  useEffect(() => { loadProvision(); }, [loadProvision]);
+
+  const provision = async () => {
+    setProvisioning(true);
+    setProvisionError(null);
+    try {
+      const res = await apiFetch("/api/storefront/provision", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Provisioning failed");
+      setProvisioned({ url: data.url });
+      toast.success("Storefront deployed — live at " + data.url);
+    } catch (e) {
+      setProvisionError((e as Error)?.message || "Provisioning failed");
+    } finally { setProvisioning(false); }
+  };
+
+  const load = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/storefront/settings");
+      if (!res.ok) return;
+      const data = await res.json();
+      const s = data.settings;
+      setSettings(s);
+      setInput(s.customDomain || "");
+    } catch {
+      // silent
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const refreshStatus = useCallback(async () => {
+    setPolling(true);
+    try {
+      const res = await apiFetch("/api/storefront/domain-status");
+      if (res.ok) {
+        const data = await res.json();
+        setResult(data);
+        await load();
+      }
+    } catch {
+      // silent
+    } finally { setPolling(false); }
+  }, [load]);
+
+  const save = async () => {
+    const value = input.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/storefront/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { customDomain: value } }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "Save failed");
+      }
+      const data = await res.json();
+      setResult(data.domainStatus);
+      await load();
+      toast.success(data.domainStatus?.error ? "Saved — see DNS instructions" : "Domain connected");
+    } catch (e) {
+      toast.error((e as Error)?.message || "Save failed");
+    } finally { setSaving(false); }
+  };
+
+  const disconnect = async () => {
+    setInput("");
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/storefront/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { customDomain: "" } }),
+      });
+      if (!res.ok) throw new Error("Disconnect failed");
+      setResult(null);
+      await load();
+      toast.success("Custom domain removed");
+    } catch (e) {
+      toast.error((e as Error)?.message || "Disconnect failed");
+    } finally { setSaving(false); }
+  };
+
+  if (!isAdmin) return null;
+  const status = result?.status || settings?.customDomainStatus || null;
+  const dns = result?.dnsRecord || settings?.dnsRecord || null;
+
+  const statusBadge = (st: string | null) => {
+    if (st === "verified") return <span className="text-[11px] font-medium text-emerald-600">Connected</span>;
+    if (st === "pending") return <span className="text-[11px] font-medium text-amber-600">Pending DNS</span>;
+    if (st === "failed") return <span className="text-[11px] font-medium text-red-500">Failed</span>;
+    return null;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-[17px] font-semibold text-black tracking-tight">Storefront</h2>
+        <p className="mt-0.5 text-[13px] text-black/45">Deploy your storefront and connect your own domain.</p>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 px-5 py-4">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-black">Deploy Storefront</p>
+          <p className="text-[11px] text-black/40 mt-0.5">
+            {provisioned
+              ? <>Live at <a href={provisioned.url} target="_blank" rel="noreferrer" className="underline text-black/60">{provisioned.url}</a></>
+              : "Automatically creates your storefront from our default template."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {provisioned ? (
+            <span className="text-[11px] font-medium text-emerald-600">Deployed</span>
+          ) : (
+            <button
+              onClick={provision}
+              disabled={provisioning}
+              className="rounded-lg bg-black px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+            >{provisioning ? "Deploying…" : "Provision Storefront"}</button>
+          )}
+        </div>
+      </div>
+      {provisionError ? <p className="px-5 pb-2 text-[11px] text-red-500">{provisionError}</p> : null}
+      <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+        <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-black">Custom Domain</p>
+            <p className="text-[11px] text-black/40 mt-0.5">e.g. shop.stepprs.com — we attach it to your storefront on Save.</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="shop.yourbrand.com"
+              className="h-8 w-56 rounded-lg border-black/[0.1] bg-black/[0.04] text-[13px] text-black placeholder:text-black/25 focus-visible:ring-1 focus-visible:ring-black/20"
+            />
+            {statusBadge(status)}
+          </div>
+        </div>
+
+        {dns ? (
+          <div className="px-5 py-4 bg-black/[0.02]">
+            <p className="text-[11px] font-medium text-black/50 uppercase tracking-[0.12em] mb-2">DNS record to set</p>
+            <div className="font-mono text-[12px] text-black/70 space-y-1">
+              <p><span className="text-black/40">Type:</span> {dns.type}</p>
+              <p><span className="text-black/40">Host/Name:</span> {dns.host}</p>
+              <p><span className="text-black/40">Value:</span> {dns.value}</p>
+            </div>
+            <p className="mt-2 text-[11px] text-black/40">
+              Set this at your DNS provider, then click "Check status". It may take a few minutes to propagate.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={save}
+                disabled={saving}
+                className="rounded-lg bg-black px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+              >Save</button>
+              <button
+                onClick={refreshStatus}
+                disabled={polling}
+                className="rounded-lg border border-black/[0.1] px-3 py-1.5 text-[12px] font-medium text-black disabled:opacity-50"
+              >{polling ? "Checking…" : "Check status"}</button>
+              {settings?.customDomain && (
+                <button
+                  onClick={disconnect}
+                  disabled={saving}
+                  className="rounded-lg px-3 py-1.5 text-[12px] font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
+                >Disconnect</button>
+              )}
+            </div>
+            {result?.error ? <p className="mt-2 text-[11px] text-amber-600">{result.error}</p> : null}
+          </div>
+        ) : (
+          <div className="px-5 py-4 flex gap-2">
+            <button
+              onClick={save}
+              disabled={saving || !input.trim()}
+              className="rounded-lg bg-black px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+            >Save</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WorkspaceSection() {
   const { orgName, isLoading, refresh } = useOrgName();
   const [value, setValue] = useState<string | null>(null);
@@ -211,6 +430,7 @@ function WorkspaceSection() {
 
       <AIAutoReplySection />
       <BulkSmsSection />
+      <StorefrontDomainSection />
     </div>
   );
 }

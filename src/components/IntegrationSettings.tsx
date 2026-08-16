@@ -1351,6 +1351,13 @@ function DetailView({
               <p className="text-[13px] font-semibold text-black">Live Visitor Tracking</p>
               <p className="text-[11px] text-black/40">Show real-time custom website visitors on the dashboard.</p>
             </div>
+
+            <div className="rounded-[10px] border border-emerald-500/15 bg-emerald-500/[0.04] p-3">
+              <p className="text-[11px] font-medium text-black/60">Your storefront is tracked automatically</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-black/45">
+                Any storefront deployed through this Merchant Suite already includes the tracker — visitor activity appears on your dashboard with no setup. Use the snippet below only if you also have a separate external website outside the storefront.
+              </p>
+            </div>
           </div>
 
           <div className="space-y-3 rounded-[14px] border border-black/[0.08] bg-white p-5">

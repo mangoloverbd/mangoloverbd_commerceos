@@ -1160,7 +1160,7 @@ async function getNextManualOrderSeq(orgId) {
     const currentStr = existing?.value ?? "0";
     const highestShopifyStyleOrderNumber = await getHighestShopifyStyleOrderNumber(orgId);
     const current = parseInt(currentStr, 10) || 0;
-    const baseline = Math.max(current, highestShopifyStyleOrderNumber);
+    const baseline = Math.max(current, highestShopifyStyleOrderNumber, 1000);
     const next = baseline + 1;
 
     const { data: updated, error } = await supabase
@@ -2121,6 +2121,9 @@ app.get("/api/storefront/settings", async (req, res) => {
         seoTitleTemplate: data.seo_title_template,
         seoDescriptionTemplate: data.seo_description_template,
         shippingZones: data.shipping_zones,
+        customDomain: data.custom_domain || null,
+        customDomainStatus: data.custom_domain_status || null,
+        dnsRecord: data.custom_domain ? dnsRecordFor(data.custom_domain) : null,
       } : {
         enabled: false,
         storeName: "",
@@ -2138,6 +2141,9 @@ app.get("/api/storefront/settings", async (req, res) => {
         seoTitleTemplate: "{product_name} | {store_name}",
         seoDescriptionTemplate: "{product_description}",
         shippingZones: [],
+        customDomain: null,
+        customDomainStatus: null,
+        dnsRecord: null,
       },
     });
   } catch (err) {
@@ -2153,7 +2159,18 @@ app.post("/api/storefront/settings", async (req, res) => {
     const { orgId, role } = await getUserOrg(supabase, user.id);
     if (role !== "admin") return res.status(403).json({ error: "Admin only" });
 
+    // Snapshot previous custom domain so we can add/remove on the Vercel side.
+    const { data: existing } = await supabase
+      .from("storefront_settings")
+      .select("custom_domain")
+      .eq("org_id", orgId)
+      .maybeSingle();
+    const prevDomain = existing?.custom_domain || null;
+
     const s = req.body?.settings || {};
+    const requestedDomain = typeof s.customDomain === "string"
+      ? s.customDomain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "")
+      : null;
     const row = {
       org_id: orgId,
       enabled: Boolean(s.enabled),
@@ -2172,6 +2189,8 @@ app.post("/api/storefront/settings", async (req, res) => {
       seo_title_template: s.seoTitleTemplate || "{product_name} | {store_name}",
       seo_description_template: s.seoDescriptionTemplate || "{product_description}",
       shipping_zones: Array.isArray(s.shippingZones) ? s.shippingZones : [],
+      custom_domain: requestedDomain || null,
+      custom_domain_status: requestedDomain ? "pending" : null,
       updated_at: new Date().toISOString(),
     };
 
@@ -2180,10 +2199,28 @@ app.post("/api/storefront/settings", async (req, res) => {
       .upsert(row, { onConflict: "org_id" });
     if (error) throw error;
 
+    // Sync custom domain with Vercel when it changed (add / remove / re-check).
+    let domainStatus = null;
+    if (requestedDomain !== prevDomain) {
+      const projectId = await getStorefrontProjectId(orgId);
+      const sync = await syncStorefrontDomain(projectId, prevDomain, requestedDomain);
+      await supabase
+        .from("storefront_settings")
+        .update({ custom_domain_status: sync.status, updated_at: new Date().toISOString() })
+        .eq("org_id", orgId);
+      domainStatus = {
+        domain: requestedDomain,
+        status: sync.status,
+        cnameTarget: sync.cnameTarget,
+        dnsRecord: sync.dnsRecord,
+        error: sync.error,
+      };
+    }
+
     // Purge the cached config so the storefront picks up changes quickly
     await purgeStorefrontConfigCache(orgId);
 
-    return res.json({ success: true });
+    return res.json({ success: true, domainStatus });
   } catch (err) {
     return sendError(res, err);
   }
@@ -2213,6 +2250,256 @@ async function purgeStorefrontConfigCache(orgId) {
     console.warn("[Purge] Could not purge storefront config cache:", e.message);
   }
 }
+
+// ─── Storefront auto-provision + custom domain (Vercel) ─────────────────────
+// Per-merchant: when a merchant provisions their storefront, Merchant Suite
+// calls the Vercel API to create a new project from the default storefront
+// GitHub repo, injects env vars (VITE_MERCHANT_SUITE_URL, VITE_STOREFRONT_ID,
+// MERCHANT_SUITE_URL, CUSTOM_ORDERS_API_KEY), and stores the resulting
+// vercel_project_id in app_settings (org-scoped). The custom-domain card then
+// attaches the merchant's domain to THAT project (not a global one).
+
+const VERCEL_ACCESS_TOKEN = process.env.VERCEL_ACCESS_TOKEN || "";
+const STOREFRONT_VERCEL_TEAM_ID = process.env.STOREFRONT_VERCEL_TEAM_ID || "";
+const STOREFRONT_GIT_REPO = process.env.STOREFRONT_GIT_REPO || ""; // e.g. "noorkarimmehedi/e-commerce"
+// The public URL of THIS Merchant Suite deploy, baked into every auto-provisioned
+// storefront so it reads catalog + posts orders back here.
+const MERCHANT_SUITE_PUBLIC_URL = (process.env.MERCHANT_SUITE_PUBLIC_URL || process.env.PUBLIC_DOMAIN || "").replace(/\/$/, "");
+// Fallback single project id (if you're not using auto-provision and just point
+// at one shared storefront project). Auto-provision overrides this per-merchant.
+const VERCEL_PROJECT_ID_FALLBACK = process.env.VERCEL_PROJECT_ID || "";
+
+function vercelTeamQuery() {
+  return STOREFRONT_VERCEL_TEAM_ID ? `?teamId=${STOREFRONT_VERCEL_TEAM_ID}` : "";
+}
+function vercelApi(path, opts = {}) {
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `https://api.vercel.com${path}${STOREFRONT_VERCEL_TEAM_ID ? `${sep}teamId=${STOREFRONT_VERCEL_TEAM_ID}` : ""}`;
+  return fetch(url, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${VERCEL_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+      ...(opts.headers || {}),
+    },
+  });
+}
+
+// Read this merchant's storefront Vercel project id (org-scoped app_settings).
+async function getStorefrontProjectId(orgId) {
+  const key = `${orgId}:storefront_vercel_project_id`;
+  const settings = await getSettings([key]);
+  return settings[key] || VERCEL_PROJECT_ID_FALLBACK || null;
+}
+async function saveStorefrontProjectId(orgId, projectId) {
+  await saveSettings({ [`${orgId}:storefront_vercel_project_id`]: projectId });
+}
+
+// Apex (<=2 labels, or 3 with a 2-3 char TLD like co.uk) → A record; else CNAME.
+function dnsRecordFor(domain) {
+  const labels = String(domain).split(".");
+  const isApex = labels.length <= 2 || (labels.length === 3 && labels[1].length <= 3);
+  return isApex
+    ? { type: "A", host: "@", value: "76.76.21.21" }
+    : { type: "CNAME", host: labels.slice(0, -2).join(".") || "@", value: "cname.vercel-dns.com" };
+}
+
+// Add / remove / re-check the merchant's custom domain on their storefront project.
+// Never throws — errors surface as status:"failed" + error.
+async function syncStorefrontDomain(projectId, prevDomain, newDomain) {
+  if (!projectId || !VERCEL_ACCESS_TOKEN) {
+    return newDomain
+      ? { status: "pending", cnameTarget: "cname.vercel-dns.com", dnsRecord: dnsRecordFor(newDomain), error: "Storefront not provisioned or Vercel token missing — provision a storefront first." }
+      : { status: null, cnameTarget: null, dnsRecord: null, error: null };
+  }
+  const domainsBase = `/v9/projects/${projectId}/domains`;
+  try {
+    if (!newDomain) {
+      if (prevDomain) {
+        await vercelApi(`${domainsBase}/${encodeURIComponent(prevDomain)}`, { method: "DELETE" });
+      }
+      return { status: null, cnameTarget: null, dnsRecord: null, error: null };
+    }
+    if (prevDomain && prevDomain === newDomain) {
+      const r = await vercelApi(`${domainsBase}/${encodeURIComponent(newDomain)}`);
+      const d = r.ok ? await r.json() : {};
+      return { status: d.verified ? "verified" : "pending", cnameTarget: "cname.vercel-dns.com", dnsRecord: dnsRecordFor(newDomain), error: null };
+    }
+    if (prevDomain && prevDomain !== newDomain) {
+      await vercelApi(`${domainsBase}/${encodeURIComponent(prevDomain)}`, { method: "DELETE" });
+    }
+    const addRes = await vercelApi(domainsBase, {
+      method: "POST",
+      body: JSON.stringify({ name: newDomain }),
+    });
+    if (!addRes.ok) {
+      const body = await addRes.text();
+      return { status: "failed", cnameTarget: null, dnsRecord: null, error: `Vercel rejected domain: ${addRes.status} ${body.slice(0, 200)}` };
+    }
+    const added = await addRes.json();
+    return { status: added.verified ? "verified" : "pending", cnameTarget: "cname.vercel-dns.com", dnsRecord: dnsRecordFor(newDomain), error: null };
+  } catch (e) {
+    return { status: "failed", cnameTarget: null, dnsRecord: null, error: e.message };
+  }
+}
+
+// Create a new Vercel project from the default storefront GitHub repo, inject
+// env vars, trigger a production deploy, and persist the project id for this merchant.
+async function provisionStorefrontProject(orgId, customOrdersApiKey) {
+  if (!VERCEL_ACCESS_TOKEN) return { ok: false, error: "VERCEL_ACCESS_TOKEN not set" };
+  if (!STOREFRONT_GIT_REPO) return { ok: false, error: "STOREFRONT_GIT_REPO not set (e.g. noorkarimmehedi/e-commerce)" };
+  if (!MERCHANT_SUITE_PUBLIC_URL) return { ok: false, error: "MERCHANT_SUITE_PUBLIC_URL not set — the public URL of this Merchant Suite deploy" };
+
+  const projectName = `storefront-${orgId.slice(0, 8)}`;
+
+  // Vercel's git linking needs BOTH the repo name AND the numeric repoId.
+  let repoId = "";
+  try {
+    const gh = await fetch(`https://api.github.com/repos/${STOREFRONT_GIT_REPO}`);
+    if (gh.ok) repoId = String((await gh.json()).id);
+  } catch { /* non-fatal, will fail at create */ }
+  if (!repoId) return { ok: false, error: `Could not resolve GitHub repo id for ${STOREFRONT_GIT_REPO}` };
+
+  // 1. Create the project from the public GitHub repo (link git with repo + repoId).
+  const createRes = await vercelApi("/v11/projects", {
+    method: "POST",
+    body: JSON.stringify({
+      name: projectName,
+      gitRepository: { type: "github", repo: STOREFRONT_GIT_REPO, repoId: Number(repoId) },
+    }),
+  });
+  if (!createRes.ok && createRes.status !== 409) {
+    const body = await createRes.text();
+    return { ok: false, error: `Vercel create project failed: ${createRes.status} ${body.slice(0, 300)}` };
+  }
+  const created = createRes.ok ? await createRes.json() : null;
+  let projectId = created?.id;
+  if (!projectId) {
+    const getRes = await vercelApi(`/v9/projects/${projectName}`);
+    if (!getRes.ok) return { ok: false, error: `Storefront project exists but could not be fetched: ${getRes.status}` };
+    projectId = (await getRes.json()).id;
+  }
+
+  // 2. Inject env vars so the storefront reads from THIS Merchant Suite.
+  const envVars = [
+    { key: "VITE_MERCHANT_SUITE_URL", value: MERCHANT_SUITE_PUBLIC_URL, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "VITE_STOREFRONT_ID", value: orgId, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "MERCHANT_SUITE_URL", value: MERCHANT_SUITE_PUBLIC_URL, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "CUSTOM_ORDERS_API_KEY", value: customOrdersApiKey, type: "encrypted", target: ["production", "preview", "development"] },
+  ];
+  for (const ev of envVars) {
+    await vercelApi(`/v9/projects/${projectId}/env`, { method: "POST", body: JSON.stringify(ev) });
+  }
+
+  // 3. Persist the project id for this merchant (domain card uses it).
+  await saveStorefrontProjectId(orgId, projectId);
+
+  // 4. Trigger a production deploy from the linked git repo.
+  const deployRes = await vercelApi(`/v13/deployments?skipAutoDetectionConfirmation=1`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: projectName,
+      target: "production",
+      gitSource: { type: "github", repo: STOREFRONT_GIT_REPO, repoId: Number(repoId), ref: "main" },
+    }),
+  });
+  // Deploy is async; ignore transient errors — the project is created + env set.
+
+  // 5. Return the real default production domain Vercel assigned (it appends a
+  //    random suffix like -tau), rather than guessing the URL.
+  let url = "";
+  try {
+    const dRes = await vercelApi(`/v9/projects/${projectId}/domains`);
+    if (dRes.ok) {
+      const d = await dRes.json();
+      const prod = (d.domains || []).find((x) => x.name && x.verified !== false) || (d.domains || [])[0];
+      url = prod ? `https://${prod.name}` : `https://${projectName}.vercel.app`;
+    }
+  } catch { /* fallback below */ }
+  url = url || `https://${projectName}.vercel.app`;
+
+  return { ok: true, projectId, projectName, url };
+}
+
+// Provision a storefront for the signed-in merchant. Admin only.
+app.post("/api/storefront/provision", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    // Already provisioned? Return existing.
+    const existing = await getStorefrontProjectId(orgId);
+    if (existing && existing !== VERCEL_PROJECT_ID_FALLBACK) {
+      const projectName = `storefront-${orgId.slice(0, 8)}`;
+      return res.json({ ok: true, alreadyProvisioned: true, projectId: existing, url: `https://${projectName}.vercel.app` });
+    }
+
+    // Ensure a custom-store API key exists for this org (reuse or issue).
+    let keyRow = await getOrgSettings(orgId, ["custom_store_api_key"]);
+    let apiKey = keyRow.custom_store_api_key;
+    if (!apiKey) {
+      apiKey = `ms-${orgId.slice(0, 8)}-${crypto.randomBytes(8).toString("hex")}`;
+      await saveOrgSettings(orgId, { custom_store_api_key: apiKey });
+    }
+
+    const result = await provisionStorefrontProject(orgId, apiKey);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    return res.json(result);
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// Get provisioning status (project id + live URL) for the signed-in merchant.
+app.get("/api/storefront/provision", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const projectId = await getStorefrontProjectId(orgId);
+    if (!projectId || projectId === VERCEL_PROJECT_ID_FALLBACK) {
+      return res.json({ provisioned: false, projectId: null, url: null });
+    }
+    const projectName = `storefront-${orgId.slice(0, 8)}`;
+    let url = `https://${projectName}.vercel.app`;
+    try {
+      const dRes = await vercelApi(`/v9/projects/${projectId}/domains`);
+      if (dRes.ok) {
+        const d = await dRes.json();
+        const prod = (d.domains || []).find((x) => x.name && x.verified !== false) || (d.domains || [])[0];
+        if (prod) url = `https://${prod.name}`;
+      }
+    } catch { /* keep fallback */ }
+    return res.json({ provisioned: true, projectId, url });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/storefront/domain-status", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data } = await supabase
+      .from("storefront_settings")
+      .select("custom_domain, custom_domain_status")
+      .eq("org_id", orgId)
+      .maybeSingle();
+    const domain = data?.custom_domain || null;
+    if (!domain) return res.json({ domain: null, status: null, cnameTarget: null, dnsRecord: null, error: null });
+    const projectId = await getStorefrontProjectId(orgId);
+    const sync = await syncStorefrontDomain(projectId, domain, domain);
+    return res.json({ domain, status: sync.status, cnameTarget: sync.cnameTarget, dnsRecord: sync.dnsRecord, error: sync.error });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
 
 // ─── Integration Test Endpoints ──────────────────────────────────────────────
 
@@ -4738,11 +5025,6 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
     }
   }
   var sessionId = getSessionId();
-  function detectBucketFromLocation(value){
-    var text = String(value || "").toLowerCase();
-    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("order placed") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
-    return detectBucketFromText(text);
-  }
   function ping(bucket, explicit){
     if (document.hidden) return;
     var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true });
@@ -4750,35 +5032,11 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
     } catch (_) {}
   }
-  function detectBucketFromText(value){
-    var text = String(value || "").toLowerCase();
-    if (!text) return null;
-    if (text.indexOf("checkout") !== -1 || text.indexOf("check out") !== -1 || text.indexOf("buy now") !== -1) return "checkout";
-    if (text.indexOf("add to cart") !== -1 || text.indexOf("add-to-cart") !== -1 || text.indexOf("add_to_cart") !== -1 || text.indexOf("cart") !== -1 || text.indexOf("basket") !== -1 || text.indexOf("bag") !== -1) return "cart";
-    return null;
-  }
-  function bucketFromElement(el){
-    var node = el;
-    for (var i = 0; node && i < 4; i++, node = node.parentElement) {
-      var text = [node.innerText, node.textContent, node.id, node.className, node.name, node.value, node.getAttribute && node.getAttribute("aria-label"), node.getAttribute && node.getAttribute("data-action"), node.getAttribute && node.getAttribute("href")].join(" ");
-      var bucket = detectBucketFromText(text);
-      if (bucket) return bucket;
-    }
-    return null;
-  }
   function pingCurrentLocation(){
-    ping(detectBucketFromLocation(window.location.pathname + " " + window.location.search + " " + document.title));
+    ping(null);
   }
   window.MerchantSuiteTracker = window.MerchantSuiteTracker || {};
   window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); };
-  document.addEventListener("click", function(event){
-    var bucket = bucketFromElement(event.target);
-    if (bucket) setTimeout(function(){ ping(bucket); }, 0);
-  }, true);
-  document.addEventListener("submit", function(event){
-    var bucket = bucketFromElement(event.target);
-    if (bucket) ping(bucket);
-  }, true);
   ["pushState", "replaceState"].forEach(function(method){
     var original = history[method];
     if (typeof original !== "function") return;
@@ -4981,6 +5239,9 @@ app.post("/api/orders", async (req, res) => {
       "fraud_data",
       "fulfillment_status",
       "notes",
+      "payment_method",
+      "discount",
+      "advanced_payment",
     ];
     const row = { org_id: orgId };
     for (const key of allowed) {
@@ -9881,6 +10142,35 @@ ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS ai_summary TEXT
   }
 }
 
+async function migrateOrdersPaymentColumns() {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+    if (!projectRef || !serviceKey) return;
+
+    const migrationSql = `
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS discount NUMERIC DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS advanced_payment NUMERIC DEFAULT 0;
+    `;
+
+    const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ query: migrationSql }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("[Migrate] orders payment columns failed:", text);
+      return;
+    }
+    console.log("[Migrate] orders payment columns ensured.");
+  } catch (e) {
+    console.warn("[Migrate] Could not run orders payment migration:", e.message);
+  }
+}
+
 async function migrateProductsForecastColumns() {
   try {
     const supabaseUrl = process.env.SUPABASE_URL || "";
@@ -9951,6 +10241,8 @@ CREATE TABLE IF NOT EXISTS public.storefront_settings (
   seo_title_template TEXT DEFAULT '{product_name} | {store_name}',
   seo_description_template TEXT DEFAULT '{product_description}',
   shipping_zones JSONB DEFAULT '[]'::jsonb,
+  custom_domain TEXT,
+  custom_domain_status TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -9958,6 +10250,16 @@ CREATE TABLE IF NOT EXISTS public.storefront_settings (
 DO $$ BEGIN
   CREATE INDEX IF NOT EXISTS storefront_settings_org_id_idx
     ON public.storefront_settings(org_id);
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+-- Custom storefront domain (single-tenant: one per org). Upgrades existing tables.
+DO $$ BEGIN
+  ALTER TABLE public.storefront_settings ADD COLUMN IF NOT EXISTS custom_domain TEXT;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE public.storefront_settings ADD COLUMN IF NOT EXISTS custom_domain_status TEXT;
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
@@ -10265,6 +10567,7 @@ if (!process.env.VERCEL) {
         await migrateInboxOrdersTable();
         await migrateMultiTenancy();
         await migrateStorefrontSettingsTable();
+        await migrateOrdersPaymentColumns();
         await bootstrapAiProductContext();
         backfillProductEmbeddings().catch((err) => console.warn("[Embedding Backfill] Error:", err.message));
       });
@@ -10280,6 +10583,7 @@ if (!process.env.VERCEL) {
   migrateMultiTenancy().catch(() => {});
   migrateInboxOrdersTable().catch(() => {});
   migrateStorefrontSettingsTable().catch(() => {});
+  migrateOrdersPaymentColumns().catch(() => {});
 }
 
 export default app;

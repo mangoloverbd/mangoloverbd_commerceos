@@ -8,7 +8,6 @@ import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import Settings from "./pages/Settings";
 import OrderAnalysis from "./pages/OrderAnalysis";
-import OrderExtraction from "./pages/OrderExtraction";
 import OrderChat from "./pages/OrderChat";
 import Products from "./pages/Products";
 import Customers from "./pages/Customers";
@@ -93,7 +92,6 @@ const AppRoutes = () => (
       <Route path="/" element={<Dashboard />} />
       <Route path="/overview" element={<Overview />} />
       <Route path="/order-analysis" element={<AdminRoute><OrderAnalysis /></AdminRoute>} />
-      <Route path="/order-extraction" element={<OrderExtraction />} />
       <Route path="/order-chat" element={<OrderChat />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/online-store" element={<AdminRoute><OnlineStore /></AdminRoute>} />

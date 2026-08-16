@@ -22,6 +22,7 @@ interface ComboboxProps {
     value: string;
     label: string;
     price?: number;
+    image?: string | null;
   }[];
   value?: string;
   onValueChange?: (value: string) => void;
@@ -61,6 +62,13 @@ export function Combobox({
           <div className="flex items-center gap-2">
             {selectedItem ? (
               <div className="flex items-center gap-2">
+                {selectedItem.image && (
+                  <img
+                    src={selectedItem.image}
+                    alt=""
+                    className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                  />
+                )}
                 <span className="truncate">{selectedItem.label}</span>
                 {showPrice && selectedItem.price && (
                   <span className="text-xs text-black whitespace-nowrap">
@@ -75,13 +83,13 @@ export function Combobox({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
-        <Command className="w-full">
-          <CommandInput 
-            placeholder="Search products..." 
-            className="h-11 border-none"
+      <PopoverContent className="flex w-full max-h-[60vh] flex-col overflow-hidden p-0" align="start">
+        <Command className="flex min-h-0 w-full flex-1 flex-col">
+          <CommandInput
+            placeholder="Search products..."
+            className="h-11 shrink-0 border-none"
           />
-          <CommandList>
+          <CommandList className="min-h-0 flex-1">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {items.map((item) => (
@@ -98,14 +106,21 @@ export function Combobox({
                     <div className="flex items-center gap-2">
                       <Check
                         className={cn(
-                          "h-4 w-4",
+                          "h-4 w-4 shrink-0",
                           value === item.value ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      <span>{item.label}</span>
+                      {item.image && (
+                        <img
+                          src={item.image}
+                          alt=""
+                          className="h-8 w-8 shrink-0 rounded-lg object-cover"
+                        />
+                      )}
+                      <span className="truncate">{item.label}</span>
                     </div>
                     {showPrice && item.price && (
-                      <span className="text-xs text-black">৳{item.price}</span>
+                      <span className="ml-2 shrink-0 text-xs text-black">৳{item.price}</span>
                     )}
                   </div>
                 </CommandItem>

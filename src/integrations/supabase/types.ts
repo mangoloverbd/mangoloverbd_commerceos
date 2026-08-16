@@ -33,18 +33,21 @@ export type Database = {
       orders: {
         Row: {
           address: string | null
+          advanced_payment: number | null
           consignment_id: string | null
           courier_message: string | null
           courier_status: string | null
           created_at: string
           customer_name: string | null
           delivery_rate: number | null
+          discount: number | null
           fraud_checked: boolean | null
           fraud_data: Json | null
           fulfillment_status: string | null
           id: string
           notes: string | null
           order_number: string
+          payment_method: string | null
           phone: string | null
           price: number | null
           product: string | null
@@ -57,18 +60,21 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          advanced_payment?: number | null
           consignment_id?: string | null
           courier_message?: string | null
           courier_status?: string | null
           created_at?: string
           customer_name?: string | null
           delivery_rate?: number | null
+          discount?: number | null
           fraud_checked?: boolean | null
           fraud_data?: Json | null
           fulfillment_status?: string | null
           id?: string
           notes?: string | null
           order_number: string
+          payment_method?: string | null
           phone?: string | null
           price?: number | null
           product?: string | null
@@ -81,18 +87,21 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          advanced_payment?: number | null
           consignment_id?: string | null
           courier_message?: string | null
           courier_status?: string | null
           created_at?: string
           customer_name?: string | null
           delivery_rate?: number | null
+          discount?: number | null
           fraud_checked?: boolean | null
           fraud_data?: Json | null
           fulfillment_status?: string | null
           id?: string
           notes?: string | null
           order_number?: string
+          payment_method?: string | null
           phone?: string | null
           price?: number | null
           product?: string | null

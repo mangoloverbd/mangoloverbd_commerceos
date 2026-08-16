@@ -351,3 +351,37 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
+
+/* ── LoadingState (pixel-grid loader) ─────────────────── */
+:root {
+  --ink: #111111;
+  --ink-3: rgba(17, 17, 17, 0.45);
+}
+
+@layer utilities {
+  .bg-ink {
+    background-color: var(--ink);
+  }
+  .text-ink-3 {
+    color: var(--ink-3);
+  }
+}
+
+@keyframes pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer-text {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
