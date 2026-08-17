@@ -426,33 +426,31 @@ Key routing rules:
 
 ## Merchant Onboarding
 
-Merchant Suite onboards merchants **self-serve and multi-tenant**: the operator deploys ONE Suite instance; each merchant signs themselves up and automatically gets their own tenant + storefront. **No per-merchant fork of the Suite is required** — only the storefront is per-merchant (a Vercel project). This is the opposite of a "fork-per-merchant" model; the code is the source of truth.
+Merchant Suite onboards each merchant as their **own forked deployment** — not a single shared multi-tenant instance. The operator forks the Suite and the storefront template, brands them, and deploys. Each merchant runs in full isolation: their own database, their own analytics, their own URLs. No shared logins or data between merchants. (The code inside each fork is still multi-tenant by `org_id`, so a merchant can have teammates and multiple workspaces — but the *deployment boundary* is per-merchant.)
 
-### What the operator sets up once
-- Deploy a single Merchant Suite instance to a public URL.
-- Connect it to:
-  - **Supabase** — shared, multi-tenant. All merchants' data lives in one project, isolated by `org_id`.
-  - **Vercel** — token in `.env`, so storefronts can be provisioned per merchant.
-  - **PostHog** — each merchant pastes their own PostHog keys in Settings (per-merchant project).
-- Merchants then self-onboard from there.
+### Setup per merchant (operator)
+1. **Fork & brand.** Fork the Merchant Suite repo and the storefront repo; tweak them for the merchant's brand (name, colors, copy) and push the storefront.
+2. **Create their accounts.** Create the merchant's own **Supabase** project (database) and **PostHog** project (analytics).
+3. **Fill keys & deploy.** Enter those Supabase/PostHog keys into the Suite fork's settings, then deploy the Suite → it goes live at the merchant's URL.
+4. **Merchant logs in → workspace auto-created.** On first login the merchant's private workspace (tenant) is created automatically (`org_id`-scoped).
 
-### Self-serve merchant flow (references in `server/index.js`)
-1. **Sign up → tenant auto-created.** Merchant registers at `/auth` → `POST /api/auth/register` (server/index.js:686). The server creates the Supabase Auth user (`email_confirm: true`, so no email verification) and writes `user_roles.upsert({ user_id, role: "admin", org_id: newUser.user.id })`. **`org_id` is the merchant's own user UUID** — that row IS their tenant.
-2. **7-day trial auto-seeded.** Registration also saves `billing_plan: "growth"`, `billing_status: "trialing"`, `trial_ends_at = now + 7d` (server/index.js:712).
-3. **Login.** `getUser()` (server/index.js:348) validates the JWT and resolves `org_id` + `role`. `ensureUserRole` (server/index.js:300) guarantees an admin role exists.
-4. **Add products.** Via the Products page (manual entry or Shopify sync), stored in `products` scoped by `org_id`.
-5. **Provision storefront.** Settings → "Provision Storefront" → `POST /api/storefront/provision` (server/index.js:2425). If not already provisioned, the server:
+### Merchant self-serve flow (references in `server/index.js`)
+5. **Add products & provision storefront.** The merchant adds products (manual entry or Shopify sync), then clicks **"Provision Storefront"** → `POST /api/storefront/provision` (server/index.js:2425). The server:
    - ensures a `custom_store_api_key` exists (`ms-{orgId8}-{random}`),
-   - calls `provisionStorefrontProject(orgId, apiKey)` (server/index.js:2448), which creates a **Vercel project** from the storefront template repo, sets env vars (`VITE_STOREFRONT_ID` = org_id, `VITE_MERCHANT_SUITE_URL`, `CUSTOM_ORDERS_API_KEY`), deploys it, and stores the Vercel project id in `app_settings` (`{orgId}:storefront_vercel_project_id`).
-   - returns `https://storefront-{orgId8}.vercel.app`. `GET /api/storefront/provision` reports status (already-provisioned, project id, URL).
-6. **Storefront live.** It fetches that merchant's products via `GET /api/public/v1/storefronts/{storefront_id}/products` (storefront_id = org_id), gated by the API key.
+   - calls `provisionStorefrontProject(orgId, apiKey)` (server/index.js:2448), which creates a **Vercel project** from the storefront template repo, sets its env (`VITE_STOREFRONT_ID` = org_id, `VITE_MERCHANT_SUITE_URL`, `CUSTOM_ORDERS_API_KEY`), deploys it, and stores the Vercel project id in `app_settings` (`{orgId}:storefront_vercel_project_id`),
+   - returns `https://storefront-{orgId8}.vercel.app`.
+   Visitor tracking is **already wired** (the `merchant-suite-tracker` script + PostHog), so live visitors show immediately — no extra setup.
+6. **Optional custom domain.** The merchant can connect their own domain name to the storefront project.
+
+After go-live: customers shop the storefront and orders land in the merchant's dashboard. Everything stays separate per merchant.
 
 ### Team members
 - An admin invites teammates via `POST /api/admin/assign-role` (server/index.js:734); they inherit the same `org_id`.
 
 ### Key facts for agents
-- **Multi-tenant, not fork-per-merchant:** one Suite, many merchants; `org_id` isolates everything. For an admin, `org_id` = their own `user.id`.
-- Every new merchant gets a **7-day free trial** automatically on sign-up.
-- The **storefront is per-merchant** (a Vercel project); the **Suite is shared**.
+- **Fork-per-merchant deployment**, not one shared Suite: each merchant = own fork + own Supabase + own PostHog + own URL.
+- Within a fork, data stays scoped by `org_id` (multi-tenant code), so team members and workspaces remain isolated inside that merchant's instance.
+- The **storefront is auto-provisioned per merchant** via `provisionStorefrontProject` / `getStorefrontProjectId` (server/index.js:2448 / 2289) — reuse these rather than writing new storefront logic.
+- Every new merchant gets a **7-day free trial** automatically on sign-up (`billing_plan: "growth"`, `billing_status: "trialing"`, `trial_ends_at = now + 7d` — server/index.js:712).
 - Sign-up is instant (email auto-confirmed).
-- When adding onboarding-related features, keep the `org_id`-scoping and trial-seeding behavior intact, and reuse `provisionStorefrontProject` / `getStorefrontProjectId` rather than creating new storefront logic.
+- When adding onboarding-related features, keep the `org_id`-scoping and trial-seeding behavior intact.
