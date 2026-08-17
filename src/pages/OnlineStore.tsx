@@ -204,9 +204,7 @@ export default function OnlineStore() {
     );
   }
 
-  const livePreviewUrl = import.meta.env.DEV
-    ? "http://localhost:5001"
-    : previewUrl;
+  const livePreviewUrl = previewUrl || (import.meta.env.DEV ? "http://localhost:5001" : null);
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-2">
