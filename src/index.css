@@ -385,3 +385,65 @@
     background-position: -200% 0;
   }
 }
+
+/* ===== Uiverse.io rotating gradient border (scoped to .uv-beam) ===== */
+@property --uv-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: -75deg;
+}
+
+.uv-beam {
+  position: relative;
+  display: inline-flex;
+  border-radius: 9999px;
+  isolation: isolate;
+}
+
+/* Rotating conic-gradient outline */
+.uv-beam::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 1.5px;
+  background:
+    conic-gradient(
+      from var(--uv-angle) at 50% 50%,
+      rgba(0, 0, 0, 0.5),
+      rgba(0, 0, 0, 0) 5% 40%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0) 60% 95%,
+      rgba(0, 0, 0, 0.5)
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: uv-beam-spin 6s linear infinite;
+}
+
+@keyframes uv-beam-spin {
+  to {
+    --uv-angle: 285deg;
+  }
+}
+
+/* Neutralize the static child border / force pill so the rotating ring reads as the border */
+.uv-beam > * {
+  border-color: transparent;
+}
+
+.uv-beam button {
+  border-radius: 9999px;
+  border-color: transparent;
+}
+
+.uv-beam:hover {
+  transform: scale(0.975);
+  transition: transform 400ms cubic-bezier(0.25, 1, 0.5, 1);
+}

@@ -39,7 +39,7 @@ describe("DashboardLayout breadcrumb header", () => {
       expect(appSource).toContain(`path="${route}"`);
     }
 
-    expect(layoutSource).toContain('"/": "Overview"');
+    expect(layoutSource).toContain('"/": "Home"');
     expect(layoutSource).toContain('"/returns": "Returns"');
     expect(layoutSource).toContain('"/products": "Products"');
     expect(layoutSource).toContain('"/customers": "Customers"');

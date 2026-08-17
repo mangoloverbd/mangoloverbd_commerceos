@@ -24,7 +24,7 @@ const accountMenuItemClass =
     "flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[12.5px] font-medium text-[#202020]/85 transition-colors hover:bg-black/[0.045] focus:bg-black/[0.045] focus:text-[#202020]";
 
 const routeBreadcrumbLabels: Record<string, string> = {
-    "/": "Overview",
+    "/": "Home",
     "/overview": "Overview",
     "/returns": "Returns",
     "/products": "Products",

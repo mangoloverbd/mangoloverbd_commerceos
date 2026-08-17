@@ -21,7 +21,8 @@ import { Spinner } from "@/components/ui/ios-spinner";
 import { TextEffect } from "@/components/ui/text-effect";
 import { PopButton } from "@/components/ui/pop-button";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import PixelBlast from "@/components/ui/pixel-blast";
+import PixelBackground from "@/components/ui/pixel-background";
+import PixelBlast from "@/components/PixelBlast";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 function toYMD(d: Date): string {
@@ -184,58 +185,6 @@ function DashboardTextEffect({
     >
       {children}
     </TextEffect>
-  );
-}
-
-function LiveVisitorsCounter({
-  count,
-  details,
-  loaded,
-}: {
-  count: number;
-  details: { activeCarts: number; checkingOut: number; purchased: number };
-  loaded: boolean;
-}) {
-  if (!loaded) return null;
-
-  const behaviorRows = [
-    { label: "Active carts", value: details.activeCarts },
-    { label: "Checking out", value: details.checkingOut },
-    { label: "Purchased", value: details.purchased },
-  ];
-
-  return (
-    <div className="group relative">
-      <div className="flex h-8 cursor-default items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
-        <span className="relative flex h-2 w-2">
-          {count > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
-          <span className={cn("relative inline-flex h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/20")} />
-        </span>
-        {count} online
-      </div>
-
-      <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 w-56 translate-y-1 rounded-xl border border-black/[0.08] bg-white p-4 opacity-0 shadow-[0_10px_30px_rgba(0,0,0,0.08)] transition-all duration-150 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/35">Visitors right now</p>
-            <p className="mt-1 text-2xl font-light leading-none text-black tabular-nums">{count}</p>
-          </div>
-          <span className={cn("mt-1 h-2 w-2 rounded-full", count > 0 ? "bg-emerald-500" : "bg-black/15")} />
-        </div>
-
-        <div className="mt-4 border-t border-black/[0.06] pt-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-black/30">Customer behavior</p>
-          <div className="space-y-2">
-            {behaviorRows.map((row) => (
-              <div key={row.label} className="flex items-center justify-between gap-3 text-[12px]">
-                <span className="text-black/50">{row.label}</span>
-                <span className="font-medium text-black tabular-nums">{row.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -617,7 +566,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6 p-1 lg:p-2">
+    <div className="space-y-6 p-1 lg:p-2 overflow-x-clip">
 
       {/* ── P&L Panel ───────────────────────────────────────────────────── */}
       <motion.div
@@ -625,6 +574,9 @@ export default function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
         className="relative rounded-2xl bg-[#F3F3F3]"
+        // Clip top/sides (rounded) but leave the bottom open so the globe
+        // can flow down behind the Fulfillment Queue card instead of cutting off.
+        style={{ clipPath: "inset(0 0 -100% 0 round 16px)" }}
       >
         {/* Blur overlay for non-admins */}
         {!isAdmin && (
@@ -636,39 +588,14 @@ export default function Dashboard() {
         )}
         <div className={!isAdmin ? "blur-[8px] pointer-events-none select-none" : ""}>
           {/* Header row */}
-          <div className="flex items-center justify-end mb-3">
-            <div className="flex items-center gap-2">
-            {!analytics?.fbConfigured && !analyticsLoading && (
-              <a
-                href="/settings"
-                className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                data-testid="link-connect-facebook"
-              >
-                <Info className="h-3 w-3" />
-                Connect Facebook Ads
-              </a>
-            )}
+          <div className="relative z-10 flex items-center justify-end mb-3">
             {analytics?.fbError && (
               <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
             )}
-            <LiveVisitorsCounter count={liveVisitors.count} details={liveVisitors.details} loaded={liveVisitors.loaded} />
-            <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
-            <button
-              onClick={() => fetchAnalytics(dateRange)}
-              disabled={analyticsLoading}
-              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-30"
-              data-testid="button-refresh-analytics"
-              title="Refresh"
-            >
-              {analyticsLoading
-                ? <Spinner size="sm" />
-                : <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".5"/><path fill="currentColor" d="M7.378 11.63h-.75zm0 .926l-.562.497a.75.75 0 0 0 1.08.044zm2.141-1.015a.75.75 0 0 0-1.038-1.082zm-2.958-1.038a.75.75 0 1 0-1.122.994zm8.37-1.494a.75.75 0 1 0 1.102-1.018zM12.045 6.25c-2.986 0-5.416 2.403-5.416 5.38h1.5c0-2.137 1.747-3.88 3.916-3.88zm-5.416 5.38v.926h1.5v-.926zm1.269 1.467l1.622-1.556l-1.038-1.082l-1.622 1.555zm.042-1.039l-1.378-1.555l-1.122.994l1.377 1.556zm8.094-4.067a5.42 5.42 0 0 0-3.99-1.741v1.5a3.92 3.92 0 0 1 2.889 1.26zm.585 3.453l.56-.498a.75.75 0 0 0-1.08-.043zm-2.139 1.014a.75.75 0 1 0 1.04 1.082zm2.96 1.04a.75.75 0 0 0 1.12-.997zm-8.393 1.507a.75.75 0 0 0-1.094 1.026zm2.888 2.745c2.993 0 5.434-2.4 5.434-5.38h-1.5c0 2.135-1.753 3.88-3.934 3.88zm5.434-5.38v-.926h-1.5v.926zm-1.27-1.467l-1.619 1.555l1.04 1.082l1.618-1.555zm-.04 1.04l1.38 1.554l1.122-.996l-1.381-1.555zM7.952 16.03a5.45 5.45 0 0 0 3.982 1.719v-1.5c-1.143 0-2.17-.48-2.888-1.245z"/></svg>}
-            </button>
-            </div>
           </div>
 
           {/* Metric cards grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3">
             <FinanceMetric
               label="Revenue"
               loading={analyticsLoading}
@@ -706,39 +633,78 @@ export default function Dashboard() {
             />
           </div>
         </div>
-        </motion.div>
 
-      {/* ── Greeting band ─────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05, duration: 0.4 }}
-        className="grid items-center md:grid-cols-[1fr_auto_1fr]"
-      >
-        <div className="hidden md:block" />
-        <div className="text-center">
-          <h2 className="text-3xl font-light text-black">{getDhakaGreeting()}!</h2>
-          <p className="mt-1.5 text-[13px] font-light text-black/45">
-            Let&apos;s continue growing your business.
-          </p>
+        {/* Globe — large, anchored to the right edge and bleeding off the
+            corner behind the content, like the Shopify hero */}
+        <div className="pointer-events-none absolute right-[-170px] top-1/2 z-0 -translate-y-1/2">
+          <GlobeAnalytics className="w-[620px]" />
         </div>
-        <div className="hidden md:flex flex-col items-center justify-self-end">
-          <GlobeAnalytics className="w-[220px]" />
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-foreground/60 tabular-nums">
-            <span className="relative flex h-2 w-2">
-              {liveVisitors.count > 0 && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-              )}
-              <span
-                className={cn(
-                  "relative inline-flex h-2 w-2 rounded-full",
-                  liveVisitors.count > 0 ? "bg-emerald-500" : "bg-black/20",
-                )}
-              />
-            </span>
-            {liveVisitors.count} visiting now
+
+        {/* ── Greeting band — inside the hero, above the globe ───────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.4 }}
+          className="relative z-10 grid items-center md:grid-cols-[1fr_auto_1fr] pb-10 pt-8"
+        >
+          {/* Pixel background — left side only (globe stays on the right) */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-0 z-0 hidden h-full w-1/2 md:block"
+          >
+            <PixelBackground
+              direction="left"
+              gap={7}
+              speed={70}
+              colors="#1a1a1a,#ef4444"
+              opacity={0.09}
+              className="absolute inset-0 h-full w-full"
+            />
           </div>
+
+          <div className="hidden md:block" />
+        <div className="text-center relative z-10">
+          <h2 className="text-5xl font-bold text-black">
+            {getDhakaGreeting()}!
+          </h2>
+          <p className="mt-2 text-base font-light text-black/45">
+            Manage all your operations under one roof.
+          </p>
+
+          {/* Moved cluster — centered below the greeting */}
+          <DateRangePicker value={dateRange} onChange={handleDateRangeChange} triggerClassName="uv-beam rounded-full">
+            <span className="uv-beam group relative rounded-full">
+              <div className="flex h-8 items-center gap-1.5 rounded-full bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" style={{ animationDelay: "0.75s" }} />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                </span>
+                {liveVisitors.count} Online visitors
+              </div>
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-44 -translate-x-1/2 rounded-lg border border-black/10 bg-white p-3 text-[11px] font-medium text-foreground/70 shadow-lg group-hover:block">
+                <div className="flex items-center justify-between py-0.5">
+                  <span>Online visitors</span>
+                  <span className="tabular-nums text-foreground">{liveVisitors.count}</span>
+                </div>
+                <div className="flex items-center justify-between py-0.5">
+                  <span>Add to cart</span>
+                  <span className="tabular-nums text-foreground">{liveVisitors.details.activeCarts}</span>
+                </div>
+                <div className="flex items-center justify-between py-0.5">
+                  <span>Purchasing</span>
+                  <span className="tabular-nums text-foreground">{liveVisitors.details.checkingOut}</span>
+                </div>
+                <div className="flex items-center justify-between py-0.5">
+                  <span>Purchased</span>
+                  <span className="tabular-nums text-foreground">{liveVisitors.details.purchased}</span>
+                </div>
+              </div>
+            </span>
+          </DateRangePicker>
         </div>
+          <div className="hidden md:block" />
+        </motion.div>
       </motion.div>
 
       {/* ── Orders table card ────────────────────────────────────────────── */}
@@ -746,7 +712,7 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
-        className="overflow-hidden rounded-xl border border-black/10 bg-white"
+        className="relative z-10 overflow-hidden rounded-xl border border-black/10 bg-white"
       >
         {/* Toolbar */}
         <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
@@ -892,6 +858,6 @@ export default function Dashboard() {
           fetchAnalytics(dateRange);
         }}
       />
-    </div>
+      </div>
   );
 }
