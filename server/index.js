@@ -9089,7 +9089,7 @@ async function handlePublicHandleInventory(req, res) {
 
 async function handlePublicHandleProductInventory(req, res) {
   try {
-    const orgId = await resolveStorefrontHandle(req.params.handle);
+    const orgId = req.params.storefrontId || (await resolveStorefrontHandle(req.params.handle));
     if (!orgId) {
       res.set("Cache-Control", "no-store");
       return res.status(404).json({ error: "not_found" });
