@@ -4040,7 +4040,7 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
   }
 });
 
-const ORDER_CHAT_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
+const ORDER_CHAT_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4o-mini"]);
 
 app.post("/api/order-chat", rateLimitAI, async (req, res) => {
   try {
