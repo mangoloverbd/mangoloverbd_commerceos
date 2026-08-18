@@ -20,7 +20,8 @@ describe("OrderChat wiring", () => {
     expect(src).toContain("/api/order-chat/apply");
   });
 
-  it("adds the admin quick question about stock", () => {
-    expect(src).toContain("Add 50 stock to M size");
+  it("builds a dynamic admin quick question about stock from products", () => {
+    expect(src).toContain("Add 50 stock to");
+    expect(src).toContain("productsData");
   });
 });

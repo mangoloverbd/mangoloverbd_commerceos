@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { DownloadSimple } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
@@ -110,11 +111,32 @@ export default function OrderChat() {
   const { role } = useUserRole();
   const isAdmin = role === "admin";
 
+  const { data: productsData } = useQuery<{ products: { id: string; name: string; variants: { attributes: Record<string, string> }[] }[] }>({
+    queryKey: ["/api/products"],
+    queryFn: async () => {
+      const res = await apiFetch("/api/products");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const adminStockQuestion = (() => {
+    const products = productsData?.products || [];
+    const withVariants = products.find((p) => p.variants?.length > 0);
+    if (withVariants) {
+      const firstAttr = withVariants.variants[0].attributes;
+      const sizeVal = firstAttr.size || firstAttr.Size || Object.values(firstAttr)[0] || "M";
+      return `Add 50 stock to ${sizeVal} size of ${withVariants.name}`;
+    }
+    if (products.length > 0) return `Add 50 stock to ${products[0].name}`;
+    return null;
+  })();
+
   const quickQuestions = [
     "How many orders are pending?",
     "Show orders sent to Steadfast",
     "What's the total revenue?",
-    ...(isAdmin ? ["Add 50 stock to M size of Cocoa Brown Trouser"] : []),
+    ...(isAdmin && adminStockQuestion ? [adminStockQuestion] : []),
     "Which orders have notes?",
   ];
 
