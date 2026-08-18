@@ -111,25 +111,26 @@ export default function OrderChat() {
   const { role } = useUserRole();
   const isAdmin = role === "admin";
 
-  const { data: productsData, isLoading: productsLoading } = useQuery<{ products: { id: string; name: string; variants: { attributes: Record<string, string> }[] }[] }>({
+  const { data: productsData } = useQuery<{ products: { id: string; name: string; variants: { attributes: Record<string, string> }[] }[] }>({
     queryKey: ["/api/products"],
     queryFn: async () => {
       const res = await apiFetch("/api/products");
       return res.json();
     },
     staleTime: 60_000,
+    placeholderData: { products: [] },
   });
 
   const adminStockQuestion = (() => {
     const products = productsData?.products || [];
+    if (products.length === 0) return "Add 50 stock to a variant";
     const withVariants = products.find((p) => p.variants?.length > 0);
     if (withVariants) {
       const firstAttr = withVariants.variants[0].attributes;
       const sizeVal = firstAttr.size || firstAttr.Size || Object.values(firstAttr)[0] || "M";
       return `Add 50 stock to ${sizeVal} size of ${withVariants.name}`;
     }
-    if (products.length > 0) return `Add 50 stock to ${products[0].name}`;
-    return null;
+    return `Add 50 stock to ${products[0].name}`;
   })();
 
   const adminFraudQuestion = "Which products are running low on stock?";
@@ -138,8 +139,8 @@ export default function OrderChat() {
     "How many orders are pending?",
     "Show orders sent to Steadfast",
     "What's the total revenue?",
-    ...(isAdmin && adminStockQuestion && !productsLoading ? [adminStockQuestion] : []),
-    ...(isAdmin && !productsLoading ? [adminFraudQuestion] : []),
+    ...(isAdmin ? [adminStockQuestion] : []),
+    ...(isAdmin ? [adminFraudQuestion] : []),
     "Which orders have notes?",
   ];
 
