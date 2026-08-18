@@ -23,6 +23,7 @@ import {
   normalizeStorefrontHandle,
   validateStorefrontHandle,
 } from "./storefrontHandle.js";
+import { AI_ACTION_TOOLS, askUserTool, buildRecommendation, executeAiAction } from "./ai-actions.js";
 const { Pool } = pg;
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
@@ -4051,7 +4052,8 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
 
     const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    const canMutate = role === "admin";
 
     // Fetch all data in parallel
     const [
@@ -4208,13 +4210,17 @@ ${JSON.stringify(inboxOrderDetails).slice(0, 8000)}`;
       })),
     ];
 
+    const payload = canMutate
+      ? { model, input, tools: [...AI_ACTION_TOOLS, askUserTool] }
+      : { model, input };
+
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model, input }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -4226,12 +4232,25 @@ ${JSON.stringify(inboxOrderDetails).slice(0, 8000)}`;
     }
 
     const data = await response.json();
-    const text = extractResponsesText(data) || "I couldn't generate a response.";
-
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+
+    for (const item of data.output || []) {
+      if (item.type === "message") {
+        const text = (item.content || []).map((c) => c.text || "").join("");
+        if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
+      } else if (item.type === "function_call") {
+        if (item.name === "ask_user") {
+          const parsed = parseJsonObject(item.arguments);
+          res.write(`data: ${JSON.stringify({ "question": { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
+        } else {
+          const args = parseJsonObject(item.arguments) || {};
+          const reco = canMutate ? buildRecommendation(item.name, args, { products, orders, variantsMap: chatVariantsMap }) : { recommendation: null, alternatives: [] };
+          res.write(`data: ${JSON.stringify({ "action": { call_id: item.call_id, tool: item.name, ...reco } })}\n\n`);
+        }
+      }
+    }
     res.write("data: [DONE]\n\n");
     res.end();
   } catch (e) {
