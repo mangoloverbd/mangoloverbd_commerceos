@@ -22,6 +22,7 @@ const openAIModels = [
   { id: "gpt-5.4", label: "GPT-5.4" },
   { id: "gpt-5.5", label: "GPT-5.5", tag: "Flagship" },
   { id: "gpt-5.4-nano", label: "GPT-5.4 nano", tag: "Fast" },
+  { id: "gpt-4o-mini", label: "GPT-4o mini", tag: "High limit" },
 ];
 
 function modelLabel(id?: string) {
