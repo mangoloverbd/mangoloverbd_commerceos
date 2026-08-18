@@ -93,7 +93,7 @@ export function AppSidebar() {
             routes: [
                 {
                     id: "order-chat",
-                    title: "AI Chat",
+                    title: "Ask Edith",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10H4a2 2 0 0 1-2-2v-8C2 6.477 6.477 2 12 2" opacity=".3" style={{fill: 'var(--fillg)'}}/><path fill="currentColor" d="M15 10H9a1 1 0 0 0-.117 1.993L9 12h6a1 1 0 0 0 .117-1.993zm-3 4H9a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2" style={{fill: 'var(--fillg)'}}/></svg>,
                     link: "/order-chat",
                 },
@@ -229,8 +229,8 @@ export function AppSidebar() {
                         )}
                         title="Billing & Plan"
                     >
-                        <span className="flex h-[17px] w-[17px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
-                            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0"><g clipPath="url(#clip0_billing)"><path d="M15.012 1.5C14.177 1.5 13.5 3.51472 13.5 6H15.012C15.7407 6 16.105 6 16.3306 5.74841C16.5562 5.49682 16.5169 5.1655 16.4384 4.50286C16.2311 2.75357 15.6707 1.5 15.012 1.5Z" stroke="currentColor" strokeWidth="1.125" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M13.5 6.0407V13.9843C13.5 15.1181 13.5 15.685 13.1535 15.9081C12.5873 16.2728 11.7121 15.5081 11.2718 15.2305C10.9081 15.0011 10.7263 14.8864 10.5244 14.8798C10.3063 14.8726 10.1212 14.9826 9.72817 15.2305L8.295 16.1343C7.90838 16.378 7.7151 16.5 7.5 16.5C7.28491 16.5 7.09159 16.378 6.705 16.1343L5.27185 15.2305C4.90811 15.0011 4.72624 14.8864 4.5244 14.8798C4.30629 14.8726 4.1212 14.9826 3.72815 15.2305C3.28796 15.5081 2.41265 16.2728 1.84646 15.9081C1.5 15.685 1.5 15.1181 1.5 13.9843V6.0407C1.5 3.90019 1.5 2.82994 2.15901 2.16497C2.81802 1.5 3.87868 1.5 6 1.5H15" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M4.5 4.5H10.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M6 7.5H4.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/></g></svg>
+                        <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0"><g clipPath="url(#clip0_billing)"><path d="M15.012 1.5C14.177 1.5 13.5 3.51472 13.5 6H15.012C15.7407 6 16.105 6 16.3306 5.74841C16.5562 5.49682 16.5169 5.1655 16.4384 4.50286C16.2311 2.75357 15.6707 1.5 15.012 1.5Z" stroke="currentColor" strokeWidth="1.125" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M13.5 6.0407V13.9843C13.5 15.1181 13.5 15.685 13.1535 15.9081C12.5873 16.2728 11.7121 15.5081 11.2718 15.2305C10.9081 15.0011 10.7263 14.8864 10.5244 14.8798C10.3063 14.8726 10.1212 14.9826 9.72817 15.2305L8.295 16.1343C7.90838 16.378 7.7151 16.5 7.5 16.5C7.28491 16.5 7.09159 16.378 6.705 16.1343L5.27185 15.2305C4.90811 15.0011 4.72624 14.8864 4.5244 14.8798C4.30629 14.8726 4.1212 14.9826 3.72815 15.2305C3.28796 15.5081 2.41265 16.2728 1.84646 15.9081C1.5 15.685 1.5 15.1181 1.5 13.9843V6.0407C1.5 3.90019 1.5 2.82994 2.15901 2.16497C2.81802 1.5 3.87868 1.5 6 1.5H15" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M4.5 4.5H10.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M6 7.5H4.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/></g></svg>
                         </span>
                         {!isCollapsed && (
                             <span className="text-[12.5px] font-medium text-[#333] font-sf-text tracking-normal">Billing & Plan</span>
@@ -248,8 +248,8 @@ export function AppSidebar() {
                         )}
                         title="System Settings"
                     >
-                        <span className="flex h-[17px] w-[17px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" className="text-[#333]"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" d="M12 3v2m0 0a7 7 0 0 0-7 7m7-7a7 7 0 0 1 7 7m0 0h2m-2 0a7 7 0 0 1-7 7m0 0v2m0-2a7 7 0 0 1-7-7m0 0H3m4.5-7.794l1 1.732M18.062 8.5l1.732-1M15.5 18.062l1 1.732M5.938 15.5l-1.732 1m0-9l1.732 1M15.5 5.938l1-1.732M18.062 15.5l1.732 1M8.5 18.062l-1 1.732M12 12L7 7.101M12 12l-1.812 6.762M12 12l6.762-1.812"/></svg>
+                        <span className="flex h-[20px] w-[20px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" className="text-[#333]"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" d="M12 3v2m0 0a7 7 0 0 0-7 7m7-7a7 7 0 0 1 7 7m0 0h2m-2 0a7 7 0 0 1-7 7m0 0v2m0-2a7 7 0 0 1-7-7m0 0H3m4.5-7.794l1 1.732M18.062 8.5l1.732-1M15.5 18.062l1 1.732M5.938 15.5l-1.732 1m0-9l1.732 1M15.5 5.938l1-1.732M18.062 15.5l1.732 1M8.5 18.062l-1 1.732M12 12L7 7.101M12 12l-1.812 6.762M12 12l6.762-1.812"/></svg>
                         </span>
                         {!isCollapsed && (
                             <span className="text-[12.5px] font-medium text-[#333] font-sf-text tracking-normal">System Settings</span>
@@ -260,8 +260,8 @@ export function AppSidebar() {
                 {/* Copyright */}
                 {!isCollapsed && (
                     <div className="flex items-center justify-between px-4 pb-2">
-                        <p className="text-[8px] text-sidebar-foreground/25 whitespace-nowrap">
-                            © 2026 Arc Technology Corporation
+                        <p className="text-[10px] text-sidebar-foreground/25 whitespace-nowrap">
+                            © 2026 Arc Labs Corporation
                         </p>
                         <Popover>
                             <PopoverTrigger asChild>
@@ -286,7 +286,7 @@ export function AppSidebar() {
                                             data-testid={testid}
                                             className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-medium text-foreground/80 transition-colors hover:bg-black/[0.04] hover:text-foreground"
                                         >
-                                            <Icon size={13} className="shrink-0 text-muted-foreground" />
+                                            <Icon size={15} className="shrink-0 text-muted-foreground" />
                                             {label}
                                         </Link>
                                     ))}
