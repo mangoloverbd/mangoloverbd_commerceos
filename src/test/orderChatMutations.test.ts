@@ -30,4 +30,17 @@ describe("order chat AI mutations (source inspection)", () => {
     expect(routeSource).toContain('"action"');
     expect(routeSource).toContain("buildRecommendation");
   });
+
+  it("defines POST /api/order-chat/apply with admin gate + tool allowlist + audit insert", () => {
+    const applyStart = source.indexOf('app.post("/api/order-chat/apply"');
+    expect(applyStart).toBeGreaterThan(-1);
+    const applyEnd = source.indexOf("\n});", applyStart);
+    const applySrc = source.slice(applyStart, applyEnd);
+    expect(applySrc).toContain("getToken");
+    expect(applySrc).toContain("getUser(");
+    expect(applySrc).toMatch(/role\s*!==\s*["']admin["']/);
+    expect(applySrc).toContain("AI_ACTION_TOOLS");
+    expect(applySrc).toContain("executeAiAction");
+    expect(applySrc).toContain("ai_action_log");
+  });
 });

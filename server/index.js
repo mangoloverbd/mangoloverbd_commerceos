@@ -4546,6 +4546,36 @@ ${JSON.stringify(inboxOrderDetails).slice(0, 8000)}`;
   }
 });
 
+// ── Order Chat: apply a proposed AI mutation (admin only) ───────────────────
+app.post("/api/order-chat/apply", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const { call_id, tool, args } = req.body || {};
+    if (!call_id || !tool) return res.status(400).json({ error: "call_id and tool required" });
+    if (!AI_ACTION_TOOLS.some((t) => t.name === tool)) return res.status(400).json({ error: "Unknown tool" });
+
+    const helpers = {
+      saveProductStock, getUniqueProductSlug, purgeProductCache,
+      generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
+      sendBulkSms, getOrgSettings: (k, keys) => getOrgSettings(k, keys),
+    };
+    const { before, after } = await executeAiAction({ supabase, orgId, userId: user.id, tool, args, helpers });
+    await supabase.from("ai_action_log").insert({
+      call_id, org_id: orgId, user_id: user.id, tool, args,
+      before_snapshot: before, after_snapshot: after, applied_at: new Date().toISOString(),
+    });
+    return res.json({ ok: true, before, after });
+  } catch (e) {
+    console.error("[Order Chat apply] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
 // ── Studio: AI Copy Generation ────────────────────────────────────────────────
 app.post("/api/studio/generate", rateLimitAI, async (req, res) => {
   try {
