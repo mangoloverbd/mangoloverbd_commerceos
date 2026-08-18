@@ -132,11 +132,7 @@ export default function OrderChat() {
     return null;
   })();
 
-  const adminFraudQuestion = (() => {
-    const products = productsData?.products || [];
-    if (products.length > 0) return `Create a new product similar to ${products[0].name}`;
-    return "Create a new product";
-  })();
+  const adminFraudQuestion = "Which products are running low on stock?";
 
   const quickQuestions = [
     "How many orders are pending?",
