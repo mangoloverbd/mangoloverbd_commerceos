@@ -4083,7 +4083,7 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
     if (baseProducts.length > 0) {
       const { data: variantRows } = await supabase
         .from("product_variants")
-        .select("product_id, attributes, stock_quantity, price_adjustment")
+        .select("id, product_id, attributes, stock_quantity, price_adjustment")
         .in("product_id", baseProducts.map((p) => p.id))
         .eq("org_id", orgId);
       for (const v of variantRows || []) {
@@ -4131,6 +4131,7 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
 
     const productDetails = products.map((p) => {
       const variants = (chatVariantsMap[p.id] || []).map((v) => ({
+        id: v.id,
         option: Object.entries(v.attributes || {}).map(([k, val]) => `${k}: ${val}`).join(", "),
         available: v.stock_quantity > 0,
         price: v.price_adjustment
