@@ -67,3 +67,37 @@ describe("buildRecommendation", () => {
     expect(r.recommendation).toBeNull();
   });
 });
+
+import { executeAiAction } from "../../server/ai-actions.js";
+
+describe("executeAiAction dispatcher", () => {
+  // Minimal fake supabase builder: each table returns an object with
+  // select/update/insert/delete that return { data, error } via maybeSingle/single.
+  function fakeSupabase(tables) {
+    return new Proxy({}, {
+      get(_t, prop) {
+        if (prop === "from") return (table) => tables[table] ?? { _missing: true };
+        return tables[prop] ?? { _missing: true };
+      },
+    });
+  }
+  const noHelpers = {};
+
+  it("throws on unknown tool", async () => {
+    await expect(
+      executeAiAction({ supabase: fakeSupabase({}), orgId: "o", userId: "u", tool: "nope", args: {}, helpers: noHelpers }),
+    ).rejects.toThrow(/Unknown AI action tool/);
+  });
+
+  it("throws 404-style when target variant missing in org (cross-tenant guard)", async () => {
+    const supabase = fakeSupabase({
+      product_variants: {
+        select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }),
+      },
+    });
+    await expect(
+      executeAiAction({ supabase, orgId: "o", userId: "u", tool: "update_variant",
+        args: { product_id: "p1", variant_id: "vX", fields: { stock_quantity: 5 } }, helpers: noHelpers }),
+    ).rejects.toThrow(/not found/i);
+  });
+});

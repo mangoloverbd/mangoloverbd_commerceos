@@ -310,3 +310,268 @@ export function buildRecommendation(tool, args, ctx = {}) {
 
   return empty;
 }
+
+// ── executeAiAction: the single dispatcher the /apply route calls ──
+// helpers = { saveProductStock, getUniqueProductSlug, purgeProductCache,
+//             generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
+//             sendBulkSms, getOrgSettings }
+// All queries filter by orgId. Throws if the target row is missing in this org.
+
+export async function executeAiAction({ supabase, orgId, userId, tool, args, helpers = {} }) {
+  switch (tool) {
+    case "update_product": {
+      const before = await getProductForAudit(supabase, orgId, args.product_id);
+      if (!before) throw new Error("Product not found in your organization");
+      const update = {};
+      const allowed = ["name", "url", "image_url", "selling_price", "cog", "published", "description", "compare_at_price"];
+      for (const k of allowed) if (args.fields?.[k] !== undefined) update[k] = args.fields[k];
+      const hasStock = args.fields?.stock_quantity !== undefined;
+      if (!Object.keys(update).length && !hasStock) throw new Error("Nothing to update");
+      if (update.published === true) {
+        update.slug = await helpers.getUniqueProductSlug(supabase, orgId, args.product_id, before.slug, update.name || before.name);
+        update.published_at = new Date().toISOString();
+      } else if (update.published === false) {
+        update.published_at = null;
+      }
+      let after = before;
+      if (Object.keys(update).length) {
+        const { data, error } = await supabase.from("products").update(update)
+          .eq("id", args.product_id).eq("org_id", orgId).select().single();
+        if (error) throw error;
+        after = data;
+      }
+      if (hasStock) await helpers.saveProductStock(orgId, args.product_id, args.fields.stock_quantity);
+      // Cache purge + embedding regen (best-effort, non-blocking)
+      const onlyStock = hasStock && Object.keys(update).length === 0;
+      const isUnpublishing = update.published === false;
+      if (!onlyStock && (after.published || isUnpublishing)) {
+        helpers.purgeProductCache(orgId, args.product_id, { listChanged: update.published !== undefined, warm: !isUnpublishing }).catch(() => {});
+      }
+      if (update.image_url && after.image_url) {
+        helpers.generateProductEmbedding(after.image_url).then(({ embedding, description }) => {
+          if (embedding) {
+            const vectorStr = `[${embedding.join(",")}]`;
+            supabase.from("products").update({ image_embedding: vectorStr, image_description: description })
+              .eq("id", after.id).eq("org_id", orgId).then(() => {});
+          }
+        }).catch(() => {});
+      }
+      return { before, after: { ...after, stock_quantity: hasStock ? Math.max(0, parseInt(args.fields.stock_quantity, 10) || 0) : after.stock_quantity } };
+    }
+
+    case "update_variant": {
+      const before = await getVariantForAudit(supabase, orgId, args.product_id, args.variant_id);
+      if (!before) throw new Error("Variant not found in your organization");
+      const patch = {};
+      if (args.fields?.attributes !== undefined) {
+        if (typeof args.fields.attributes !== "object" || Object.keys(args.fields.attributes).length === 0)
+          throw new Error("attributes must be a non-empty object");
+        patch.attributes = Object.fromEntries(
+          Object.entries(args.fields.attributes).map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
+        );
+      }
+      if (args.fields?.cog !== undefined) patch.cog = parseFloat(args.fields.cog) || 0;
+      if (args.fields?.stock_quantity !== undefined) patch.stock_quantity = Math.max(0, parseInt(args.fields.stock_quantity, 10) || 0);
+      if (args.fields?.price_adjustment !== undefined) patch.price_adjustment = parseFloat(args.fields.price_adjustment) || 0;
+      const { data, error } = await supabase.from("product_variants").update(patch)
+        .eq("id", args.variant_id).eq("product_id", args.product_id).eq("org_id", orgId).select().single();
+      if (error) throw error;
+      return { before, after: data };
+    }
+
+    case "update_order": {
+      const before = await getOrderForAudit(supabase, orgId, args.order_id);
+      if (!before) throw new Error("Order not found in your organization");
+      const allowed = ["status", "notes", "fulfillment_status"];
+      const update = {};
+      for (const k of allowed) if (args.fields?.[k] !== undefined) update[k] = args.fields[k];
+      if (!Object.keys(update).length) throw new Error("Nothing to update");
+      await supabase.from("orders").update(update).eq("id", args.order_id).eq("org_id", orgId);
+      const { data, error } = await supabase.from("orders").select("*").eq("id", args.order_id).eq("org_id", orgId).single();
+      if (error) throw error;
+      return { before, after: data };
+    }
+
+    case "dispatch_to_courier": {
+      const before = await getOrdersForAudit(supabase, orgId, args.order_ids);
+      if (before.length !== args.order_ids.length) throw new Error("One or more orders not found in your organization");
+      const results = [];
+      for (const orderId of args.order_ids) {
+        const order = before.find((o) => o.id === orderId);
+        if (order.sent_to_courier) { results.push({ orderId, skipped: "already sent", consignment_id: order.consignment_id }); continue; }
+        const cfg = await helpers.getOrgSettings(orgId, args.courier === "steadfast"
+          ? ["steadfast_api_key", "steadfast_secret_key"]
+          : ["pathao_client_id", "pathao_client_secret", "pathao_username", "pathao_password", "pathao_store_id"]);
+        if (args.courier === "steadfast") {
+          results.push(await dispatchOneSteadfast(supabase, orgId, order, cfg));
+        } else {
+          results.push(await dispatchOnePathao(supabase, orgId, order, cfg, helpers));
+        }
+      }
+      const after = await getOrdersForAudit(supabase, orgId, args.order_ids);
+      return { before, after: { results, orders: after } };
+    }
+
+    case "check_fraud": {
+      const apiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
+      if (!apiKey) throw new Error("FraudShield API key not configured in environment");
+      const results = [];
+      for (const phone of args.phones) {
+        const { fraudData, errorMessage } = await helpers.checkFraudStatus(phone, apiKey);
+        results.push({ phone, fraudData, errorMessage });
+      }
+      return { before: { phones: args.phones }, after: { results } };
+    }
+
+    case "create_product": {
+      const row = {
+        name: String(args.name || "").trim(),
+        description: args.description ?? null,
+        selling_price: args.selling_price != null ? parseFloat(args.selling_price) : null,
+        compare_at_price: args.compare_at_price != null ? parseFloat(args.compare_at_price) : null,
+        cog: args.cog != null ? parseFloat(args.cog) : 0,
+        url: null, image_url: null,
+        slug: args.published === true ? await helpers.getUniqueProductSlug(supabase, orgId, crypto.randomUUID(), null, String(args.name || "").trim()) : null,
+        published: args.published === true,
+        published_at: args.published === true ? new Date().toISOString() : null,
+        source_url: "ai_chat",
+        org_id: orgId,
+      };
+      const { data: product, error: pErr } = await supabase.from("products").insert(row).select().single();
+      if (pErr) throw pErr;
+      if (args.stock_quantity !== undefined) await helpers.saveProductStock(orgId, product.id, args.stock_quantity);
+      const variantRows = [];
+      for (const v of args.variants || []) {
+        if (!v.attributes || typeof v.attributes !== "object" || Object.keys(v.attributes).length === 0) continue;
+        variantRows.push({
+          product_id: product.id, org_id: orgId,
+          attributes: Object.fromEntries(Object.entries(v.attributes).map(([k, val]) => [k.trim().toLowerCase(), String(val).trim()])),
+          cog: v.cog != null ? parseFloat(v.cog) : 0,
+          stock_quantity: Math.max(0, parseInt(v.stock_quantity, 10) || 0),
+          price_adjustment: v.price_adjustment != null ? parseFloat(v.price_adjustment) : 0,
+        });
+      }
+      let variants = [];
+      if (variantRows.length) {
+        const { data: vData, error: vErr } = await supabase.from("product_variants").insert(variantRows).select();
+        if (vErr) throw vErr;
+        variants = vData;
+      }
+      if (args.published === true) helpers.purgeProductCache(orgId, product.id, { listChanged: true, warm: true }).catch(() => {});
+      return { before: null, after: { product, variants } };
+    }
+
+    default:
+      throw new Error(`Unknown AI action tool: ${tool}`);
+  }
+}
+
+// ── single-order courier dispatch helpers (used by dispatch_to_courier) ──
+
+async function dispatchOneSteadfast(supabase, orgId, order, cfg) {
+  const apiKey = cfg["steadfast_api_key"];
+  const secretKey = cfg["steadfast_secret_key"];
+  if (!apiKey || !secretKey) throw new Error("Steadfast credentials not configured. Go to Settings → Integrations.");
+  const cleanedPhone = normalizeBdPhoneLocal(order.phone || "");
+  if (!cleanedPhone || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01"))
+    return { orderId: order.id, error: "Invalid phone number" };
+  const invoice = `ORD-${String(order.order_number || order.id.slice(-8)).replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase()}`;
+  const payload = {
+    invoice,
+    recipient_name: order.customer_name || "Customer",
+    recipient_phone: cleanedPhone,
+    recipient_address: order.address || "No address provided",
+    cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
+    note: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
+  };
+  const sfRes = await fetch("https://portal.packzy.com/api/v1/create_order", {
+    method: "POST",
+    headers: { "Api-Key": apiKey, "Secret-Key": secretKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const sfData = await sfRes.json();
+  if (sfData.status !== 200) {
+    const sfError = sfData.message || (sfData.errors ? JSON.stringify(sfData.errors) : "Steadfast rejected the order");
+    await supabase.from("orders").update({ courier_message: sfError }).eq("id", order.id).eq("org_id", orgId);
+    return { orderId: order.id, error: sfError };
+  }
+  const consignment = sfData.consignment;
+  await supabase.from("orders").update({
+    sent_to_courier: true,
+    consignment_id: String(consignment.consignment_id),
+    tracking_code: consignment.tracking_code,
+    courier_status: consignment.status,
+    courier_message: "Sent to Steadfast successfully",
+    courier_name: "steadfast",
+  }).eq("id", order.id).eq("org_id", orgId);
+  const { data: updated } = await supabase.from("orders").select("*").eq("id", order.id).eq("org_id", orgId).single();
+  return { orderId: order.id, consignment, order: updated };
+}
+
+async function dispatchOnePathao(supabase, orgId, order, cfg, helpers) {
+  // Pathao token fetch (not cached, per AGENTS.md §7)
+  const tokenRes = await fetch("https://api.pathao.com/v1/issues/access-token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      client_id: cfg["pathao_client_id"], client_secret: cfg["pathao_client_secret"],
+      username: cfg["pathao_username"], password: cfg["pathao_password"], grant_type: "password",
+    }),
+  });
+  const tokenData = await tokenRes.json().catch(() => ({}));
+  if (!tokenData.access_token) return { orderId: order.id, error: "Pathao auth failed" };
+  const cleanedPhone = normalizeBdPhoneLocal(order.phone || "");
+  if (!cleanedPhone || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01"))
+    return { orderId: order.id, error: "Invalid phone number" };
+  const payload = {
+    store_id: parseInt(cfg["pathao_store_id"], 10),
+    merchant_order_id: String(order.order_number || order.id.slice(-8)),
+    recipient_name: order.customer_name || "Customer",
+    recipient_phone: cleanedPhone,
+    recipient_address: order.address || "No address provided",
+    recipient_city: "1",
+    recipient_zone: "1",
+    recipient_area: "1",
+    delivery_type: "48",
+    item_type: "2",
+    item_quantity: order.quantity || 1,
+    item_weight: "0.5",
+    amount_to_collect: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
+    special_instruction: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
+  };
+  const pRes = await fetch("https://api.pathao.com/v1/orders", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tokenData.access_token}`, "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const pData = await pRes.json().catch(() => ({}));
+  if (pData.code !== 200) {
+    const pError = pData.message || "Pathao rejected the order";
+    await supabase.from("orders").update({ courier_message: pError }).eq("id", order.id).eq("org_id", orgId);
+    return { orderId: order.id, error: pError };
+  }
+  const consignment = pData.data || {};
+  await supabase.from("orders").update({
+    sent_to_courier: true,
+    consignment_id: String(consignment.consignment_id || consignment.order_id || ""),
+    tracking_code: String(consignment.tracking_code || ""),
+    courier_status: "assigned",
+    courier_message: "Sent to Pathao successfully",
+    courier_name: "pathao",
+  }).eq("id", order.id).eq("org_id", orgId);
+  const { data: updated } = await supabase.from("orders").select("*").eq("id", order.id).eq("org_id", orgId).single();
+  return { orderId: order.id, consignment, order: updated };
+}
+
+// local phone normalizer (mirrors server/index.js normalizeBdPhone; kept here to avoid circular import)
+function normalizeBdPhoneLocal(phone) {
+  if (!phone) return null;
+  let p = String(phone).replace(/[^\d+]/g, "");
+  if (p.startsWith("+880")) p = "0" + p.slice(4);
+  else if (p.startsWith("880")) p = "0" + p.slice(3);
+  else if (p.startsWith("+")) p = p.slice(1);
+  if (p.length === 13 && p.startsWith("880")) p = "0" + p.slice(3);
+  if (p.length === 10 && p.startsWith("1")) p = "0" + p;
+  if (p.length === 11 && p.startsWith("01")) return p;
+  return null;
+}
