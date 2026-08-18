@@ -5,7 +5,7 @@ export const AI_ACTION_TOOLS = [
   {
     type: "function",
     name: "update_product",
-    description: "Update core fields of an existing product. Use when the merchant asks to change a product's name, price, compare-at price, COG, stock (only when the product has NO variants), or published state.",
+    description: "Update core fields of an existing product. Use when the merchant asks to change a product's name, price, compare-at price, COG, stock (only when the product has NO variants), or published state. Set unused fields to null.",
     strict: true,
     parameters: {
       type: "object",
@@ -16,13 +16,14 @@ export const AI_ACTION_TOOLS = [
         fields: {
           type: "object",
           additionalProperties: false,
+          required: ["name", "selling_price", "compare_at_price", "cog", "stock_quantity", "published"],
           properties: {
-            name:             { type: "string" },
-            selling_price:    { type: "number", minimum: 0 },
+            name:             { type: ["string", "null"] },
+            selling_price:    { type: ["number", "null"], minimum: 0 },
             compare_at_price: { type: ["number", "null"], minimum: 0 },
-            cog:              { type: "number", minimum: 0 },
-            stock_quantity:   { type: "integer", minimum: 0, description: "Only when product has no variants" },
-            published:        { type: "boolean" },
+            cog:              { type: ["number", "null"], minimum: 0 },
+            stock_quantity:   { type: ["integer", "null"], minimum: 0, description: "Only when product has no variants. Set to null if not updating." },
+            published:        { type: ["boolean", "null"] },
           },
         },
       },
@@ -31,7 +32,7 @@ export const AI_ACTION_TOOLS = [
   {
     type: "function",
     name: "update_variant",
-    description: "Update a single product variant's stock, COG, price adjustment, or attributes. This is the tool for 'add 50 stock to M size of product X' — resolve the variant by matching the attributes (e.g. size:M) against the variants list in PRODUCTS & STOCK context.",
+    description: "Update a single product variant's stock, COG, price adjustment, or attributes. This is the tool for 'add 50 stock to M size of product X' — resolve the variant by matching the attributes (e.g. size:M) against the variants list in PRODUCTS & STOCK context. Set unused fields to null.",
     strict: true,
     parameters: {
       type: "object",
@@ -43,11 +44,12 @@ export const AI_ACTION_TOOLS = [
         fields: {
           type: "object",
           additionalProperties: false,
+          required: ["stock_quantity", "cog", "price_adjustment", "attributes"],
           properties: {
-            stock_quantity:   { type: "integer", minimum: 0 },
-            cog:              { type: "number", minimum: 0 },
-            price_adjustment: { type: "number" },
-            attributes:       { type: "object", additionalProperties: { type: "string" } },
+            stock_quantity:   { type: ["integer", "null"], minimum: 0 },
+            cog:              { type: ["number", "null"], minimum: 0 },
+            price_adjustment: { type: ["number", "null"] },
+            attributes:       { type: ["string", "null"], description: "JSON object of attribute key-value pairs, e.g. \"{\\\"size\\\":\\\"M\\\",\\\"color\\\":\\\"red\\\"}\". Set to null if not updating." },
           },
         },
       },
@@ -56,7 +58,7 @@ export const AI_ACTION_TOOLS = [
   {
     type: "function",
     name: "update_order",
-    description: "Update an order's status, notes, or fulfillment status. Use for 'cancel order #1234', 'mark #1001 as confirmed', 'add a note to #998'.",
+    description: "Update an order's status, notes, or fulfillment status. Use for 'cancel order #1234', 'mark #1001 as confirmed', 'add a note to #998'. Set unused fields to null.",
     strict: true,
     parameters: {
       type: "object",
@@ -67,10 +69,11 @@ export const AI_ACTION_TOOLS = [
         fields: {
           type: "object",
           additionalProperties: false,
+          required: ["status", "fulfillment_status", "notes"],
           properties: {
-            status:             { type: "string", enum: ["pending", "confirmed", "cancelled"] },
-            fulfillment_status: { type: "string" },
-            notes:              { type: "string" },
+            status:             { type: ["string", "null"], enum: ["pending", "confirmed", "cancelled", null] },
+            fulfillment_status: { type: ["string", "null"] },
+            notes:              { type: ["string", "null"] },
           },
         },
       },
@@ -108,31 +111,31 @@ export const AI_ACTION_TOOLS = [
   {
     type: "function",
     name: "create_product",
-    description: "Create a new product with optional variants. Use when the merchant asks to add a product that doesn't exist yet.",
+    description: "Create a new product with optional variants. Use when the merchant asks to add a product that doesn't exist yet. Set optional fields you don't need to null and variants to an empty array if none.",
     strict: true,
     parameters: {
       type: "object",
       additionalProperties: false,
-      required: ["name"],
+      required: ["name", "description", "selling_price", "compare_at_price", "cog", "stock_quantity", "published", "variants"],
       properties: {
         name:             { type: "string" },
         description:      { type: ["string", "null"] },
         selling_price:    { type: ["number", "null"], minimum: 0 },
         compare_at_price: { type: ["number", "null"], minimum: 0 },
         cog:              { type: ["number", "null"], minimum: 0 },
-        stock_quantity:   { type: "integer", minimum: 0 },
-        published:        { type: "boolean" },
+        stock_quantity:   { type: ["integer", "null"], minimum: 0 },
+        published:        { type: ["boolean", "null"] },
         variants: {
           type: "array",
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["attributes", "stock_quantity"],
+            required: ["attributes", "stock_quantity", "cog", "price_adjustment"],
             properties: {
-              attributes:       { type: "object", additionalProperties: { type: "string" } },
+              attributes:       { type: "string", description: "JSON object of attribute key-value pairs, e.g. \"{\\\"size\\\":\\\"M\\\",\\\"color\\\":\\\"red\\\"}\"" },
               stock_quantity:   { type: "integer", minimum: 0 },
-              cog:              { type: "number", minimum: 0 },
-              price_adjustment: { type: "number" },
+              cog:              { type: ["number", "null"], minimum: 0 },
+              price_adjustment: { type: ["number", "null"] },
             },
           },
         },
@@ -324,8 +327,8 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       if (!before) throw new Error("Product not found in your organization");
       const update = {};
       const allowed = ["name", "url", "image_url", "selling_price", "cog", "published", "description", "compare_at_price"];
-      for (const k of allowed) if (args.fields?.[k] !== undefined) update[k] = args.fields[k];
-      const hasStock = args.fields?.stock_quantity !== undefined;
+      for (const k of allowed) if (args.fields?.[k] != null) update[k] = args.fields[k];
+      const hasStock = args.fields?.stock_quantity != null;
       if (!Object.keys(update).length && !hasStock) throw new Error("Nothing to update");
       if (update.published === true) {
         update.slug = await helpers.getUniqueProductSlug(supabase, orgId, args.product_id, before.slug, update.name || before.name);
@@ -341,7 +344,6 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
         after = data;
       }
       if (hasStock) await helpers.saveProductStock(orgId, args.product_id, args.fields.stock_quantity);
-      // Cache purge + embedding regen (best-effort, non-blocking)
       const onlyStock = hasStock && Object.keys(update).length === 0;
       const isUnpublishing = update.published === false;
       if (!onlyStock && (after.published || isUnpublishing)) {
@@ -363,16 +365,20 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       const before = await getVariantForAudit(supabase, orgId, args.product_id, args.variant_id);
       if (!before) throw new Error("Variant not found in your organization");
       const patch = {};
-      if (args.fields?.attributes !== undefined) {
-        if (typeof args.fields.attributes !== "object" || Object.keys(args.fields.attributes).length === 0)
+      if (args.fields?.attributes != null) {
+        let attrs = args.fields.attributes;
+        if (typeof attrs === "string") {
+          try { attrs = JSON.parse(attrs); } catch { throw new Error("attributes must be valid JSON"); }
+        }
+        if (typeof attrs !== "object" || Object.keys(attrs).length === 0)
           throw new Error("attributes must be a non-empty object");
         patch.attributes = Object.fromEntries(
-          Object.entries(args.fields.attributes).map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
+          Object.entries(attrs).map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
         );
       }
-      if (args.fields?.cog !== undefined) patch.cog = parseFloat(args.fields.cog) || 0;
-      if (args.fields?.stock_quantity !== undefined) patch.stock_quantity = Math.max(0, parseInt(args.fields.stock_quantity, 10) || 0);
-      if (args.fields?.price_adjustment !== undefined) patch.price_adjustment = parseFloat(args.fields.price_adjustment) || 0;
+      if (args.fields?.cog != null) patch.cog = parseFloat(args.fields.cog) || 0;
+      if (args.fields?.stock_quantity != null) patch.stock_quantity = Math.max(0, parseInt(args.fields.stock_quantity, 10) || 0);
+      if (args.fields?.price_adjustment != null) patch.price_adjustment = parseFloat(args.fields.price_adjustment) || 0;
       const { data, error } = await supabase.from("product_variants").update(patch)
         .eq("id", args.variant_id).eq("product_id", args.product_id).eq("org_id", orgId).select().single();
       if (error) throw error;
@@ -384,7 +390,7 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       if (!before) throw new Error("Order not found in your organization");
       const allowed = ["status", "notes", "fulfillment_status"];
       const update = {};
-      for (const k of allowed) if (args.fields?.[k] !== undefined) update[k] = args.fields[k];
+      for (const k of allowed) if (args.fields?.[k] != null) update[k] = args.fields[k];
       if (!Object.keys(update).length) throw new Error("Nothing to update");
       await supabase.from("orders").update(update).eq("id", args.order_id).eq("org_id", orgId);
       const { data, error } = await supabase.from("orders").select("*").eq("id", args.order_id).eq("org_id", orgId).single();
@@ -439,13 +445,17 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       };
       const { data: product, error: pErr } = await supabase.from("products").insert(row).select().single();
       if (pErr) throw pErr;
-      if (args.stock_quantity !== undefined) await helpers.saveProductStock(orgId, product.id, args.stock_quantity);
+      if (args.stock_quantity != null) await helpers.saveProductStock(orgId, product.id, args.stock_quantity);
       const variantRows = [];
       for (const v of args.variants || []) {
-        if (!v.attributes || typeof v.attributes !== "object" || Object.keys(v.attributes).length === 0) continue;
+        let attrs = v.attributes;
+        if (typeof attrs === "string") {
+          try { attrs = JSON.parse(attrs); } catch { continue; }
+        }
+        if (!attrs || typeof attrs !== "object" || Object.keys(attrs).length === 0) continue;
         variantRows.push({
           product_id: product.id, org_id: orgId,
-          attributes: Object.fromEntries(Object.entries(v.attributes).map(([k, val]) => [k.trim().toLowerCase(), String(val).trim()])),
+          attributes: Object.fromEntries(Object.entries(attrs).map(([k, val]) => [k.trim().toLowerCase(), String(val).trim()])),
           cog: v.cog != null ? parseFloat(v.cog) : 0,
           stock_quantity: Math.max(0, parseInt(v.stock_quantity, 10) || 0),
           price_adjustment: v.price_adjustment != null ? parseFloat(v.price_adjustment) : 0,
