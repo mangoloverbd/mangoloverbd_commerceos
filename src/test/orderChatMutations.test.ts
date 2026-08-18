@@ -43,4 +43,15 @@ describe("order chat AI mutations (source inspection)", () => {
     expect(applySrc).toContain("executeAiAction");
     expect(applySrc).toContain("ai_action_log");
   });
+
+  it("defines POST /api/order-chat/answer with admin gate and streams SSE", () => {
+    const ansStart = source.indexOf('app.post("/api/order-chat/answer"');
+    expect(ansStart).toBeGreaterThan(-1);
+    const ansEnd = source.indexOf("\n});", ansStart);
+    const ansSrc = source.slice(ansStart, ansEnd);
+    expect(ansSrc).toContain("getToken");
+    expect(ansSrc).toMatch(/role\s*!==\s*["']admin["']/);
+    expect(ansSrc).toContain("text/event-stream");
+    expect(ansSrc).toContain("function_call_output");
+  });
 });

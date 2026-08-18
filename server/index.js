@@ -4289,6 +4289,68 @@ app.post("/api/order-chat/apply", rateLimitAI, async (req, res) => {
   }
 });
 
+// ── Order Chat: resume after a clarification answer (admin only) ────────────
+app.post("/api/order-chat/answer", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+
+    const model = ORDER_CHAT_MODELS.has(req.body?.model) ? req.body.model : "gpt-5.4-mini";
+    const { call_id, answers, priorMessages } = req.body || {};
+    if (!call_id || !Array.isArray(answers)) return res.status(400).json({ error: "call_id and answers required" });
+
+    const answerText = answers.map((a, i) => {
+      const picked = (a.selected || []).map((idx) => a.options?.[idx]).filter(Boolean);
+      const parts = [...picked];
+      if (a.custom?.trim()) parts.push(`(custom: ${a.custom.trim()})`);
+      return `Q${i + 1}: ${a.q}\nA: ${parts.join(", ") || "(no answer)"}`;
+    }).join("\n\n");
+
+    const input = [
+      ...priorMessages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
+      { type: "function_call_output", call_id, output: answerText },
+    ];
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, input, tools: [...AI_ACTION_TOOLS, askUserTool] }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      const message = parseOpenAIError(response.status, body);
+      return res.status([401, 403, 429].includes(response.status) ? response.status : 502).json({ error: message });
+    }
+    const data = await response.json();
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    for (const item of data.output || []) {
+      if (item.type === "message") {
+        const text = (item.content || []).map((c) => c.text || "").join("");
+        if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
+      } else if (item.type === "function_call") {
+        if (item.name === "ask_user") {
+          const parsed = parseJsonObject(item.arguments);
+          res.write(`data: ${JSON.stringify({ question: { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
+        } else {
+          const args = parseJsonObject(item.arguments) || {};
+          res.write(`data: ${JSON.stringify({ action: { call_id: item.call_id, tool: item.name, recommendation: null, alternatives: [] } })}\n\n`);
+        }
+      }
+    }
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (e) {
+    console.error("[Order Chat answer] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
 // ── Studio: AI Copy Generation ────────────────────────────────────────────────
 app.post("/api/studio/generate", rateLimitAI, async (req, res) => {
   try {
