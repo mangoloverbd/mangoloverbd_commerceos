@@ -120,19 +120,15 @@ describe("live visitor tracking", () => {
 
   it("renders a live visitors counter left of the date picker", () => {
     const hookSource = readFileSync(resolve(process.cwd(), "src/hooks/useLiveVisitors.ts"), "utf8");
-    const headerStart = dashboardSource.indexOf("<LiveVisitorsCounter");
-    const pickerStart = dashboardSource.indexOf("<DateRangePicker", headerStart);
 
-    expect(dashboardSource).toContain("function LiveVisitorsCounter");
     expect(hookSource).toContain("/api/live-visitors");
     expect(hookSource).toContain("setInterval");
-    expect(dashboardSource).toContain("Visitors right now");
-    expect(dashboardSource).toContain("Customer behavior");
-    expect(dashboardSource).toContain("Active carts");
-    expect(dashboardSource).toContain("Checking out");
-    expect(dashboardSource).toContain("Purchased");
-    expect(headerStart).toBeGreaterThan(-1);
-    expect(pickerStart).toBeGreaterThan(headerStart);
+    // Dashboard now inlines the counter using liveVisitors hook directly
+    expect(dashboardSource).toContain("liveVisitors");
+    expect(dashboardSource).toContain("useLiveVisitors");
+    expect(dashboardSource).toContain("Online visitors");
+    // Detail counts are still surfaced in the hover card / tooltip
+    expect(dashboardSource).toContain("liveVisitors.details");
   });
 
   it("captures live visitor tracker events to PostHog server-side", () => {

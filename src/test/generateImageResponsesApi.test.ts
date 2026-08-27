@@ -10,7 +10,8 @@ describe("generate image endpoint", () => {
   );
 
   it("uses the Responses API image generation tool", () => {
-    expect(routeSource).toContain("https://api.openai.com/v1/responses");
+    // Route now delegates to aiResponsesCompletion which hits ${AI_BASE_URL}/responses
+    expect(routeSource).toContain("aiResponsesCompletion");
     expect(routeSource).toContain('type: "image_generation"');
     expect(routeSource).toContain('tool_choice: { type: "image_generation" }');
   });

@@ -21,7 +21,8 @@ describe("OrderChat wiring", () => {
   });
 
   it("builds a dynamic admin quick question about stock from products", () => {
-    expect(src).toContain("Add 50 stock to");
-    expect(src).toContain("productsData");
+    // Quick questions are now static strings rendered on first paint to avoid flicker
+    expect(src).toContain("Add stock to a product variant");
+    expect(src).toContain("quickQuestions");
   });
 });

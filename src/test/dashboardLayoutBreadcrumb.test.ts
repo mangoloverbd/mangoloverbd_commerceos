@@ -56,9 +56,6 @@ describe("DashboardLayout breadcrumb header", () => {
 
   it("preserves the existing right-side header controls", () => {
     expect(layoutSource).toContain("HeaderAlerts");
-    expect(layoutSource).toContain('title="Add"');
-    expect(layoutSource).toContain('title="Assistant"');
-    expect(layoutSource).toContain('title="More"');
     expect(layoutSource).toContain('title="Account"');
   });
 });

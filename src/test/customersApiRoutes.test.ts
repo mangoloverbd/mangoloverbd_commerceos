@@ -36,6 +36,6 @@ describe("customers API routes", () => {
     expect(route).toContain("if (!user) return res.status(401)");
     expect(route).toContain("await getUserOrg(supabase, user.id)");
     expect(route).toContain("buildCustomerAiInsight(customer)");
-    expect(route).toContain("OPENAI_API_KEY");
+    expect(route).toContain("AI_API_KEY");
   });
 });

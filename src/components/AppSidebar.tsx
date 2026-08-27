@@ -263,7 +263,7 @@ export function AppSidebar() {
                 {!isCollapsed && (
                     <div className="flex items-center justify-between px-4 pb-2">
                         <p className="text-[10px] text-sidebar-foreground/25 whitespace-nowrap">
-                            © 2026 Arc Labs Corporation
+                            © 2026 Commerce OS
                         </p>
                         <Popover>
                             <PopoverTrigger asChild>

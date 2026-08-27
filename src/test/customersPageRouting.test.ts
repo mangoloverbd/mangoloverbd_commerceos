@@ -22,10 +22,7 @@ describe("Customers page routing", () => {
 
     expect(pageSource).toContain('apiFetch("/api/customers")');
     expect(pageSource).toContain('/api/customers/ai-insight');
-    expect(pageSource).toContain('import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/motion-tabs"');
-    expect(pageSource).toContain('<Tabs value={source}');
-    expect(pageSource).toContain('<TabsList');
-    expect(pageSource).toContain('<TabsTrigger');
+    expect(pageSource).toContain('CustomerDataTable');
     expect(pageSource).not.toContain('AI source-aware profiles');
     expect(pageSource).toContain('custom_website: "Custom Website"');
     expect(pageSource).toContain('shopify: "Shopify"');
@@ -72,9 +69,8 @@ describe("Customers page routing", () => {
     expect(pageSource).toContain("customerPopoverTransition");
     expect(pageSource).toContain("scale: 0.96");
     expect(pageSource).toContain('filter: "blur(8px)"');
-    expect(pageSource).toContain("min-h-[112px] rounded-xl border border-black/10 bg-white px-5 py-4");
+    expect(pageSource).toContain("min-h-[92px]");
     expect(pageSource).toContain("grid gap-3 sm:grid-cols-2 lg:grid-cols-4");
-    expect(pageSource).toContain("min-h-[112px]");
     expect(pageSource).not.toContain("clipPath");
   });
 });
