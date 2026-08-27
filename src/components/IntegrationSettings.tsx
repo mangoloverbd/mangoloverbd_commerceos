@@ -659,7 +659,7 @@ function MetaBusinessPanel() {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
-      className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white"
+      className="overflow-hidden rounded-2xl bg-black/[0.04]"
     >
       <div className="flex items-start gap-3 border-b border-black/[0.06] px-4 py-4">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#0866FF]">
@@ -1128,7 +1128,7 @@ function ShopifyDetailView({
         </div>
       ) : status?.connected ? (
         <div className="space-y-4">
-          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-5">
+          <div className="overflow-hidden rounded-2xl bg-black/[0.04] p-5">
             <div className="flex items-center gap-3">
               <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
               <div>
@@ -1150,7 +1150,7 @@ function ShopifyDetailView({
       ) : (
         <div className="space-y-5">
           {/* Setup instructions */}
-          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-5 space-y-3">
+          <div className="overflow-hidden rounded-2xl bg-black/[0.04] p-5 space-y-3">
             <p className="text-[13px] font-medium text-black">Setup Instructions</p>
             <ol className="text-[12px] text-black/60 space-y-1.5 list-decimal list-inside">
               <li>Go to your Shopify Admin → <span className="font-medium text-black/80">Settings → Apps and sales channels</span></li>
@@ -1166,7 +1166,7 @@ function ShopifyDetailView({
           </div>
 
           {/* Credentials form */}
-          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+          <div className="overflow-hidden rounded-2xl bg-black/[0.04] divide-y divide-black/[0.06]">
             {section.fields.map((f) => (
               <div key={f.key} className="px-5 py-4">
                 <FieldRow
@@ -1329,7 +1329,7 @@ function DetailView({
       </div>
 
       {/* Fields grouped in Apple list style */}
-      <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+      <div className="overflow-hidden rounded-2xl bg-black/[0.04] divide-y divide-black/[0.06]">
         {section.fields.map((f) => (
           <div key={f.key} className="px-5 py-4">
             <FieldRow
@@ -1351,9 +1351,16 @@ function DetailView({
               <p className="text-[13px] font-semibold text-black">Live Visitor Tracking</p>
               <p className="text-[11px] text-black/40">Show real-time custom website visitors on the dashboard.</p>
             </div>
+
+            <div className="rounded-[10px] border border-emerald-500/15 bg-emerald-500/[0.04] p-3">
+              <p className="text-[11px] font-medium text-black/60">Your storefront is tracked automatically</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-black/45">
+                Any storefront deployed through this Merchant Suite already includes the tracker — visitor activity appears on your dashboard with no setup. Use the snippet below only if you also have a separate external website outside the storefront.
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-3 rounded-[14px] border border-black/[0.08] bg-white p-5">
+          <div className="space-y-3 rounded-2xl bg-black/[0.04] p-5">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/35">Embed this script tag</p>
               <p className="mt-1 text-[12px] leading-relaxed text-black/45">
@@ -1652,7 +1659,7 @@ export function IntegrationSettings() {
               return (
                 <div key={group.label}>
                   <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30 px-1">{group.label}</p>
-                  <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white">
+                  <div className="overflow-hidden rounded-2xl bg-black/[0.04]">
                     {sections.map((section, i) => (
                       <ListRow
                         key={section.id}
@@ -1671,7 +1678,7 @@ export function IntegrationSettings() {
           {/* Brand doc */}
           <div>
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30 px-1">AI</p>
-            <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white px-4 py-4">
+            <div className="overflow-hidden rounded-2xl bg-black/[0.04] px-4 py-4">
               <BrandDocPanel />
             </div>
           </div>

@@ -57,7 +57,7 @@ export function AppSidebar() {
                 {
                     id: "overview",
                     title: "Overview",
-                    icon: <ChartLineUp weight="light" size={15} className={iconCls} />,
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path d="M18 8C18 11.3137 15.3137 14 12 14C8.68629 14 6 11.3137 6 8C6 4.68629 8.68629 2 12 2C15.3137 2 18 4.68629 18 8Z" style={{fill: 'var(--fillg)'}}></path><path d="M5.03349 10.7834C3.22163 11.816 2 13.7653 2 16C2 19.3137 4.68629 22 8 22C11.3137 22 14 19.3137 14 16C14 15.7437 13.9839 15.4911 13.9527 15.2432C13.3301 15.4107 12.6755 15.5 12 15.5C8.84139 15.5 6.13882 13.5474 5.03349 10.7834Z" style={{fill: 'var(--fillg)', opacity: 0.4}}></path><path d="M15.3866 14.6936C15.4611 15.1179 15.5 15.5544 15.5 16C15.5 18.0906 14.6446 19.9815 13.2646 21.3416C14.0849 21.7625 15.0147 22 16 22C19.3137 22 22 19.3137 22 16C22 13.7653 20.7783 11.816 18.9665 10.7834C18.2876 12.4811 17.0062 13.8726 15.3866 14.6936Z" style={{fill: 'var(--fillg)', opacity: 0.4}}></path></svg>,
                     link: "/overview",
                 },
                 {
@@ -79,15 +79,9 @@ export function AppSidebar() {
                     link: "/customers",
                 },
                 {
-                    id: "order-extraction",
-                    title: "Extraction",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_3111_22255)"><path d="M22.0001 8.5C22.0001 11.76 19.6001 14.45 16.4801 14.92V14.86C16.1701 10.98 13.0201 7.83 9.11008 7.52H9.08008C9.55008 4.4 12.2401 2 15.5001 2C19.0901 2 22.0001 4.91 22.0001 8.5Z" fill="white" style={{fill: 'var(--fillg)'}}/><path d="M14.98 14.98C14.73 11.81 12.19 9.27 9.02 9.02C8.85 9.01 8.67 9 8.5 9C4.91 9 2 11.91 2 15.5C2 19.09 4.91 22 8.5 22C12.09 22 15 19.09 15 15.5C15 15.33 14.99 15.15 14.98 14.98ZM9.38 16.38L8.5 18L7.62 16.38L6 15.5L7.62 14.62L8.5 13L9.38 14.62L11 15.5L9.38 16.38Z" fill="white" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_3111_22255"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
-                    link: "/order-extraction",
-                },
-                {
                     id: "online-store",
                     title: "Online Store",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M2 2.5A1.5 1.5 0 0 1 3.5 1h17A1.5 1.5 0 0 1 22 2.5V5H2V2.5ZM3 6.5h18l-1.5 15a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8L3 6.5Z" style={{fill: 'var(--fillg)', opacity: 0.4}}/><path fill="currentColor" d="M9 10a3 3 0 0 0 6 0" style={{fill: 'var(--fillg)'}} stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>,
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill-rule="evenodd" clip-rule="evenodd" d="M8.25012 7.01346C8.25004 7.00898 8.25 7.00449 8.25 7V6C8.25 3.92893 9.92893 2.25 12 2.25C14.0711 2.25 15.75 3.92893 15.75 6V7C15.75 7.0045 15.75 7.00898 15.7499 7.01346C17.0472 7.04975 17.8375 7.18393 18.4425 7.67997C19.272 8.35995 19.5029 9.5144 19.9646 11.8233L20.5646 14.8233C21.2287 18.1437 21.5608 19.8039 20.6606 20.902C19.7604 22 18.0673 22 14.6812 22H9.3188C5.93262 22 4.23954 22 3.33936 20.902C2.43919 19.8039 2.77123 18.1437 3.43532 14.8233L4.03532 11.8233C4.4971 9.5144 4.72799 8.35995 5.55742 7.67997C6.16251 7.18392 6.95273 7.04975 8.25012 7.01346ZM9.75 6C9.75 4.75736 10.7574 3.75 12 3.75C13.2426 3.75 14.25 4.75736 14.25 6V7C14.25 7 14.25 7 14.25 7C14.1944 6.99999 14.1381 7 14.0812 7H9.9188C9.86185 7 9.80559 7 9.75 7.00001C9.75 7.00001 9.75 7.00001 9.75 7.00001V6ZM12.0004 17.25C11.0219 17.25 10.1874 16.625 9.87821 15.7501C9.74018 15.3595 9.31168 15.1548 8.92115 15.2929C8.53061 15.4309 8.32592 15.8594 8.46395 16.2499C8.97839 17.7054 10.3664 18.75 12.0004 18.75C13.6343 18.75 15.0224 17.7054 15.5368 16.2499C15.6748 15.8594 15.4701 15.4309 15.0796 15.2929C14.6891 15.1548 14.2606 15.3595 14.1225 15.7501C13.8133 16.625 12.9789 17.25 12.0004 17.25Z" style={{fill: 'var(--fillg)'}}></path></svg>,
                     link: "/online-store",
                     disabled: !isAdmin,
                 },
@@ -96,10 +90,11 @@ export function AppSidebar() {
 
         const workspace: NavSection = {
             label: "Intelligence",
+            collapsible: true,
             routes: [
                 {
                     id: "order-chat",
-                    title: "AI Chat",
+                    title: "Ask Edith",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10H4a2 2 0 0 1-2-2v-8C2 6.477 6.477 2 12 2" opacity=".3" style={{fill: 'var(--fillg)'}}/><path fill="currentColor" d="M15 10H9a1 1 0 0 0-.117 1.993L9 12h6a1 1 0 0 0 .117-1.993zm-3 4H9a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2" style={{fill: 'var(--fillg)'}}/></svg>,
                     link: "/order-chat",
                 },
@@ -115,6 +110,7 @@ export function AppSidebar() {
 
         const socialInbox: NavSection = {
             label: "Social Inbox",
+            collapsible: true,
             routes: [
                 {
                     id: "inbox-facebook",
@@ -153,8 +149,8 @@ export function AppSidebar() {
     return (
         <Sidebar collapsible="icon" className="border-r-0 bg-[#dedede]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
             {/* ── Brand header ────────────────────────────── */}
-            <SidebarHeader className="h-[52px] justify-center px-2.5">
-                <div className="flex items-center justify-between min-w-0">
+            <SidebarHeader className={cn("px-2.5", isCollapsed ? "flex flex-col items-center justify-center gap-1 py-2" : "h-[52px] justify-center")}>
+                <div className={cn("flex items-center min-w-0", isCollapsed ? "justify-center" : "justify-between w-full")}>
                     {!isCollapsed && (
                         <Link
                             to="/"
@@ -200,7 +196,7 @@ export function AppSidebar() {
                             data-testid="button-sidebar-toggle"
                             title="Collapse sidebar"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M6.416 4.767a2.65 2.65 0 0 0-2.65 2.65v8.832a2.65 2.65 0 0 0 2.65 2.65h1.461V4.767h-1.46Zm0-1.767A4.416 4.416 0 0 0 2 7.416v8.833a4.416 4.416 0 0 0 4.416 4.417h11.168A4.416 4.416 0 0 0 22 16.248V7.416A4.416 4.416 0 0 0 17.584 3zm3.228 1.767v14.132h7.94a2.65 2.65 0 0 0 2.65-2.65V7.416a2.65 2.65 0 0 0-2.65-2.65h-7.94Z" clip-rule="evenodd"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M9.94358 2.25C8.10583 2.24998 6.65019 2.24997 5.51098 2.40314C4.33856 2.56076 3.38961 2.89288 2.64124 3.64124C1.89288 4.38961 1.56076 5.33856 1.40314 6.51098C1.24997 7.65019 1.24998 9.10582 1.25 10.9436V13.0564C1.24998 14.8942 1.24997 16.3498 1.40314 17.489C1.56076 18.6614 1.89288 19.6104 2.64124 20.3588C3.38961 21.1071 4.33856 21.4392 5.51098 21.5969C6.65018 21.75 8.1058 21.75 9.94354 21.75H14.0564C14.3706 21.75 14.6738 21.75 14.966 21.7492C14.9773 21.7497 14.9886 21.75 15 21.75C15.0129 21.75 15.0257 21.7497 15.0384 21.749C16.4224 21.7448 17.5607 21.7217 18.489 21.5969C19.6614 21.4392 20.6104 21.1071 21.3588 20.3588C22.1071 19.6104 22.4392 18.6614 22.5969 17.489C22.75 16.3498 22.75 14.8942 22.75 13.0565V10.9436C22.75 9.10585 22.75 7.65018 22.5969 6.51098C22.4392 5.33856 22.1071 4.38961 21.3588 3.64124C20.6104 2.89288 19.6614 2.56076 18.489 2.40314C17.5607 2.27833 16.4224 2.25523 15.0384 2.25096C15.0257 2.25032 15.0129 2.25 15 2.25C14.9886 2.25 14.9773 2.25025 14.966 2.25076C14.6737 2.25 14.3707 2.25 14.0564 2.25H9.94358ZM14.25 3.75002C14.1677 3.75 14.0844 3.75 14 3.75H10C8.09318 3.75 6.73851 3.75159 5.71085 3.88976C4.70476 4.02503 4.12511 4.27869 3.7019 4.7019C3.27869 5.12511 3.02503 5.70476 2.88976 6.71085C2.75159 7.73851 2.75 9.09318 2.75 11V13C2.75 14.9068 2.75159 16.2615 2.88976 17.2892C3.02503 18.2952 3.27869 18.8749 3.7019 19.2981C4.12511 19.7213 4.70476 19.975 5.71085 20.1102C6.73851 20.2484 8.09318 20.25 10 20.25H14C14.0844 20.25 14.1677 20.25 14.25 20.25L14.25 3.75002ZM15.75 20.2443C16.7836 20.2334 17.6082 20.2018 18.2892 20.1102C19.2952 19.975 19.8749 19.7213 20.2981 19.2981C20.7213 18.8749 20.975 18.2952 21.1102 17.2892C21.2484 16.2615 21.25 14.9068 21.25 13V11C21.25 9.09318 21.2484 7.73851 21.1102 6.71085C20.975 5.70476 20.7213 5.12511 20.2981 4.7019C19.8749 4.27869 19.2952 4.02503 18.2892 3.88976C17.6082 3.79821 16.7836 3.76662 15.75 3.75573L15.75 20.2443Z" fill="currentColor"></path></svg>
                         </button>
                     )}
                 </div>
@@ -209,11 +205,11 @@ export function AppSidebar() {
                 {isCollapsed && (
                     <button
                         onClick={toggleSidebar}
-                        className="mt-1.5 h-8 w-8 mx-auto rounded-md flex items-center justify-center text-[#666] hover:text-black hover:bg-black/5 transition-colors"
+                        className="h-7 w-7 rounded-md flex items-center justify-center text-[#666] hover:text-black hover:bg-black/5 transition-colors"
                         data-testid="button-sidebar-toggle-collapsed"
                         title="Expand sidebar"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" style={{ transform: 'scaleX(-1)' }}><path fill="currentColor" fill-rule="evenodd" d="M6.416 4.767a2.65 2.65 0 0 0-2.65 2.65v8.832a2.65 2.65 0 0 0 2.65 2.65h1.461V4.767h-1.46Zm0-1.767A4.416 4.416 0 0 0 2 7.416v8.833a4.416 4.416 0 0 0 4.416 4.417h11.168A4.416 4.416 0 0 0 22 16.248V7.416A4.416 4.416 0 0 0 17.584 3zm3.228 1.767v14.132h7.94a2.65 2.65 0 0 0 2.65-2.65V7.416a2.65 2.65 0 0 0-2.65-2.65h-7.94Z" clip-rule="evenodd"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M9.94358 2.25C8.10583 2.24998 6.65019 2.24997 5.51098 2.40314C4.33856 2.56076 3.38961 2.89288 2.64124 3.64124C1.89288 4.38961 1.56076 5.33856 1.40314 6.51098C1.24997 7.65019 1.24998 9.10582 1.25 10.9436V13.0564C1.24998 14.8942 1.24997 16.3498 1.40314 17.489C1.56076 18.6614 1.89288 19.6104 2.64124 20.3588C3.38961 21.1071 4.33856 21.4392 5.51098 21.5969C6.65018 21.75 8.1058 21.75 9.94354 21.75H14.0564C14.3706 21.75 14.6738 21.75 14.966 21.7492C14.9773 21.7497 14.9886 21.75 15 21.75C15.0129 21.75 15.0257 21.7497 15.0384 21.749C16.4224 21.7448 17.5607 21.7217 18.489 21.5969C19.6614 21.4392 20.6104 21.1071 21.3588 20.3588C22.1071 19.6104 22.4392 18.6614 22.5969 17.489C22.75 16.3498 22.75 14.8942 22.75 13.0565V10.9436C22.75 9.10585 22.75 7.65018 22.5969 6.51098C22.4392 5.33856 22.1071 4.38961 21.3588 3.64124C20.6104 2.89288 19.6614 2.56076 18.489 2.40314C17.5607 2.27833 16.4224 2.25523 15.0384 2.25096C15.0257 2.25032 15.0129 2.25 15 2.25C14.9886 2.25 14.9773 2.25025 14.966 2.25076C14.6737 2.25 14.3707 2.25 14.0564 2.25H9.94358ZM14.25 3.75002C14.1677 3.75 14.0844 3.75 14 3.75H10C8.09318 3.75 6.73851 3.75159 5.71085 3.88976C4.70476 4.02503 4.12511 4.27869 3.7019 4.7019C3.27869 5.12511 3.02503 5.70476 2.88976 6.71085C2.75159 7.73851 2.75 9.09318 2.75 11V13C2.75 14.9068 2.75159 16.2615 2.88976 17.2892C3.02503 18.2952 3.27869 18.8749 3.7019 19.2981C4.12511 19.7213 4.70476 19.975 5.71085 20.1102C6.73851 20.2484 8.09318 20.25 10 20.25H14C14.0844 20.25 14.1677 20.25 14.25 20.25L14.25 3.75002ZM15.75 20.2443C16.7836 20.2334 17.6082 20.2018 18.2892 20.1102C19.2952 19.975 19.8749 19.7213 20.2981 19.2981C20.7213 18.8749 20.975 18.2952 21.1102 17.2892C21.2484 16.2615 21.25 14.9068 21.25 13V11C21.25 9.09318 21.2484 7.73851 21.1102 6.71085C20.975 5.70476 20.7213 5.12511 20.2981 4.7019C19.8749 4.27869 19.2952 4.02503 18.2892 3.88976C17.6082 3.79821 16.7836 3.76662 15.75 3.75573L15.75 20.2443Z" fill="currentColor"></path></svg>
                     </button>
                 )}
             </SidebarHeader>
@@ -235,8 +231,8 @@ export function AppSidebar() {
                         )}
                         title="Billing & Plan"
                     >
-                        <span className="flex h-[17px] w-[17px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
-                            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0"><g clipPath="url(#clip0_billing)"><path d="M15.012 1.5C14.177 1.5 13.5 3.51472 13.5 6H15.012C15.7407 6 16.105 6 16.3306 5.74841C16.5562 5.49682 16.5169 5.1655 16.4384 4.50286C16.2311 2.75357 15.6707 1.5 15.012 1.5Z" stroke="currentColor" strokeWidth="1.125" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M13.5 6.0407V13.9843C13.5 15.1181 13.5 15.685 13.1535 15.9081C12.5873 16.2728 11.7121 15.5081 11.2718 15.2305C10.9081 15.0011 10.7263 14.8864 10.5244 14.8798C10.3063 14.8726 10.1212 14.9826 9.72817 15.2305L8.295 16.1343C7.90838 16.378 7.7151 16.5 7.5 16.5C7.28491 16.5 7.09159 16.378 6.705 16.1343L5.27185 15.2305C4.90811 15.0011 4.72624 14.8864 4.5244 14.8798C4.30629 14.8726 4.1212 14.9826 3.72815 15.2305C3.28796 15.5081 2.41265 16.2728 1.84646 15.9081C1.5 15.685 1.5 15.1181 1.5 13.9843V6.0407C1.5 3.90019 1.5 2.82994 2.15901 2.16497C2.81802 1.5 3.87868 1.5 6 1.5H15" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M4.5 4.5H10.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M6 7.5H4.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/></g></svg>
+                        <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0"><g clipPath="url(#clip0_billing)"><path d="M15.012 1.5C14.177 1.5 13.5 3.51472 13.5 6H15.012C15.7407 6 16.105 6 16.3306 5.74841C16.5562 5.49682 16.5169 5.1655 16.4384 4.50286C16.2311 2.75357 15.6707 1.5 15.012 1.5Z" stroke="currentColor" strokeWidth="1.125" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M13.5 6.0407V13.9843C13.5 15.1181 13.5 15.685 13.1535 15.9081C12.5873 16.2728 11.7121 15.5081 11.2718 15.2305C10.9081 15.0011 10.7263 14.8864 10.5244 14.8798C10.3063 14.8726 10.1212 14.9826 9.72817 15.2305L8.295 16.1343C7.90838 16.378 7.7151 16.5 7.5 16.5C7.28491 16.5 7.09159 16.378 6.705 16.1343L5.27185 15.2305C4.90811 15.0011 4.72624 14.8864 4.5244 14.8798C4.30629 14.8726 4.1212 14.9826 3.72815 15.2305C3.28796 15.5081 2.41265 16.2728 1.84646 15.9081C1.5 15.685 1.5 15.1181 1.5 13.9843V6.0407C1.5 3.90019 1.5 2.82994 2.15901 2.16497C2.81802 1.5 3.87868 1.5 6 1.5H15" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M4.5 4.5H10.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M6 7.5H4.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/></g></svg>
                         </span>
                         {!isCollapsed && (
                             <span className="text-[12.5px] font-medium text-[#333] font-sf-text tracking-normal">Billing & Plan</span>
@@ -254,8 +250,8 @@ export function AppSidebar() {
                         )}
                         title="System Settings"
                     >
-                        <span className="flex h-[17px] w-[17px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" className="text-[#333]"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" d="M12 3v2m0 0a7 7 0 0 0-7 7m7-7a7 7 0 0 1 7 7m0 0h2m-2 0a7 7 0 0 1-7 7m0 0v2m0-2a7 7 0 0 1-7-7m0 0H3m4.5-7.794l1 1.732M18.062 8.5l1.732-1M15.5 18.062l1 1.732M5.938 15.5l-1.732 1m0-9l1.732 1M15.5 5.938l1-1.732M18.062 15.5l1.732 1M8.5 18.062l-1 1.732M12 12L7 7.101M12 12l-1.812 6.762M12 12l6.762-1.812"/></svg>
+                        <span className="flex h-[20px] w-[20px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" className="text-[#333]"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" d="M12 3v2m0 0a7 7 0 0 0-7 7m7-7a7 7 0 0 1 7 7m0 0h2m-2 0a7 7 0 0 1-7 7m0 0v2m0-2a7 7 0 0 1-7-7m0 0H3m4.5-7.794l1 1.732M18.062 8.5l1.732-1M15.5 18.062l1 1.732M5.938 15.5l-1.732 1m0-9l1.732 1M15.5 5.938l1-1.732M18.062 15.5l1.732 1M8.5 18.062l-1 1.732M12 12L7 7.101M12 12l-1.812 6.762M12 12l6.762-1.812"/></svg>
                         </span>
                         {!isCollapsed && (
                             <span className="text-[12.5px] font-medium text-[#333] font-sf-text tracking-normal">System Settings</span>
@@ -266,8 +262,8 @@ export function AppSidebar() {
                 {/* Copyright */}
                 {!isCollapsed && (
                     <div className="flex items-center justify-between px-4 pb-2">
-                        <p className="text-[8px] text-sidebar-foreground/25 whitespace-nowrap">
-                            © 2026 Arc Technology Corporation
+                        <p className="text-[10px] text-sidebar-foreground/25 whitespace-nowrap">
+                            © 2026 Commerce OS
                         </p>
                         <Popover>
                             <PopoverTrigger asChild>
@@ -292,7 +288,7 @@ export function AppSidebar() {
                                             data-testid={testid}
                                             className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-medium text-foreground/80 transition-colors hover:bg-black/[0.04] hover:text-foreground"
                                         >
-                                            <Icon size={13} className="shrink-0 text-muted-foreground" />
+                                            <Icon size={15} className="shrink-0 text-muted-foreground" />
                                             {label}
                                         </Link>
                                     ))}

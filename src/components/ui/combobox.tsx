@@ -22,6 +22,7 @@ interface ComboboxProps {
     value: string;
     label: string;
     price?: number;
+    image?: string | null;
   }[];
   value?: string;
   onValueChange?: (value: string) => void;
@@ -41,11 +42,13 @@ export function Combobox({
   showPrice = false,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  const [container, setContainer] = React.useState<HTMLElement | null>(null);
 
   const selectedItem = items.find((item) => item.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <div ref={setContainer} className="w-full">
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -61,6 +64,13 @@ export function Combobox({
           <div className="flex items-center gap-2">
             {selectedItem ? (
               <div className="flex items-center gap-2">
+                {selectedItem.image && (
+                  <img
+                    src={selectedItem.image}
+                    alt=""
+                    className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                  />
+                )}
                 <span className="truncate">{selectedItem.label}</span>
                 {showPrice && selectedItem.price && (
                   <span className="text-xs text-black whitespace-nowrap">
@@ -75,13 +85,18 @@ export function Combobox({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
-        <Command className="w-full">
-          <CommandInput 
-            placeholder="Search products..." 
-            className="h-11 border-none"
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] overflow-hidden p-0"
+        align="start"
+        collisionPadding={8}
+        container={container ?? undefined}
+      >
+        <Command className="flex w-full flex-col">
+          <CommandInput
+            placeholder="Search products..."
+            className="h-11 shrink-0 border-none"
           />
-          <CommandList>
+          <CommandList className="max-h-[280px] overflow-y-auto">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {items.map((item) => (
@@ -98,14 +113,21 @@ export function Combobox({
                     <div className="flex items-center gap-2">
                       <Check
                         className={cn(
-                          "h-4 w-4",
+                          "h-4 w-4 shrink-0",
                           value === item.value ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      <span>{item.label}</span>
+                      {item.image && (
+                        <img
+                          src={item.image}
+                          alt=""
+                          className="h-8 w-8 shrink-0 rounded-lg object-cover"
+                        />
+                      )}
+                      <span className="truncate">{item.label}</span>
                     </div>
                     {showPrice && item.price && (
-                      <span className="text-xs text-black">৳{item.price}</span>
+                      <span className="ml-2 shrink-0 text-xs text-black">৳{item.price}</span>
                     )}
                   </div>
                 </CommandItem>
@@ -115,5 +137,6 @@ export function Combobox({
         </Command>
       </PopoverContent>
     </Popover>
+    </div>
   );
 }

@@ -23,6 +23,7 @@ describe("customer intelligence aggregation", () => {
 
   it("merges Shopify and custom website orders into one source-aware customer", () => {
     const customers = buildCustomers({
+      now: new Date("2026-07-09T00:00:00Z"),
       orders: [
         {
           id: "shopify-1",

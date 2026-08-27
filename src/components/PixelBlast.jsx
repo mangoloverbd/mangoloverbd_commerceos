@@ -1,7 +1,7 @@
 import { Effect, EffectComposer, EffectPass, RenderPass } from 'postprocessing';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import './pixel-blast.css';
+import './PixelBlast.css';
 
 const createTouchTexture = () => {
   const size = 64;
@@ -323,8 +323,7 @@ const PixelBlast = ({
   speed = 0.5,
   transparent = true,
   edgeFade = 0.5,
-  noiseAmount = 0,
-  seed = null
+  noiseAmount = 0
 }) => {
   const containerRef = useRef(null);
   const visibilityRef = useRef({ visible: true });
@@ -427,7 +426,7 @@ const PixelBlast = ({
         }
         return Math.random();
       };
-      const timeOffset = seed !== null ? seed : randomFloat() * 1000;
+      const timeOffset = randomFloat() * 1000;
       let composer;
       let touch;
       let liquidEffect;

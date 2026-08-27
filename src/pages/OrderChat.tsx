@@ -1,142 +1,150 @@
-import { useState, useRef, useEffect } from "react";
-import { apiFetch } from "@/lib/api";
-import { ArrowUp, CaretDown, DownloadSimple, FileText, Image as ImageIcon, Microphone, Paperclip, X } from "@phosphor-icons/react";
-import ReactMarkdown from "react-markdown";
-import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
-import { Spinner } from "@/components/ui/ios-spinner";
-import { LoadingBreadcrumb } from "@/components/ui/animated-loading-svg-text-shimmer";
+import { useState, useRef, useEffect, type ReactNode } from "react";
+import { apiFetch, getAppConfig } from "@/lib/api";
+import { DownloadSimple } from "@phosphor-icons/react";
+import { motion, LayoutGroup } from "framer-motion";
+import { AgentThinking } from "@/components/application/agent-thinking/agent-thinking";
+import OrderChatComposer, { type UploadedFile } from "@/components/OrderChatComposer";
+import { useAiChatStream, type StreamEvent, type ClarifyQuestion, type Recommendation } from "@/components/order-chat/useAiChatStream";
+import AiClarifyCard from "@/components/order-chat/AiClarifyCard";
+import AiActionCard from "@/components/order-chat/AiActionCard";
+import OrderChatHistory, { type Conversation } from "@/components/order-chat/OrderChatHistory";
+import { StreamingMarkdown } from "@/components/order-chat/StreamingMarkdown";
+import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "@/components/ui/sonner";
 
-type Msg = { role: "user" | "assistant"; content: string; image?: string; revisedPrompt?: string };
-type UploadedFile = { name: string; type: string; content: string; isImage?: boolean; preview?: string };
+type BaseMsg = { role: "user" | "assistant"; content: string; image?: string; revisedPrompt?: string; model?: string; at?: number };
+type ClarifyMsg = { role: "assistant"; kind: "clarify"; call_id: string; questions: ClarifyQuestion[]; status: "pending" | "answered" | "collapsed"; at?: number };
+type ActionMsg = { role: "assistant"; kind: "action"; call_id: string; tool: string; recommendation: Recommendation; alternatives: Recommendation[]; status: "pending" | "applied" | "rejected"; before?: unknown; after?: unknown; at?: number };
+type Msg = BaseMsg | ClarifyMsg | ActionMsg;
 
 const openAIModels = [
-  { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
+  { id: "gpt-5.4-mini", label: "GPT-5.4 mini", tag: "Default" },
   { id: "gpt-5.4", label: "GPT-5.4" },
-  { id: "gpt-5.5", label: "GPT-5.5" },
-  { id: "gpt-5.4-nano", label: "GPT-5.4 nano" },
+  { id: "gpt-5.5", label: "GPT-5.5", tag: "Flagship" },
+  { id: "gpt-5.4-nano", label: "GPT-5.4 nano", tag: "Fast" },
+  { id: "gpt-4o-mini", label: "GPT-4o mini", tag: "High limit" },
 ];
 
-async function streamChat({
-  messages,
-  model,
-  onDelta,
-  onDone,
-  onError,
-}: {
-  messages: Msg[];
-  model: string;
-  onDelta: (text: string) => void;
-  onDone: () => void;
-  onError: (err: string) => void;
-}) {
-  const resp = await apiFetch("/api/order-chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ messages, model }),
+const openRouterModels = [
+  { id: "nvidia/nemotron-3-ultra-550b-a55b:free", label: "Nemotron 3 Ultra 550B", tag: "Default" },
+  { id: "dots-studio/dots-3-note-preview:free", label: "Dots 3 Note Preview" },
+];
+
+// Models for any AI_PROVIDER=compatible gateway (e.g. GMI Cloud). The
+// `id` is whatever AI_MODEL resolves to in /api/config — typically a slug
+// the gateway exposes. The list is rendered as a single entry so the
+// composer's model picker reflects the actual configured model rather
+// than a hard-coded OpenAI one.
+function compatibleModelFromConfig(defaultModelId: string) {
+  const id = defaultModelId || "custom";
+  return [{ id, label: id, tag: "Default" }];
+}
+
+const allChatModels = [...openAIModels, ...openRouterModels];
+
+function modelLabel(id?: string) {
+  if (!id) return "Assistant";
+  return allChatModels.find((m) => m.id === id)?.label ?? id;
+}
+
+function formatTime(at?: number) {
+  if (!at) return "";
+  return new Date(at).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
   });
-
-  if (resp.status === 404) {
-    onError("Chat backend is not active yet. Restart localhost so the new /api/order-chat route and .env are loaded.");
-    return;
-  }
-
-  if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}));
-    onError(data.error || `Error ${resp.status}`);
-    return;
-  }
-
-  if (!resp.body) {
-    onError("No response body");
-    return;
-  }
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let done = false;
-
-  while (!done) {
-    const { done: d, value } = await reader.read();
-    if (d) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let idx: number;
-    while ((idx = buffer.indexOf("\n")) !== -1) {
-      let line = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 1);
-      if (line.endsWith("\r")) line = line.slice(0, -1);
-      if (line.startsWith(":") || line.trim() === "") continue;
-      if (!line.startsWith("data: ")) continue;
-      const json = line.slice(6).trim();
-      if (json === "[DONE]") { done = true; break; }
-      try {
-        const parsed = JSON.parse(json);
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) onDelta(content);
-      } catch {
-        buffer = line + "\n" + buffer;
-        break;
-      }
-    }
-  }
-
-  onDone();
 }
 
-const quickQuestions = [
-  "How many orders are pending?",
-  "Show orders sent to Steadfast",
-  "What's the total revenue?",
-  "Which orders have notes?",
-];
-
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-};
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-function getSpeechRecognition(): SpeechRecognitionConstructor | undefined {
-  const win = window as Window & {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
-  };
-  return win.SpeechRecognition || win.webkitSpeechRecognition;
-}
-
-/** AI avatar: favicon with a spinning ring */
-function AiAvatar({ isStreaming }: { isStreaming?: boolean }) {
+function Section({
+  label,
+  sub,
+  time,
+  children,
+  resolving,
+}: {
+  label: string;
+  sub: string;
+  time: string;
+  children: ReactNode;
+  resolving?: boolean;
+}) {
   return (
-    <div className="relative size-8 shrink-0 mt-0.5">
-      {isStreaming && <Spinner className="absolute inset-0 m-auto text-black/45" />}
-      {/* Favicon */}
-      <div className="absolute inset-[3px] rounded-full bg-black/5 flex items-center justify-center overflow-hidden">
-        <img src="/favicon.svg" alt="AI" className="size-4 object-contain brightness-0" />
+    <div
+      className="flex w-full flex-col gap-1.5 transition-opacity duration-[400ms]"
+      style={{
+        opacity: resolving ? 0.7 : 1,
+        transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)",
+        animation: "fade-up 400ms cubic-bezier(0.23,1,0.32,1) both",
+      }}
+    >
+      <div className="flex items-center gap-1 text-[12px] leading-[1.3]">
+        <span className="font-medium text-black">{label}</span>
+        <span className="text-black/45">{sub}</span>
+        {time && <span className="text-black/45">· {time}</span>}
       </div>
+      {children}
     </div>
   );
 }
 
+function AgentWorking() {
+  return <AgentThinking variant="stars" />;
+}
+
 export default function OrderChat() {
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [input, setInput] = useState("");
+  const [liveMode, setLiveMode] = useState(true);
+  const [aiProvider, setAiProvider] = useState<string>("openai");
   const [model, setModel] = useState(openAIModels[0].id);
-  const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [isListening, setIsListening] = useState(false);
+  const [chatModels, setChatModels] = useState(openAIModels);
+
+  // Default the chat model to the configured provider's default once /api/config
+  // is available. For OpenAI we keep the curated list; for OpenRouter we show
+  // the OpenRouter list with the configured default; for any compatible gateway
+  // (e.g. GMI Cloud) we show a single entry reflecting AI_MODEL.
+  useEffect(() => {
+    let active = true;
+    getAppConfig().then((cfg) => {
+      if (!active) return;
+      const provider = cfg.aiProvider || "openai";
+      setAiProvider(provider);
+      if (provider === "openrouter") {
+        setChatModels(openRouterModels);
+        if (cfg.aiDefaultModel) setModel(cfg.aiDefaultModel);
+      } else if (provider === "compatible") {
+        const list = compatibleModelFromConfig(cfg.aiDefaultModel || "");
+        setChatModels(list);
+        if (list[0]) setModel(list[0].id);
+      } else {
+        setChatModels(openAIModels);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const [imageMode, setImageMode] = useState(false);
+  const [imageSize, setImageSize] = useState("auto");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const sendStream = useAiChatStream();
+  const { role } = useUserRole();
+  const isAdmin = role === "admin";
+
+  // Static quick-questions: no dependency on async role/products, so they
+  // render correctly on the first paint and never swap/flicker.
+  const quickQuestions = [
+    "How many orders are pending?",
+    "Show orders sent to Steadfast",
+    "What's the total revenue?",
+    "Add stock to a product variant",
+    "Which products are running low on stock?",
+    "Which orders have notes?",
+  ];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -144,51 +152,38 @@ export default function OrderChat() {
     }
   }, [messages, isLoading]);
 
-  const readFiles = async (list: FileList | null) => {
-    if (!list?.length) return;
-    const nextFiles = await Promise.all(
-      Array.from(list).map(async (file) => {
-        const isImage = file.type.startsWith("image/");
-        if (isImage) {
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-          return { name: file.name, type: file.type, content: base64, isImage: true, preview: base64 };
-        }
-        const canRead =
-          file.type.startsWith("text/") ||
-          /\.(csv|json|txt|md|tsv)$/i.test(file.name);
-        const content = canRead ? await file.text().catch(() => "") : "";
-        return { name: file.name, type: file.type || "file", content, isImage: false };
-      })
-    );
-    setFiles((prev) => [...prev, ...nextFiles].slice(0, 5));
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  // Autosave the active conversation to history (debounced) once it has messages.
+  useEffect(() => {
+    if (!conversationId || messages.length === 0 || isLoading) return;
+    const handle = setTimeout(() => {
+      const firstUser = messages.find((m) => m.role === "user");
+      const title =
+        firstUser && "content" in firstUser ? String(firstUser.content).slice(0, 200) : "New chat";
+      void apiFetch("/api/order-chat/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: conversationId, title, messages }),
+      }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [messages, conversationId, isLoading]);
+
+  const openConversation = async (c: Conversation) => {
+    try {
+      const res = await apiFetch(`/api/order-chat/history/${c.id}`);
+      const data = await res.json();
+      const conv = (data as { conversation?: Conversation & { messages?: Msg[] } }).conversation;
+      if (!conv) return;
+      setMessages((conv.messages || []) as Msg[]);
+      setConversationId(conv.id);
+      setHistoryOpen(false);
+      setLiveMode(false);
+    } catch {
+      toast.error("Failed to load conversation");
+    }
   };
 
-  const startVoiceInput = () => {
-    const Recognition = getSpeechRecognition();
-    if (!Recognition || isListening) return;
-    const recognition = new Recognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-    recognition.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript;
-      if (transcript) setInput((prev) => `${prev}${prev ? " " : ""}${transcript}`);
-    };
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
-    setIsListening(true);
-    recognition.start();
-  };
-
-  const [imageMode, setImageMode] = useState(false);
-  const [imageSize, setImageSize] = useState("auto");
-
-  const buildPrompt = (text: string) => {
+  const buildPrompt = (text: string, files: UploadedFile[]) => {
     if (!files.length) return text;
     const textFiles = files.filter((f) => !f.isImage);
     if (!textFiles.length) return text;
@@ -203,19 +198,27 @@ export default function OrderChat() {
     return `${text}\n\nAttached files:\n${fileContext}`;
   };
 
-  const generateImage = async (text: string) => {
+  const generateImage = async (text: string, files: UploadedFile[]) => {
     const msg = text.trim();
-    if (!msg || isLoading) return;
+    if (!msg) return;
+    if (isLoading) stop();
 
     const imageFiles = files.filter((f) => f.isImage);
-    const userMsg: Msg = { role: "user", content: msg, image: imageFiles[0]?.preview };
+    const userMsg: Msg = {
+      role: "user",
+      content: msg,
+      image: imageFiles[0]?.preview,
+      at: Date.now(),
+    };
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setFiles([]);
     setIsLoading(true);
 
     try {
-      const body: Record<string, string> = { prompt: msg, size: imageSize, quality: "medium" };
+      const body: Record<string, string> = {
+        prompt: msg,
+        size: imageSize,
+        quality: "medium",
+      };
       if (imageFiles[0]?.content) body.image = imageFiles[0].content;
 
       const resp = await apiFetch("/api/generate-image", {
@@ -223,363 +226,411 @@ export default function OrderChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+      const data = await resp.json().catch(() => ({
+        error: `HTTP ${resp.status}`,
+      }));
       if (!resp.ok) {
-        setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${data.error || "Image generation failed"}` }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `⚠️ ${data.error || "Image generation failed"}`,
+            model: "GPT Image 2",
+            at: Date.now(),
+          },
+        ]);
       } else {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: "Generated with GPT-5.5 and the image generation tool.",
-          image: data.image,
-          revisedPrompt: data.revisedPrompt,
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Generated with GPT-5.5 and the image generation tool.",
+            image: data.image,
+            revisedPrompt: data.revisedPrompt,
+            model: "GPT Image 2",
+            at: Date.now(),
+          },
+        ]);
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Network error";
-      setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ Failed to generate image: ${errMsg}` }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `⚠️ Failed to generate image: ${errMsg}`,
+          model: "GPT Image 2",
+          at: Date.now(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const send = async (text: string) => {
+  const send = async (text: string, files: UploadedFile[]) => {
     const msg = text.trim();
-    if (!msg || isLoading) return;
+    if (!msg) return;
+    if (isLoading) stop();
+    if (imageMode) return generateImage(msg, files);
 
-    if (imageMode) {
-      return generateImage(msg);
-    }
-
-    const userMsg: Msg = { role: "user", content: buildPrompt(msg) };
+    const userMsg: Msg = { role: "user", content: buildPrompt(msg, files), at: Date.now() };
+    const convId = conversationId ?? crypto.randomUUID();
+    if (!conversationId) setConversationId(convId);
+    setLiveMode(true);
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setFiles([]);
     setIsLoading(true);
 
-    let assistantSoFar = "";
-    const upsert = (chunk: string) => {
-      assistantSoFar += chunk;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant" && !last.image) {
-          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
-        }
-        return [...prev, { role: "assistant", content: assistantSoFar }];
-      });
-    };
+    const controller = new AbortController();
+    abortRef.current = controller;
 
+    const baseMsgs = [...messages, userMsg].map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant", content: "content" in m ? m.content : "" }));
+
+    await sendStream({
+      messages: baseMsgs,
+      model,
+      signal: controller.signal,
+      onEvent: (e: StreamEvent) => {
+        if (e.type === "delta") {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === "assistant" && !("kind" in last)) {
+              return prev.map((m, i) => {
+                if (i !== prev.length - 1) return m;
+                const lm = m as BaseMsg;
+                return { ...lm, content: (lm.content || "") + e.content };
+              });
+            }
+            return [...prev, { role: "assistant", content: e.content, model, at: Date.now() }];
+          });
+        } else if (e.type === "question") {
+          setMessages((prev) => [...prev, { role: "assistant", kind: "clarify", call_id: e.call_id, questions: e.questions, status: "pending", at: Date.now() }]);
+        } else if (e.type === "action") {
+          if (e.recommendation) {
+            setMessages((prev) => [...prev, { role: "assistant", kind: "action", call_id: e.call_id, tool: e.tool, recommendation: e.recommendation, alternatives: e.alternatives, status: "pending", at: Date.now() }]);
+          }
+        }
+      },
+      onDone: () => setIsLoading(false),
+      onError: (err) => {
+        setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${err}`, model, at: Date.now() }]);
+        setIsLoading(false);
+      },
+    });
+  };
+
+  const stop = () => {
+    abortRef.current?.abort();
+    setIsLoading(false);
+  };
+
+  const handleApply = async (msg: ActionMsg, args: Record<string, unknown>) => {
+    setLiveMode(true);
     try {
-      await streamChat({
-        messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
-        model,
-        onDelta: upsert,
-        onDone: () => setIsLoading(false),
-        onError: (err) => {
-          upsert(`⚠️ ${err}`);
-          setIsLoading(false);
-        },
+      const res = await apiFetch("/api/order-chat/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: msg.call_id, tool: msg.tool, args }),
       });
-    } catch {
-      upsert("⚠️ Failed to connect. Please try again.");
-      setIsLoading(false);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error((data as { error?: string }).error || "Failed to apply");
+        return;
+      }
+      setMessages((prev) => prev.map((m) => {
+        if (m === msg) {
+          const a = m as ActionMsg;
+          return { ...a, status: "applied" as const, before: (data as { before?: unknown }).before, after: (data as { after?: unknown }).after };
+        }
+        return m;
+      }));
+      const priorMsgs = messages.map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant", content: "content" in m ? m.content : "" }));
+      await sendStream({
+        messages: [...priorMsgs, { role: "user", content: `[Applied action ${msg.tool} with args ${JSON.stringify(args)}. Result: ${JSON.stringify((data as { after?: unknown }).after)}. Confirm in one short sentence.]` }],
+        model,
+        onEvent: (e) => {
+          if (e.type === "delta") {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === "assistant" && !("kind" in last)) {
+                return prev.map((m, i) => {
+                  if (i !== prev.length - 1) return m;
+                  const lm = m as BaseMsg;
+                  return { ...lm, content: (lm.content || "") + e.content };
+                });
+              }
+              return [...prev, { role: "assistant", content: e.content, model, at: Date.now() }];
+            });
+          }
+        },
+        onDone: () => {},
+        onError: () => {},
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to apply");
     }
   };
 
+  const handleReject = (msg: ActionMsg) => {
+    setMessages((prev) => prev.map((m) => {
+      if (m === msg) {
+        const a = m as ActionMsg;
+        return { ...a, status: "rejected" as const };
+      }
+      return m;
+    }));
+  };
 
-  const composer = (
-    <div className="mx-auto w-full max-w-xl rounded-[18px] bg-white border border-black/[0.08] shadow-sm">
-      <div>
-        <div className="px-4 pt-3">
-          <textarea
-            value={input}
-            disabled={isLoading}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                send(input);
-              }
-            }}
-            placeholder={imageMode ? "Describe the image you want to generate..." : "Send a message..."}
-            rows={1}
-            className="min-h-[40px] w-full resize-none border-0 bg-transparent p-0 text-[15px] font-medium leading-relaxed text-foreground outline-none placeholder:text-black/35 disabled:opacity-60"
-          />
+  const handleClarifyAnswer = async (msg: ClarifyMsg, answers: { q: string; type: "radio" | "check"; options: string[]; selected: number[]; custom?: string }[]) => {
+    setMessages((prev) => prev.map((m) => {
+      if (m === msg) {
+        const c = m as ClarifyMsg;
+        return { ...c, status: "answered" as const };
+      }
+      return m;
+    }));
+    const priorMsgs = messages.map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant", content: "content" in m ? m.content : "" }));
+    setLiveMode(true);
+    setIsLoading(true);
+    await sendStream({
+      messages: priorMsgs,
+      model,
+      endpoint: "/api/order-chat/answer",
+      bodyExtra: { call_id: msg.call_id, answers, priorMessages: priorMsgs },
+      onEvent: (e: StreamEvent) => {
+        if (e.type === "delta") {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === "assistant" && !("kind" in last)) {
+              return prev.map((m, i) => {
+                if (i !== prev.length - 1) return m;
+                const lm = m as BaseMsg;
+                return { ...lm, content: (lm.content || "") + e.content };
+              });
+            }
+            return [...prev, { role: "assistant", content: e.content, model, at: Date.now() }];
+          });
+        } else if (e.type === "question") {
+          setMessages((prev) => [...prev, { role: "assistant", kind: "clarify", call_id: e.call_id, questions: e.questions, status: "pending", at: Date.now() }]);
+        } else if (e.type === "action") {
+          if (e.recommendation) {
+            setMessages((prev) => [...prev, { role: "assistant", kind: "action", call_id: e.call_id, tool: e.tool, recommendation: e.recommendation, alternatives: e.alternatives, status: "pending", at: Date.now() }]);
+          }
+        }
+      },
+      onDone: () => setIsLoading(false),
+      onError: (err) => { setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${err}`, model, at: Date.now() }]); setIsLoading(false); },
+    });
+  };
 
-          {files.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {files.map((file, index) => (
-                file.isImage && file.preview ? (
-                  <div key={`${file.name}-${index}`} className="relative group">
-                    <img src={file.preview} alt={file.name} className="h-16 w-16 rounded-lg object-cover border border-black/10" />
-                    <button
-                      type="button"
-                      onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
-                      className="absolute -top-1 -right-1 rounded-full bg-black/70 p-0.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X weight="light" className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <span
-                    key={`${file.name}-${index}`}
-                    className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full bg-black/[0.035] px-2.5 py-1 text-xs text-foreground/75"
-                  >
-                    <FileText weight="light" className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
-                      className="rounded-full p-0.5 text-black/35 hover:bg-black/10 hover:text-black"
-                    >
-                      <X weight="light" className="h-3 w-3" />
-                    </button>
-                  </span>
-                )
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 px-3 pb-2.5 pt-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept={imageMode ? "image/*" : undefined}
-              className="hidden"
-              onChange={(event) => readFiles(event.target.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold text-foreground/75 transition-colors hover:bg-black/[0.055] hover:text-foreground"
-            >
-              <Paperclip weight="light" className="h-3.5 w-3.5" />
-              Files
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setImageMode(!imageMode)}
-              className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[13px] font-semibold transition-colors",
-                imageMode
-                  ? "bg-black text-white"
-                  : "text-foreground/75 hover:bg-black/[0.055] hover:text-foreground"
-              )}
-              title="Generate or edit images through GPT-5.5 with the image generation tool"
-            >
-              <ImageIcon weight="light" className="h-3.5 w-3.5" />
-              {imageMode ? "GPT Image 2" : "Image"}
-            </button>
-
-            {imageMode ? (
-              <div className="relative">
-                <select
-                  value={imageSize}
-                  onChange={(event) => setImageSize(event.target.value)}
-                  className="h-7 appearance-none rounded-full border-0 bg-transparent py-0 pl-2 pr-6 text-[13px] font-semibold text-foreground/75 outline-none transition-colors hover:bg-black/[0.055] hover:text-foreground"
-                >
-                  <option value="auto">Auto</option>
-                  <option value="1024x1024">Square</option>
-                  <option value="1536x1024">Landscape</option>
-                  <option value="1024x1536">Portrait</option>
-                </select>
-                <CaretDown weight="light" className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
-              </div>
-            ) : (
-              <div className="relative">
-                <select
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  className="h-7 appearance-none rounded-full border-0 bg-transparent py-0 pl-2 pr-6 text-[13px] font-semibold text-foreground/75 outline-none transition-colors hover:bg-black/[0.055] hover:text-foreground"
-                >
-                  {openAIModels.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <CaretDown weight="light" className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-black/45" />
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={startVoiceInput}
-              disabled={isLoading}
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:opacity-50",
-                isListening
-                  ? "bg-red-100 text-red-600"
-                  : "bg-black/[0.045] text-foreground/65 hover:bg-black/[0.075] hover:text-foreground"
-              )}
-              title="Voice input"
-            >
-              <Microphone weight="light" className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => send(input)}
-              disabled={!input.trim() || isLoading}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.08] text-foreground/55 transition-all hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-black/[0.08] disabled:hover:text-foreground/55"
-              title="Send"
-            >
-              {isLoading ? <Spinner size="sm" /> : <ArrowUp weight="light" className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
+  const hasMessages = messages.length > 0;
 
   return (
-    <div className="relative flex h-[calc(100vh-80px)] flex-col bg-transparent overflow-hidden">
-
-      {/* Clear button */}
-      {messages.length > 0 && (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="relative flex h-[calc(100vh-80px)] flex-col bg-transparent overflow-hidden"
+    >
+      <LayoutGroup>
+      {/* History + Clear */}
+      <div className="absolute right-8 top-4 z-10 flex items-center gap-2">
         <button
-          onClick={() => setMessages([])}
-          className="absolute right-8 top-4 z-10 rounded-full bg-black/[0.04] px-3 py-1.5 text-sm font-medium text-foreground/55 transition-colors hover:bg-black/[0.07] hover:text-foreground"
+          onClick={() => setHistoryOpen((o) => !o)}
+          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            historyOpen
+              ? "bg-black/[0.07] text-foreground"
+              : "bg-black/[0.04] text-foreground/55 hover:bg-black/[0.07] hover:text-foreground"
+          }`}
         >
-          Clear
+          History
         </button>
-      )}
-
-      {/* Empty State */}
-      <AnimatePresence mode="wait">
-        {messages.length === 0 && (
-          <motion.div
-            key="empty"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="flex flex-1 flex-col items-center justify-center px-6 pt-24 pb-12"
+        {messages.length > 0 && (
+          <button
+            onClick={() => {
+              setMessages([]);
+              setConversationId(null);
+            }}
+            className="rounded-full bg-black/[0.04] px-3 py-1.5 text-sm font-medium text-foreground/55 transition-colors hover:bg-black/[0.07] hover:text-foreground"
           >
-            <motion.div
-              initial={{ opacity: 0, y: 14, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: 0.1, duration: 0.45, ease: "easeOut" }}
-              className="w-full"
-            >
-              {composer}
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 25 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
-              className="mt-5 mx-auto w-full max-w-xl grid gap-2 sm:grid-cols-2"
-            >
-              {quickQuestions.map((q, i) => (
-                <motion.button
-                  key={q}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + i * 0.05 }}
-                  onClick={() => send(q)}
-                  className="group rounded-xl bg-white/55 px-3.5 py-2.5 text-left text-sm text-foreground/75 transition-all hover:bg-white"
-                >
-                  <span className="inline-block transition-transform group-hover:translate-x-0.5">{q}</span>
-                </motion.button>
-              ))}
-            </motion.div>
-          </motion.div>
+            Clear
+          </button>
         )}
-      </AnimatePresence>
+      </div>
 
-      {/* Messages — scrollable, fills remaining space */}
-      {messages.length > 0 && (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pt-16 pb-4">
-          <div className="flex flex-col gap-6">
-            <AnimatePresence initial={false}>
-              {messages.map((msg, i) => {
-                const isLastAssistant = msg.role === "assistant" && i === messages.length - 1;
-                const streaming = isLastAssistant && isLoading;
+      <OrderChatHistory
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={openConversation}
+        isAdmin={isAdmin}
+      />
 
+      {/* Messages (fade in) */}
+      {hasMessages && (
+        <motion.div
+          key="messages"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-6 pt-14 pb-4"
+        >
+          <div className="mx-auto flex max-w-xl flex-col gap-2.5">
+            {messages.map((msg, i) => {
+              const isLastAssistant =
+                msg.role === "assistant" && i === messages.length - 1;
+              const resolving = isLastAssistant && isLoading;
+
+              if ("kind" in msg && msg.kind === "clarify") {
                 return (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className={cn(
-                      "flex w-full gap-3",
-                      msg.role === "user" ? "justify-end" : "justify-start"
-                    )}
-                  >
-                    {msg.role === "assistant" && <AiAvatar isStreaming={streaming} />}
-                    <div className={cn(
-                      "rounded-xl px-4 py-2 text-sm leading-relaxed",
-                      msg.role === "user"
-                        ? "max-w-[75%] bg-white text-neutral-900 border-x-2 border-t-2 border-b-4 border-neutral-300 shadow-sm"
-                        : "border border-black/10 bg-black/[0.025]"
-                    )}>
-                      {msg.role === "assistant" ? (
-                        <div className="prose prose-sm max-w-none text-foreground/80 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-foreground [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_code]:bg-black/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
-                          <ReactMarkdown>{msg.content}</ReactMarkdown>
-                          {msg.image && (
-                            <div className="mt-3 relative group inline-block">
-                              <img src={msg.image} alt="Generated" className="rounded-xl max-h-[500px] w-auto border border-black/10 block" />
-                              <a
-                                href={msg.image}
-                                download="generated-image.png"
-                                className="absolute top-2 right-2 rounded-lg bg-black/70 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <DownloadSimple weight="light" className="h-4 w-4" />
-                              </a>
-                            </div>
-                          )}
-                          {msg.revisedPrompt && (
-                            <p className="mt-2 text-[11px] text-black/40">
-                              Revised prompt: {msg.revisedPrompt}
-                            </p>
-                          )}
-                          {streaming && (
-                            <span className="inline-block w-[2px] h-[1em] bg-black/50 ml-0.5 align-text-bottom rounded-full animate-[blink_0.85s_step-end_infinite]" />
-                          )}
-                        </div>
-                      ) : (
-                        <div>
-                          {msg.content}
-                          {msg.image && (
-                            <img src={msg.image} alt="Uploaded" className="mt-2 rounded-lg max-w-[200px] max-h-[150px] object-cover border border-black/10" />
-                          )}
-                        </div>
+                  <div key={i} className="flex justify-start">
+                    <AiClarifyCard questions={msg.questions} status={msg.status}
+                      onSubmit={(answers) => void handleClarifyAnswer(msg, answers)}
+                      onDismiss={() => setMessages((prev) => prev.map((m) => {
+                        if (m === msg) {
+                          const c = m as ClarifyMsg;
+                          return { ...c, status: "collapsed" as const };
+                        }
+                        return m;
+                      }))} />
+                  </div>
+                );
+              }
+              if ("kind" in msg && msg.kind === "action") {
+                return (
+                  <div key={i} className="flex justify-start">
+                    <AiActionCard tool={msg.tool} recommendation={msg.recommendation} alternatives={msg.alternatives}
+                      status={msg.status} before={msg.before} after={msg.after}
+                      onApply={(args) => void handleApply(msg, args)}
+                      onReject={() => handleReject(msg)} />
+                  </div>
+                );
+              }
+
+              if (msg.role === "user") {
+                return (
+                  <div key={i} className="flex justify-end pl-14">
+                    <div
+                      className="max-w-full rounded-xl bg-black/[0.03] px-3 py-1.5 text-[13px] leading-[1.4] text-black"
+                      style={{
+                        animation:
+                          "fade-up 300ms cubic-bezier(0.23,1,0.32,1) both",
+                      }}
+                    >
+                      {msg.content}
+                      {msg.image && (
+                        <img
+                          src={msg.image}
+                          alt="Uploaded"
+                          className="mt-2 rounded-lg max-w-[200px] max-h-[150px] object-cover border border-black/10"
+                        />
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 );
-              })}
-            </AnimatePresence>
+              }
 
-            {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex gap-3"
-              >
-                <AiAvatar isStreaming />
-                <div className="rounded-xl border border-black/10 bg-black/[0.025] px-4 py-2.5">
-                  <LoadingBreadcrumb text="Thinking" />
-                </div>
-              </motion.div>
-            )}
+              return (
+                <Section key={i} resolving={resolving}>
+                  {resolving && (
+                    <div className="mb-1">
+                      <AgentWorking />
+                    </div>
+                  )}
+                  <div className="prose prose-sm max-w-none text-[13px] leading-normal text-black/80 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-black [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_code]:bg-black/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
+                    <StreamingMarkdown content={msg.content} animate={isLastAssistant && liveMode} />
+                    {msg.image && (
+                      <div className="mt-3 relative group inline-block">
+                        <img
+                          src={msg.image}
+                          alt="Generated"
+                          className="rounded-xl max-h-[500px] w-auto border border-black/10 block"
+                        />
+                        <a
+                          href={msg.image}
+                          download="generated-image.png"
+                          className="absolute top-2 right-2 rounded-lg bg-black/70 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <DownloadSimple weight="light" className="h-4 w-4" />
+                        </a>
+                      </div>
+                    )}
+                    {msg.revisedPrompt && (
+                      <p className="mt-2 text-[11px] text-black/40">
+                        Revised prompt: {msg.revisedPrompt}
+                      </p>
+                    )}
+                  </div>
+                </Section>
+              );
+            })}
+
+            {isLoading &&
+              messages[messages.length - 1]?.role !== "assistant" && (
+                <Section resolving>
+                  <AgentWorking />
+                </Section>
+              )}
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {/* Input — always pinned to bottom */}
-      {messages.length > 0 && (
-        <div className="shrink-0 pb-4 px-4 relative">
-          <div className="absolute -top-8 left-0 right-0 h-8 bg-gradient-to-t from-[#f3f3f3] to-transparent pointer-events-none" />
-          {composer}
-        </div>
-      )}
-    </div>
+      {/* Composer — single instance; glides between centered (empty) and pinned bottom */}
+      <div
+        className={
+          hasMessages
+            ? "shrink-0 pb-4 px-4 relative"
+            : "flex flex-1 flex-col items-center justify-center px-6 pt-24 pb-12"
+        }
+      >
+        {hasMessages && (
+          <div className="absolute -top-5 left-0 right-0 h-5 bg-gradient-to-t from-[#f3f3f3]/70 to-transparent pointer-events-none" />
+        )}
+        {/* Only the composer box carries the layout animation. Its size is
+            identical in both states, so `layout="position"` animates a pure
+            translation (center → bottom) with no content scaling/flicker. */}
+        <motion.div
+          layout="position"
+          transition={{ layout: { duration: 0.45, ease: [0.23, 1, 0.32, 1] } }}
+          className="mx-auto w-full max-w-xl"
+        >
+          <OrderChatComposer
+            onSend={send}
+            loading={isLoading}
+            onStop={stop}
+            models={chatModels}
+            model={model}
+            onModelChange={setModel}
+            imageMode={imageMode}
+            onImageModeChange={setImageMode}
+            imageSize={imageSize}
+            onImageSizeChange={setImageSize}
+            isAdmin={isAdmin}
+          />
+        </motion.div>
+
+        {/* Quick questions: rendered statically so they're visible immediately
+            on load. Stable positional keys (not the text) mean the admin slots
+            update in place when role/products resolve instead of re-mounting
+            and re-animating — which was the load-time flicker. They unmount
+            instantly on send so they never hold layout space mid-transition. */}
+        {!hasMessages && (
+          <div className="mx-auto mt-5 w-full max-w-xl grid gap-2 sm:grid-cols-2">
+            {quickQuestions.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => send(q, [])}
+                className="group flex items-center rounded-xl bg-white/55 px-3.5 py-2 text-left text-[13px] text-foreground/75 transition-all hover:bg-white"
+              >
+                <span className="block w-full truncate transition-transform group-hover:translate-x-0.5">
+                  {q}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      </LayoutGroup>
+    </motion.div>
   );
 }

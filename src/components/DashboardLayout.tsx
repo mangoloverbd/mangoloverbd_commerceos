@@ -5,7 +5,7 @@ import { HeaderAlerts } from "./HeaderAlerts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useAuth } from "@/hooks/useAuth";
-import { CaretRight, DotsThree, Gear, Plus, SignOut, Sparkle } from "@phosphor-icons/react";
+import { CaretRight, Gear, SignOut } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -24,19 +24,19 @@ const accountMenuItemClass =
     "flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[12.5px] font-medium text-[#202020]/85 transition-colors hover:bg-black/[0.045] focus:bg-black/[0.045] focus:text-[#202020]";
 
 const routeBreadcrumbLabels: Record<string, string> = {
-    "/": "Overview",
+    "/": "Home",
     "/overview": "Overview",
     "/returns": "Returns",
     "/products": "Products",
     "/customers": "Customers",
-    "/order-extraction": "Extraction",
-    "/order-chat": "AI Chat",
+    "/order-chat": "Ask Edith",
     "/order-analysis": "AI Analysis",
     "/inbox/facebook": "Facebook",
     "/inbox/instagram": "Instagram",
     "/inbox/whatsapp": "WhatsApp",
     "/inbox/orders": "Inbox Orders",
     "/studio": "Studio",
+    "/online-store": "Online Store",
     "/billing": "Billing",
     "/settings": "System Settings",
 };
@@ -96,28 +96,6 @@ export function DashboardLayout() {
                             </div>
                         </nav>
                         <div className="flex items-center gap-1.5 text-[#6f6f6f]">
-                            <button
-                                className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 hover:text-black"
-                                title="Add"
-                                type="button"
-                            >
-                                <Plus size={24} weight="light" />
-                            </button>
-                            <button
-                                className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 hover:text-black"
-                                title="Assistant"
-                                type="button"
-                            >
-                                <Sparkle size={24} weight="light" />
-                            </button>
-                            <button
-                                className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 hover:text-black"
-                                title="More"
-                                type="button"
-                            >
-                                <DotsThree size={24} weight="bold" />
-                            </button>
-
                             <HeaderAlerts />
 
                             <DropdownMenu>

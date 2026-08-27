@@ -1,20 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { CartoonButton } from "@/components/ui/cartoon-button";
 import { RichButton } from "@/components/ui/rich-button";
-import { Button } from "@/components/base/buttons/button";
-import { RefreshCw } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Package, ArrowUUpLeft } from "@phosphor-icons/react";
+import { Package } from "@phosphor-icons/react";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 import { format } from "date-fns";
-import { AnimatedText } from "@/components/ui/animated-text";
 import { TextEffect } from "@/components/ui/text-effect";
 
 interface ReturnOrder {
@@ -64,16 +60,7 @@ function ReturnsMetric({
   loading?: boolean;
 }) {
   return (
-    <div
-      style={{
-        background: "#F5F5F5",
-        borderRadius: "14px",
-        padding: "3px",
-        border: "1.5px solid rgba(0,0,0,0.07)",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.7)",
-      }}
-      className="min-w-0"
-    >
+    <div className="min-w-0 rounded-2xl bg-black/[0.04] p-3.5">
       <AnimatePresence mode="wait">
         {loading ? (
           <motion.div
@@ -81,16 +68,11 @@ function ReturnsMetric({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            style={{
-              background: "#F7F7F6",
-              borderRadius: "10px",
-              padding: "9px 12px",
-            }}
             className="space-y-2"
           >
-            <div className="h-2.5 w-16 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
-            <div className="h-5 w-20 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
-            <div className="h-3 w-24 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div className="h-2.5 w-16 animate-pulse rounded bg-black/[0.06]" />
+            <div className="h-5 w-20 animate-pulse rounded bg-black/[0.06]" />
+            <div className="h-3 w-24 animate-pulse rounded bg-black/[0.06]" />
           </motion.div>
         ) : (
           <motion.div
@@ -99,66 +81,45 @@ function ReturnsMetric({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
           >
-            <div
-              style={{
-                background: "#F7F7F6",
-                borderRadius: "10px",
-                border: "1px solid rgba(0,0,0,0.05)",
-                padding: "9px 12px",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)",
-              }}
-            >
-              <p
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 500,
-                  letterSpacing: "0.08em",
-                  color: "#7F7F7D",
-                  textTransform: "uppercase",
-                  margin: 0,
-                }}
+            <p className="text-[10px] font-medium tracking-[0.08em] uppercase text-black/50">{label}</p>
+
+            <div className="mt-1.5 flex items-end justify-between">
+              <TextEffect
+                as="p"
+                per="char"
+                delay={0.12}
+                className={`m-0 text-[20px] font-bold leading-none tabular-nums ${valueClassName}`}
               >
-                {label}
-              </p>
-
-              <div className="mt-1.5 flex items-end justify-between">
-                <TextEffect
-                  as="p"
-                  per="char"
-                  delay={0.12}
-                  className={`m-0 text-[20px] font-bold leading-none tabular-nums ${valueClassName}`}
-                >
-                  {value}
-                </TextEffect>
-                {sparklineValues.length > 0 && (
-                  <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
-                    {sparklineValues.slice(-7).map((v, i) => {
-                      const isActive = i === sparklineValues.length - 1;
-                      const max = Math.max(...sparklineValues.slice(-7), 1);
-                      const height = Math.max(10, (v / max) * 100);
-                      return (
-                        <div
-                          key={i}
-                          className="rounded-full"
-                          style={{
-                            width: isActive ? "4px" : "3px",
-                            height: `${height}%`,
-                            backgroundColor: isActive ? "#232323" : "#BFBFBC",
-                            opacity: isActive ? 1 : 0.4,
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {subValue && (
-                <p className="mt-1.5 text-[10px] font-medium text-black/40">
-                  {subValue}
-                </p>
+                {value}
+              </TextEffect>
+              {sparklineValues.length > 0 && (
+                <div className="flex items-end shrink-0" style={{ gap: "4px", height: "24px" }}>
+                  {sparklineValues.slice(-7).map((v, i) => {
+                    const isActive = i === sparklineValues.length - 1;
+                    const max = Math.max(...sparklineValues.slice(-7), 1);
+                    const height = Math.max(10, (v / max) * 100);
+                    return (
+                      <div
+                        key={i}
+                        className="rounded-full"
+                        style={{
+                          width: isActive ? "4px" : "3px",
+                          height: `${height}%`,
+                          backgroundColor: isActive ? "#232323" : "#BFBFBC",
+                          opacity: isActive ? 1 : 0.4,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
               )}
             </div>
+
+            {subValue && (
+              <p className="mt-1.5 text-[10px] font-medium text-black/40">
+                {subValue}
+              </p>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -234,6 +195,25 @@ export default function Returns() {
     }
   };
 
+  // Auto-sync on page load
+  const syncedRef = useRef(false);
+  useEffect(() => {
+    if (syncedRef.current) return;
+    syncedRef.current = true;
+    (async () => {
+      setSyncing(true);
+      try {
+        await apiFetch("/api/returns/backfill-fees", { method: "POST" });
+        await apiFetch("/api/returns/sync");
+        queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
+      } catch {
+        // silent — user can see data load regardless
+      } finally {
+        setSyncing(false);
+      }
+    })();
+  }, [queryClient]);
+
   const handleRequestReturn = async (order: ReturnOrder) => {
     setRequestingId(order.id);
     try {
@@ -255,38 +235,15 @@ export default function Returns() {
   };
 
   return (
-    <div className="space-y-3 p-1 lg:p-2">
-      {/* ─ Returns Panel ───────────────────────────────────────────────────── */}
+    <div className="min-h-full space-y-3 bg-white p-1 lg:p-2 pb-4 lg:pb-6">
+      {/* ─ Summary Cards ──────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="relative rounded-2xl bg-[#F3F3F3]"
+        className="relative rounded-2xl bg-white"
       >
-        {/* Header row */}
-        <div className="flex items-center justify-between pt-3 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10 text-red-500">
-              <ArrowUUpLeft size={14} weight="light" />
-            </span>
-            <div>
-              <AnimatedText as="p" className="font-sf-display text-[14px] font-semibold tracking-normal text-foreground">Returns</AnimatedText>
-              <p className="text-[10px] text-muted-foreground">Manage courier returns and cancellations</p>
-            </div>
-          </div>
-          <RichButton
-            color="default"
-            size="sm"
-            onClick={async () => { await handleBackfillFees(); await handleSync(); }}
-            disabled={syncing}
-          >
-            {syncing ? <Spinner size="sm" className="mr-1.5" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />}
-            {syncing ? "Syncing..." : "Sync"}
-          </RichButton>
-        </div>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-3 pb-3">
+        <div className="grid grid-cols-3 gap-3 pb-1">
           <ReturnsMetric
             label="Lost Revenue"
             value={isLoading ? "—" : `৳${summary.totalLostRevenue.toLocaleString()}`}
@@ -314,24 +271,23 @@ export default function Returns() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
-        className="overflow-hidden rounded-xl border border-black/10 bg-white"
+        className="overflow-hidden rounded-2xl bg-black/[0.04]"
       >
         {/* Filter Tabs */}
-        <div className="flex items-center gap-1 border-b border-black/10 px-3 py-2">
-          <div className="flex w-fit items-center rounded-lg border border-black/[0.08] bg-[#F8F8F6] p-0.5">
-            {(["all", "pending", "processing", "completed"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-[9px] font-semibold capitalize transition-colors",
-                  filter === f ? "bg-black text-white" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
-                )}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center border-b border-black/10 px-3 py-2">
+          <SegmentedControl
+            aria-label="Filter returns"
+            selectedKeys={new Set([filter])}
+            onSelectionChange={(keys) => {
+              const next = [...keys][0];
+              if (next) setFilter(next as FilterTab);
+            }}
+          >
+            <SegmentedControlItem id="all">All</SegmentedControlItem>
+            <SegmentedControlItem id="pending">Pending</SegmentedControlItem>
+            <SegmentedControlItem id="processing">Processing</SegmentedControlItem>
+            <SegmentedControlItem id="completed">Completed</SegmentedControlItem>
+          </SegmentedControl>
         </div>
 
         {/* Table */}

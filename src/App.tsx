@@ -8,9 +8,10 @@ import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import Settings from "./pages/Settings";
 import OrderAnalysis from "./pages/OrderAnalysis";
-import OrderExtraction from "./pages/OrderExtraction";
 import OrderChat from "./pages/OrderChat";
 import Products from "./pages/Products";
+import ProductNew from "./pages/ProductNew";
+import ProductEdit from "./pages/ProductEdit";
 import Customers from "./pages/Customers";
 import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
@@ -93,11 +94,12 @@ const AppRoutes = () => (
       <Route path="/" element={<Dashboard />} />
       <Route path="/overview" element={<Overview />} />
       <Route path="/order-analysis" element={<AdminRoute><OrderAnalysis /></AdminRoute>} />
-      <Route path="/order-extraction" element={<OrderExtraction />} />
       <Route path="/order-chat" element={<OrderChat />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/online-store" element={<AdminRoute><OnlineStore /></AdminRoute>} />
       <Route path="/products" element={<Products />} />
+      <Route path="/products/new" element={<ProductNew />} />
+      <Route path="/products/:id/edit" element={<ProductEdit />} />
       <Route path="/customers" element={<Customers />} />
       <Route path="/inbox/facebook" element={<FacebookInbox />} />
       <Route path="/inbox/instagram" element={<InstagramInbox />} />

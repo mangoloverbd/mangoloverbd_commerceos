@@ -6,11 +6,12 @@ describe("generate image endpoint", () => {
   const serverSource = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
   const routeSource = serverSource.slice(
     serverSource.indexOf('app.post("/api/generate-image"'),
-    serverSource.indexOf("const ORDER_CHAT_MODELS")
+    serverSource.indexOf("const ORDER_CHAT_RESPONSES_MODELS")
   );
 
   it("uses the Responses API image generation tool", () => {
-    expect(routeSource).toContain("https://api.openai.com/v1/responses");
+    // Route now delegates to aiResponsesCompletion which hits ${AI_BASE_URL}/responses
+    expect(routeSource).toContain("aiResponsesCompletion");
     expect(routeSource).toContain('type: "image_generation"');
     expect(routeSource).toContain('tool_choice: { type: "image_generation" }');
   });

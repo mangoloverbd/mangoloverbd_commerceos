@@ -18,7 +18,7 @@ export function RetentionPanel({ data }: { data: RetentionData }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: 0.3 }}
-      className="rounded-xl border border-black/10 bg-white p-5"
+      className="rounded-2xl bg-black/[0.04] p-5"
     >
       <div className="mb-4">
         <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Customers</p>

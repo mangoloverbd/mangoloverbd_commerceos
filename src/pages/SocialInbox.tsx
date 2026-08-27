@@ -1,13 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { AnimatedText } from "@/components/ui/animated-text";
+import FacebookLogo from "@/components/FacebookLogo";
+import WhatsappLogo from "@/components/WhatsappLogo";
+import InstagramLogo from "@/components/InstagramLogo";
 import {
-  FacebookLogo,
-  InstagramLogo,
-  WhatsappLogo,
   Robot,
   User,
   Image as PhImage,
@@ -47,6 +46,12 @@ const PLATFORM_CONFIG: Record<Platform, { label: string; icon: React.ElementType
   whatsapp: { label: "WhatsApp", icon: WhatsappLogo, color: "text-[#25D366]", bg: "bg-[#25D366]/10", chip: "bg-[#25D366]/10 text-[#128C4A]" },
 };
 
+const ICON_SIZE: Record<Platform, (base: number) => number> = {
+  facebook: (n) => Math.round(n * 1.15),
+  instagram: (n) => n,
+  whatsapp: (n) => Math.round(n * 1.35),
+};
+
 function formatTime(iso: string) {
   const d = new Date(iso);
   const now = new Date();
@@ -64,9 +69,58 @@ function Avatar({ name, platform }: { name: string; platform: Platform }) {
     <div className={cn("relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold uppercase ring-1 ring-black/[0.04]", cfg.bg)}>
       <span className={cfg.color}>{name.slice(0, 2)}</span>
       <div className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/[0.06]">
-        <Icon size={8} weight="fill" className={cfg.color} />
+        <Icon size={ICON_SIZE[platform](8)} weight="fill" className={cfg.color} />
       </div>
     </div>
+  );
+}
+
+function InboxStat({
+  label,
+  value,
+  sub,
+  accent = "text-black",
+  loading = false,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  accent?: string;
+  loading?: boolean;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className="rounded-2xl bg-black/[0.04] px-4 py-2.5"
+    >
+      <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
+      <div className="mt-0.5 flex items-baseline gap-1.5">
+        <AnimatePresence mode="wait">
+          {loading ? (
+            <motion.div
+              key="skeleton"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="h-5 w-12 animate-pulse rounded bg-black/[0.06]"
+            />
+          ) : (
+            <motion.p
+              key="value"
+              initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className={cn("text-[22px] font-light tabular-nums tracking-[-0.04em] leading-tight", accent)}
+            >
+              {value}
+            </motion.p>
+          )}
+        </AnimatePresence>
+        {sub && !loading && <p className="text-[10px] text-black/40">{sub}</p>}
+      </div>
+    </motion.div>
   );
 }
 
@@ -146,12 +200,10 @@ export default function SocialInbox({ platform }: Props) {
     const container = scrollContainerRef.current;
     if (!container) return;
     if (isInitialLoad.current) {
-      // First load for this conversation — always jump to bottom instantly
       messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
       isInitialLoad.current = false;
       return;
     }
-    // Polling update — only scroll if user is within 120px of the bottom
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     if (distanceFromBottom < 120) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -162,6 +214,17 @@ export default function SocialInbox({ platform }: Props) {
     (c.contact_name || "").toLowerCase().includes(search.toLowerCase()) ||
     (c.last_message || "").toLowerCase().includes(search.toLowerCase())
   );
+
+  const unreadTotal = useMemo(
+    () => filtered.reduce((sum, c) => sum + (c.unread_count || 0), 0),
+    [filtered]
+  );
+
+  const recentCount = useMemo(() => {
+    const hourAgo = Date.now() - 3600000;
+    return filtered.filter((c) => new Date(c.last_message_at).getTime() > hourAgo).length;
+  }, [filtered]);
+
   const selected = conversations.find((c) => c.id === selectedId);
 
   function selectConversation(id: string) {
@@ -249,270 +312,303 @@ export default function SocialInbox({ platform }: Props) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-82px)] overflow-hidden bg-[#FAFAF8] p-1 lg:p-2">
-      {/* Conversation list */}
-      <div className={cn(
-        "flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-black/10 bg-white md:w-72 lg:w-80",
-        mobileView === "chat" && "hidden md:flex"
-      )}>
-        {/* Header */}
-        <div className="border-b border-black/10 px-4 py-3">
-          <div className="mb-3 flex items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5">
-              <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", cfg.bg)}>
-                <Icon size={15} weight="fill" className={cfg.color} />
-              </span>
-              <div>
-                <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">{cfg.label}</AnimatedText>
-                <p className="text-[11px] text-muted-foreground">{filtered.length} conversations</p>
-              </div>
+    <div className="flex h-full flex-col gap-3 bg-white p-1 lg:p-2">
+      {/* ── Header + stat cards ─────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="space-y-3"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", cfg.bg)}>
+              <Icon size={ICON_SIZE[platform](15)} weight="fill" className={cfg.color} />
+            </span>
+            <div>
+              <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">{cfg.label} Inbox</h1>
+              <p className="text-[12px] text-black/45">Live conversations from {cfg.label}</p>
             </div>
-            <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold", cfg.chip)}>Live</span>
           </div>
-          <div className="relative">
-            <MagnifyingGlass size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search conversations…"
-              className="h-9 w-full rounded-xl border border-black/[0.08] bg-[#F8F8F6] pl-8 pr-3 text-[12px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-black/20"
-              data-testid="input-search-conversations"
-            />
+          <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold", cfg.chip)}>
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+            Live
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <InboxStat label="Conversations" value={filtered.length} sub="threads" loading={loading} />
+          <InboxStat
+            label="Unread"
+            value={unreadTotal}
+            sub="messages"
+            accent={unreadTotal > 0 ? "text-black" : "text-black/30"}
+            loading={loading}
+          />
+          <InboxStat label="Active 1h" value={recentCount} sub="recent" loading={loading} />
+        </div>
+      </motion.div>
+
+      {/* ── Board card: two-panel chat ──────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08, duration: 0.4 }}
+        className="flex min-h-0 flex-1 overflow-hidden rounded-2xl bg-black/[0.04]"
+      >
+        {/* ── Conversation list ─────────────────────────────────────────── */}
+        <div className={cn(
+          "flex w-full shrink-0 flex-col overflow-hidden md:w-72 lg:w-80",
+          mobileView === "chat" && "hidden md:flex"
+        )}>
+          {/* Search */}
+          <div className="shrink-0 border-b border-black/[0.06] px-3 py-2.5">
+            <div className="relative flex h-8 items-center gap-2 rounded-full bg-black/[0.05] px-3">
+              <MagnifyingGlass size={13} weight="light" className="shrink-0 text-black/35" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search conversations…"
+                className="flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-black/35"
+                data-testid="input-search-conversations"
+              />
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="space-y-0">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="animate-pulse border-b border-black/[0.04] px-4 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-xl bg-black/[0.06]" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-2.5 w-28 rounded bg-black/[0.06]" />
+                        <div className="h-2 w-40 rounded bg-black/[0.04]" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="flex h-48 flex-col items-center justify-center gap-3">
+                <span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", cfg.bg)}>
+                  <Icon size={ICON_SIZE[platform](22)} weight="fill" className={cfg.color} />
+                </span>
+                <p className="text-[12px] font-medium text-black/40">No conversations yet</p>
+              </div>
+            ) : (
+              <AnimatePresence initial={false}>
+                {filtered.map((conv) => (
+                  <motion.div
+                    key={conv.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -16, height: 0, overflow: "hidden" }}
+                    transition={{ duration: 0.2 }}
+                    className="group relative"
+                  >
+                    <button
+                      onClick={() => selectConversation(conv.id)}
+                      className={cn(
+                        "flex w-full items-center gap-3 border-b border-black/[0.04] px-4 py-3.5 text-left transition-colors hover:bg-black/[0.025]",
+                        selectedId === conv.id && "bg-black/[0.045]"
+                      )}
+                      data-testid={`button-conversation-${conv.id}`}
+                    >
+                      <Avatar name={conv.contact_name || "?"} platform={platform} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-[12px] font-semibold text-foreground">{conv.contact_name || "Unknown"}</span>
+                          <span className="shrink-0 text-[10px] text-black/35">{formatTime(conv.last_message_at)}</span>
+                        </div>
+                        <p className="mt-0.5 truncate text-[11px] text-black/40">{conv.last_message || "—"}</p>
+                      </div>
+                      {conv.unread_count > 0 && (
+                        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white", platform === "facebook" ? "bg-[#1877F2]" : platform === "instagram" ? "bg-[#E1306C]" : "bg-[#25D366]")}>
+                          {conv.unread_count > 9 ? "9+" : conv.unread_count}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => deleteConversation(conv.id, e)}
+                      disabled={deletingId === conv.id}
+                      title="Delete conversation"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg text-black/20 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-50"
+                    >
+                      {deletingId === conv.id
+                        ? <Spinner className="h-3 w-3" />
+                        : <Trash size={12} weight="light" />}
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            )}
           </div>
         </div>
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="space-y-0">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="animate-pulse border-b border-black/[0.06] px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-black/[0.06]" />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="h-2.5 w-28 rounded bg-black/[0.06]" />
-                      <div className="h-2 w-40 rounded bg-black/[0.04]" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center gap-3">
-              <span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", cfg.bg)}>
-                <Icon size={22} weight="fill" className={cfg.color} />
+        {/* Vertical divider */}
+        <div className="hidden w-px shrink-0 bg-black/[0.06] md:block" />
+
+        {/* ── Chat panel ────────────────────────────────────────────────── */}
+        <div className={cn(
+          "flex min-w-0 flex-1 flex-col overflow-hidden",
+          mobileView === "list" && "hidden md:flex"
+        )}>
+          {!selectedId ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 text-center">
+              <span className={cn("flex h-16 w-16 items-center justify-center rounded-2xl", cfg.bg)}>
+                <Icon size={ICON_SIZE[platform](32)} weight="fill" className={cfg.color} />
               </span>
-              <p className="text-[12px] font-medium text-muted-foreground">No conversations yet</p>
+              <div className="text-center">
+                <p className="text-sm font-semibold text-foreground">Select a conversation</p>
+                <p className="mt-1 text-[12px] text-muted-foreground">Messages will appear here</p>
+              </div>
             </div>
           ) : (
-            <AnimatePresence initial={false}>
-              {filtered.map((conv) => (
-                <motion.div
-                  key={conv.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -16, height: 0, overflow: "hidden" }}
-                  transition={{ duration: 0.2 }}
-                  className="group relative"
+            <>
+              {/* Chat header */}
+              <div className="flex h-[58px] shrink-0 items-center gap-3 border-b border-black/[0.06] px-4">
+                <button
+                  onClick={() => setMobileView("list")}
+                  className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground md:hidden"
                 >
-                  <button
-                    onClick={() => selectConversation(conv.id)}
-                    className={cn(
-                      "flex w-full items-center gap-3 border-b border-black/[0.06] px-4 py-3.5 text-left transition-colors hover:bg-black/[0.025]",
-                      selectedId === conv.id && "bg-black/[0.045]"
-                    )}
-                    data-testid={`button-conversation-${conv.id}`}
-                  >
-                    <Avatar name={conv.contact_name || "?"} platform={platform} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-[12px] font-semibold text-foreground">{conv.contact_name || "Unknown"}</span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">{formatTime(conv.last_message_at)}</span>
-                      </div>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{conv.last_message || "—"}</p>
-                    </div>
-                    {conv.unread_count > 0 && (
-                      <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white", platform === "facebook" ? "bg-[#1877F2]" : platform === "instagram" ? "bg-[#E1306C]" : "bg-[#25D366]")}>
-                        {conv.unread_count > 9 ? "9+" : conv.unread_count}
-                      </span>
-                    )}
-                  </button>
-                  {/* Delete button — appears on hover */}
-                  <button
-                    onClick={(e) => deleteConversation(conv.id, e)}
-                    disabled={deletingId === conv.id}
-                    title="Delete conversation"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg text-black/20 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 disabled:opacity-50"
-                  >
-                    {deletingId === conv.id
-                      ? <Spinner className="h-3 w-3" />
-                      : <Trash size={12} weight="light" />}
-                  </button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          )}
-        </div>
-      </div>
+                  <ArrowLeft size={14} />
+                </button>
+                {selected && <Avatar name={selected.contact_name || "?"} platform={platform} />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground truncate">{selected?.contact_name || "Unknown"}</p>
+                  <p className={cn("flex items-center gap-1 text-[10px] font-medium", pausedAi ? "text-amber-600" : cfg.color)}>
+                    {pausedAi ? <User size={9} weight="fill" /> : <Robot size={9} />}
+                    {pausedAi ? "Human mode" : "AI bot active"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={cn("text-[9px] font-semibold tracking-wide transition-colors", !pausedAi ? "text-black" : "text-black/30")}>
+                    AI
+                  </span>
+                  <Switch
+                    checked={pausedAi}
+                    onCheckedChange={() => { if (!togglingAi) toggleAi(); }}
+                    disabled={togglingAi}
+                    className="h-[18px] w-8 data-[state=checked]:bg-amber-400 data-[state=unchecked]:bg-black"
+                    thumbClassName="h-3.5 w-3.5 data-[state=checked]:translate-x-3.5"
+                  />
+                  <span className={cn("text-[9px] font-semibold tracking-wide transition-colors", pausedAi ? "text-amber-600" : "text-black/30")}>
+                    Human
+                  </span>
+                </div>
+              </div>
 
-      {/* Chat panel */}
-      <div className={cn(
-        "ml-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/10 bg-white",
-        mobileView === "list" && "hidden md:flex"
-      )}>
-        {!selectedId ? (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 text-center">
-            <span className={cn("flex h-16 w-16 items-center justify-center rounded-2xl", cfg.bg)}>
-              <Icon size={32} weight="fill" className={cfg.color} />
-            </span>
-            <div className="text-center">
-              <p className="text-sm font-semibold text-foreground">Select a conversation</p>
-              <p className="mt-1 text-[12px] text-muted-foreground">Messages will appear here</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Chat header */}
-            <div className="flex h-[58px] shrink-0 items-center gap-3 border-b border-black/10 bg-white px-4">
-              <button
-                onClick={() => setMobileView("list")}
-                className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground md:hidden"
-              >
-                <ArrowLeft size={14} />
-              </button>
-              {selected && <Avatar name={selected.contact_name || "?"} platform={platform} />}
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-foreground truncate">{selected?.contact_name || "Unknown"}</p>
-                <p className={cn("flex items-center gap-1 text-[10px] font-medium", pausedAi ? "text-amber-600" : cfg.color)}>
-                  {pausedAi ? <User size={9} weight="fill" /> : <Robot size={9} />}
-                  {pausedAi ? "Human mode" : "AI bot active"}
+              {/* Messages */}
+              <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto bg-black/[0.02] px-4 py-4">
+                {msgLoading ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Spinner className="text-black/30" />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex h-full items-center justify-center">
+                    <p className="text-[12px] font-medium text-black/35">No messages</p>
+                  </div>
+                ) : (
+                  <AnimatePresence initial={false}>
+                    {messages.map((msg) => (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                          "flex",
+                          msg.sender === "bot" ? "justify-end" : "justify-start"
+                        )}
+                      >
+                        <div className="max-w-[72%]">
+                          {msg.image_url && (
+                            <div className="mb-1.5 max-w-[200px] rounded-2xl bg-black/[0.04] p-1.5">
+                              <img src={msg.image_url} alt="" className="block max-h-[120px] max-w-[184px] rounded-xl object-cover" />
+                            </div>
+                          )}
+                          {!msg.image_url && msg.message_type === "image" && (
+                            <div className={cn(
+                              "rounded-2xl px-3.5 py-1.5",
+                              msg.sender === "bot"
+                                ? "bg-black text-white"
+                                : "border border-black/[0.08] bg-white text-foreground"
+                            )}>
+                              <span className="flex items-center gap-1 text-sm leading-5"><PhImage size={13} /> Image</span>
+                            </div>
+                          )}
+                          {msg.content && (
+                            <div className={cn(
+                              "rounded-2xl px-3.5 py-1.5 transition-colors",
+                              msg.sender === "bot"
+                                ? "bg-black text-white"
+                                : "border border-black/[0.08] bg-white text-foreground"
+                            )}>
+                              <p className="text-sm leading-5 whitespace-pre-wrap break-words">{msg.content}</p>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Composer */}
+              <div className="shrink-0 border-t border-black/[0.06] px-4 pb-4 pt-3">
+                {pausedAi ? (
+                  <div className="relative rounded-2xl bg-black/[0.04] focus-within:bg-black/[0.06] transition-all">
+                    <textarea
+                      ref={textareaRef}
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); }
+                      }}
+                      placeholder="Type a reply..."
+                      rows={1}
+                      className="w-full resize-none bg-transparent px-3.5 pt-3 pb-0 text-[13px] leading-[1.6] text-foreground placeholder:text-black/35 focus:outline-none"
+                      style={{ minHeight: "36px", maxHeight: "120px" }}
+                      onInput={(e) => {
+                        const t = e.currentTarget;
+                        t.style.height = "36px";
+                        t.style.height = `${Math.min(t.scrollHeight, 120)}px`;
+                      }}
+                    />
+                    <div className="flex items-center justify-end px-2 pb-2 pt-1">
+                      <button
+                        onClick={sendReply}
+                        disabled={!replyText.trim() || sending}
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-full transition-all",
+                          replyText.trim() ? "bg-black text-white hover:bg-black/80" : "bg-black/15 text-black/30"
+                        )}
+                      >
+                        {sending ? <Spinner className="h-3.5 w-3.5" /> : <PaperPlaneRight size={14} weight="fill" />}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative rounded-2xl bg-black/[0.04]">
+                    <div className="px-3.5 py-3">
+                      <p className="text-[13px] leading-[1.6] text-black/40 flex items-center gap-1.5">
+                        <Robot size={13} weight="light" />
+                        AI bot responds automatically
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <p className="mt-2 text-center text-[10px] font-medium text-black/35">
+                  Replies sent via {cfg.label} API
                 </p>
               </div>
-              {/* AI / Human toggle */}
-              <div className="flex items-center gap-1.5">
-                <span className={cn("text-[9px] font-semibold tracking-wide transition-colors", !pausedAi ? "text-black" : "text-black/30")}>
-                  AI
-                </span>
-                <Switch
-                  checked={pausedAi}
-                  onCheckedChange={() => { if (!togglingAi) toggleAi(); }}
-                  disabled={togglingAi}
-                  className="h-[18px] w-8 data-[state=checked]:bg-amber-400 data-[state=unchecked]:bg-black"
-                  thumbClassName="h-3.5 w-3.5 data-[state=checked]:translate-x-3.5"
-                />
-                <span className={cn("text-[9px] font-semibold tracking-wide transition-colors", pausedAi ? "text-amber-600" : "text-black/30")}>
-                  Human
-                </span>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto bg-[#FAFAF8] px-4 py-4">
-              {msgLoading ? (
-                <div className="flex h-full items-center justify-center">
-                  <Spinner className="text-muted-foreground" />
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="flex h-full items-center justify-center">
-                  <p className="text-[12px] font-medium text-muted-foreground">No messages</p>
-                </div>
-              ) : (
-                <AnimatePresence initial={false}>
-                  {messages.map((msg) => (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={cn(
-                        "flex",
-                        msg.sender === "bot" ? "justify-end" : "justify-start"
-                      )}
-                    >
-                      <div className="max-w-[72%]">
-                        {msg.image_url && (
-                          <div className="mb-1.5 max-w-[200px] rounded-2xl bg-neutral-100 p-1.5">
-                            <img src={msg.image_url} alt="" className="block max-h-[120px] max-w-[184px] rounded-xl object-cover" />
-                          </div>
-                        )}
-                        {!msg.image_url && msg.message_type === "image" && (
-                          <div className={cn(
-                            "rounded-2xl px-3.5 py-1.5",
-                            msg.sender === "bot"
-                              ? "bg-[#2563eb] text-white"
-                              : "border border-black/[0.08] bg-white text-foreground"
-                          )}>
-                            <span className="flex items-center gap-1 text-sm leading-5"><PhImage size={13} /> Image</span>
-                          </div>
-                        )}
-                        {msg.content && (
-                          <div className={cn(
-                            "rounded-2xl px-3.5 py-1.5 transition-colors",
-                            msg.sender === "bot"
-                              ? "bg-[#2563eb] text-white"
-                              : "border border-black/[0.08] bg-white text-foreground"
-                          )}>
-                            <p className="text-sm leading-5 whitespace-pre-wrap break-words">{msg.content}</p>
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Composer */}
-            <div className="shrink-0 border-t border-black/10 bg-white px-4 pb-4 pt-3">
-              {pausedAi ? (
-                <div className="relative rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08] focus-within:ring-black/20 transition-all">
-                  <textarea
-                    ref={textareaRef}
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); }
-                    }}
-                    placeholder="Type a reply..."
-                    rows={1}
-                    className="w-full resize-none bg-transparent px-3.5 pt-3 pb-0 text-[13px] leading-[1.6] text-foreground placeholder:text-muted-foreground focus:outline-none"
-                    style={{ minHeight: "36px", maxHeight: "120px" }}
-                    onInput={(e) => {
-                      const t = e.currentTarget;
-                      t.style.height = "36px";
-                      t.style.height = `${Math.min(t.scrollHeight, 120)}px`;
-                    }}
-                  />
-                  <div className="flex items-center justify-end px-2 pb-2 pt-1">
-                    <button
-                      onClick={sendReply}
-                      disabled={!replyText.trim() || sending}
-                      className={cn(
-                        "flex h-8 w-8 items-center justify-center rounded-full transition-all",
-                        replyText.trim() ? "bg-black text-white hover:bg-black/80" : "bg-neutral-200 text-neutral-400"
-                      )}
-                    >
-                      {sending ? <Spinner className="h-3.5 w-3.5" /> : <PaperPlaneRight size={14} weight="fill" />}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative rounded-2xl bg-[#F8F8F6] ring-1 ring-black/[0.08]">
-                  <div className="px-3.5 py-3">
-                    <p className="text-[13px] leading-[1.6] text-muted-foreground flex items-center gap-1.5">
-                      <img src="https://img.icons8.com/material-rounded/24/bard--v2.png" alt="" className="h-[13px] w-[13px] opacity-50" />
-                      AI bot responds automatically
-                    </p>
-                  </div>
-                </div>
-              )}
-              <p className="mt-2 text-center text-[10px] font-medium text-muted-foreground">
-                Replies sent via {cfg.label} API
-              </p>
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      </motion.div>
     </div>
   );
 }

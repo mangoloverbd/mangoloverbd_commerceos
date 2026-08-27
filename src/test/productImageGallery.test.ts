@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 describe("product image gallery", () => {
   const productsSource = readFileSync(resolve(process.cwd(), "src/pages/Products.tsx"), "utf8");
+  // Create/edit now live on dedicated full pages; the image manager is a shared component.
+  const addProductSource = readFileSync(resolve(process.cwd(), "src/pages/ProductNew.tsx"), "utf8");
+  const editProductSource = readFileSync(resolve(process.cwd(), "src/pages/ProductEdit.tsx"), "utf8");
+  const sharedSource = readFileSync(resolve(process.cwd(), "src/pages/products/shared.tsx"), "utf8");
   const serverSource = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
   const publicCatalogSource = readFileSync(resolve(process.cwd(), "server/publicCatalog.js"), "utf8");
 
@@ -22,32 +26,33 @@ describe("product image gallery", () => {
     expect(publicCatalogSource).toContain("image_urls: galleryImages.map((image) => image.url)");
   });
 
-  it("lets merchants select and upload product images from the Add Product drawer", () => {
-    expect(productsSource).toContain("selectedImages");
-    expect(productsSource).toContain("data-testid=\"input-manual-product-images\"");
-    expect(productsSource).toContain("uploadProductImages");
-    expect(productsSource).toContain("/api/products/${productId}/images");
+  it("lets merchants select and upload product images from the Add Product page", () => {
+    expect(addProductSource).toContain("selectedImages");
+    expect(addProductSource).toContain("onUploadComplete={addImageFile}");
+    expect(addProductSource).toContain("uploadProductImages");
+    expect(addProductSource).toContain("uploadSelectedProductImages");
+    expect(sharedSource).toContain("/api/products/${productId}/images");
   });
 
   it("lets merchants edit products and reorder existing images", () => {
     expect(serverSource).toContain("app.patch(\"/api/products/:id/images/reorder\"");
     expect(serverSource).toContain("is_primary: index === 0");
     expect(serverSource).toContain("inserted[0] && inserted[0].is_primary");
-    expect(productsSource).toContain("EditProductDrawer");
-    expect(productsSource).toContain("ProductBloomPopover");
-    expect(productsSource).toContain("product-bloom-backdrop");
-    expect(productsSource).toContain("fixed inset-0 z-50 grid place-items-center");
-    expect(productsSource).toContain("data-testid={`button-edit-product-${product.id}`}");
-    expect(productsSource).toContain("moveImage(image.id, -1)");
-    expect(productsSource).toContain("moveImage(image.id, 1)");
-    expect(productsSource).toContain("/api/products/${product.id}/images/reorder");
+    // Edit is a dedicated page reached by clicking a product row; the old popup is gone.
+    expect(productsSource).not.toContain("ProductBloomPopover");
+    expect(productsSource).not.toContain("product-bloom-backdrop");
+    expect(productsSource).toContain("navigate(`/products/${id}/edit`)");
+    expect(editProductSource).toContain("ProductImageManager");
+    expect(sharedSource).toContain("moveImage(image.id, -1)");
+    expect(sharedSource).toContain("moveImage(image.id, 1)");
+    expect(sharedSource).toContain("/api/products/${product.id}/images/reorder");
   });
 
   it("uploads edit-product images immediately and shows a clear remove control", () => {
-    expect(productsSource).toContain("uploadImagesOnSelect");
-    expect(productsSource).toContain("onChange={(event) => void uploadImagesOnSelect(event.target.files)}");
-    expect(productsSource).not.toContain("Upload ${selectedImages.length}");
-    expect(productsSource).toContain("aria-label={`Remove ${image.alt_text || product.name}`}");
-    expect(productsSource).toContain("Trash2 className=\"h-3 w-3\"");
+    expect(sharedSource).toContain("uploadImageFile");
+    expect(sharedSource).toContain("onUploadComplete={uploadImageFile}");
+    expect(sharedSource).not.toContain("Upload ${selectedImages.length}");
+    expect(sharedSource).toContain("aria-label={`Remove ${image.alt_text || product.name}`}");
+    expect(sharedSource).toContain("Trash2 className=\"h-3 w-3\"");
   });
 });

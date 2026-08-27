@@ -20,6 +20,7 @@
   },
   "registries": {
     "@spell": "https://spell.sh/r/{name}.json",
-    "@react-bits": "https://reactbits.dev/r/{name}.json"
+    "@react-bits": "https://reactbits.dev/r/{name}.json",
+    "@scrollxui": "https://www.scrollxui.dev/registry/{name}.json"
   }
 }

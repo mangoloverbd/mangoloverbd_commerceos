@@ -421,3 +421,116 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+
+---
+
+## Merchant Onboarding
+
+Merchant Suite onboards each merchant as their **own forked deployment** — not a single shared multi-tenant instance. The operator forks the Suite and the storefront template, brands them, and deploys. Each merchant runs in full isolation: their own database, their own analytics, their own URLs. No shared logins or data between merchants. (The code inside each fork is still multi-tenant by `org_id`, so a merchant can have teammates and multiple workspaces — but the *deployment boundary* is per-merchant.)
+
+### Setup per merchant (operator)
+1. **Fork & brand.** Fork the Merchant Suite repo and the storefront repo; tweak them for the merchant's brand (name, colors, copy) and push the storefront.
+2. **Create their accounts.** Create the merchant's own **Supabase** project (database) and **PostHog** project (analytics).
+3. **Fill keys & deploy.** Enter those Supabase/PostHog keys into the Suite fork's settings, then deploy the Suite → it goes live at the merchant's URL.
+4. **Merchant logs in → workspace auto-created.** On first login the merchant's private workspace (tenant) is created automatically (`org_id`-scoped).
+
+### Merchant self-serve flow (references in `server/index.js`)
+5. **Add products & provision storefront.** The merchant adds products (manual entry or Shopify sync), then clicks **"Provision Storefront"** → `POST /api/storefront/provision` (server/index.js:2425). The server:
+   - ensures a `custom_store_api_key` exists (`ms-{orgId8}-{random}`),
+   - calls `provisionStorefrontProject(orgId, apiKey)` (server/index.js:2448), which creates a **Vercel project** from the storefront template repo, sets its env (`VITE_STOREFRONT_ID` = org_id, `VITE_MERCHANT_SUITE_URL`, `CUSTOM_ORDERS_API_KEY`), deploys it, and stores the Vercel project id in `app_settings` (`{orgId}:storefront_vercel_project_id`),
+   - returns `https://storefront-{orgId8}.vercel.app`.
+   Visitor tracking is **already wired** (the `merchant-suite-tracker` script + PostHog), so live visitors show immediately — no extra setup.
+6. **Optional custom domain.** The merchant can connect their own domain name to the storefront project.
+
+After go-live: customers shop the storefront and orders land in the merchant's dashboard. Everything stays separate per merchant.
+
+### Team members
+- An admin invites teammates via `POST /api/admin/assign-role` (server/index.js:734); they inherit the same `org_id`.
+
+### Key facts for agents
+- **Fork-per-merchant deployment**, not one shared Suite: each merchant = own fork + own Supabase + own PostHog + own URL.
+- Within a fork, data stays scoped by `org_id` (multi-tenant code), so team members and workspaces remain isolated inside that merchant's instance.
+- The **storefront is auto-provisioned per merchant** via `provisionStorefrontProject` / `getStorefrontProjectId` (server/index.js:2448 / 2289) — reuse these rather than writing new storefront logic.
+- Every new merchant gets a **7-day free trial** automatically on sign-up (`billing_plan: "growth"`, `billing_status: "trialing"`, `trial_ends_at = now + 7d` — server/index.js:712).
+- Sign-up is instant (email auto-confirmed).
+- When adding onboarding-related features, keep the `org_id`-scoping and trial-seeding behavior intact.
+
+---
+
+## 13. General Coding Principles
+
+Behavioral guidelines to reduce common LLM coding mistakes. These apply on top of everything above.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+### 13.1 Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them — don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+### 13.2 Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 13.3 Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it — don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+### 13.4 Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+### 13.5 Multi-Pass Review for High-Stakes Decisions
+
+**Don't settle on a first-pass answer when a decision is consequential or ambiguous.**
+
+For architecture decisions, security-sensitive code, or irreversible calls, work through three internal passes before presenting a final answer:
+
+1. **Independent pass** — Draft the solution on its own merits first, without anchoring to an alternative you may already be leaning toward.
+2. **Self-review** — Critique that draft as if reviewing someone else's work: what's the weakest assumption, what could break, what did it fail to consider?
+3. **Synthesis** — Produce one final answer that resolves the critique, and note explicitly what changed between the draft and the final version and why.
+
+Trigger this only for: irreversible architecture choices, security-critical code, or explicit request ("council this," "pressure-test this"). Skip it for routine edits — the overhead isn't justified for low-stakes changes.
+
+**Note:** This is single-model internal deliberation, not multi-model dispatch. For an actual multi-LLM council, use the `llm-council` skill instead — that's a different mechanism and shouldn't be conflated with this rule.
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

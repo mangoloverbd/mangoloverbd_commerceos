@@ -59,16 +59,10 @@ export default function Onboarding() {
         transition={{ duration: 0.9, ...smooth }}
       >
         {/* Logo */}
-        <div className="mb-10 flex items-center gap-2">
-          <Logo className="h-6 w-6 rounded-md shrink-0" />
-          <span className="text-[18px] font-semibold leading-none tracking-normal text-black">
-            Merchant-
-          </span>
-          <span
-            className="text-[20px] font-semibold leading-none tracking-normal text-black"
-            style={{ fontFamily: "'Pixelify Sans', system-ui, sans-serif" }}
-          >
-            Suite
+        <div className="mb-10 flex items-center gap-1.5">
+          <Logo className="h-[19px] w-auto shrink-0" />
+          <span className="text-[19px] font-bold tracking-tight text-[#111] antialiased leading-none">
+            merchant-suite
           </span>
         </div>
 

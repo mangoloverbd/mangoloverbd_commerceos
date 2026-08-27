@@ -2,6 +2,9 @@ import { useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
+import FacebookLogo from "@/components/FacebookLogo";
+import WhatsappLogo from "@/components/WhatsappLogo";
+import InstagramLogo from "@/components/InstagramLogo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -21,14 +24,11 @@ import {
   ShieldCheck, FileText, Printer,
   Trash, Check, MapPin,
 } from "@phosphor-icons/react";
-import {
-  FacebookLogo, InstagramLogo, WhatsappLogo,
-} from "@phosphor-icons/react";
 import { AlertTriangle, HelpCircle, ShieldAlert, ShieldCheck as LucideShieldCheck } from "lucide-react";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { AnimatedText } from "@/components/ui/animated-text";
+import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 
 interface InboxOrder {
   id: string;
@@ -787,59 +787,46 @@ export default function InboxOrders() {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#FAFAF8] p-1 lg:p-2">
+    <div className="min-h-full space-y-3 bg-white p-1 lg:p-2 pb-4 lg:pb-6">
+      {/* ─ Board card ───────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-black/10 bg-white"
+        transition={{ duration: 0.4 }}
+        className="overflow-hidden rounded-2xl bg-black/[0.04]"
       >
-        <div className="flex h-[50px] items-center justify-between border-b border-black/10 px-4 lg:px-6">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-black/[0.045] text-foreground">
-              <ShoppingBag size={15} weight="light" />
-            </span>
-            <div>
-              <AnimatedText as="p" className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Inbox Orders</AnimatedText>
-              <p className="text-[11px] text-muted-foreground">Orders captured by AI from social conversations</p>
-            </div>
-          </div>
-          <span className="rounded-full bg-black/[0.045] px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
-            {filtered.length} shown
-          </span>
-        </div>
-
         {/* Toolbar */}
-        <div className="flex flex-col gap-3 border-b border-black/10 px-4 py-3 lg:flex-row lg:items-center lg:px-6">
-        <div className="flex h-9 max-w-xs flex-1 items-center gap-2 rounded-xl border border-black/[0.08] bg-[#F8F8F6] px-3">
-          <MagnifyingGlass size={14} weight="light" className="shrink-0 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customer, product..."
-            className="flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
-            data-testid="input-inbox-search"
-          />
-        </div>
+        <div className="flex flex-col gap-3 border-b border-black/10 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <SegmentedControl
+            aria-label="Filter orders by status"
+            selectedKeys={new Set([statusFilter])}
+            onSelectionChange={(keys) => {
+              const next = [...keys][0];
+              if (next) setStatusFilter(next as string);
+            }}
+          >
+            {(["all", "pending", "confirmed", "cancelled"] as const).map((f) => (
+              <SegmentedControlItem key={f} id={f}>
+                <span data-testid={`button-filter-${f}`} className="capitalize">
+                  {f} {counts[f as keyof typeof counts] > 0 && (
+                    <span className="ml-0.5 opacity-60">({counts[f as keyof typeof counts]})</span>
+                  )}
+                </span>
+              </SegmentedControlItem>
+            ))}
+          </SegmentedControl>
 
-        {/* Status filter tabs */}
-        <div className="flex w-fit items-center rounded-xl border border-black/[0.08] bg-[#F8F8F6] p-1">
-          {(["all", "pending", "confirmed", "cancelled"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setStatusFilter(f)}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-[10px] font-semibold capitalize transition-colors",
-                statusFilter === f ? "bg-black text-white" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
-              )}
-              data-testid={`button-filter-${f}`}
-            >
-              {f} {counts[f as keyof typeof counts] > 0 && (
-                <span className="ml-0.5 opacity-60">({counts[f as keyof typeof counts]})</span>
-              )}
-            </button>
-          ))}
+          <div className="relative flex h-8 max-w-xs flex-1 items-center gap-2 rounded-full border-0 bg-black/[0.05] px-3">
+            <MagnifyingGlass size={13} weight="light" className="shrink-0 text-black/35" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search customer, product..."
+              className="flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-black/35"
+              data-testid="input-inbox-search"
+            />
+          </div>
         </div>
-      </div>
 
       {/* Table */}
       <div className="overflow-x-auto overflow-y-visible">

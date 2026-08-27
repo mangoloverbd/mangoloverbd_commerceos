@@ -23,7 +23,137 @@ import {
   normalizeStorefrontHandle,
   validateStorefrontHandle,
 } from "./storefrontHandle.js";
+import { AI_ACTION_TOOLS, askUserTool, buildRecommendation, executeAiAction } from "./ai-actions.js";
 const { Pool } = pg;
+
+// ─── AI provider (OpenAI-compatible, supports OpenRouter and any
+//     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
+// AI_PROVIDER:
+//   "openai"      — default; uses OPENAI_API_KEY + https://api.openai.com/v1
+//   "openrouter"  — uses OPENROUTER_API_KEY + https://openrouter.ai/api/v1
+//   "compatible"  — any OpenAI-compatible gateway; reads AI_BASE_URL + AI_API_KEY
+//                   (or OPENAI_API_KEY if AI_API_KEY is unset) from env. Use
+//                   this for self-hosted gateways, GMI Cloud, etc.
+// AI_MODEL overrides the default model for any provider. The Responses API
+// (/v1/responses) is OpenAI-only — when AI_PROVIDER is not "openai", features
+// that need it (image gen, Studio) error out cleanly; chat-only features
+// (Order Chat, etc.) fall back to chat/completions with tools.
+const AI_PROVIDER = (process.env.AI_PROVIDER || "openai").toLowerCase();
+const AI_BASE_URL =
+  AI_PROVIDER === "openrouter"
+    ? "https://openrouter.ai/api/v1"
+    : AI_PROVIDER === "compatible"
+      ? (process.env.AI_BASE_URL || "").replace(/\/+$/, "")
+      : "https://api.openai.com/v1";
+const AI_API_KEY =
+  AI_PROVIDER === "openrouter"
+    ? process.env.OPENROUTER_API_KEY
+    : AI_PROVIDER === "compatible"
+      ? (process.env.AI_API_KEY || process.env.OPENAI_API_KEY)
+      : process.env.OPENAI_API_KEY;
+const AI_DEFAULT_MODEL =
+  process.env.AI_MODEL ||
+    (AI_PROVIDER === "openrouter"
+      ? "nvidia/nemotron-3-ultra-550b-a55b:free"
+      : "gpt-4o-mini");
+
+// OpenAI-compatible chat/completions call with retry/backoff. Free AI gateways
+// (e.g. OpenRouter) return 503 "hard concurrency limit reached" under load,
+// so we retry a few times with exponential backoff before giving up. Each
+// attempt has a hard timeout so a stalled gateway can't hang the request (and
+// leave the client stuck on "Agent working…") forever.
+async function aiChatCompletion(body, { retries = 2, baseDelayMs = 1000, timeoutMs = 60000 } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1)));
+    }
+    try {
+      const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AI_API_KEY}`,
+          "Content-Type": "application/json",
+          // Optional OpenRouter attribution headers (ignored by OpenAI).
+          ...(AI_PROVIDER === "openrouter" && process.env.OPENROUTER_SITE_URL
+            ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL }
+            : {}),
+          ...(AI_PROVIDER === "openrouter" && process.env.OPENROUTER_APP_TITLE
+            ? { "X-OpenRouter-Title": process.env.OPENROUTER_APP_TITLE }
+            : {}),
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (response.ok) return response;
+      const status = response.status;
+      // Only retry on gateway/rate-limit errors; surface auth/other errors immediately.
+      if (status !== 503 && status !== 429 && status !== 502) {
+        return response;
+      }
+      lastErr = { status, body: await response.text() };
+    } catch (err) {
+      // Network error or timeout — fail fast rather than stacking timeouts
+      // (an overloaded gateway will likely just time out again).
+      lastErr = { status: 504, body: `AI gateway timeout or unreachable (${err?.name || "error"})` };
+      break;
+    }
+  }
+  // Return a synthetic non-ok response so callers handle it uniformly.
+  const err = lastErr || { status: 503, body: "AI gateway unavailable" };
+  return new Response(JSON.stringify({ error: err.body }), {
+    status: err.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// OpenAI Responses API call. OpenAI-only (OpenRouter / most compatible
+// gateways do not implement /v1/responses). Routes that need it must gate on
+// AI_PROVIDER === "openai" before calling. Same retry/timeout shape as the
+// chat/completions helper above.
+async function aiResponsesCompletion(body, { retries = 2, baseDelayMs = 1000, timeoutMs = 60000 } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1)));
+    }
+    try {
+      const response = await fetch(`${AI_BASE_URL}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (response.ok) return response;
+      const status = response.status;
+      if (status !== 503 && status !== 429 && status !== 502) {
+        return response;
+      }
+      lastErr = { status, body: await response.text() };
+    } catch (err) {
+      lastErr = { status: 504, body: `AI gateway timeout or unreachable (${err?.name || "error"})` };
+      break;
+    }
+  }
+  const err = lastErr || { status: 503, body: "AI gateway unavailable" };
+  return new Response(JSON.stringify({ error: err.body }), {
+    status: err.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// True when the active provider supports the OpenAI Responses API. Today
+// that's only OpenAI itself. OpenRouter and other OpenAI-compatible gateways
+// implement /v1/chat/completions but not /v1/responses, so features that
+// need Responses-API-only capabilities (image generation, structured tools)
+// must gate on this before calling.
+function isOpenAIProvider() {
+  return AI_PROVIDER === "openai";
+}
+
 
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
 // Three tiers keyed by authenticated user ID (or IP for auth endpoints):
@@ -431,19 +561,21 @@ function parseOpenAIError(status, body) {
   }
 
   const detail = String(message || "").slice(0, 220);
+  const provider = AI_PROVIDER === "openrouter" ? "OpenRouter" : "OpenAI";
+  const apiKeyEnv = AI_PROVIDER === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
   if (status === 401 || code === "invalid_api_key") {
-    return "OpenAI rejected the API key. Check that OPENAI_API_KEY is a valid project API key and restart localhost after editing .env.";
+    return `${provider} rejected the API key. Check that ${apiKeyEnv} is valid and restart localhost after editing .env.`;
   }
   if (status === 403 || /model|project|organization|permission/i.test(detail)) {
-    return `OpenAI access error: ${detail}`;
+    return `${provider} access error: ${detail}`;
   }
   if (status === 429 && /quota|credits|billing|balance/i.test(detail)) {
-    return `OpenAI billing/quota error: ${detail}`;
+    return `${provider} billing/quota error: ${detail}`;
   }
   if (status === 429) {
-    return "OpenAI rate limit exceeded. Please try again shortly.";
+    return `${provider} rate limit exceeded. Please try again shortly.`;
   }
-  return `OpenAI error ${status}: ${detail || "request failed"}`;
+  return `${provider} error ${status}: ${detail || "request failed"}`;
 }
 
 function delay(ms) {
@@ -677,6 +809,8 @@ app.get("/api/config", (req, res) => {
     supabaseUrl: process.env.SUPABASE_URL || "",
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
+    aiProvider: AI_PROVIDER,
+    aiDefaultModel: AI_DEFAULT_MODEL,
   });
 });
 
@@ -1160,7 +1294,7 @@ async function getNextManualOrderSeq(orgId) {
     const currentStr = existing?.value ?? "0";
     const highestShopifyStyleOrderNumber = await getHighestShopifyStyleOrderNumber(orgId);
     const current = parseInt(currentStr, 10) || 0;
-    const baseline = Math.max(current, highestShopifyStyleOrderNumber);
+    const baseline = Math.max(current, highestShopifyStyleOrderNumber, 1000);
     const next = baseline + 1;
 
     const { data: updated, error } = await supabase
@@ -2121,6 +2255,9 @@ app.get("/api/storefront/settings", async (req, res) => {
         seoTitleTemplate: data.seo_title_template,
         seoDescriptionTemplate: data.seo_description_template,
         shippingZones: data.shipping_zones,
+        customDomain: data.custom_domain || null,
+        customDomainStatus: data.custom_domain_status || null,
+        dnsRecord: data.custom_domain ? dnsRecordFor(data.custom_domain) : null,
       } : {
         enabled: false,
         storeName: "",
@@ -2138,6 +2275,9 @@ app.get("/api/storefront/settings", async (req, res) => {
         seoTitleTemplate: "{product_name} | {store_name}",
         seoDescriptionTemplate: "{product_description}",
         shippingZones: [],
+        customDomain: null,
+        customDomainStatus: null,
+        dnsRecord: null,
       },
     });
   } catch (err) {
@@ -2153,7 +2293,18 @@ app.post("/api/storefront/settings", async (req, res) => {
     const { orgId, role } = await getUserOrg(supabase, user.id);
     if (role !== "admin") return res.status(403).json({ error: "Admin only" });
 
+    // Snapshot previous custom domain so we can add/remove on the Vercel side.
+    const { data: existing } = await supabase
+      .from("storefront_settings")
+      .select("custom_domain")
+      .eq("org_id", orgId)
+      .maybeSingle();
+    const prevDomain = existing?.custom_domain || null;
+
     const s = req.body?.settings || {};
+    const requestedDomain = typeof s.customDomain === "string"
+      ? s.customDomain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "")
+      : null;
     const row = {
       org_id: orgId,
       enabled: Boolean(s.enabled),
@@ -2172,6 +2323,8 @@ app.post("/api/storefront/settings", async (req, res) => {
       seo_title_template: s.seoTitleTemplate || "{product_name} | {store_name}",
       seo_description_template: s.seoDescriptionTemplate || "{product_description}",
       shipping_zones: Array.isArray(s.shippingZones) ? s.shippingZones : [],
+      custom_domain: requestedDomain || null,
+      custom_domain_status: requestedDomain ? "pending" : null,
       updated_at: new Date().toISOString(),
     };
 
@@ -2180,10 +2333,28 @@ app.post("/api/storefront/settings", async (req, res) => {
       .upsert(row, { onConflict: "org_id" });
     if (error) throw error;
 
+    // Sync custom domain with Vercel when it changed (add / remove / re-check).
+    let domainStatus = null;
+    if (requestedDomain !== prevDomain) {
+      const projectId = await getStorefrontProjectId(orgId);
+      const sync = await syncStorefrontDomain(projectId, prevDomain, requestedDomain);
+      await supabase
+        .from("storefront_settings")
+        .update({ custom_domain_status: sync.status, updated_at: new Date().toISOString() })
+        .eq("org_id", orgId);
+      domainStatus = {
+        domain: requestedDomain,
+        status: sync.status,
+        cnameTarget: sync.cnameTarget,
+        dnsRecord: sync.dnsRecord,
+        error: sync.error,
+      };
+    }
+
     // Purge the cached config so the storefront picks up changes quickly
     await purgeStorefrontConfigCache(orgId);
 
-    return res.json({ success: true });
+    return res.json({ success: true, domainStatus });
   } catch (err) {
     return sendError(res, err);
   }
@@ -2213,6 +2384,256 @@ async function purgeStorefrontConfigCache(orgId) {
     console.warn("[Purge] Could not purge storefront config cache:", e.message);
   }
 }
+
+// ─── Storefront auto-provision + custom domain (Vercel) ─────────────────────
+// Per-merchant: when a merchant provisions their storefront, Merchant Suite
+// calls the Vercel API to create a new project from the default storefront
+// GitHub repo, injects env vars (VITE_MERCHANT_SUITE_URL, VITE_STOREFRONT_ID,
+// MERCHANT_SUITE_URL, CUSTOM_ORDERS_API_KEY), and stores the resulting
+// vercel_project_id in app_settings (org-scoped). The custom-domain card then
+// attaches the merchant's domain to THAT project (not a global one).
+
+const VERCEL_ACCESS_TOKEN = process.env.VERCEL_ACCESS_TOKEN || "";
+const STOREFRONT_VERCEL_TEAM_ID = process.env.STOREFRONT_VERCEL_TEAM_ID || "";
+const STOREFRONT_GIT_REPO = process.env.STOREFRONT_GIT_REPO || ""; // e.g. "noorkarimmehedi/e-commerce"
+// The public URL of THIS Merchant Suite deploy, baked into every auto-provisioned
+// storefront so it reads catalog + posts orders back here.
+const MERCHANT_SUITE_PUBLIC_URL = (process.env.MERCHANT_SUITE_PUBLIC_URL || process.env.PUBLIC_DOMAIN || "").replace(/\/$/, "");
+// Fallback single project id (if you're not using auto-provision and just point
+// at one shared storefront project). Auto-provision overrides this per-merchant.
+const VERCEL_PROJECT_ID_FALLBACK = process.env.VERCEL_PROJECT_ID || "";
+
+function vercelTeamQuery() {
+  return STOREFRONT_VERCEL_TEAM_ID ? `?teamId=${STOREFRONT_VERCEL_TEAM_ID}` : "";
+}
+function vercelApi(path, opts = {}) {
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `https://api.vercel.com${path}${STOREFRONT_VERCEL_TEAM_ID ? `${sep}teamId=${STOREFRONT_VERCEL_TEAM_ID}` : ""}`;
+  return fetch(url, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${VERCEL_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+      ...(opts.headers || {}),
+    },
+  });
+}
+
+// Read this merchant's storefront Vercel project id (org-scoped app_settings).
+async function getStorefrontProjectId(orgId) {
+  const key = `${orgId}:storefront_vercel_project_id`;
+  const settings = await getSettings([key]);
+  return settings[key] || VERCEL_PROJECT_ID_FALLBACK || null;
+}
+async function saveStorefrontProjectId(orgId, projectId) {
+  await saveSettings({ [`${orgId}:storefront_vercel_project_id`]: projectId });
+}
+
+// Apex (<=2 labels, or 3 with a 2-3 char TLD like co.uk) → A record; else CNAME.
+function dnsRecordFor(domain) {
+  const labels = String(domain).split(".");
+  const isApex = labels.length <= 2 || (labels.length === 3 && labels[1].length <= 3);
+  return isApex
+    ? { type: "A", host: "@", value: "76.76.21.21" }
+    : { type: "CNAME", host: labels.slice(0, -2).join(".") || "@", value: "cname.vercel-dns.com" };
+}
+
+// Add / remove / re-check the merchant's custom domain on their storefront project.
+// Never throws — errors surface as status:"failed" + error.
+async function syncStorefrontDomain(projectId, prevDomain, newDomain) {
+  if (!projectId || !VERCEL_ACCESS_TOKEN) {
+    return newDomain
+      ? { status: "pending", cnameTarget: "cname.vercel-dns.com", dnsRecord: dnsRecordFor(newDomain), error: "Storefront not provisioned or Vercel token missing — provision a storefront first." }
+      : { status: null, cnameTarget: null, dnsRecord: null, error: null };
+  }
+  const domainsBase = `/v9/projects/${projectId}/domains`;
+  try {
+    if (!newDomain) {
+      if (prevDomain) {
+        await vercelApi(`${domainsBase}/${encodeURIComponent(prevDomain)}`, { method: "DELETE" });
+      }
+      return { status: null, cnameTarget: null, dnsRecord: null, error: null };
+    }
+    if (prevDomain && prevDomain === newDomain) {
+      const r = await vercelApi(`${domainsBase}/${encodeURIComponent(newDomain)}`);
+      const d = r.ok ? await r.json() : {};
+      return { status: d.verified ? "verified" : "pending", cnameTarget: "cname.vercel-dns.com", dnsRecord: dnsRecordFor(newDomain), error: null };
+    }
+    if (prevDomain && prevDomain !== newDomain) {
+      await vercelApi(`${domainsBase}/${encodeURIComponent(prevDomain)}`, { method: "DELETE" });
+    }
+    const addRes = await vercelApi(domainsBase, {
+      method: "POST",
+      body: JSON.stringify({ name: newDomain }),
+    });
+    if (!addRes.ok) {
+      const body = await addRes.text();
+      return { status: "failed", cnameTarget: null, dnsRecord: null, error: `Vercel rejected domain: ${addRes.status} ${body.slice(0, 200)}` };
+    }
+    const added = await addRes.json();
+    return { status: added.verified ? "verified" : "pending", cnameTarget: "cname.vercel-dns.com", dnsRecord: dnsRecordFor(newDomain), error: null };
+  } catch (e) {
+    return { status: "failed", cnameTarget: null, dnsRecord: null, error: e.message };
+  }
+}
+
+// Create a new Vercel project from the default storefront GitHub repo, inject
+// env vars, trigger a production deploy, and persist the project id for this merchant.
+async function provisionStorefrontProject(orgId, customOrdersApiKey) {
+  if (!VERCEL_ACCESS_TOKEN) return { ok: false, error: "VERCEL_ACCESS_TOKEN not set" };
+  if (!STOREFRONT_GIT_REPO) return { ok: false, error: "STOREFRONT_GIT_REPO not set (e.g. noorkarimmehedi/e-commerce)" };
+  if (!MERCHANT_SUITE_PUBLIC_URL) return { ok: false, error: "MERCHANT_SUITE_PUBLIC_URL not set — the public URL of this Merchant Suite deploy" };
+
+  const projectName = `storefront-${orgId.slice(0, 8)}`;
+
+  // Vercel's git linking needs BOTH the repo name AND the numeric repoId.
+  let repoId = "";
+  try {
+    const gh = await fetch(`https://api.github.com/repos/${STOREFRONT_GIT_REPO}`);
+    if (gh.ok) repoId = String((await gh.json()).id);
+  } catch { /* non-fatal, will fail at create */ }
+  if (!repoId) return { ok: false, error: `Could not resolve GitHub repo id for ${STOREFRONT_GIT_REPO}` };
+
+  // 1. Create the project from the public GitHub repo (link git with repo + repoId).
+  const createRes = await vercelApi("/v11/projects", {
+    method: "POST",
+    body: JSON.stringify({
+      name: projectName,
+      gitRepository: { type: "github", repo: STOREFRONT_GIT_REPO, repoId: Number(repoId) },
+    }),
+  });
+  if (!createRes.ok && createRes.status !== 409) {
+    const body = await createRes.text();
+    return { ok: false, error: `Vercel create project failed: ${createRes.status} ${body.slice(0, 300)}` };
+  }
+  const created = createRes.ok ? await createRes.json() : null;
+  let projectId = created?.id;
+  if (!projectId) {
+    const getRes = await vercelApi(`/v9/projects/${projectName}`);
+    if (!getRes.ok) return { ok: false, error: `Storefront project exists but could not be fetched: ${getRes.status}` };
+    projectId = (await getRes.json()).id;
+  }
+
+  // 2. Inject env vars so the storefront reads from THIS Merchant Suite.
+  const envVars = [
+    { key: "VITE_MERCHANT_SUITE_URL", value: MERCHANT_SUITE_PUBLIC_URL, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "VITE_STOREFRONT_ID", value: orgId, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "MERCHANT_SUITE_URL", value: MERCHANT_SUITE_PUBLIC_URL, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "CUSTOM_ORDERS_API_KEY", value: customOrdersApiKey, type: "encrypted", target: ["production", "preview", "development"] },
+  ];
+  for (const ev of envVars) {
+    await vercelApi(`/v9/projects/${projectId}/env`, { method: "POST", body: JSON.stringify(ev) });
+  }
+
+  // 3. Persist the project id for this merchant (domain card uses it).
+  await saveStorefrontProjectId(orgId, projectId);
+
+  // 4. Trigger a production deploy from the linked git repo.
+  const deployRes = await vercelApi(`/v13/deployments?skipAutoDetectionConfirmation=1`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: projectName,
+      target: "production",
+      gitSource: { type: "github", repo: STOREFRONT_GIT_REPO, repoId: Number(repoId), ref: "main" },
+    }),
+  });
+  // Deploy is async; ignore transient errors — the project is created + env set.
+
+  // 5. Return the real default production domain Vercel assigned (it appends a
+  //    random suffix like -tau), rather than guessing the URL.
+  let url = "";
+  try {
+    const dRes = await vercelApi(`/v9/projects/${projectId}/domains`);
+    if (dRes.ok) {
+      const d = await dRes.json();
+      const prod = (d.domains || []).find((x) => x.name && x.verified !== false) || (d.domains || [])[0];
+      url = prod ? `https://${prod.name}` : `https://${projectName}.vercel.app`;
+    }
+  } catch { /* fallback below */ }
+  url = url || `https://${projectName}.vercel.app`;
+
+  return { ok: true, projectId, projectName, url };
+}
+
+// Provision a storefront for the signed-in merchant. Admin only.
+app.post("/api/storefront/provision", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    // Already provisioned? Return existing.
+    const existing = await getStorefrontProjectId(orgId);
+    if (existing && existing !== VERCEL_PROJECT_ID_FALLBACK) {
+      const projectName = `storefront-${orgId.slice(0, 8)}`;
+      return res.json({ ok: true, alreadyProvisioned: true, projectId: existing, url: `https://${projectName}.vercel.app` });
+    }
+
+    // Ensure a custom-store API key exists for this org (reuse or issue).
+    let keyRow = await getOrgSettings(orgId, ["custom_store_api_key"]);
+    let apiKey = keyRow.custom_store_api_key;
+    if (!apiKey) {
+      apiKey = `ms-${orgId.slice(0, 8)}-${crypto.randomBytes(8).toString("hex")}`;
+      await saveOrgSettings(orgId, { custom_store_api_key: apiKey });
+    }
+
+    const result = await provisionStorefrontProject(orgId, apiKey);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    return res.json(result);
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// Get provisioning status (project id + live URL) for the signed-in merchant.
+app.get("/api/storefront/provision", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const projectId = await getStorefrontProjectId(orgId);
+    if (!projectId || projectId === VERCEL_PROJECT_ID_FALLBACK) {
+      return res.json({ provisioned: false, projectId: null, url: null });
+    }
+    const projectName = `storefront-${orgId.slice(0, 8)}`;
+    let url = `https://${projectName}.vercel.app`;
+    try {
+      const dRes = await vercelApi(`/v9/projects/${projectId}/domains`);
+      if (dRes.ok) {
+        const d = await dRes.json();
+        const prod = (d.domains || []).find((x) => x.name && x.verified !== false) || (d.domains || [])[0];
+        if (prod) url = `https://${prod.name}`;
+      }
+    } catch { /* keep fallback */ }
+    return res.json({ provisioned: true, projectId, url });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/storefront/domain-status", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data } = await supabase
+      .from("storefront_settings")
+      .select("custom_domain, custom_domain_status")
+      .eq("org_id", orgId)
+      .maybeSingle();
+    const domain = data?.custom_domain || null;
+    if (!domain) return res.json({ domain: null, status: null, cnameTarget: null, dnsRecord: null, error: null });
+    const projectId = await getStorefrontProjectId(orgId);
+    const sync = await syncStorefrontDomain(projectId, domain, domain);
+    return res.json({ domain, status: sync.status, cnameTarget: sync.cnameTarget, dnsRecord: sync.dnsRecord, error: sync.error });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
 
 // ─── Integration Test Endpoints ──────────────────────────────────────────────
 
@@ -3404,7 +3825,7 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
     unsentConfirmed: fallbackSidebarInsight("unsentConfirmed", unsentConfirmed),
   };
 
-  if (!process.env.OPENAI_API_KEY || (!stalePending.length && !unsentConfirmed.length)) {
+  if (!AI_API_KEY || !isOpenAIProvider() || (!stalePending.length && !unsentConfirmed.length)) {
     return fallback;
   }
 
@@ -3413,28 +3834,21 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
       stalePending: stalePending.slice(0, 10),
       unsentConfirmed: unsentConfirmed.slice(0, 10),
     };
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_SIDEBAR_ALERT_MODEL,
-        input: [
-          {
-            role: "system",
-            content:
-              "You write concise operational sidebar alerts for a Bangladeshi ecommerce order dashboard. Return JSON only. Use practical language, no markdown.",
-          },
-          {
-            role: "user",
-            content:
-              "Create short AI insights for these sidebar alert groups. Keep headline under 52 characters and insight under 120 characters. Return shape: {\"stalePending\":{\"headline\":\"\",\"insight\":\"\"},\"unsentConfirmed\":{\"headline\":\"\",\"insight\":\"\"}}. Omit a group by returning null when it has no orders.\n\n" +
-              JSON.stringify(payload),
-          },
-        ],
-      }),
+    const response = await aiResponsesCompletion({
+      model: OPENAI_SIDEBAR_ALERT_MODEL,
+      input: [
+        {
+          role: "system",
+          content:
+            "You write concise operational sidebar alerts for a Bangladeshi ecommerce order dashboard. Return JSON only. Use practical language, no markdown.",
+        },
+        {
+          role: "user",
+          content:
+            "Create short AI insights for these sidebar alert groups. Keep headline under 52 characters and insight under 120 characters. Return shape: {\"stalePending\":{\"headline\":\"\",\"insight\":\"\"},\"unsentConfirmed\":{\"headline\":\"\",\"insight\":\"\"}}. Omit a group by returning null when it has no orders.\n\n" +
+            JSON.stringify(payload),
+        },
+      ],
     });
 
     if (!response.ok) {
@@ -3455,17 +3869,17 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
 }
 
 async function buildForecastNarrative(payload) {
-  if (!process.env.OPENAI_API_KEY) return payload.executiveSummary;
+  if (!AI_API_KEY) return payload.executiveSummary;
   try {
     const prompt = `You are an operator for a Bangladeshi ecommerce business. Write a concise executive summary and practical action plan from this JSON. Use taka symbol. Focus on stock-outs, products to stop, restocking, and risk.\n\n${JSON.stringify(payload).slice(0, 12000)}`;
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         messages: [
           { role: "system", content: "Return markdown only. Be specific, concise, and operational." },
           { role: "user", content: prompt },
@@ -3621,16 +4035,16 @@ function fallbackWebsiteBehaviorDropOffBullets(dropOff) {
 
 async function buildWebsiteBehaviorDropOffBullets(dropOff, funnel) {
   const fallback = fallbackWebsiteBehaviorDropOffBullets(dropOff);
-  if (!dropOff || !process.env.OPENAI_API_KEY) return fallback;
+  if (!dropOff || !AI_API_KEY) return fallback;
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         messages: [
           { role: "system", content: "Return JSON only: {\"bullets\":[\"...\",\"...\",\"...\"]}. Write concise ecommerce operator advice for Bangladesh. No markdown." },
           { role: "user", content: JSON.stringify({ dropOff, funnel }) },
@@ -3969,7 +4383,8 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    if (!isOpenAIProvider()) return res.status(400).json({ error: "Image generation requires AI_PROVIDER=openai (the Responses API is OpenAI-only)." });
+    if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
 
     const { prompt, image, size = "auto", quality = "medium" } = req.body || {};
     if (!prompt) return res.status(400).json({ error: "prompt is required" });
@@ -3989,30 +4404,23 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
       });
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-5.5",
-        input: [
-          {
-            role: "user",
-            content: inputContent,
-          },
-        ],
-        tools: [
-          {
-            type: "image_generation",
-            size: finalSize,
-            quality: finalQuality,
-            action: image ? "edit" : "generate",
-          },
-        ],
-        tool_choice: { type: "image_generation" },
-      }),
+    const response = await aiResponsesCompletion({
+      model: "gpt-5.5",
+      input: [
+        {
+          role: "user",
+          content: inputContent,
+        },
+      ],
+      tools: [
+        {
+          type: "image_generation",
+          size: finalSize,
+          quality: finalQuality,
+          action: image ? "edit" : "generate",
+        },
+      ],
+      tool_choice: { type: "image_generation" },
     });
 
     if (!response.ok) {
@@ -4039,19 +4447,34 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
   }
 });
 
-const ORDER_CHAT_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
+// OpenAI Responses API is only for the gpt-5.x family. Everything else
+// (e.g. OpenRouter models) is routed through the OpenAI-compatible
+// chat/completions endpoint, which also supports tool-calling / mutations.
+const ORDER_CHAT_RESPONSES_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
 
 app.post("/api/order-chat", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
 
-    const model = ORDER_CHAT_MODELS.has(req.body?.model) ? req.body.model : "gpt-5.4-mini";
+    const model =
+      req.body?.model ||
+      (AI_PROVIDER === "openrouter" ? AI_DEFAULT_MODEL : "gpt-5.4-mini");
+    // Order Chat uses the OpenAI Responses API (reliable tool-calling / mutations)
+    // for the gpt-5.x family. OpenRouter models (which don't support /v1/responses)
+    // fall back to the OpenAI-compatible chat/completions path with tools.
+    const useResponses = AI_PROVIDER === "openai" && ORDER_CHAT_RESPONSES_MODELS.has(model);
+    if (useResponses) {
+      if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    } else if (!AI_API_KEY) {
+      return res.status(500).json({ error: `${AI_PROVIDER === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"} is not configured` });
+    }
+
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
 
     const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    const canMutate = role === "admin";
 
     // Fetch all data in parallel
     const [
@@ -4081,7 +4504,7 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
     if (baseProducts.length > 0) {
       const { data: variantRows } = await supabase
         .from("product_variants")
-        .select("product_id, attributes, stock_quantity, price_adjustment")
+        .select("id, product_id, attributes, stock_quantity, price_adjustment")
         .in("product_id", baseProducts.map((p) => p.id))
         .eq("org_id", orgId);
       for (const v of variantRows || []) {
@@ -4129,7 +4552,9 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
 
     const productDetails = products.map((p) => {
       const variants = (chatVariantsMap[p.id] || []).map((v) => ({
+        id: v.id,
         option: Object.entries(v.attributes || {}).map(([k, val]) => `${k}: ${val}`).join(", "),
+        stock: v.stock_quantity ?? 0,
         available: v.stock_quantity > 0,
         price: v.price_adjustment
           ? (p.selling_price != null ? Number(p.selling_price) + Number(v.price_adjustment) : null)
@@ -4140,7 +4565,9 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
         name: p.name,
         price: p.selling_price,
         cog: p.cog,
-        stock: variants.length > 0 ? null : (p.stock_quantity ?? null),
+        stock: variants.length > 0
+          ? variants.reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0)
+          : (p.stock_quantity ?? null),
         available: variants.length > 0
           ? variants.some((v) => v.available)
           : (p.stock_quantity ?? 0) > 0,
@@ -4175,6 +4602,8 @@ Rules:
 - If asked which colors/sizes/options are available, list only variants where available=true.
 - If all variants are unavailable, say the product is out of stock.
 - If asked about social/inbox orders, reference the inbox orders data.
+- You CAN add a new variant (a new size, color, or option) to an EXISTING product using the add_variant tool — for example "add size S with 20 stock" or "add a red color". Use add_variant for this; do NOT use create_product (that makes a duplicate product). For changing stock/COG/price/attributes of a variant that already exists, use update_variant.
+- If the user asks for MULTIPLE changes in a single message (for example "set S stock to 10 and add size XXL with 10 stock"), you MUST emit a SEPARATE tool call for EACH change in the same turn — one update_variant call and one add_variant call. Never perform only the first change and drop the rest.
 
 === BUSINESS SUMMARY ===
 Org: ${orgSettings.org_name || "N/A"} | Store: ${orgSettings.shopify_store_url || "N/A"}
@@ -4190,7 +4619,7 @@ ${JSON.stringify(orderDetails).slice(0, 40000)}
 
 === PRODUCTS & STOCK ===
 Total products: ${products.length} | Total catalog value: ৳${totalProductValue.toFixed(2)} | Total COG: ৳${totalCOG.toFixed(2)}
-Product field key: id, name, price=selling_price, cog=cost_of_goods, stock=stock_quantity(null when variants exist), available=in_stock, url, variants=[{option, available, price}]
+Product field key: id, name, price=selling_price, cog=cost_of_goods, stock=stock_quantity (for variant products this is the sum of variant stock), available=in_stock, url, variants=[{option, stock, available, price}]
 
 ${JSON.stringify(productDetails).slice(0, 8000)}
 
@@ -4208,34 +4637,359 @@ ${JSON.stringify(inboxOrderDetails).slice(0, 8000)}`;
       })),
     ];
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model, input }),
+    // OpenAI Responses API path (gpt-5.x family).
+    if (useResponses) {
+      const payload = canMutate
+        ? { model, input, tools: [...AI_ACTION_TOOLS, askUserTool], parallel_tool_calls: true }
+        : { model, input };
+
+      const response = await aiResponsesCompletion(payload);
+
+      if (!response.ok) {
+        const body = await response.text();
+        console.error("[Order Chat] OpenAI error:", response.status, body.slice(0, 300));
+        const message = parseOpenAIError(response.status, body);
+        const statusCode = [401, 403, 429].includes(response.status) ? response.status : 502;
+        return res.status(statusCode).json({ error: message });
+      }
+
+      const data = await response.json();
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      for (const item of data.output || []) {
+        if (item.type === "message") {
+          const text = (item.content || []).map((c) => c.text || "").join("");
+          if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
+        } else if (item.type === "function_call") {
+          if (item.name === "ask_user") {
+            const parsed = parseJsonObject(item.arguments);
+            res.write(`data: ${JSON.stringify({ "question": { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
+          } else {
+            const args = parseJsonObject(item.arguments) || {};
+            const reco = canMutate ? buildRecommendation(item.name, args, { products, orders, variantsMap: chatVariantsMap }) : { recommendation: null, alternatives: [] };
+            res.write(`data: ${JSON.stringify({ "action": { call_id: item.call_id, tool: item.name, ...reco } })}\n\n`);
+          }
+        }
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
+
+    // OpenAI-compatible chat/completions path (e.g. OpenRouter models).
+    const chatMessages = input.map((m) => ({ role: m.role, content: m.content }));
+    const chatTools = canMutate
+      ? [...AI_ACTION_TOOLS, askUserTool].map((t) => ({
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.parameters },
+        }))
+      : undefined;
+
+    const ccResponse = await aiChatCompletion({
+      model,
+      messages: chatMessages,
+      ...(chatTools ? { tools: chatTools, tool_choice: "auto" } : {}),
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      console.error("[Order Chat] OpenAI error:", response.status, body.slice(0, 300));
-      const message = parseOpenAIError(response.status, body);
-      const statusCode = [401, 403, 429].includes(response.status) ? response.status : 502;
+    if (!ccResponse.ok) {
+      const body = await ccResponse.text();
+      console.error("[Order Chat] provider error:", ccResponse.status, body.slice(0, 300));
+      const message = parseOpenAIError(ccResponse.status, body);
+      const statusCode = [401, 403, 429].includes(ccResponse.status) ? ccResponse.status : 502;
       return res.status(statusCode).json({ error: message });
     }
 
-    const data = await response.json();
-    const text = extractResponsesText(data) || "I couldn't generate a response.";
-
+    const ccData = await ccResponse.json();
+    const ccMessage = ccData.choices?.[0]?.message || {};
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+
+    if (ccMessage.content) {
+      res.write(`data: ${JSON.stringify({ delta: { content: ccMessage.content } })}\n\n`);
+    }
+    for (const tc of ccMessage.tool_calls || []) {
+      const fnName = tc.function?.name;
+      const args = parseJsonObject(tc.function?.arguments) || {};
+      if (fnName === "ask_user") {
+        res.write(`data: ${JSON.stringify({ question: { call_id: tc.id || fnName, questions: args.questions || [] } })}\n\n`);
+      } else {
+        const reco = canMutate ? buildRecommendation(fnName, args, { products, orders, variantsMap: chatVariantsMap }) : { recommendation: null, alternatives: [] };
+        res.write(`data: ${JSON.stringify({ action: { call_id: tc.id || fnName, tool: fnName, ...reco } })}\n\n`);
+      }
+    }
     res.write("data: [DONE]\n\n");
     res.end();
   } catch (e) {
     console.error("[Order Chat] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: apply a proposed AI mutation (admin only) ───────────────────
+app.post("/api/order-chat/apply", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const { call_id, tool, args } = req.body || {};
+    if (!call_id || !tool) return res.status(400).json({ error: "call_id and tool required" });
+    if (!AI_ACTION_TOOLS.some((t) => t.name === tool)) return res.status(400).json({ error: "Unknown tool" });
+
+    const helpers = {
+      saveProductStock, getUniqueProductSlug, purgeProductCache,
+      generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
+      sendBulkSms, getOrgSettings: (k, keys) => getOrgSettings(k, keys),
+    };
+    const { before, after } = await executeAiAction({ supabase, orgId, userId: user.id, tool, args, helpers });
+    await supabase.from("ai_action_log").insert({
+      call_id, org_id: orgId, user_id: user.id, tool, args,
+      before_snapshot: before, after_snapshot: after, applied_at: new Date().toISOString(),
+    });
+    return res.json({ ok: true, before, after });
+  } catch (e) {
+    console.error("[Order Chat apply] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: resume after a clarification answer (admin only) ────────────
+app.post("/api/order-chat/answer", rateLimitAI, async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const model =
+      req.body?.model ||
+      (AI_PROVIDER === "openrouter" ? AI_DEFAULT_MODEL : "gpt-5.4-mini");
+    // Order Chat uses the OpenAI Responses API for the gpt-5.x family; OpenRouter
+    // models fall back to the OpenAI-compatible chat/completions path with tools.
+    const useResponses = AI_PROVIDER === "openai" && ORDER_CHAT_RESPONSES_MODELS.has(model);
+    if (useResponses) {
+      if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    } else if (!AI_API_KEY) {
+      return res.status(500).json({ error: `${AI_PROVIDER === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"} is not configured` });
+    }
+
+    const { call_id, answers, priorMessages } = req.body || {};
+    if (!call_id || !Array.isArray(answers)) return res.status(400).json({ error: "call_id and answers required" });
+
+    // Fetch product/order context so action recommendations can be built
+    // (mirrors /api/order-chat). This route is admin-only, so canMutate is always true.
+    let ctxProducts = [];
+    const ctxVariants = {};
+    let ctxOrders = [];
+    try {
+      const [{ data: baseProducts }, { data: variantRows }, { data: rawOrders }] = await Promise.all([
+        supabase.from("products").select("*").eq("org_id", orgId),
+        supabase.from("product_variants").select("id, product_id, attributes, stock_quantity, price_adjustment").eq("org_id", orgId),
+        supabase.from("orders").select("*").eq("org_id", orgId).order("created_at", { ascending: false }).limit(500),
+      ]);
+      const bp = baseProducts || [];
+      const stockMap = bp.length > 0 ? await getProductStockMap(orgId, bp.map((p) => p.id)) : {};
+      ctxProducts = bp.map((p) => ({ ...p, stock_quantity: stockMap[p.id] ?? 0 }));
+      for (const v of variantRows || []) {
+        if (!ctxVariants[v.product_id]) ctxVariants[v.product_id] = [];
+        ctxVariants[v.product_id].push(v);
+      }
+      ctxOrders = rawOrders || [];
+    } catch {
+      // Context is optional for building recommendations; fall back to empty.
+    }
+
+    const answerText = answers.map((a, i) => {
+      const picked = (a.selected || []).map((idx) => a.options?.[idx]).filter(Boolean);
+      const parts = [...picked];
+      if (a.custom?.trim()) parts.push(`(custom: ${a.custom.trim()})`);
+      return `Q${i + 1}: ${a.q}\nA: ${parts.join(", ") || "(no answer)"}`;
+    }).join("\n\n");
+
+    if (useResponses) {
+      const input = [
+        ...priorMessages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
+        { role: "user", content: `Clarification answers:\n${answerText}` },
+      ];
+
+      const response = await aiResponsesCompletion({ model, input, tools: [...AI_ACTION_TOOLS, askUserTool] });
+      if (!response.ok) {
+        const body = await response.text();
+        const message = parseOpenAIError(response.status, body);
+        return res.status([401, 403, 429].includes(response.status) ? response.status : 502).json({ error: message });
+      }
+      const data = await response.json();
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      for (const item of data.output || []) {
+        if (item.type === "message") {
+          const text = (item.content || []).map((c) => c.text || "").join("");
+          if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
+        } else if (item.type === "function_call") {
+          if (item.name === "ask_user") {
+            const parsed = parseJsonObject(item.arguments);
+            res.write(`data: ${JSON.stringify({ question: { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
+          } else {
+            const args = parseJsonObject(item.arguments) || {};
+            const reco = buildRecommendation(item.name, args, { products: ctxProducts, orders: ctxOrders, variantsMap: ctxVariants });
+            res.write(`data: ${JSON.stringify({ action: { call_id: item.call_id, tool: item.name, ...reco } })}\n\n`);
+          }
+        }
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
+
+    // Chat/completions path: feed the clarification answers as a user message.
+    const chatMessages = [
+      ...priorMessages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
+      { role: "user", content: `Clarification answers:\n${answerText}` },
+    ];
+    const ccResponse = await aiChatCompletion({
+      model,
+      messages: chatMessages,
+      tools: [...AI_ACTION_TOOLS, askUserTool].map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })),
+      tool_choice: "auto",
+    });
+    if (!ccResponse.ok) {
+      const body = await ccResponse.text();
+      const message = parseOpenAIError(ccResponse.status, body);
+      return res.status([401, 403, 429].includes(ccResponse.status) ? ccResponse.status : 502).json({ error: message });
+    }
+    const ccData = await ccResponse.json();
+    const ccMessage = ccData.choices?.[0]?.message || {};
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    if (ccMessage.content) res.write(`data: ${JSON.stringify({ delta: { content: ccMessage.content } })}\n\n`);
+    for (const tc of ccMessage.tool_calls || []) {
+      const fnName = tc.function?.name;
+      const args = parseJsonObject(tc.function?.arguments) || {};
+      if (fnName === "ask_user") {
+        res.write(`data: ${JSON.stringify({ question: { call_id: tc.id || fnName, questions: args.questions || [] } })}\n\n`);
+      } else {
+        const args = parseJsonObject(tc.function?.arguments) || {};
+        const reco = buildRecommendation(fnName, args, { products: ctxProducts, orders: ctxOrders, variantsMap: ctxVariants });
+        res.write(`data: ${JSON.stringify({ action: { call_id: tc.id || fnName, tool: fnName, ...reco } })}\n\n`);
+      }
+    }
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (e) {
+    console.error("[Order Chat answer] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: list saved conversations (per-org) ───────────────────────────
+app.get("/api/order-chat/history", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("order_chat_history")
+      .select("id, title, created_at, updated_at, message_count")
+      .eq("org_id", orgId)
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    return res.json({ conversations: data || [] });
+  } catch (e) {
+    console.error("[Order Chat history] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: fetch a single conversation (with messages) ──────────────────
+app.get("/api/order-chat/history/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from("order_chat_history")
+      .select("id, title, created_at, updated_at, message_count, messages")
+      .eq("id", id).eq("org_id", orgId).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Conversation not found" });
+    return res.json({ conversation: data });
+  } catch (e) {
+    console.error("[Order Chat history detail] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: create or update a conversation (autosave) ───────────────────
+app.post("/api/order-chat/history", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { id, title, messages } = req.body || {};
+    if (!Array.isArray(messages)) return res.status(400).json({ error: "messages array required" });
+
+    const convId = typeof id === "string" && id ? id : crypto.randomUUID();
+    const row = {
+      org_id: orgId,
+      user_id: user.id,
+      title: String(title || "New chat").slice(0, 200),
+      messages,
+      message_count: messages.length,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: existing } = await supabase
+      .from("order_chat_history").select("id").eq("id", convId).eq("org_id", orgId).maybeSingle();
+
+    let result;
+    if (existing) {
+      const { data, error } = await supabase
+        .from("order_chat_history").update(row).eq("id", convId).eq("org_id", orgId)
+        .select("id, title, updated_at").single();
+      if (error) throw error;
+      result = data;
+    } else {
+      const { data, error } = await supabase
+        .from("order_chat_history").insert({ ...row, id: convId })
+        .select("id, title, updated_at").single();
+      if (error) throw error;
+      result = data;
+    }
+    return res.json({ conversation: result });
+  } catch (e) {
+    console.error("[Order Chat history save] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: delete a conversation (admin only) ───────────────────────────
+app.delete("/api/order-chat/history/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: "id required" });
+    const { error } = await supabase
+      .from("order_chat_history").delete().eq("id", id).eq("org_id", orgId);
+    if (error) throw error;
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[Order Chat history delete] error:", errorMessage(e));
     return res.status(500).json({ error: errorMessage(e) });
   }
 });
@@ -4246,7 +5000,8 @@ app.post("/api/studio/generate", rateLimitAI, async (req, res) => {
     const token = getToken(req);
     const { user } = await getUser(token);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    if (!isOpenAIProvider()) return res.status(400).json({ error: "Studio script generation requires AI_PROVIDER=openai (the Responses API is OpenAI-only)." });
+    if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
 
     const { productDetails, framework, frameworkName, frameworkLabel, language, regenerationTarget, existingScript } = req.body;
     if (!productDetails || !framework) return res.status(400).json({ error: "Missing productDetails or framework" });
@@ -4317,20 +5072,13 @@ ${studioSchemaInstruction}`;
       ? `Regenerate ONLY the hook for this product and existing script. Use one of the provided viral hook templates as inspiration. Return the full JSON shape, but keep all existing non-hook sections unchanged when possible. Make the hook meaningfully different and stronger. Do not copy a template verbatim; adapt its pattern to the product.\n\nProduct:\n${productDetails}\n\nRelevant viral hook templates:\n${JSON.stringify(viralHookContext)}\n\nExisting script JSON:\n${JSON.stringify(existingScript || {}).slice(0, 12000)}`
       : `Create a complete viral marketing script using the ${frameworkName} framework for this product. Use the provided viral hook templates as inspiration for the opening hook and scene psychology. Do not copy a template verbatim; adapt its pattern to the product.\n\nProduct:\n${productDetails}\n\nRelevant viral hook templates:\n${JSON.stringify(viralHookContext)}`;
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-5.4",
-        input: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        max_output_tokens: 3200,
-      }),
+    const response = await aiResponsesCompletion({
+      model: "gpt-5.4",
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      max_output_tokens: 3200,
     });
 
     const bodyText = await response.text();
@@ -4738,11 +5486,6 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
     }
   }
   var sessionId = getSessionId();
-  function detectBucketFromLocation(value){
-    var text = String(value || "").toLowerCase();
-    if (text.indexOf("thank you") !== -1 || text.indexOf("order received") !== -1 || text.indexOf("order confirmation") !== -1 || text.indexOf("order placed") !== -1 || text.indexOf("purchase complete") !== -1 || text.indexOf("payment success") !== -1) return "purchased";
-    return detectBucketFromText(text);
-  }
   function ping(bucket, explicit){
     if (document.hidden) return;
     var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true });
@@ -4750,35 +5493,11 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
     } catch (_) {}
   }
-  function detectBucketFromText(value){
-    var text = String(value || "").toLowerCase();
-    if (!text) return null;
-    if (text.indexOf("checkout") !== -1 || text.indexOf("check out") !== -1 || text.indexOf("buy now") !== -1) return "checkout";
-    if (text.indexOf("add to cart") !== -1 || text.indexOf("add-to-cart") !== -1 || text.indexOf("add_to_cart") !== -1 || text.indexOf("cart") !== -1 || text.indexOf("basket") !== -1 || text.indexOf("bag") !== -1) return "cart";
-    return null;
-  }
-  function bucketFromElement(el){
-    var node = el;
-    for (var i = 0; node && i < 4; i++, node = node.parentElement) {
-      var text = [node.innerText, node.textContent, node.id, node.className, node.name, node.value, node.getAttribute && node.getAttribute("aria-label"), node.getAttribute && node.getAttribute("data-action"), node.getAttribute && node.getAttribute("href")].join(" ");
-      var bucket = detectBucketFromText(text);
-      if (bucket) return bucket;
-    }
-    return null;
-  }
   function pingCurrentLocation(){
-    ping(detectBucketFromLocation(window.location.pathname + " " + window.location.search + " " + document.title));
+    ping(null);
   }
   window.MerchantSuiteTracker = window.MerchantSuiteTracker || {};
   window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); };
-  document.addEventListener("click", function(event){
-    var bucket = bucketFromElement(event.target);
-    if (bucket) setTimeout(function(){ ping(bucket); }, 0);
-  }, true);
-  document.addEventListener("submit", function(event){
-    var bucket = bucketFromElement(event.target);
-    if (bucket) ping(bucket);
-  }, true);
   ["pushState", "replaceState"].forEach(function(method){
     var original = history[method];
     if (typeof original !== "function") return;
@@ -4916,13 +5635,13 @@ app.post("/api/customers/ai-insight", rateLimitAI, async (req, res) => {
     if (!customer || typeof customer !== "object") return res.status(400).json({ error: "customer is required" });
 
     const fallback = buildCustomerAiInsight(customer);
-    if (!process.env.OPENAI_API_KEY) return res.json({ insight: fallback, source: "rules" });
+    if (!AI_API_KEY) return res.json({ insight: fallback, source: "rules" });
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({
-        model: process.env.CUSTOMER_INSIGHT_MODEL || "gpt-4o-mini",
+        model: process.env.CUSTOMER_INSIGHT_MODEL || AI_DEFAULT_MODEL,
         temperature: 0.2,
         max_tokens: 350,
         response_format: { type: "json_object" },
@@ -4981,6 +5700,9 @@ app.post("/api/orders", async (req, res) => {
       "fraud_data",
       "fulfillment_status",
       "notes",
+      "payment_method",
+      "discount",
+      "advanced_payment",
     ];
     const row = { org_id: orgId };
     for (const key of allowed) {
@@ -5017,7 +5739,8 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
-    await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+    const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+    if (updErr) throw updErr;
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     return res.json({ success: true, order: data });
   } catch (e) {
@@ -5989,19 +6712,19 @@ async function prepareOpenAiImageRef(url = "", authToken = "") {
 // ─── Image Embedding Helpers ─────────────────────────────────────────────────
 
 async function describeProductImage(imageUrl) {
-  if (!imageUrl || !process.env.OPENAI_API_KEY) return null;
+  if (!imageUrl || !AI_API_KEY) return null;
   try {
     const safeUrl = typeof imageUrl === "string" && imageUrl.startsWith("data:") ? imageUrl : await prepareOpenAiImageRef(imageUrl);
     if (!safeUrl) return null;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         max_tokens: 150,
         messages: [
           {
@@ -6026,13 +6749,13 @@ async function describeProductImage(imageUrl) {
 }
 
 async function generateTextEmbedding(text) {
-  if (!text || !process.env.OPENAI_API_KEY) return null;
+  if (!text || !AI_API_KEY) return null;
   try {
-    const response = await fetch("https://api.openai.com/v1/embeddings", {
+    const response = await fetch(`${AI_BASE_URL}/embeddings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
         model: "text-embedding-3-small",
@@ -6131,13 +6854,13 @@ async function getRecentConversationHistory(supabase, conversationId, limit = 20
 // ─── Conversation summary generation ─────────────────────────────────────────
 
 async function generateConversationSummary(conversationHistory, existingSummary = "") {
-  if (!process.env.OPENAI_API_KEY || !conversationHistory) return existingSummary || "";
+  if (!AI_API_KEY || !conversationHistory) return existingSummary || "";
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         temperature: 0,
         max_tokens: 300,
         messages: [
@@ -6323,14 +7046,14 @@ Or when customer wants to cancel:
     userContent.push({ type: "text", text: "(Customer sent an image but it could not be loaded. Use conversation context only.)" });
   }
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${AI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: process.env.META_REPLY_MODEL || "gpt-4o",
+      model: process.env.META_REPLY_MODEL || AI_DEFAULT_MODEL,
       temperature: 0.3,
       response_format: { type: "json_object" },
       messages: [
@@ -6554,7 +7277,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     await saveOrgSettings(orgId, { auto_reply_channels: JSON.stringify(channels) });
     console.log(`[${platform.toUpperCase()} AI] auto-added ${platform} to channels`);
   }
-  if (!process.env.OPENAI_API_KEY) { console.log(`[${platform.toUpperCase()} AI] skipped: no OPENAI_API_KEY`); return; }
+  if (!AI_API_KEY) { console.log(`[${platform.toUpperCase()} AI] skipped: no AI_API_KEY`); return; }
   if (!text && allImageUrls.length === 0) { console.log(`[${platform.toUpperCase()} AI] skipped: no text and no image`); return; }
 
   console.log(`[${platform.toUpperCase()} AI] processing message from senderId=${senderId} images=${allImageUrls.length}`);
@@ -6887,7 +7610,7 @@ function mergeFields(existing = {}, incoming = {}) {
 }
 
 async function extractNewFields({ text, event, fieldsNeeded, existingFields = {}, products = [] }) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!AI_API_KEY) return null;
   if (!fieldsNeeded || fieldsNeeded.length === 0) return null;
 
   const catalog = products.slice(0, 50).map((p) => ({ name: p.name, price: p.price }));
@@ -6925,11 +7648,11 @@ Return ONLY valid JSON with exactly these keys:
 ${JSON.stringify(Object.fromEntries(fieldsNeeded.map((k) => [k, null])))}`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         temperature: 0,
         max_tokens: 150,
         response_format: { type: "json_object" },
@@ -8828,7 +9551,7 @@ async function handlePublicHandleInventory(req, res) {
 
 async function handlePublicHandleProductInventory(req, res) {
   try {
-    const orgId = await resolveStorefrontHandle(req.params.handle);
+    const orgId = req.params.storefrontId || (await resolveStorefrontHandle(req.params.handle));
     if (!orgId) {
       res.set("Cache-Control", "no-store");
       return res.status(404).json({ error: "not_found" });
@@ -9090,10 +9813,10 @@ If a product has no distinguishable variants, return an empty variants array.`,
     if (products.length === 0 && scrapeResult.markdown) {
       try {
         const OpenAI = (await import("openai")).default;
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const openai = new OpenAI({ apiKey: AI_API_KEY, baseURL: AI_BASE_URL });
         const snippet = scrapeResult.markdown.slice(0, 6000);
         const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: AI_DEFAULT_MODEL,
           temperature: 0,
           messages: [
             {
@@ -9242,11 +9965,11 @@ function sanitizeExtractedOrder(aiOrder, fallbackOrder, text) {
 }
 
 async function extractOrderWithAI(text, fallbackOrder, model) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!AI_API_KEY) return null;
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
     body: JSON.stringify({
       model,
       temperature: 0,
@@ -9312,7 +10035,7 @@ app.post("/api/extract-order-from-text", rateLimitAI, async (req, res) => {
     let source = "regex_fallback";
 
     try {
-      const aiOrder = await extractOrderWithAI(text, regexOrder, process.env.ORDER_EXTRACTION_MODEL || "gpt-4o-mini");
+      const aiOrder = await extractOrderWithAI(text, regexOrder, process.env.ORDER_EXTRACTION_MODEL || AI_DEFAULT_MODEL);
       if (aiOrder) {
         extractedOrder = aiOrder;
         source = "ai";
@@ -9881,6 +10604,35 @@ ALTER TABLE public.social_conversations ADD COLUMN IF NOT EXISTS ai_summary TEXT
   }
 }
 
+async function migrateOrdersPaymentColumns() {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+    if (!projectRef || !serviceKey) return;
+
+    const migrationSql = `
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS discount NUMERIC DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS advanced_payment NUMERIC DEFAULT 0;
+    `;
+
+    const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ query: migrationSql }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("[Migrate] orders payment columns failed:", text);
+      return;
+    }
+    console.log("[Migrate] orders payment columns ensured.");
+  } catch (e) {
+    console.warn("[Migrate] Could not run orders payment migration:", e.message);
+  }
+}
+
 async function migrateProductsForecastColumns() {
   try {
     const supabaseUrl = process.env.SUPABASE_URL || "";
@@ -9921,6 +10673,62 @@ NOTIFY pgrst, 'reload schema';
   }
 }
 
+// ─── Order Chat History Migration ────────────────────────────────────────────
+// Persists Order Chat conversations per org so they can be browsed and (admin)
+// deleted later. One row per conversation; messages stored as JSONB.
+async function migrateOrderChatHistoryTable() {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+    if (!projectRef || !serviceKey) return;
+
+    const migrationSql = `
+CREATE TABLE IF NOT EXISTS public.order_chat_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL,
+  user_id UUID,
+  title TEXT NOT NULL DEFAULT 'New chat',
+  messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS order_chat_history_org_updated_idx
+    ON public.order_chat_history(org_id, updated_at DESC);
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+ALTER TABLE public.order_chat_history ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_order_chat_history" ON public.order_chat_history TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE POLICY "auth_users_order_chat_history" ON public.order_chat_history FOR ALL TO authenticated
+    USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id::text = auth.uid()::text))
+    WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id::text = auth.uid()::text));
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+NOTIFY pgrst, 'reload schema';
+    `;
+
+    const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ query: migrationSql }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("[Migrate] order_chat_history failed:", text);
+      return;
+    }
+    console.log("[Migrate] order_chat_history table ensured.");
+  } catch (e) {
+    console.warn("[Migrate] Could not run order_chat_history migration:", e.message);
+  }
+}
+
 // ─── Storefront Settings Migration ────────────────────────────────────────────
 // Creates the storefront_settings table for merchant branding, shipping zones,
 // and storefront configuration. One row per org (org_id is UNIQUE).
@@ -9951,6 +10759,8 @@ CREATE TABLE IF NOT EXISTS public.storefront_settings (
   seo_title_template TEXT DEFAULT '{product_name} | {store_name}',
   seo_description_template TEXT DEFAULT '{product_description}',
   shipping_zones JSONB DEFAULT '[]'::jsonb,
+  custom_domain TEXT,
+  custom_domain_status TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -9958,6 +10768,16 @@ CREATE TABLE IF NOT EXISTS public.storefront_settings (
 DO $$ BEGIN
   CREATE INDEX IF NOT EXISTS storefront_settings_org_id_idx
     ON public.storefront_settings(org_id);
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+-- Custom storefront domain (single-tenant: one per org). Upgrades existing tables.
+DO $$ BEGIN
+  ALTER TABLE public.storefront_settings ADD COLUMN IF NOT EXISTS custom_domain TEXT;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE public.storefront_settings ADD COLUMN IF NOT EXISTS custom_domain_status TEXT;
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
@@ -10068,7 +10888,7 @@ async function bootstrapAiProductContext() {
 }
 
 async function backfillProductEmbeddings() {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!AI_API_KEY) return;
   const supabase = getServiceSupabase();
 
   const { data: products, error } = await supabase
@@ -10265,6 +11085,8 @@ if (!process.env.VERCEL) {
         await migrateInboxOrdersTable();
         await migrateMultiTenancy();
         await migrateStorefrontSettingsTable();
+        await migrateOrdersPaymentColumns();
+        await migrateOrderChatHistoryTable();
         await bootstrapAiProductContext();
         backfillProductEmbeddings().catch((err) => console.warn("[Embedding Backfill] Error:", err.message));
       });
@@ -10280,6 +11102,8 @@ if (!process.env.VERCEL) {
   migrateMultiTenancy().catch(() => {});
   migrateInboxOrdersTable().catch(() => {});
   migrateStorefrontSettingsTable().catch(() => {});
+  migrateOrdersPaymentColumns().catch(() => {});
+  migrateOrderChatHistoryTable().catch(() => {});
 }
 
 export default app;

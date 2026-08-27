@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { buildCustomerExportCsv } from "@/lib/customerExport";
-import { DownloadSimple, MagnifyingGlass, Sparkle, UsersThree, X } from "@phosphor-icons/react";
+import { MagnifyingGlass, Sparkle, X } from "@phosphor-icons/react";
 import { motion, AnimatePresence, useReducedMotion, type Transition } from "framer-motion";
-import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { toast } from "@/components/ui/sonner";
 import { RichButton } from "@/components/ui/rich-button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/motion-tabs";
+import { Select, SelectItem } from "@/components/base/select/select";
+import { Button } from "@/components/base/buttons/button";
+import { RiDownloadLine } from "@remixicon/react";
+import { CustomerDataTable } from "@/components/CustomerDataTable";
 
 type Source = "shopify" | "custom_website" | "manual" | "facebook" | "instagram" | "whatsapp" | "social_inbox";
 
@@ -86,7 +88,7 @@ const campaignLabels: Record<string, string> = {
   win_back: "Win-back",
 };
 
-const sourceOptions = ["all", "shopify", "custom_website", "facebook", "instagram", "whatsapp", "manual"] as const;
+const sourceOptions = ["all", "custom_website", "facebook", "instagram", "whatsapp", "manual"] as const;
 const campaignOptions = ["all", "win_back", "vip_loyalty", "repeat_upsell", "first_order_nurture", "review_request", "social_retarget", "custom_site_retarget", "cod_guardrail"] as const;
 
 const customerPopoverTransition: Transition = {
@@ -111,46 +113,12 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="min-h-[112px] rounded-xl border border-black/10 bg-white px-5 py-4"
+      className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
     >
       <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
-      <p className="mt-2 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
-      <p className="mt-1 text-[11px] text-black/40">{sub}</p>
+      <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
+      <p className="mt-0.5 text-[11px] text-black/40">{sub}</p>
     </motion.div>
-  );
-}
-
-function CustomersTable({ customers, loading, onSelect }: { customers: Customer[]; loading: boolean; onSelect: (customer: Customer) => void }) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
-      <div className="grid grid-cols-[1.45fr_0.9fr_0.8fr_0.7fr_0.8fr_0.8fr] border-b border-black/10 px-6 py-3 text-[8px] font-medium uppercase tracking-[0.25em] text-black/35 max-lg:hidden">
-        <span>Customer</span><span>Source</span><span>Lifecycle</span><span>Orders</span><span>Spent</span><span>Risk</span>
-      </div>
-      {loading ? (
-        <div className="flex h-56 items-center justify-center"><Spinner className="text-black/40" /></div>
-      ) : customers.length === 0 ? (
-        <div className="flex h-56 flex-col items-center justify-center gap-3 text-center text-black/35"><UsersThree weight="light" size={34} /><p className="text-[13px]">No customers match this filter.</p></div>
-      ) : customers.map((customer, index) => (
-        <motion.button
-          key={customer.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, delay: index * 0.025 }}
-          onClick={() => onSelect(customer)}
-          className="grid w-full grid-cols-1 gap-3 border-b border-black/[0.06] px-6 py-4 text-left transition-colors last:border-0 hover:bg-black/[0.025] lg:grid-cols-[1.45fr_0.9fr_0.8fr_0.7fr_0.8fr_0.8fr] lg:items-center"
-        >
-          <div>
-            <p className="text-[13px] font-medium text-black">{customer.name}</p>
-            <p className="mt-1 text-[11px] text-black/40">{customer.phone || "No phone"} · Last order {dateLabel(customer.lastOrderAt)}</p>
-          </div>
-          <div className="flex flex-wrap gap-1.5">{customer.sources.map((item) => <span key={item} className="rounded-full bg-black/[0.05] px-2 py-1 text-[10px] text-black/50">{sourceLabels[item]}</span>)}</div>
-          <p className="text-[12px] font-medium text-black/70">{lifecycleLabels[customer.lifecycleStage] || customer.lifecycleStage}</p>
-          <p className="text-[13px] tabular-nums text-black/65">{customer.totalOrders}</p>
-          <p className="text-[13px] tabular-nums text-black/65">{money(customer.totalSpent)}</p>
-          <p className={cn("text-[11px] font-medium capitalize", customer.riskLevel === "high" ? "text-red-600" : customer.riskLevel === "medium" ? "text-amber-600" : "text-emerald-700")}>{customer.riskLevel}</p>
-        </motion.button>
-      ))}
-    </div>
   );
 }
 
@@ -363,7 +331,7 @@ export default function Customers() {
   }
 
   return (
-    <div className="space-y-6 p-1 lg:p-2">
+    <div className="min-h-full space-y-6 bg-white p-1 lg:p-2">
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
@@ -372,14 +340,12 @@ export default function Customers() {
       >
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Customer Intelligence</p>
-            <h1 className="mt-1 font-sf-display text-[22px] font-bold tracking-tight text-black">Customer Intelligence</h1>
+            <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Customer Intelligence</h1>
             <p className="mt-1 max-w-2xl text-[13px] text-black/45">Source-aware customer profiles from Shopify, website webhook, manual, and social inbox orders.</p>
           </div>
-          <RichButton type="button" onClick={exportFilteredCustomers} className="h-10 rounded-[10px] bg-black px-4 text-xs text-white hover:bg-black">
-            <DownloadSimple weight="light" size={16} />
+          <Button variant="ghost" size="medium" leadingIcon={RiDownloadLine} onClick={exportFilteredCustomers}>
             Export Audience
-          </RichButton>
+          </Button>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -394,53 +360,54 @@ export default function Customers() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
-        className="overflow-hidden rounded-xl border border-black/10 bg-white"
+        className="overflow-hidden rounded-2xl bg-white"
       >
-        <div className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Customer Queue</span>
-            <div className="h-3.5 w-px bg-black/10" />
-            <span className="text-[13px] tabular-nums text-muted-foreground">{loading ? "—" : `${filtered.length} customers`}</span>
+        <div className="flex items-center gap-2.5 py-3">
+          <span className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Customer Queue</span>
+          <div className="h-3.5 w-px bg-black/10" />
+          <span className="text-[13px] tabular-nums text-muted-foreground">{loading ? "—" : `${filtered.length} customers`}</span>
+        </div>
+
+        <div className="flex flex-col gap-3 border-b border-black/[0.07] py-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <MagnifyingGlass weight="light" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers…" className="h-9 w-full rounded-full border-0 bg-black/[0.05] pl-9 pr-3 text-sm outline-none placeholder:text-black/35 focus:ring-1 focus:ring-black/20" />
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative">
-              <MagnifyingGlass weight="light" size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customers…" className="h-9 w-full rounded-xl border-0 bg-black/[0.06] pl-8 pr-3 text-sm outline-none placeholder:text-black/35 focus:ring-1 focus:ring-black/20 sm:w-56" />
-            </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Select
+              aria-label="Filter by source"
+              selectedKey={source}
+              onSelectionChange={(key) => setSource(String(key) as Source | "all")}
+              className="w-full sm:w-44"
+              popoverClassName="min-w-44"
+            >
+              {sourceOptions.map((item) => (
+                <SelectItem key={item} id={item} textValue={item === "all" ? "All Sources" : sourceLabels[item]}>
+                  {item === "all" ? "All Sources" : sourceLabels[item]}
+                </SelectItem>
+              ))}
+            </Select>
+
+            <Select
+              aria-label="Filter by campaign"
+              selectedKey={campaignFilter}
+              onSelectionChange={(key) => setCampaignFilter(String(key) as typeof campaignFilter)}
+              className="w-full sm:w-48"
+              popoverClassName="min-w-48"
+            >
+              {campaignOptions.map((item) => (
+                <SelectItem key={item} id={item} textValue={campaignLabels[item]}>
+                  {campaignLabels[item]}
+                </SelectItem>
+              ))}
+            </Select>
           </div>
         </div>
 
-        <Tabs value={source} onValueChange={(value) => setSource(value as Source | "all")} variant="pill" className="px-6 pt-4">
-          <TabsList className="max-w-full overflow-x-auto bg-black/[0.06] p-1">
-            {sourceOptions.map((item) => (
-              <TabsTrigger key={item} value={item} className="text-[11px]" indicatorClassName="bg-black">
-                {item === "all" ? "All Sources" : sourceLabels[item]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {sourceOptions.map((item) => (
-            <TabsContent key={item} value={item} className="mt-4">
-              <div className="mb-4 flex flex-wrap gap-2">
-                {campaignOptions.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setCampaignFilter(item)}
-                    className={cn(
-                      "h-8 rounded-full px-3 text-[11px] font-medium transition-colors",
-                      campaignFilter === item ? "bg-black text-white" : "bg-black/[0.05] text-black/50 hover:bg-black/[0.08]",
-                    )}
-                  >
-                    {campaignLabels[item]}
-                  </button>
-                ))}
-              </div>
-              <CustomersTable customers={filtered} loading={loading} onSelect={(customer) => { setSelected(customer); setInsight(null); }} />
-            </TabsContent>
-          ))}
-        </Tabs>
+        <div className="pb-6 pt-4">
+          <CustomerDataTable customers={filtered} loading={loading} onSelect={(customer) => { setSelected(customer); setInsight(null); }} />
+        </div>
       </motion.div>
 
       <CustomerBloomPopover

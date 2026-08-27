@@ -24,7 +24,6 @@ describe("DashboardLayout breadcrumb header", () => {
       "/returns",
       "/products",
       "/customers",
-      "/order-extraction",
       "/order-chat",
       "/order-analysis",
       "/inbox/facebook",
@@ -40,12 +39,11 @@ describe("DashboardLayout breadcrumb header", () => {
       expect(appSource).toContain(`path="${route}"`);
     }
 
-    expect(layoutSource).toContain('"/": "Overview"');
+    expect(layoutSource).toContain('"/": "Home"');
     expect(layoutSource).toContain('"/returns": "Returns"');
     expect(layoutSource).toContain('"/products": "Products"');
     expect(layoutSource).toContain('"/customers": "Customers"');
-    expect(layoutSource).toContain('"/order-extraction": "Extraction"');
-    expect(layoutSource).toContain('"/order-chat": "AI Chat"');
+    expect(layoutSource).toContain('"/order-chat": "Ask Edith"');
     expect(layoutSource).toContain('"/order-analysis": "AI Analysis"');
     expect(layoutSource).toContain('"/inbox/facebook": "Facebook"');
     expect(layoutSource).toContain('"/inbox/instagram": "Instagram"');
@@ -58,9 +56,6 @@ describe("DashboardLayout breadcrumb header", () => {
 
   it("preserves the existing right-side header controls", () => {
     expect(layoutSource).toContain("HeaderAlerts");
-    expect(layoutSource).toContain('title="Add"');
-    expect(layoutSource).toContain('title="Assistant"');
-    expect(layoutSource).toContain('title="More"');
     expect(layoutSource).toContain('title="Account"');
   });
 });
