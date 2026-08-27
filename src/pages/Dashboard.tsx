@@ -19,14 +19,25 @@ import { format, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { TextEffect } from "@/components/ui/text-effect";
+import { TextShimmer } from "@/components/ui/text-shimmer";
 import { PopButton } from "@/components/ui/pop-button";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import PixelBackground from "@/components/ui/pixel-background";
-import PixelBlast from "@/components/PixelBlast";
+import PixelRipple from "@/components/ui/pixel-ripple";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
+}
+
+// The immediately-preceding range of equal length, used for period-over-period
+// trend comparison on the finance metric cards.
+function prevRangeOf(range?: DateRange | null): DateRange | null {
+  if (!range?.from || !range?.to) return null;
+  const dayMs = 86400000;
+  const days = Math.round((range.to.getTime() - range.from.getTime()) / dayMs) + 1;
+  const prevTo = new Date(range.from.getTime() - dayMs);
+  const prevFrom = new Date(prevTo.getTime() - (days - 1) * dayMs);
+  return { from: prevFrom, to: prevTo };
 }
 
 function dhakaToday(): Date {
@@ -104,6 +115,8 @@ function fmtBDT(n: number) {
 
 function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
   const max = Math.max(...data.map((d) => d.value), 1);
+  // The tallest bar is inked black (reference look); the rest are light gray.
+  const peakIdx = data.reduce((best, d, i) => (d.value > data[best].value ? i : best), 0);
   // Zero renders as a small baseline tick so the chart reads as "no data that
   // period" rather than a blank chart. Tooltip still shows the real value (0).
   const chartData = data.map((d) => ({
@@ -115,7 +128,7 @@ function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
   return (
     <div className="shrink-0" style={{ width: "72px", height: "28px" }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }} barCategoryGap={1}>
+        <BarChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }} barCategoryGap={1} barSize={2}>
           <Tooltip
             cursor={false}
             content={({ active, payload, label }) => {
@@ -128,12 +141,11 @@ function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
               );
             }}
           />
-          <Bar dataKey="display" radius={[3, 3, 0, 0]} isAnimationActive animationDuration={600} animationEasing="ease-out">
+          <Bar dataKey="display" radius={[2, 2, 2, 2]} isAnimationActive animationDuration={600} animationEasing="ease-out">
             {chartData.map((d, i) => {
-              const isLast = i === chartData.length - 1;
-              const fill = isLast ? "#232323" : "#8E8E88";
-              const opacity = isLast ? 1 : d.value === 0 ? 0.45 : 0.75;
-              return <Cell key={i} fill={fill} fillOpacity={opacity} />;
+              const isPeak = i === peakIdx;
+              const fill = isPeak ? "#111111" : "#D4D4D1";
+              return <Cell key={i} fill={fill} fillOpacity={isPeak ? 1 : 0.9} />;
             })}
           </Bar>
         </BarChart>
@@ -193,25 +205,31 @@ function FinanceMetric({
   loading,
   value,
   data,
-  seed = 42,
+  trend,
 }: {
   label: string;
   loading: boolean;
   value: string;
   data: { label: string; value: number }[];
+  trend?: number | null;
   seed?: number;
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
   color?: string;
   gradientId?: string;
 }) {
+  const hasTrend = typeof trend === "number" && Number.isFinite(trend);
+  const isPositive = (trend ?? 0) >= 0;
+
   return (
+    // Outer light-gray tray — the white card floats inside it and the trend
+    // footer sits on this gray base below the card (two-layer reference look).
     <div
-      className="flex-1 min-w-[140px] overflow-hidden"
+      className="flex-1 min-w-[140px]"
       style={{
-        background: "#F5F5F5",
+        background: "#EBEBE8",
         borderRadius: "8px",
-        padding: "3px",
-        border: "1.5px solid rgba(0,0,0,0.07)",
+        padding: "2px 2px 0",
+        border: "1px solid #f2f2f2",
       }}
     >
       <AnimatePresence mode="wait">
@@ -221,15 +239,22 @@ function FinanceMetric({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            style={{
-              background: "#F7F7F6",
-              borderRadius: "10px",
-              padding: "9px 12px",
-            }}
-            className="space-y-2"
           >
-            <div className="h-2.5 w-16 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
-            <div className="h-5 w-20 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            <div
+              className="space-y-2.5"
+              style={{
+                background: "#FFFFFF",
+                borderRadius: "12px",
+                border: "1px solid rgba(0,0,0,0.05)",
+                padding: "13px 14px 15px",
+              }}
+            >
+              <div className="h-2.5 w-16 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+              <div className="h-6 w-24 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            </div>
+            <div className="flex h-[34px] items-center px-1.5">
+              <div className="h-3 w-20 animate-pulse rounded" style={{ background: "rgba(0,0,0,0.06)" }} />
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -238,69 +263,79 @@ function FinanceMetric({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
           >
-            {/* Inner white panel */}
+            {/* Inner white card */}
             <div
-              className="relative"
               style={{
-                background: "#F7F7F6",
+                background: "#FFFFFF",
                 borderRadius: "8px",
-                border: "1px solid rgba(0,0,0,0.05)",
-                padding: "9px 12px",
+                border: "1px solid #dedede",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                padding: "13px 14px 6px",
               }}
             >
-              {/* PixelBlast background — static ink-texture, faded in from the left */}
-              <div
-                className="absolute inset-0 overflow-hidden"
+              {/* Label */}
+              <p
                 style={{
-                  borderRadius: "10px",
-                  opacity: 0.16,
-                  maskImage: "linear-gradient(to right, transparent 0%, transparent 22%, black 72%)",
-                  WebkitMaskImage: "linear-gradient(to right, transparent 0%, transparent 22%, black 72%)",
+                  fontSize: "10px",
+                  fontWeight: 500,
+                  letterSpacing: "0.16em",
+                  color: "#8A8A86",
+                  textTransform: "uppercase",
+                  margin: 0,
                 }}
               >
-                <PixelBlast
-                  variant="square"
-                  pixelSize={3}
-                  color="#222A38"
-                  patternScale={4}
-                  patternDensity={1.2}
-                  pixelSizeJitter={0.5}
-                  enableRipples={false}
-                  speed={0}
-                  transparent
-                  edgeFade={0}
-                  seed={seed}
-                />
-              </div>
-              {/* Content */}
-              <div className="relative" style={{ zIndex: 1 }}>
-                {/* Label */}
-                <p
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 500,
-                    letterSpacing: "0.08em",
-                    color: "#7F7F7D",
-                    textTransform: "uppercase",
-                    margin: 0,
-                  }}
-                >
-                  {label}
-                </p>
+                {label}
+              </p>
 
-                {/* Value + Bar chart row */}
-                <div className="mt-1.5 flex items-end justify-between">
-                  <DashboardTextEffect
-                    as="p"
-                    per="char"
-                    delay={0.12}
-                    className="m-0 text-[20px] font-bold leading-none text-[#222A38] tabular-nums"
-                  >
-                    {value}
-                  </DashboardTextEffect>
-                  <MiniBarChart data={data} />
-                </div>
+              {/* Value + Bar chart row */}
+              <div className="mt-2 flex items-end justify-between">
+                <DashboardTextEffect
+                  as="p"
+                  per="char"
+                  delay={0.12}
+                  className="m-0 text-[22px] font-bold leading-none text-[#1A1A1A] tabular-nums tracking-tight"
+                >
+                  {value}
+                </DashboardTextEffect>
+                <MiniBarChart data={data} />
               </div>
+            </div>
+
+            {/* Trend footer — sits on the gray tray below the white card */}
+            <div className="flex h-[28px] items-center justify-between px-1.5">
+              <span className="flex items-center justify-center text-black/35">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  style={{ transform: isPositive ? undefined : "rotate(180deg)" }}
+                >
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M12 2.75C6.89137 2.75 2.75 6.89137 2.75 12C2.75 17.1086 6.89137 21.25 12 21.25C17.1086 21.25 21.25 17.1086 21.25 12C21.25 6.89137 17.1086 2.75 12 2.75ZM1.25 12C1.25 6.06294 6.06294 1.25 12 1.25C17.9371 1.25 22.75 6.06294 22.75 12C22.75 17.9371 17.9371 22.75 12 22.75C6.06294 22.75 1.25 17.9371 1.25 12ZM8.46967 12.9697L11.4697 9.96967C11.7626 9.67678 12.2374 9.67678 12.5303 9.96967L15.5303 12.9697C15.8232 13.2626 15.8232 13.7374 15.5303 14.0303C15.2374 14.3232 14.7626 14.3232 14.4697 14.0303L12 11.5607L9.53033 14.0303C9.23744 14.3232 8.76256 14.3232 8.46967 14.0303C8.17678 13.7374 8.17678 13.2626 8.46967 12.9697Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              {hasTrend ? (
+                <p className="m-0 text-[12px]">
+                  <span
+                    className={cn(
+                      "font-semibold tabular-nums",
+                      isPositive ? "text-emerald-600" : "text-red-500"
+                    )}
+                  >
+                    {isPositive ? "+" : ""}
+                    {(trend ?? 0).toFixed(2)}%
+                  </span>{" "}
+                  <span className="text-black/40">vs prev</span>
+                </p>
+              ) : (
+                <span className="text-[12px] text-black/30">—</span>
+              )}
             </div>
           </motion.div>
         )}
@@ -318,6 +353,7 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [prevAnalytics, setPrevAnalytics] = useState<Analytics | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
@@ -330,12 +366,21 @@ export default function Dashboard() {
   const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false) => {
     if (!silent) setAnalyticsLoading(true);
     try {
-      const params = new URLSearchParams({ t: String(Date.now()) });
-      if (range?.from) params.set("since", toYMD(range.from));
-      if (range?.to)   params.set("until", toYMD(range.to));
-      const res = await apiFetch(`/api/analytics?${params}`, { cache: "no-store" });
+      const buildParams = (r?: DateRange | null) => {
+        const p = new URLSearchParams({ t: String(Date.now()) });
+        if (r?.from) p.set("since", toYMD(r.from));
+        if (r?.to)   p.set("until", toYMD(r.to));
+        return p;
+      };
+      const prev = prevRangeOf(range);
+      const [res, prevRes] = await Promise.all([
+        apiFetch(`/api/analytics?${buildParams(range)}`, { cache: "no-store" }),
+        prev ? apiFetch(`/api/analytics?${buildParams(prev)}`, { cache: "no-store" }) : Promise.resolve(null),
+      ]);
       const data = await res.json();
       if (res.ok) setAnalytics(data);
+      if (prevRes && prevRes.ok) setPrevAnalytics(await prevRes.json());
+      else if (!prev) setPrevAnalytics(null);
     } catch { /* non-critical */ }
     finally { if (!silent) setAnalyticsLoading(false); }
   }, []);
@@ -366,6 +411,7 @@ export default function Dashboard() {
   useEffect(() => {
     setOrders([]);
     setAnalytics(null);
+    setPrevAnalytics(null);
     setLoading(true);
     setAnalyticsLoading(true);
   }, [user?.id]);
@@ -515,25 +561,40 @@ export default function Dashboard() {
     };
   }, [analytics]);
 
-  // ── Loading state ─────────────────────────────────────────────────────────
-  if (autoSyncing || loading) {
+  // Period-over-period % change per metric (current vs the previous equal-length
+  // range). null when there's no comparable previous value, which hides the footer %.
+  const trends = useMemo(() => {
+    const pct = (cur?: number | null, prev?: number | null): number | null => {
+      if (cur == null || prev == null) return null;
+      if (prev === 0) return cur === 0 ? 0 : null;
+      return ((cur - prev) / Math.abs(prev)) * 100;
+    };
+    return {
+      revenue: pct(analytics?.revenue, prevAnalytics?.revenue),
+      adSpend: pct(analytics?.adSpend, prevAnalytics?.adSpend),
+      shipping: pct(analytics?.shipping, prevAnalytics?.shipping),
+      cog: pct(analytics?.totalCog, prevAnalytics?.totalCog),
+      profit: pct(analytics?.profit, prevAnalytics?.profit),
+    };
+  }, [analytics, prevAnalytics]);
+  if (loading) {
     return (
       <div className="relative min-h-[calc(100vh-96px)] p-1 lg:p-2">
         <div className="pointer-events-none space-y-6 opacity-45 blur-[0.5px]">
           <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
-              <div className="flex h-[48px] items-center justify-between border-b border-black/10 px-6">
-                <div className="h-3 w-24 animate-pulse rounded bg-muted" />
-                <div className="h-7 w-36 animate-pulse rounded-lg bg-muted" />
-              </div>
-              <div className="flex">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex-1 space-y-3 border-r border-border px-6 py-5 last:border-r-0">
-                    <div className="h-2.5 w-16 animate-pulse rounded bg-muted" />
-                    <div className="h-8 w-24 animate-pulse rounded bg-muted" />
-                  </div>
-                ))}
-              </div>
+            <div className="flex h-[48px] items-center justify-between border-b border-black/10 px-6">
+              <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+              <div className="h-7 w-36 animate-pulse rounded-lg bg-muted" />
             </div>
+            <div className="flex">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex-1 space-y-3 border-r border-border px-6 py-5 last:border-r-0">
+                  <div className="h-2.5 w-16 animate-pulse rounded bg-muted" />
+                  <div className="h-8 w-24 animate-pulse rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="overflow-hidden rounded-xl border border-black/10 bg-white">
             <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
               <div className="h-3 w-28 animate-pulse rounded bg-muted" />
@@ -558,7 +619,7 @@ export default function Dashboard() {
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex flex-col items-center justify-center gap-3">
             <Spinner size="lg" className="text-foreground" />
-            <span className="text-sm font-medium tracking-wide text-foreground">{autoSyncing ? "Syncing Orders" : "Loading"}</span>
+            <span className="text-sm font-medium tracking-wide text-foreground">Loading</span>
           </div>
         </div>
       </div>
@@ -566,7 +627,13 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6 p-1 lg:p-2 overflow-x-clip">
+    <div className="relative space-y-6 p-1 lg:p-2 overflow-x-clip">
+      {autoSyncing && (
+        <div className="pointer-events-none absolute right-3 top-3 z-30 flex items-center gap-2 rounded-full border border-black/10 bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur">
+          <Spinner size="sm" className="text-foreground" />
+          <span className="text-[11px] font-medium tracking-wide text-foreground">Loading…</span>
+        </div>
+      )}
 
       {/* ── P&L Panel ───────────────────────────────────────────────────── */}
       <motion.div
@@ -587,12 +654,12 @@ export default function Dashboard() {
           </div>
         )}
         <div className={!isAdmin ? "blur-[8px] pointer-events-none select-none" : ""}>
-          {/* Header row */}
-          <div className="relative z-10 flex items-center justify-end mb-3">
-            {analytics?.fbError && (
+          {/* Header row — hidden when empty to eliminate the top gap */}
+          {analytics?.fbError && (
+            <div className="relative z-10 flex items-center justify-end mb-3">
               <span className="text-[10px] text-destructive max-w-[200px] truncate">{analytics.fbError}</span>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Metric cards grid */}
           <div className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -601,6 +668,7 @@ export default function Dashboard() {
               loading={analyticsLoading}
               value={fmtBDT(analytics?.revenue ?? 0)}
               data={metricSparklines.revenue}
+              trend={trends.revenue}
               seed={11}
             />
             <FinanceMetric
@@ -608,6 +676,7 @@ export default function Dashboard() {
               loading={analyticsLoading}
               value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
               data={metricSparklines.adSpend}
+              trend={trends.adSpend}
               seed={27}
             />
             <FinanceMetric
@@ -615,6 +684,7 @@ export default function Dashboard() {
               loading={analyticsLoading}
               value={fmtBDT(analytics?.shipping ?? 0)}
               data={metricSparklines.shipping}
+              trend={trends.shipping}
               seed={43}
             />
             <FinanceMetric
@@ -622,6 +692,7 @@ export default function Dashboard() {
               loading={analyticsLoading}
               value={fmtBDT(analytics?.totalCog ?? 0)}
               data={metricSparklines.cog}
+              trend={trends.cog}
               seed={59}
             />
             <FinanceMetric
@@ -629,6 +700,7 @@ export default function Dashboard() {
               loading={analyticsLoading}
               value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
               data={metricSparklines.profit}
+              trend={trends.profit}
               seed={75}
             />
           </div>
@@ -652,29 +724,31 @@ export default function Dashboard() {
             aria-hidden
             className="pointer-events-none absolute left-0 top-0 z-0 hidden h-full w-1/2 md:block"
           >
-            <PixelBackground
-              direction="left"
-              gap={7}
-              speed={70}
-              colors="#1a1a1a,#ef4444"
-              opacity={0.09}
+            <PixelRipple
+              gap={5}
+              dotSize={2.5}
+              maxOpacity={0.85}
               className="absolute inset-0 h-full w-full"
             />
           </div>
 
           <div className="hidden md:block" />
         <div className="text-center relative z-10">
-          <h2 className="text-5xl font-bold text-black">
-            {getDhakaGreeting()}!
-          </h2>
+          <TextShimmer
+            as="h2"
+            duration={3}
+            className="text-5xl font-bold"
+          >
+            {`${getDhakaGreeting()}!`}
+          </TextShimmer>
           <p className="mt-2 text-base font-light text-black/45">
-            Manage all your operations under one roof.
+            Manage your operations and every profit under one roof.
           </p>
 
           {/* Moved cluster — centered below the greeting */}
-          <DateRangePicker value={dateRange} onChange={handleDateRangeChange} triggerClassName="uv-beam rounded-full">
-            <span className="uv-beam group relative rounded-full">
-              <div className="flex h-8 items-center gap-1.5 rounded-full bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
+          <DateRangePicker value={dateRange} onChange={handleDateRangeChange} triggerClassName="uv-beam rounded-lg">
+            <span className="uv-beam group relative rounded-lg">
+              <div className="flex h-8 items-center gap-1.5 rounded-lg bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" style={{ animationDelay: "0.75s" }} />

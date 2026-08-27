@@ -138,7 +138,7 @@ CREATE TABLE public.meta_capi_event_queue (
   user_data JSONB DEFAULT '{}',       -- { ph: ['<sha256 phone>'] }
   custom_data JSONB DEFAULT '{}',     -- { value, currency, ... }
   action_source TEXT DEFAULT 'other', -- COD doorstep outcome — not a website event
-  status TEXT DEFAULT 'pending',      -- pending | sent | failed
+  status TEXT DEFAULT 'pending',      -- pending | sent | failed | expired (>7d old, Meta would reject)
   attempts INTEGER DEFAULT 0,
   last_error TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -190,7 +190,7 @@ src/
 
 **Interfaces:**
 - Consumes: `metaGraph()` from `server/index.js` (or re-implement for shared import)
-- Produces: `fetchAdAccounts(orgId)`, `fetchCampaigns(orgId, adAccountId)`, `fetchInsights(orgId, adAccountId, { since, until })`, `pushCustomAudience(orgId, { name, description, userIds })`, `getMetaAccessToken(orgId)`
+- Produces: `fetchAdAccounts(orgId)`, `fetchCampaigns(orgId, adAccountId)`, `fetchInsights(orgId, adAccountId, { since, until })`, `pushCustomAudience(orgId, audienceId, phones)` (adds digits-only-hashed phones to an existing audience — chunked, with session tracking), `getMetaAccessToken(orgId)`
 
 Notes:
 - Implementation approach: re-implement a thin `metaGraphFetch(path, token, params)` wrapper locally rather than importing from `server/index.js` (which is ESM with side effects). This avoids circular dependency issues.
@@ -204,7 +204,7 @@ Notes:
 import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
 import crypto from "crypto";
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v23.0";
+export const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v26.0";
 
 function metaGraphUrl(path, params = {}) {
   const url = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/${String(path).replace(/^\//, "")}`);
@@ -299,7 +299,7 @@ export async function fetchCampaigns(supabase, orgId, adAccountId) {
   const token = await getMetaAccessToken(supabase, orgId);
   if (!token) throw new Error("Meta not connected or token expired");
   const result = await metaGraphFetch(`${adAccountId}/campaigns`, token, {
-    fields: "id,name,status,daily_budget,lifetime_budget,start_time,end_time",
+    fields: "id,name,status,daily_budget,lifetime_budget,start_time,stop_time",
     limit: 100,
   });
   return (result.data || []).map((c) => ({
@@ -309,7 +309,7 @@ export async function fetchCampaigns(supabase, orgId, adAccountId) {
     daily_budget: parseFloat(c.daily_budget || 0),
     lifetime_budget: parseFloat(c.lifetime_budget || 0),
     start_time: c.start_time,
-    end_time: c.end_time,
+    end_time: c.stop_time, // Meta names the campaign end date "stop_time" on Campaign objects
   }));
 }
 
@@ -344,20 +344,48 @@ export async function fetchAdInsights(supabase, orgId, adAccountId, { since, unt
   }));
 }
 
-export async function pushCustomAudience(supabase, orgId, audienceId, userIds) {
+export async function pushCustomAudience(supabase, orgId, audienceId, phones) {
   const token = await getMetaAccessToken(supabase, orgId);
   if (!token) throw new Error("Meta not connected or token expired");
 
-  // Add users to a Custom Audience via the /{audience_id}/users endpoint
-  // Users need to be hashed as per Meta's requirements
-  const hashedUsers = userIds.map((uid) => {
-    const hash = crypto.createHash("sha256").update(String(uid).trim().toLowerCase()).digest("hex");
-    return hash;
-  });
+  // Add hashed phones to a Custom Audience via POST /{audience_id}/users.
+  // Meta requires: digits-only normalization (no "+"/symbols), schema "PHONE_SHA256"
+  // (single column of SHA-256 hashes — mirrors the EMAIL_SHA256 pattern), a flat
+  // `data` list of hash strings, and a `session` object tracking the batch upload.
+  // Max 10,000 users per request — chunk larger lists with batch_seq.
+  const hashedPhones = phones.map((p) =>
+    crypto.createHash("sha256").update(String(p).replace(/[^\d]/g, "")).digest("hex")
+  );
 
-  return metaGraphFetch(`${audienceId}/users`, token, {
-    payload: { data: hashedUsers.map((h) => ({ id: h })), schema: ["SHA256"] },
-  }, { method: "POST" });
+  const sessionId = Date.now();
+  const CHUNK = 10000;
+  const totalBatches = Math.ceil(hashedPhones.length / CHUNK) || 1;
+  let result = null;
+  for (let b = 0; b < totalBatches; b++) {
+    const chunk = hashedPhones.slice(b * CHUNK, (b + 1) * CHUNK);
+    const res = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${audienceId}/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session: {
+          session_id: sessionId,
+          batch_seq: b + 1,
+          last_batch_flag: b === totalBatches - 1,
+          estimated_num_total: hashedPhones.length,
+        },
+        payload: { schema: "PHONE_SHA256", data: chunk },
+        access_token: token,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.error) {
+      const err = new Error(body?.error?.message || `Meta API ${res.status}`);
+      err.meta = body?.error;
+      throw err;
+    }
+    result = body;
+  }
+  return result;
 }
 ```
 
@@ -393,7 +421,7 @@ git commit -m "feat: add Meta Ads API helper module with campaign fetch and insi
 
 At the top of `server/index.js`, add:
 ```js
-import { fetchCampaigns, fetchAdInsights, getMetaAccessToken, getOrgAdAccounts } from "./metaAds.js";
+import { fetchCampaigns, fetchAdInsights, getMetaAccessToken, getOrgAdAccounts, pushCustomAudience, META_GRAPH_VERSION } from "./metaAds.js";
 ```
 
 - [ ] **Step 2: Add GET /api/meta-ads/campaigns route**
@@ -2268,7 +2296,7 @@ git commit -m "feat: add migration for Meta Ads campaign, insights, audience, an
 >
 > **Matching:** phone number is the strongest key in BD (every customer is reachable on their number). Phones are normalized with `normalizeBdPhone()` then SHA-256 hashed per Meta's requirements before leaving the server. Raw numbers never leave Merchant Suite.
 >
-> **Scope note:** sending server events only requires the existing token (Events API works with `ads_read` + business access to the dataset). Creating Custom Audiences in Task 14 needs `ads_management` — attempt it, and fall back to storing hashed lists for manual exclusion if the scope is missing.
+> **Scope note:** sending server events requires **no app permissions and no App Review** (per the Conversions API Get Started doc) — the System User just needs the dataset assigned to it as an asset in Business Settings, and a token generated for it. Creating Custom Audiences in Task 14 needs `ads_management` — attempt it, and fall back to storing hashed lists for manual exclusion if the scope is missing.
 
 ### Task 12: Conversions API Sender Module — `server/metaCapi.js`
 
@@ -2284,7 +2312,7 @@ git commit -m "feat: add migration for Meta Ads campaign, insights, audience, an
 
 Notes:
 - `normalizeBdPhone()` is re-implemented locally (mirroring `server/index.js:453-462`) to avoid importing from `server/index.js` (ESM with side effects — same reasoning as Task 1).
-- Events POST directly to `https://graph.facebook.com/v23.0/{dataset_id}/events` rather than reusing `metaGraphFetch()` from Task 1 (which builds GET-style URLs and has no POST body support).
+- Events POST directly to `https://graph.facebook.com/{version}/{dataset_id}/events` rather than reusing `metaGraphFetch()` from Task 1 (which builds GET-style URLs and has no POST body support).
 - `event_id` format `"<order_id>:<event_name>"` doubles as the dedup key vs any future pixel events.
 
 - [ ] **Step 1: Create `server/metaCapi.js`**
@@ -2293,12 +2321,16 @@ Notes:
 import crypto from "crypto";
 import { getMetaAccessToken } from "./metaAds.js";
 
-const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v23.0";
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v26.0";
 const CAPI_BATCH_SIZE = 50;          // Meta accepts up to 1000/request — 50 keeps payloads small
 const CAPI_MAX_ATTEMPTS = 5;
 const CAPI_FLUSH_INTERVAL_MS = 5 * 60 * 1000;
 
-// Mirrors normalizeBdPhone() in server/index.js (kept local to avoid circular import)
+// Mirrors normalizeBdPhone() in server/index.js (kept local to avoid circular import),
+// BUT returns Meta-normalized digits only: no "+", no symbols, no leading zeros,
+// country code included (Meta's spec: "Remove symbols, letters, and any leading zeros.
+// Phone numbers must include a country code"). Hashing the "+880..." format would
+// silently break matching — Meta hashes the digits-only form.
 function normalizeBdPhoneLocal(input) {
   if (!input) return null;
   let digits = String(input).replace(/[^\d+]/g, "");
@@ -2308,7 +2340,7 @@ function normalizeBdPhoneLocal(input) {
   if (digits.startsWith("0")) digits = digits.slice(1);
   if (digits.length === 10) digits = "1" + digits;
   if (digits.length !== 11 || !digits.startsWith("1")) return null;
-  return "+880" + digits.slice(1);
+  return "880" + digits.slice(1); // e.g. "8801712345678" — digits only, hashed as-is
 }
 
 function sha256Hex(value) {
@@ -2395,12 +2427,24 @@ export async function flushCapiQueue(supabase, orgId, getOrgSettingsFn) {
   const token = await getMetaAccessToken(supabase, orgId);
   if (!token) return { flushed: 0, skipped: true, reason: "meta_not_connected" };
 
+  // Meta rejects an ENTIRE request if any event_time is >7 days old, so filter out
+  // stale events (e.g. queued during an outage) — otherwise one old event poisons
+  // every batch and every retry. Rows older than 7 days are marked expired, not retried.
+  const staleCutoff = Math.floor(Date.now() / 1000) - 7 * 86400 + 3600; // 7d minus 1h safety margin
+  await supabase
+    .from("meta_capi_event_queue")
+    .update({ status: "expired", last_error: "event_time older than 7 days — Meta would reject the whole batch", updated_at: new Date().toISOString() })
+    .eq("org_id", orgId)
+    .eq("status", "pending")
+    .lt("event_time", staleCutoff);
+
   const { data: pending } = await supabase
     .from("meta_capi_event_queue")
     .select("*")
     .eq("org_id", orgId)
     .eq("status", "pending")
     .lt("attempts", CAPI_MAX_ATTEMPTS)
+    .gte("event_time", staleCutoff)
     .order("created_at", { ascending: true })
     .limit(500);
 
@@ -2460,11 +2504,12 @@ export async function getCapiQueueStats(supabase, orgId) {
     .select("event_name, status, created_at")
     .eq("org_id", orgId)
     .gte("created_at", since);
-  const stats = { sent: 0, pending: 0, failed: 0, purchase: 0, returned: 0, orderPlaced: 0 };
+  const stats = { sent: 0, pending: 0, failed: 0, expired: 0, purchase: 0, returned: 0, orderPlaced: 0 };
   for (const r of rows || []) {
     if (r.status === "sent") stats.sent++;
     if (r.status === "pending") stats.pending++;
     if (r.status === "failed") stats.failed++;
+    if (r.status === "expired") stats.expired++;
     if (r.status === "sent" && r.event_name === "Purchase") stats.purchase++;
     if (r.status === "sent" && r.event_name === "OrderReturned") stats.returned++;
     if (r.status === "sent" && r.event_name === "OrderPlaced") stats.orderPlaced++;
@@ -2660,7 +2705,7 @@ startCapiWorker(getServiceSupabase, getOrgSettings);
 
 1. Boot the server, verify `[CAPI] worker started (interval: 5m)` in logs
 2. `POST /api/meta-ads/capi/settings` with a test dataset ID and `enabled: true`
-3. Simulate a courier webhook delivery update → check `meta_capi_event_queue` has a pending `Purchase` row with a hashed `ph`
+3. Simulate a courier webhook delivery update → check `meta_capi_event_queue` has a pending `Purchase` row with a hashed `ph` (verify the hash is computed on the **digits-only** form, e.g. `8801712345678` — NOT `+8801712345678`; Meta hashes digits only)
 4. `POST /api/meta-ads/capi/flush` → row status becomes `sent` (or `failed` with `last_error` if the dataset ID/token is invalid — verify the error message surfaces)
 
 - [ ] **Step 7: Commit**
@@ -2729,8 +2774,11 @@ app.post("/api/meta-ads/audience/exclusion", async (req, res) => {
     }
 
     const crypto = await import("crypto");
+    // Meta normalization for custom audiences is digits-only (strip "+" and all
+    // symbols) — same contract as CAPI's normalizeBdPhoneLocal() in metaCapi.js.
+    // Hashing the "+880..." form would never match Meta's users.
     const hashedPhones = excludedPhones.map((p) =>
-      crypto.createHash("sha256").update(p.trim().toLowerCase()).digest("hex")
+      crypto.createHash("sha256").update(String(p).replace(/[^\d]/g, "")).digest("hex")
     );
 
     // 2. Attempt to create + populate a Meta Custom Audience (requires ads_management scope)
@@ -2743,15 +2791,15 @@ app.post("/api/meta-ads/audience/exclusion", async (req, res) => {
     if (token && adAccounts?.length > 0) {
       try {
         const createRes = await fetch(
-          `https://graph.facebook.com/v23.0/act_${String(adAccounts[0].ad_account_id).replace(/^act_/, "")}/customaudiences`,
+          `https://graph.facebook.com/${META_GRAPH_VERSION}/act_${String(adAccounts[0].ad_account_id).replace(/^act_/, "")}/customaudiences`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: `MS Exclusion — Returners & Fraud (${new Date().toISOString().slice(0, 10)})`,
-              subtype: "CUSTOMER_LIST",
+              subtype: "CUSTOM",
               description: "Auto-built by Merchant Suite: serial returners (>=2 in 90d) + fraud-flagged",
-              customer_list_source: "USER_PROVIDED_ONLY",
+              customer_file_source: "USER_PROVIDED_ONLY",
               access_token: token,
             }),
           }
@@ -2759,18 +2807,10 @@ app.post("/api/meta-ads/audience/exclusion", async (req, res) => {
         const createBody = await createRes.json().catch(() => ({}));
         if (createRes.ok && createBody.id) {
           metaAudienceId = createBody.id;
-          // Add hashed phone records in batches of 10000 (Meta limit)
-          for (let i = 0; i < hashedPhones.length; i += 10000) {
-            const chunk = hashedPhones.slice(i, i + 10000).map((h) => ({ phone: [h] }));
-            await fetch(`https://graph.facebook.com/v23.0/${metaAudienceId}/users`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                payload: { schema: ["SHA256"], data: chunk },
-                access_token: token,
-              }),
-            });
-          }
+          // Populate with hashed phones — pushCustomAudience() (Task 1) handles
+          // digits-only normalization, PHONE_SHA256 schema, session tracking,
+          // and Meta's 10,000-users-per-request limit
+          await pushCustomAudience(supabase, orgId, metaAudienceId, excludedPhones);
           status = "pushed";
         } else {
           pushError = createBody?.error?.message || `Meta API ${createRes.status}`;

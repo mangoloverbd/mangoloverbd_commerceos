@@ -6,7 +6,7 @@ describe("generate image endpoint", () => {
   const serverSource = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
   const routeSource = serverSource.slice(
     serverSource.indexOf('app.post("/api/generate-image"'),
-    serverSource.indexOf("const ORDER_CHAT_MODELS")
+    serverSource.indexOf("const ORDER_CHAT_RESPONSES_MODELS")
   );
 
   it("uses the Responses API image generation tool", () => {

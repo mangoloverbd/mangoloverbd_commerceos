@@ -142,6 +142,13 @@ export default function OrderChatComposer({
   const [modelMenuLeft, setModelMenuLeft] = useState(0);
   const [sizeMenuLeft, setSizeMenuLeft] = useState(0);
 
+  // Keep the input focused so it's always ready to type, even while a
+  // response is streaming. Toggling focus on loading changes avoids the
+  // user having to click the field again after each reply.
+  useEffect(() => {
+    if (loading) inputRef.current?.focus();
+  }, [loading]);
+
   const composerAnchorRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -369,8 +376,8 @@ export default function OrderChatComposer({
     const inlineInputWidth = controls.clientWidth - fixedControlsWidth - inlineGaps;
     const needsFullWidth = draft.includes("\n") || measure.offsetWidth + 8 > inlineInputWidth;
     if (needsFullWidth !== expanded) setExpanded(needsFullWidth);
-    const minHeight = 28;
-    const maxHeight = 100;
+    const minHeight = 56;
+    const maxHeight = 200;
     input.style.height = "0px";
     const contentHeight = input.scrollHeight;
     input.style.height = `${Math.min(Math.max(contentHeight, minHeight), maxHeight)}px`;
@@ -433,7 +440,8 @@ export default function OrderChatComposer({
   const canSend = draft.trim().length > 0 || attachments.length > 0;
 
   const send = () => {
-    if (!canSend || loading) return;
+    if (!canSend) return;
+    if (loading) onStop();
     onSend(draft.trim(), attachments);
     setDraft("");
     setAttachments([]);
@@ -581,7 +589,7 @@ export default function OrderChatComposer({
 
         {/* composer */}
         <div
-          className="relative isolate flex flex-col gap-1.5 overflow-hidden rounded-[10px] border border-line bg-surface p-1.5 shadow-card transition-[border-color] duration-150 focus-within:border-line-strong"
+          className="relative isolate flex flex-col gap-1.5 overflow-hidden rounded-[10px] border border-line bg-surface p-1.5 shadow-[0_1px_1px_0_rgb(0_0_0_/_0.03)] transition-[border-color] duration-150 focus-within:border-line-strong"
         >
           <canvas
             ref={glimmRef}
@@ -636,7 +644,7 @@ export default function OrderChatComposer({
 
           <div
             ref={controlsRef}
-            className={`grid items-end gap-x-1 gap-y-1.5 ${
+             className={`grid items-end gap-x-0.5 gap-y-1.5 ${
               wide
                 ? "grid-cols-[28px_auto_minmax(0,1fr)_28px_28px]"
                 : "grid-cols-[28px_minmax(0,1fr)_auto_28px_28px]"
@@ -648,7 +656,7 @@ export default function OrderChatComposer({
               aria-label="Add attachments and sources"
               aria-expanded={plusOpen}
               onClick={() => { setModelOpen(false); setSizeOpen(false); setPlusOpen((current) => !current); inputRef.current?.focus(); }}
-              className={`flex size-7 shrink-0 items-center justify-center justify-self-start text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-hover hover:text-ink active:scale-[0.94] rounded-[8px] ${plusOpen ? "bg-hover text-ink" : ""} ${wide ? "col-start-1 row-start-2" : "col-start-1 row-start-1"}`}
+               className={`hidden flex size-7 shrink-0 items-center justify-center justify-self-start text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-hover hover:text-ink active:scale-[0.94] rounded-[8px] ${plusOpen ? "bg-hover text-ink" : ""} ${wide ? "col-start-1 row-start-2" : "col-start-1 row-start-1"}`}
             >
               {imageMode ? <ImageIcon weight="light" size={16} /> : <Paperclip weight="light" size={16} />}
             </button>
@@ -658,7 +666,6 @@ export default function OrderChatComposer({
               ref={inputRef}
               rows={1}
               value={draft}
-              disabled={loading}
               onChange={(event) => { setDraft(event.target.value); setDismissed(false); setPlusOpen(false); }}
               onKeyDown={(event) => {
                 if (menu && rows.length > 0) {
@@ -682,7 +689,7 @@ export default function OrderChatComposer({
               }}
               placeholder={listening ? "Listening…" : placeholder ?? (imageMode ? "Describe the image you want to generate…" : "Send a message…")}
               aria-label="Prompt"
-              className={`min-h-7 min-w-0 w-full resize-none bg-transparent px-1 py-[5px] text-[13px] leading-[18px] text-ink outline-none [overflow-wrap:anywhere] placeholder:text-ink-3 disabled:opacity-60 ${wide ? "col-span-full col-start-1 row-start-1" : "col-start-2 row-start-1"}`}
+              className={`min-h-[56px] min-w-0 w-full resize-none bg-transparent pl-0 pr-1 py-[5px] text-[13px] leading-[18px] text-ink outline-none [overflow-wrap:anywhere] placeholder:text-ink-3 ${wide ? "col-span-full col-start-1 row-start-1" : "col-start-2 row-start-1 -ml-5"}`}
             />
 
             {/* model / size picker */}
@@ -693,7 +700,7 @@ export default function OrderChatComposer({
                 aria-expanded={sizeOpen}
                 aria-label="Choose image size"
                 onClick={() => { setPlusOpen(false); setModelOpen(false); setSizeOpen((current) => !current); }}
-                className={`flex h-7 shrink-0 items-center gap-1 px-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink rounded-[8px] ${wide ? "col-start-2 row-start-2 justify-self-start" : "col-start-3 row-start-1"}`}
+                 className={`flex h-7 shrink-0 items-center gap-1 px-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink rounded-[8px] ${wide ? "col-start-2 row-start-2 justify-self-start" : "col-start-3 row-start-1"}`}
               >
                 {activeSize.label}
                 <span className="text-ink-3"><CaretDown weight="light" size={11} /></span>
@@ -705,7 +712,7 @@ export default function OrderChatComposer({
                 aria-expanded={modelOpen}
                 aria-label="Choose model"
                 onClick={() => { setPlusOpen(false); setSizeOpen(false); setModelOpen((current) => !current); }}
-                className={`flex h-7 shrink-0 items-center gap-1 px-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink rounded-[8px] ${wide ? "col-start-2 row-start-2 justify-self-start" : "col-start-3 row-start-1"}`}
+                 className={`flex h-7 shrink-0 items-center gap-1 px-1.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink rounded-[8px] ${wide ? "col-start-2 row-start-2 justify-self-start" : "col-start-3 row-start-1"}`}
               >
                 {activeModel.label}
                 <span className="text-ink-3"><CaretDown weight="light" size={11} /></span>
@@ -718,7 +725,7 @@ export default function OrderChatComposer({
               aria-label={listening ? "Stop dictation" : "Start dictation"}
               aria-pressed={listening}
               onClick={() => setListening((current) => !current)}
-              className={`flex size-7 shrink-0 items-center justify-center transition-[background-color,color,transform] duration-150 active:scale-[0.94] rounded-[8px] ${listening ? "bg-accent-tint text-accent-ink" : "text-ink-3 hover:bg-hover hover:text-ink"} ${wide ? "col-start-4 row-start-2" : "col-start-4 row-start-1"}`}
+               className={`flex size-7 shrink-0 items-center justify-center transition-[background-color,color,transform] duration-150 active:scale-[0.94] rounded-[8px] ${listening ? "bg-accent-tint text-accent-ink" : "text-ink-3 hover:bg-hover hover:text-ink"} ${wide ? "col-start-4 row-start-2" : "col-start-4 row-start-1"}`}
             >
               {listening ? (
                 <span className="flex h-3.5 items-center gap-[2.5px]">

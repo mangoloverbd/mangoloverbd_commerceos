@@ -37,6 +37,13 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
+# Optional: route chat/completions (incl. Order Chat) through OpenRouter instead of OpenAI
+AI_PROVIDER=openrouter            # "openai" (default) or "openrouter"
+OPENROUTER_API_KEY=
+AI_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free   # OpenRouter model slug; default if unset
+# Optional OpenRouter attribution headers (recommended, not required)
+OPENROUTER_SITE_URL=
+OPENROUTER_APP_TITLE=
 ```
 
 > **Before starting any new feature:** invoke the `brainstorming` skill to explore requirements and design before touching code. Invoke `writing-plans` after brainstorming to produce an implementation plan. Invoke `plan-ceo-review` if you want to pressure-test scope or ambition.

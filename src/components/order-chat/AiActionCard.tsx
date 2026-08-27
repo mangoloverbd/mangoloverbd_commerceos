@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check } from "@phosphor-icons/react";
-import { PopButton } from "@/components/ui/pop-button";
+import { Button } from "@/components/base/buttons/button";
 import type { Recommendation } from "./useAiChatStream";
 
 type Props = {
@@ -95,17 +95,17 @@ export default function AiActionCard({ recommendation, alternatives, status, bef
         </span>
         <span className="flex items-center gap-2">
           {alternatives.length > 0 && (
-            <PopButton color="default" size="sm" aria-expanded={open}
-              onClick={() => setOpen((c) => !c)} className="px-2.5 text-[12.5px]">
+            <Button variant="ghost" size="small" aria-expanded={open}
+              onClick={() => setOpen((c) => !c)}>
               Alternatives
-            </PopButton>
+            </Button>
           )}
-          <PopButton color="default" size="sm" onClick={onReject} className="px-2.5 text-[12.5px]">
+          <Button variant="secondary" size="small" onClick={onReject}>
             Reject
-          </PopButton>
-          <PopButton color="blue" size="sm" onClick={() => onApply(active.args)} className="text-[12.5px]">
+          </Button>
+          <Button variant="primary" size="small" onClick={() => onApply(active.args)}>
             {active.cta}
-          </PopButton>
+          </Button>
         </span>
       </div>
     </div>

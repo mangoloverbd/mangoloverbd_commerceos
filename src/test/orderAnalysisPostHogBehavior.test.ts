@@ -54,9 +54,9 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("Product Demand Signals");
     expect(pageSource).toContain("Traffic Source Performance");
     expect(pageSource).toContain("trafficSources");
-    expect(pageSource).toContain("Funnel Counters");
-    expect(pageSource).toContain("metric-card");
-    expect(pageSource).toContain('padding: "8px 10px"');
+    expect(pageSource).toContain("Conversion Funnel");
+    expect(pageSource).toContain("<FunnelChart");
+    expect(pageSource).toContain("funnelStages");
     expect(pageSource).toContain("col-span-full");
     expect(pageSource).toContain("defaultTrafficSources");
     expect(pageSource).toContain('"Facebook"');

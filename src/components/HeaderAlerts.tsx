@@ -1,26 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
-import { Clock, Send, AlertTriangle, X } from "lucide-react";
 import { useSidebarAlerts } from "@/hooks/useSidebarAlerts";
-import { formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  NotificationCenter,
+  type NotificationCenterItem,
+} from "@/components/application/notification-center/notification-center";
 
 const popoverPanelClass =
-  "w-80 overflow-hidden rounded-[14px] border-[1.5px] border-black/[0.07] bg-[#E9E8E5] p-1 text-[#202020] shadow-[0_2px_6px_rgba(0,0,0,0.03),inset_0_1px_0_rgba(255,255,255,0.7)]";
+  "w-[400px] overflow-hidden rounded-[20px] border-0 bg-transparent p-0 shadow-none";
 
-const popoverInnerClass =
-  "rounded-[10px] border border-black/[0.05] bg-[#F7F7F6] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.06)]";
+function startOfToday(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
 
-const alertRowClass =
-  "flex items-start gap-3 rounded-[10px] border border-black/[0.05] bg-[#FBFBFA] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors hover:bg-white";
+function recencyGroup(createdAt: string): string {
+  const ageMs = Date.now() - new Date(createdAt).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (new Date(createdAt).getTime() >= startOfToday()) return "Today";
+  if (ageMs <= 7 * dayMs) return "This week";
+  return "Earlier";
+}
+
+function shortTimestamp(createdAt: string): string {
+  const ageMs = Date.now() - new Date(createdAt).getTime();
+  const min = Math.floor(ageMs / 60000);
+  const hr = Math.floor(ageMs / 3600000);
+  const day = Math.floor(ageMs / 86400000);
+  if (ageMs < 3600000) return `${Math.max(min, 1)}m`;
+  if (ageMs < 86400000) return `${hr}h`;
+  if (ageMs < 7 * 86400000) return `${day}d`;
+  return new Date(createdAt).toLocaleDateString(undefined, { weekday: "short" });
+}
 
 export function HeaderAlerts() {
   const { alerts, stalePending, unsentConfirmed, loading } = useSidebarAlerts();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+
+  const notifications = useMemo<NotificationCenterItem[]>(() => {
+    const map = (list: typeof stalePending, status: "error" | "information") =>
+      list.map((order) => ({
+        id: order.id,
+        category: "system" as const,
+        group: recencyGroup(order.created_at),
+        title: `${order.order_number}${order.customer_name ? ` · ${order.customer_name}` : ""}`,
+        description:
+          status === "error"
+            ? `${order.daysOld}d old — needs follow-up`
+            : `Confirmed ${shortTimestamp(order.created_at)} ago — not sent to courier`,
+        timestamp: shortTimestamp(order.created_at),
+        unread: true,
+        status,
+        actions: [{ id: "view", label: "View", variant: "primary" as const }],
+      }));
+
+    return [...map(stalePending, "error"), ...map(unsentConfirmed, "information")];
+  }, [stalePending, unsentConfirmed]);
+
+  const handleAction = (notificationId: string, actionId: string) => {
+    if (actionId === "view") {
+      setOpen(false);
+      navigate("/orders");
+    }
+  };
 
   if (loading) {
     return (
@@ -89,92 +138,11 @@ export function HeaderAlerts() {
         sideOffset={8}
         className={popoverPanelClass}
       >
-        <div className={cn(popoverInnerClass, "px-4 py-3")}>
-          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#7F7F7D]">Alerts</p>
-          <p className="mt-1 text-[12px] font-light text-[#202020]">{alerts.length} items need attention</p>
-        </div>
-        <div className="mt-1 max-h-[400px] space-y-1 overflow-y-auto overscroll-contain">
-          {stalePending.length > 0 && (
-            <div className={cn(popoverInnerClass, "p-2")}>
-              <div className="flex items-center gap-2 px-2 py-1.5">
-                <div className="flex h-5 w-5 items-center justify-center rounded-md bg-black/[0.04]">
-                  <Clock className="h-3 w-3 text-[#8A6A28]" />
-                </div>
-                <p className="text-[9px] font-medium uppercase tracking-[0.24em] text-[#8A6A28]">
-                  Stale Pending ({stalePending.length})
-                </p>
-              </div>
-              <div className="space-y-1">
-                {stalePending.slice(0, 5).map((order) => (
-                  <div key={order.id} className={alertRowClass}>
-                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#E9E8E5]">
-                    <AlertTriangle className="h-3 w-3 text-[#8A6A28]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11px] font-medium text-[#202020]">
-                      {order.order_number}
-                      {order.customer_name && (
-                        <span className="font-normal text-black/45"> · {order.customer_name}</span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-black/45">
-                      {order.daysOld}d old — needs follow-up
-                    </p>
-                  </div>
-                  <span className="mt-0.5 shrink-0 rounded-full border border-black/[0.06] bg-[#E9E8E5] px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-[#8A6A28]">
-                    Pending
-                  </span>
-                  </div>
-                ))}
-              </div>
-              {stalePending.length > 5 && (
-                <p className="py-1.5 text-center text-[10px] text-black/40">
-                  +{stalePending.length - 5} more
-                </p>
-              )}
-            </div>
-          )}
-          {unsentConfirmed.length > 0 && (
-            <div className={cn(popoverInnerClass, "p-2")}>
-              <div className="flex items-center gap-2 px-2 py-1.5">
-                <div className="flex h-5 w-5 items-center justify-center rounded-md bg-black/[0.04]">
-                  <Send className="h-3 w-3 text-[#4F657A]" />
-                </div>
-                <p className="text-[9px] font-medium uppercase tracking-[0.24em] text-[#4F657A]">
-                  Unsent Confirmed ({unsentConfirmed.length})
-                </p>
-              </div>
-              <div className="space-y-1">
-                {unsentConfirmed.slice(0, 5).map((order) => (
-                  <div key={order.id} className={alertRowClass}>
-                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#E9E8E5]">
-                    <AlertTriangle className="h-3 w-3 text-[#4F657A]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11px] font-medium text-[#202020]">
-                      {order.order_number}
-                      {order.customer_name && (
-                        <span className="font-normal text-black/45"> · {order.customer_name}</span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-black/45">
-                      Confirmed {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                  <span className="mt-0.5 shrink-0 rounded-full border border-black/[0.06] bg-[#E9E8E5] px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-[#4F657A]">
-                    Unsent
-                  </span>
-                  </div>
-                ))}
-              </div>
-              {unsentConfirmed.length > 5 && (
-                <p className="py-1.5 text-center text-[10px] text-black/40">
-                  +{unsentConfirmed.length - 5} more
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        <NotificationCenter
+          notifications={notifications}
+          defaultTab="system"
+          onAction={handleAction}
+        />
       </PopoverContent>
     </Popover>
   );

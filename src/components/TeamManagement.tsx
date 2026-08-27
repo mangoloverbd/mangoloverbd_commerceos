@@ -108,7 +108,7 @@ export function TeamManagement() {
           <p className="text-[11px] text-black/30">{members.length} total</p>
         </div>
 
-        <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white">
+        <div className="overflow-hidden rounded-2xl bg-black/[0.04]">
           <AnimatePresence mode="wait">
             {loading ? (
               <motion.div
@@ -202,7 +202,7 @@ export function TeamManagement() {
           <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30">
             Add Member
           </p>
-          <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white px-5 py-4 space-y-4">
+          <div className="overflow-hidden rounded-2xl bg-black/[0.04] px-5 py-4 space-y-4">
             <form onSubmit={handleCreateMember} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -295,7 +295,7 @@ export function TeamManagement() {
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white px-5 py-4 flex items-center gap-3 text-black/40">
+        <div className="overflow-hidden rounded-2xl bg-black/[0.04] px-5 py-4 flex items-center gap-3 text-black/40">
           <Lock className="h-4 w-4 shrink-0" />
           <p className="text-[13px]">Only admins can add or remove team members.</p>
         </div>

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import {
-  Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -114,6 +114,8 @@ export default function OrderCreatorModal({
       .then((data) => setProducts(data?.products || []))
       .catch(() => {});
   }, [open]);
+
+  const reduce = useReducedMotion();
 
   const subtotal = useMemo(
     () => lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0),
@@ -291,18 +293,42 @@ export default function OrderCreatorModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-left text-lg font-semibold">Create Order</DialogTitle>
-          <DialogDescription className="text-left">
-            Paste an order message to auto-fill, or build the order manually.
-          </DialogDescription>
-        </DialogHeader>
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <AnimatePresence>
+        {open && (
+          <DialogPrimitive.Portal forceMount>
+            <DialogPrimitive.Overlay asChild forceMount>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="fixed inset-0 z-50 grid place-items-center bg-black/12 px-4 backdrop-blur-[3px]"
+              />
+            </DialogPrimitive.Overlay>
+            <DialogPrimitive.Content asChild forceMount>
+              <motion.div
+                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.96, filter: "blur(8px)" }}
+                animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96, filter: "blur(4px)", transition: { duration: 0.2, ease: "easeIn" } }}
+                transition={{ type: "spring", stiffness: 320, damping: 28, mass: 0.8 }}
+                className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-2xl max-h-[90vh] overflow-y-auto translate-x-[-50%] translate-y-[-50%] gap-4 border border-black/10 bg-[#FAFAF8] p-6 shadow-2xl shadow-black/15 sm:rounded-2xl"
+              >
+                <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Close</span>
+                </DialogPrimitive.Close>
 
-        <div className="space-y-5">
+                <DialogHeader>
+                  <DialogTitle className="text-left text-lg font-semibold">Create Order</DialogTitle>
+                  <DialogDescription className="text-left">
+                    Paste an order message to auto-fill, or build the order manually.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-5">
           {/* AI extraction */}
-          <div className="space-y-2">
+                <div className="space-y-2">
             <Textarea
               placeholder="Paste the order message here… e.g. 'Hi, I want 2 t-shirts. Name: Rahim, phone: 01712345678, Dhanmondi, Dhaka'"
               value={orderText}
@@ -464,7 +490,7 @@ export default function OrderCreatorModal({
 
             <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
               <span className="text-xs text-muted-foreground">Subtotal</span>
-              <span className="text-sm font-medium text-foreground tabular-nums">৳{subtotal.toLocaleString()}</span>
+              <span className="text-sm font-medium text-foreground tabular-nums">{subtotal.toLocaleString()}</span>
             </div>
 
             <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
@@ -489,15 +515,19 @@ export default function OrderCreatorModal({
 
             <div className="flex items-center justify-between bg-black/[0.035] px-4 py-3">
               <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Total</span>
-              <input
-                type="number"
-                value={total}
-                onChange={(e) => {
-                  const t = Number(e.target.value) || 0;
-                  setDiscount(Math.max(0, subtotal + deliveryCharge - t));
-                }}
-                className="w-28 bg-transparent text-right text-xl font-bold text-foreground outline-none"
-              />
+              <div className="flex items-center gap-0.5">
+                <span className="text-xl font-bold text-foreground">৳</span>
+                <input
+                  type="number"
+                  value={total}
+                  onChange={(e) => {
+                    const t = Number(e.target.value) || 0;
+                    setDiscount(Math.max(0, subtotal + deliveryCharge - t));
+                  }}
+                  style={{ width: `${Math.max(2, String(total).length + 0.5)}ch` }}
+                  className="bg-transparent text-right text-xl font-bold text-foreground outline-none"
+                />
+              </div>
             </div>
 
             {advance > 0 && (
@@ -559,8 +589,12 @@ export default function OrderCreatorModal({
               <span className="ml-2">{creating ? "Creating…" : "Create Order"}</span>
             </Button>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+                </div>
+              </motion.div>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        )}
+      </AnimatePresence>
+    </DialogPrimitive.Root>
   );
 }

@@ -1,15 +1,14 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getAppConfig } from "@/lib/api";
 import { DownloadSimple } from "@phosphor-icons/react";
-import ReactMarkdown from "react-markdown";
-import { motion, AnimatePresence } from "framer-motion";
-import { ThinkingOrb } from "@/components/ui/thinking-orbs";
-import { OrbErrorBoundary } from "@/components/ui/orb-error-boundary";
+import { motion, LayoutGroup } from "framer-motion";
+import { AgentThinking } from "@/components/application/agent-thinking/agent-thinking";
 import OrderChatComposer, { type UploadedFile } from "@/components/OrderChatComposer";
 import { useAiChatStream, type StreamEvent, type ClarifyQuestion, type Recommendation } from "@/components/order-chat/useAiChatStream";
 import AiClarifyCard from "@/components/order-chat/AiClarifyCard";
 import AiActionCard from "@/components/order-chat/AiActionCard";
+import OrderChatHistory, { type Conversation } from "@/components/order-chat/OrderChatHistory";
+import { StreamingMarkdown } from "@/components/order-chat/StreamingMarkdown";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "@/components/ui/sonner";
 
@@ -26,9 +25,26 @@ const openAIModels = [
   { id: "gpt-4o-mini", label: "GPT-4o mini", tag: "High limit" },
 ];
 
+const openRouterModels = [
+  { id: "nvidia/nemotron-3-ultra-550b-a55b:free", label: "Nemotron 3 Ultra 550B", tag: "Default" },
+  { id: "dots-studio/dots-3-note-preview:free", label: "Dots 3 Note Preview" },
+];
+
+// Models for any AI_PROVIDER=compatible gateway (e.g. GMI Cloud). The
+// `id` is whatever AI_MODEL resolves to in /api/config — typically a slug
+// the gateway exposes. The list is rendered as a single entry so the
+// composer's model picker reflects the actual configured model rather
+// than a hard-coded OpenAI one.
+function compatibleModelFromConfig(defaultModelId: string) {
+  const id = defaultModelId || "custom";
+  return [{ id, label: id, tag: "Default" }];
+}
+
+const allChatModels = [...openAIModels, ...openRouterModels];
+
 function modelLabel(id?: string) {
   if (!id) return "Assistant";
-  return openAIModels.find((m) => m.id === id)?.label ?? id;
+  return allChatModels.find((m) => m.id === id)?.label ?? id;
 }
 
 function formatTime(at?: number) {
@@ -72,36 +88,44 @@ function Section({
 }
 
 function AgentWorking() {
-  return (
-    <OrbErrorBoundary
-      fallback={
-        <div className="inline-flex h-9 items-center gap-2 bg-transparent">
-          <span className="relative flex size-8 items-center justify-center">
-            <span className="absolute inline-flex size-8 animate-ping rounded-full bg-black/10 opacity-60" />
-            <span className="relative inline-flex size-2.5 rounded-full bg-black/30" />
-          </span>
-          <span className="whitespace-nowrap text-xs text-black/50">
-            Agent working…
-          </span>
-        </div>
-      }
-    >
-      <div className="inline-flex h-9 items-center gap-2 bg-transparent">
-        <div style={{ width: 32, height: 32, overflow: "hidden" }}>
-          <ThinkingOrb state="breathing" size={64} style={{ transform: "scale(0.5)", transformOrigin: "top left" }} />
-        </div>
-        <span className="whitespace-nowrap text-xs text-black/50">
-          Agent working…
-        </span>
-      </div>
-    </OrbErrorBoundary>
-  );
+  return <AgentThinking variant="stars" />;
 }
 
 export default function OrderChat() {
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [liveMode, setLiveMode] = useState(true);
+  const [aiProvider, setAiProvider] = useState<string>("openai");
   const [model, setModel] = useState(openAIModels[0].id);
+  const [chatModels, setChatModels] = useState(openAIModels);
+
+  // Default the chat model to the configured provider's default once /api/config
+  // is available. For OpenAI we keep the curated list; for OpenRouter we show
+  // the OpenRouter list with the configured default; for any compatible gateway
+  // (e.g. GMI Cloud) we show a single entry reflecting AI_MODEL.
+  useEffect(() => {
+    let active = true;
+    getAppConfig().then((cfg) => {
+      if (!active) return;
+      const provider = cfg.aiProvider || "openai";
+      setAiProvider(provider);
+      if (provider === "openrouter") {
+        setChatModels(openRouterModels);
+        if (cfg.aiDefaultModel) setModel(cfg.aiDefaultModel);
+      } else if (provider === "compatible") {
+        const list = compatibleModelFromConfig(cfg.aiDefaultModel || "");
+        setChatModels(list);
+        if (list[0]) setModel(list[0].id);
+      } else {
+        setChatModels(openAIModels);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [imageMode, setImageMode] = useState(false);
   const [imageSize, setImageSize] = useState("auto");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -111,36 +135,14 @@ export default function OrderChat() {
   const { role } = useUserRole();
   const isAdmin = role === "admin";
 
-  const { data: productsData } = useQuery<{ products: { id: string; name: string; variants: { attributes: Record<string, string> }[] }[] }>({
-    queryKey: ["/api/products"],
-    queryFn: async () => {
-      const res = await apiFetch("/api/products");
-      return res.json();
-    },
-    staleTime: 60_000,
-    placeholderData: { products: [] },
-  });
-
-  const adminStockQuestion = (() => {
-    const products = productsData?.products || [];
-    if (products.length === 0) return "Add 50 stock to a variant";
-    const withVariants = products.find((p) => p.variants?.length > 0);
-    if (withVariants) {
-      const firstAttr = withVariants.variants[0].attributes;
-      const sizeVal = firstAttr.size || firstAttr.Size || Object.values(firstAttr)[0] || "M";
-      return `Add 50 stock to ${sizeVal} size of ${withVariants.name}`;
-    }
-    return `Add 50 stock to ${products[0].name}`;
-  })();
-
-  const adminFraudQuestion = "Which products are running low on stock?";
-
+  // Static quick-questions: no dependency on async role/products, so they
+  // render correctly on the first paint and never swap/flicker.
   const quickQuestions = [
     "How many orders are pending?",
     "Show orders sent to Steadfast",
     "What's the total revenue?",
-    ...(isAdmin ? [adminStockQuestion] : []),
-    ...(isAdmin ? [adminFraudQuestion] : []),
+    "Add stock to a product variant",
+    "Which products are running low on stock?",
     "Which orders have notes?",
   ];
 
@@ -149,6 +151,37 @@ export default function OrderChat() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
+
+  // Autosave the active conversation to history (debounced) once it has messages.
+  useEffect(() => {
+    if (!conversationId || messages.length === 0 || isLoading) return;
+    const handle = setTimeout(() => {
+      const firstUser = messages.find((m) => m.role === "user");
+      const title =
+        firstUser && "content" in firstUser ? String(firstUser.content).slice(0, 200) : "New chat";
+      void apiFetch("/api/order-chat/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: conversationId, title, messages }),
+      }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [messages, conversationId, isLoading]);
+
+  const openConversation = async (c: Conversation) => {
+    try {
+      const res = await apiFetch(`/api/order-chat/history/${c.id}`);
+      const data = await res.json();
+      const conv = (data as { conversation?: Conversation & { messages?: Msg[] } }).conversation;
+      if (!conv) return;
+      setMessages((conv.messages || []) as Msg[]);
+      setConversationId(conv.id);
+      setHistoryOpen(false);
+      setLiveMode(false);
+    } catch {
+      toast.error("Failed to load conversation");
+    }
+  };
 
   const buildPrompt = (text: string, files: UploadedFile[]) => {
     if (!files.length) return text;
@@ -167,7 +200,8 @@ export default function OrderChat() {
 
   const generateImage = async (text: string, files: UploadedFile[]) => {
     const msg = text.trim();
-    if (!msg || isLoading) return;
+    if (!msg) return;
+    if (isLoading) stop();
 
     const imageFiles = files.filter((f) => f.isImage);
     const userMsg: Msg = {
@@ -236,10 +270,14 @@ export default function OrderChat() {
 
   const send = async (text: string, files: UploadedFile[]) => {
     const msg = text.trim();
-    if (!msg || isLoading) return;
+    if (!msg) return;
+    if (isLoading) stop();
     if (imageMode) return generateImage(msg, files);
 
     const userMsg: Msg = { role: "user", content: buildPrompt(msg, files), at: Date.now() };
+    const convId = conversationId ?? crypto.randomUUID();
+    if (!conversationId) setConversationId(convId);
+    setLiveMode(true);
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
@@ -287,6 +325,7 @@ export default function OrderChat() {
   };
 
   const handleApply = async (msg: ActionMsg, args: Record<string, unknown>) => {
+    setLiveMode(true);
     try {
       const res = await apiFetch("/api/order-chat/apply", {
         method: "POST",
@@ -351,10 +390,13 @@ export default function OrderChat() {
       return m;
     }));
     const priorMsgs = messages.map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant", content: "content" in m ? m.content : "" }));
+    setLiveMode(true);
     setIsLoading(true);
     await sendStream({
       messages: priorMsgs,
       model,
+      endpoint: "/api/order-chat/answer",
+      bodyExtra: { call_id: msg.call_id, answers, priorMessages: priorMsgs },
       onEvent: (e: StreamEvent) => {
         if (e.type === "delta") {
           setMessages((prev) => {
@@ -379,84 +421,60 @@ export default function OrderChat() {
       onDone: () => setIsLoading(false),
       onError: (err) => { setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${err}`, model, at: Date.now() }]); setIsLoading(false); },
     });
-    void apiFetch("/api/order-chat/answer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ call_id: msg.call_id, answers, priorMessages: priorMsgs, model }),
-    });
   };
 
+  const hasMessages = messages.length > 0;
+
   return (
-    <div className="relative flex h-[calc(100vh-80px)] flex-col bg-transparent overflow-hidden">
-      {/* Clear button */}
-      {messages.length > 0 && (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="relative flex h-[calc(100vh-80px)] flex-col bg-transparent overflow-hidden"
+    >
+      <LayoutGroup>
+      {/* History + Clear */}
+      <div className="absolute right-8 top-4 z-10 flex items-center gap-2">
         <button
-          onClick={() => setMessages([])}
-          className="absolute right-8 top-4 z-10 rounded-full bg-black/[0.04] px-3 py-1.5 text-sm font-medium text-foreground/55 transition-colors hover:bg-black/[0.07] hover:text-foreground"
+          onClick={() => setHistoryOpen((o) => !o)}
+          className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            historyOpen
+              ? "bg-black/[0.07] text-foreground"
+              : "bg-black/[0.04] text-foreground/55 hover:bg-black/[0.07] hover:text-foreground"
+          }`}
         >
-          Clear
+          History
         </button>
-      )}
-
-      {/* Empty State */}
-      <AnimatePresence mode="wait">
-        {messages.length === 0 && (
-          <motion.div
-            key="empty"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="flex flex-1 flex-col items-center justify-center px-6 pt-24 pb-12"
+        {messages.length > 0 && (
+          <button
+            onClick={() => {
+              setMessages([]);
+              setConversationId(null);
+            }}
+            className="rounded-full bg-black/[0.04] px-3 py-1.5 text-sm font-medium text-foreground/55 transition-colors hover:bg-black/[0.07] hover:text-foreground"
           >
-            <motion.div
-              initial={{ opacity: 0, y: 14, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: 0.1, duration: 0.45, ease: "easeOut" }}
-              className="w-full max-w-xl"
-            >
-              <OrderChatComposer
-                onSend={send}
-                loading={isLoading}
-                onStop={stop}
-                models={openAIModels}
-                model={model}
-                onModelChange={setModel}
-                imageMode={imageMode}
-                onImageModeChange={setImageMode}
-                imageSize={imageSize}
-                onImageSizeChange={setImageSize}
-                isAdmin={isAdmin}
-              />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 25 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
-              className="mt-5 mx-auto w-full max-w-xl grid gap-2 sm:grid-cols-2"
-            >
-              {quickQuestions.map((q, i) => (
-                <motion.button
-                  key={q}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + i * 0.05 }}
-                  onClick={() => send(q, [])}
-                  className="group rounded-xl bg-white/55 px-3.5 py-2.5 text-left text-sm text-foreground/75 transition-all hover:bg-white"
-                >
-                  <span className="inline-block transition-transform group-hover:translate-x-0.5">
-                    {q}
-                  </span>
-                </motion.button>
-              ))}
-            </motion.div>
-          </motion.div>
+            Clear
+          </button>
         )}
-      </AnimatePresence>
+      </div>
 
-      {/* Messages */}
-      {messages.length > 0 && (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pt-14 pb-4">
+      <OrderChatHistory
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={openConversation}
+        isAdmin={isAdmin}
+      />
+
+      {/* Messages (fade in) */}
+      {hasMessages && (
+        <motion.div
+          key="messages"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-6 pt-14 pb-4"
+        >
           <div className="mx-auto flex max-w-xl flex-col gap-2.5">
             {messages.map((msg, i) => {
               const isLastAssistant =
@@ -520,7 +538,7 @@ export default function OrderChat() {
                     </div>
                   )}
                   <div className="prose prose-sm max-w-none text-[13px] leading-normal text-black/80 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_strong]:text-black [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_code]:bg-black/5 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <StreamingMarkdown content={msg.content} animate={isLastAssistant && liveMode} />
                     {msg.image && (
                       <div className="mt-3 relative group inline-block">
                         <img
@@ -554,30 +572,65 @@ export default function OrderChat() {
                 </Section>
               )}
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {/* Input — pinned to bottom */}
-      {messages.length > 0 && (
-        <div className="shrink-0 pb-4 px-4 relative">
-          <div className="absolute -top-8 left-0 right-0 h-8 bg-gradient-to-t from-[#f3f3f3] to-transparent pointer-events-none" />
-          <div className="mx-auto w-full max-w-xl">
-            <OrderChatComposer
-              onSend={send}
-              loading={isLoading}
-              onStop={stop}
-              models={openAIModels}
-              model={model}
-              onModelChange={setModel}
-              imageMode={imageMode}
-              onImageModeChange={setImageMode}
-              imageSize={imageSize}
-              onImageSizeChange={setImageSize}
-              isAdmin={isAdmin}
-            />
+      {/* Composer — single instance; glides between centered (empty) and pinned bottom */}
+      <div
+        className={
+          hasMessages
+            ? "shrink-0 pb-4 px-4 relative"
+            : "flex flex-1 flex-col items-center justify-center px-6 pt-24 pb-12"
+        }
+      >
+        {hasMessages && (
+          <div className="absolute -top-5 left-0 right-0 h-5 bg-gradient-to-t from-[#f3f3f3]/70 to-transparent pointer-events-none" />
+        )}
+        {/* Only the composer box carries the layout animation. Its size is
+            identical in both states, so `layout="position"` animates a pure
+            translation (center → bottom) with no content scaling/flicker. */}
+        <motion.div
+          layout="position"
+          transition={{ layout: { duration: 0.45, ease: [0.23, 1, 0.32, 1] } }}
+          className="mx-auto w-full max-w-xl"
+        >
+          <OrderChatComposer
+            onSend={send}
+            loading={isLoading}
+            onStop={stop}
+            models={chatModels}
+            model={model}
+            onModelChange={setModel}
+            imageMode={imageMode}
+            onImageModeChange={setImageMode}
+            imageSize={imageSize}
+            onImageSizeChange={setImageSize}
+            isAdmin={isAdmin}
+          />
+        </motion.div>
+
+        {/* Quick questions: rendered statically so they're visible immediately
+            on load. Stable positional keys (not the text) mean the admin slots
+            update in place when role/products resolve instead of re-mounting
+            and re-animating — which was the load-time flicker. They unmount
+            instantly on send so they never hold layout space mid-transition. */}
+        {!hasMessages && (
+          <div className="mx-auto mt-5 w-full max-w-xl grid gap-2 sm:grid-cols-2">
+            {quickQuestions.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => send(q, [])}
+                className="group flex items-center rounded-xl bg-white/55 px-3.5 py-2 text-left text-[13px] text-foreground/75 transition-all hover:bg-white"
+              >
+                <span className="block w-full truncate transition-transform group-hover:translate-x-0.5">
+                  {q}
+                </span>
+              </button>
+            ))}
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+      </LayoutGroup>
+    </motion.div>
   );
 }

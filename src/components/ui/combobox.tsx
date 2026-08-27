@@ -42,11 +42,13 @@ export function Combobox({
   showPrice = false,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  const [container, setContainer] = React.useState<HTMLElement | null>(null);
 
   const selectedItem = items.find((item) => item.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <div ref={setContainer} className="w-full">
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -83,13 +85,18 @@ export function Combobox({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="flex w-full max-h-[60vh] flex-col overflow-hidden p-0" align="start">
-        <Command className="flex min-h-0 w-full flex-1 flex-col">
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] overflow-hidden p-0"
+        align="start"
+        collisionPadding={8}
+        container={container ?? undefined}
+      >
+        <Command className="flex w-full flex-col">
           <CommandInput
             placeholder="Search products..."
             className="h-11 shrink-0 border-none"
           />
-          <CommandList className="min-h-0 flex-1">
+          <CommandList className="max-h-[280px] overflow-y-auto">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {items.map((item) => (
@@ -130,5 +137,6 @@ export function Combobox({
         </Command>
       </PopoverContent>
     </Popover>
+    </div>
   );
 }

@@ -31,16 +31,18 @@ type SendArgs = {
   onEvent: (e: StreamEvent) => void;
   onDone: () => void;
   onError: (err: string) => void;
+  endpoint?: string;
+  bodyExtra?: Record<string, unknown>;
 };
 
 export function useAiChatStream() {
-  return useCallback(async ({ messages, model, signal, onEvent, onDone, onError }: SendArgs) => {
+  return useCallback(async ({ messages, model, signal, onEvent, onDone, onError, endpoint, bodyExtra }: SendArgs) => {
     let resp: Response;
     try {
-      resp = await apiFetch("/api/order-chat", {
+      resp = await apiFetch(endpoint ?? "/api/order-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, model }),
+        body: JSON.stringify({ messages, model, ...(bodyExtra || {}) }),
         signal,
       });
     } catch (err) {

@@ -26,6 +26,135 @@ import {
 import { AI_ACTION_TOOLS, askUserTool, buildRecommendation, executeAiAction } from "./ai-actions.js";
 const { Pool } = pg;
 
+// ─── AI provider (OpenAI-compatible, supports OpenRouter and any
+//     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
+// AI_PROVIDER:
+//   "openai"      — default; uses OPENAI_API_KEY + https://api.openai.com/v1
+//   "openrouter"  — uses OPENROUTER_API_KEY + https://openrouter.ai/api/v1
+//   "compatible"  — any OpenAI-compatible gateway; reads AI_BASE_URL + AI_API_KEY
+//                   (or OPENAI_API_KEY if AI_API_KEY is unset) from env. Use
+//                   this for self-hosted gateways, GMI Cloud, etc.
+// AI_MODEL overrides the default model for any provider. The Responses API
+// (/v1/responses) is OpenAI-only — when AI_PROVIDER is not "openai", features
+// that need it (image gen, Studio) error out cleanly; chat-only features
+// (Order Chat, etc.) fall back to chat/completions with tools.
+const AI_PROVIDER = (process.env.AI_PROVIDER || "openai").toLowerCase();
+const AI_BASE_URL =
+  AI_PROVIDER === "openrouter"
+    ? "https://openrouter.ai/api/v1"
+    : AI_PROVIDER === "compatible"
+      ? (process.env.AI_BASE_URL || "").replace(/\/+$/, "")
+      : "https://api.openai.com/v1";
+const AI_API_KEY =
+  AI_PROVIDER === "openrouter"
+    ? process.env.OPENROUTER_API_KEY
+    : AI_PROVIDER === "compatible"
+      ? (process.env.AI_API_KEY || process.env.OPENAI_API_KEY)
+      : process.env.OPENAI_API_KEY;
+const AI_DEFAULT_MODEL =
+  process.env.AI_MODEL ||
+    (AI_PROVIDER === "openrouter"
+      ? "nvidia/nemotron-3-ultra-550b-a55b:free"
+      : "gpt-4o-mini");
+
+// OpenAI-compatible chat/completions call with retry/backoff. Free AI gateways
+// (e.g. OpenRouter) return 503 "hard concurrency limit reached" under load,
+// so we retry a few times with exponential backoff before giving up. Each
+// attempt has a hard timeout so a stalled gateway can't hang the request (and
+// leave the client stuck on "Agent working…") forever.
+async function aiChatCompletion(body, { retries = 2, baseDelayMs = 1000, timeoutMs = 60000 } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1)));
+    }
+    try {
+      const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AI_API_KEY}`,
+          "Content-Type": "application/json",
+          // Optional OpenRouter attribution headers (ignored by OpenAI).
+          ...(AI_PROVIDER === "openrouter" && process.env.OPENROUTER_SITE_URL
+            ? { "HTTP-Referer": process.env.OPENROUTER_SITE_URL }
+            : {}),
+          ...(AI_PROVIDER === "openrouter" && process.env.OPENROUTER_APP_TITLE
+            ? { "X-OpenRouter-Title": process.env.OPENROUTER_APP_TITLE }
+            : {}),
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (response.ok) return response;
+      const status = response.status;
+      // Only retry on gateway/rate-limit errors; surface auth/other errors immediately.
+      if (status !== 503 && status !== 429 && status !== 502) {
+        return response;
+      }
+      lastErr = { status, body: await response.text() };
+    } catch (err) {
+      // Network error or timeout — fail fast rather than stacking timeouts
+      // (an overloaded gateway will likely just time out again).
+      lastErr = { status: 504, body: `AI gateway timeout or unreachable (${err?.name || "error"})` };
+      break;
+    }
+  }
+  // Return a synthetic non-ok response so callers handle it uniformly.
+  const err = lastErr || { status: 503, body: "AI gateway unavailable" };
+  return new Response(JSON.stringify({ error: err.body }), {
+    status: err.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// OpenAI Responses API call. OpenAI-only (OpenRouter / most compatible
+// gateways do not implement /v1/responses). Routes that need it must gate on
+// AI_PROVIDER === "openai" before calling. Same retry/timeout shape as the
+// chat/completions helper above.
+async function aiResponsesCompletion(body, { retries = 2, baseDelayMs = 1000, timeoutMs = 60000 } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1)));
+    }
+    try {
+      const response = await fetch(`${AI_BASE_URL}/responses`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (response.ok) return response;
+      const status = response.status;
+      if (status !== 503 && status !== 429 && status !== 502) {
+        return response;
+      }
+      lastErr = { status, body: await response.text() };
+    } catch (err) {
+      lastErr = { status: 504, body: `AI gateway timeout or unreachable (${err?.name || "error"})` };
+      break;
+    }
+  }
+  const err = lastErr || { status: 503, body: "AI gateway unavailable" };
+  return new Response(JSON.stringify({ error: err.body }), {
+    status: err.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// True when the active provider supports the OpenAI Responses API. Today
+// that's only OpenAI itself. OpenRouter and other OpenAI-compatible gateways
+// implement /v1/chat/completions but not /v1/responses, so features that
+// need Responses-API-only capabilities (image generation, structured tools)
+// must gate on this before calling.
+function isOpenAIProvider() {
+  return AI_PROVIDER === "openai";
+}
+
+
 // ─── Rate limiting (Upstash Redis) ───────────────────────────────────────────
 // Three tiers keyed by authenticated user ID (or IP for auth endpoints):
 //   ai   — expensive AI/crawl routes: 20 req / 60 s
@@ -432,19 +561,21 @@ function parseOpenAIError(status, body) {
   }
 
   const detail = String(message || "").slice(0, 220);
+  const provider = AI_PROVIDER === "openrouter" ? "OpenRouter" : "OpenAI";
+  const apiKeyEnv = AI_PROVIDER === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY";
   if (status === 401 || code === "invalid_api_key") {
-    return "OpenAI rejected the API key. Check that OPENAI_API_KEY is a valid project API key and restart localhost after editing .env.";
+    return `${provider} rejected the API key. Check that ${apiKeyEnv} is valid and restart localhost after editing .env.`;
   }
   if (status === 403 || /model|project|organization|permission/i.test(detail)) {
-    return `OpenAI access error: ${detail}`;
+    return `${provider} access error: ${detail}`;
   }
   if (status === 429 && /quota|credits|billing|balance/i.test(detail)) {
-    return `OpenAI billing/quota error: ${detail}`;
+    return `${provider} billing/quota error: ${detail}`;
   }
   if (status === 429) {
-    return "OpenAI rate limit exceeded. Please try again shortly.";
+    return `${provider} rate limit exceeded. Please try again shortly.`;
   }
-  return `OpenAI error ${status}: ${detail || "request failed"}`;
+  return `${provider} error ${status}: ${detail || "request failed"}`;
 }
 
 function delay(ms) {
@@ -678,6 +809,8 @@ app.get("/api/config", (req, res) => {
     supabaseUrl: process.env.SUPABASE_URL || "",
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
+    aiProvider: AI_PROVIDER,
+    aiDefaultModel: AI_DEFAULT_MODEL,
   });
 });
 
@@ -3692,7 +3825,7 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
     unsentConfirmed: fallbackSidebarInsight("unsentConfirmed", unsentConfirmed),
   };
 
-  if (!process.env.OPENAI_API_KEY || (!stalePending.length && !unsentConfirmed.length)) {
+  if (!AI_API_KEY || !isOpenAIProvider() || (!stalePending.length && !unsentConfirmed.length)) {
     return fallback;
   }
 
@@ -3701,28 +3834,21 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
       stalePending: stalePending.slice(0, 10),
       unsentConfirmed: unsentConfirmed.slice(0, 10),
     };
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_SIDEBAR_ALERT_MODEL,
-        input: [
-          {
-            role: "system",
-            content:
-              "You write concise operational sidebar alerts for a Bangladeshi ecommerce order dashboard. Return JSON only. Use practical language, no markdown.",
-          },
-          {
-            role: "user",
-            content:
-              "Create short AI insights for these sidebar alert groups. Keep headline under 52 characters and insight under 120 characters. Return shape: {\"stalePending\":{\"headline\":\"\",\"insight\":\"\"},\"unsentConfirmed\":{\"headline\":\"\",\"insight\":\"\"}}. Omit a group by returning null when it has no orders.\n\n" +
-              JSON.stringify(payload),
-          },
-        ],
-      }),
+    const response = await aiResponsesCompletion({
+      model: OPENAI_SIDEBAR_ALERT_MODEL,
+      input: [
+        {
+          role: "system",
+          content:
+            "You write concise operational sidebar alerts for a Bangladeshi ecommerce order dashboard. Return JSON only. Use practical language, no markdown.",
+        },
+        {
+          role: "user",
+          content:
+            "Create short AI insights for these sidebar alert groups. Keep headline under 52 characters and insight under 120 characters. Return shape: {\"stalePending\":{\"headline\":\"\",\"insight\":\"\"},\"unsentConfirmed\":{\"headline\":\"\",\"insight\":\"\"}}. Omit a group by returning null when it has no orders.\n\n" +
+            JSON.stringify(payload),
+        },
+      ],
     });
 
     if (!response.ok) {
@@ -3743,17 +3869,17 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
 }
 
 async function buildForecastNarrative(payload) {
-  if (!process.env.OPENAI_API_KEY) return payload.executiveSummary;
+  if (!AI_API_KEY) return payload.executiveSummary;
   try {
     const prompt = `You are an operator for a Bangladeshi ecommerce business. Write a concise executive summary and practical action plan from this JSON. Use taka symbol. Focus on stock-outs, products to stop, restocking, and risk.\n\n${JSON.stringify(payload).slice(0, 12000)}`;
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         messages: [
           { role: "system", content: "Return markdown only. Be specific, concise, and operational." },
           { role: "user", content: prompt },
@@ -3909,16 +4035,16 @@ function fallbackWebsiteBehaviorDropOffBullets(dropOff) {
 
 async function buildWebsiteBehaviorDropOffBullets(dropOff, funnel) {
   const fallback = fallbackWebsiteBehaviorDropOffBullets(dropOff);
-  if (!dropOff || !process.env.OPENAI_API_KEY) return fallback;
+  if (!dropOff || !AI_API_KEY) return fallback;
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         messages: [
           { role: "system", content: "Return JSON only: {\"bullets\":[\"...\",\"...\",\"...\"]}. Write concise ecommerce operator advice for Bangladesh. No markdown." },
           { role: "user", content: JSON.stringify({ dropOff, funnel }) },
@@ -4257,7 +4383,8 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    if (!isOpenAIProvider()) return res.status(400).json({ error: "Image generation requires AI_PROVIDER=openai (the Responses API is OpenAI-only)." });
+    if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
 
     const { prompt, image, size = "auto", quality = "medium" } = req.body || {};
     if (!prompt) return res.status(400).json({ error: "prompt is required" });
@@ -4277,30 +4404,23 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
       });
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-5.5",
-        input: [
-          {
-            role: "user",
-            content: inputContent,
-          },
-        ],
-        tools: [
-          {
-            type: "image_generation",
-            size: finalSize,
-            quality: finalQuality,
-            action: image ? "edit" : "generate",
-          },
-        ],
-        tool_choice: { type: "image_generation" },
-      }),
+    const response = await aiResponsesCompletion({
+      model: "gpt-5.5",
+      input: [
+        {
+          role: "user",
+          content: inputContent,
+        },
+      ],
+      tools: [
+        {
+          type: "image_generation",
+          size: finalSize,
+          quality: finalQuality,
+          action: image ? "edit" : "generate",
+        },
+      ],
+      tool_choice: { type: "image_generation" },
     });
 
     if (!response.ok) {
@@ -4327,15 +4447,29 @@ app.post("/api/generate-image", rateLimitAI, async (req, res) => {
   }
 });
 
-const ORDER_CHAT_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4o-mini"]);
+// OpenAI Responses API is only for the gpt-5.x family. Everything else
+// (e.g. OpenRouter models) is routed through the OpenAI-compatible
+// chat/completions endpoint, which also supports tool-calling / mutations.
+const ORDER_CHAT_RESPONSES_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
 
 app.post("/api/order-chat", rateLimitAI, async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
 
-    const model = ORDER_CHAT_MODELS.has(req.body?.model) ? req.body.model : "gpt-5.4-mini";
+    const model =
+      req.body?.model ||
+      (AI_PROVIDER === "openrouter" ? AI_DEFAULT_MODEL : "gpt-5.4-mini");
+    // Order Chat uses the OpenAI Responses API (reliable tool-calling / mutations)
+    // for the gpt-5.x family. OpenRouter models (which don't support /v1/responses)
+    // fall back to the OpenAI-compatible chat/completions path with tools.
+    const useResponses = AI_PROVIDER === "openai" && ORDER_CHAT_RESPONSES_MODELS.has(model);
+    if (useResponses) {
+      if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    } else if (!AI_API_KEY) {
+      return res.status(500).json({ error: `${AI_PROVIDER === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"} is not configured` });
+    }
+
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
 
     const supabase = getServiceSupabase();
@@ -4420,6 +4554,7 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
       const variants = (chatVariantsMap[p.id] || []).map((v) => ({
         id: v.id,
         option: Object.entries(v.attributes || {}).map(([k, val]) => `${k}: ${val}`).join(", "),
+        stock: v.stock_quantity ?? 0,
         available: v.stock_quantity > 0,
         price: v.price_adjustment
           ? (p.selling_price != null ? Number(p.selling_price) + Number(v.price_adjustment) : null)
@@ -4430,7 +4565,9 @@ app.post("/api/order-chat", rateLimitAI, async (req, res) => {
         name: p.name,
         price: p.selling_price,
         cog: p.cog,
-        stock: variants.length > 0 ? null : (p.stock_quantity ?? null),
+        stock: variants.length > 0
+          ? variants.reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0)
+          : (p.stock_quantity ?? null),
         available: variants.length > 0
           ? variants.some((v) => v.available)
           : (p.stock_quantity ?? 0) > 0,
@@ -4465,6 +4602,8 @@ Rules:
 - If asked which colors/sizes/options are available, list only variants where available=true.
 - If all variants are unavailable, say the product is out of stock.
 - If asked about social/inbox orders, reference the inbox orders data.
+- You CAN add a new variant (a new size, color, or option) to an EXISTING product using the add_variant tool — for example "add size S with 20 stock" or "add a red color". Use add_variant for this; do NOT use create_product (that makes a duplicate product). For changing stock/COG/price/attributes of a variant that already exists, use update_variant.
+- If the user asks for MULTIPLE changes in a single message (for example "set S stock to 10 and add size XXL with 10 stock"), you MUST emit a SEPARATE tool call for EACH change in the same turn — one update_variant call and one add_variant call. Never perform only the first change and drop the rest.
 
 === BUSINESS SUMMARY ===
 Org: ${orgSettings.org_name || "N/A"} | Store: ${orgSettings.shopify_store_url || "N/A"}
@@ -4480,7 +4619,7 @@ ${JSON.stringify(orderDetails).slice(0, 40000)}
 
 === PRODUCTS & STOCK ===
 Total products: ${products.length} | Total catalog value: ৳${totalProductValue.toFixed(2)} | Total COG: ৳${totalCOG.toFixed(2)}
-Product field key: id, name, price=selling_price, cog=cost_of_goods, stock=stock_quantity(null when variants exist), available=in_stock, url, variants=[{option, available, price}]
+Product field key: id, name, price=selling_price, cog=cost_of_goods, stock=stock_quantity (for variant products this is the sum of variant stock), available=in_stock, url, variants=[{option, stock, available, price}]
 
 ${JSON.stringify(productDetails).slice(0, 8000)}
 
@@ -4498,45 +4637,87 @@ ${JSON.stringify(inboxOrderDetails).slice(0, 8000)}`;
       })),
     ];
 
-    const payload = canMutate
-      ? { model, input, tools: [...AI_ACTION_TOOLS, askUserTool] }
-      : { model, input };
+    // OpenAI Responses API path (gpt-5.x family).
+    if (useResponses) {
+      const payload = canMutate
+        ? { model, input, tools: [...AI_ACTION_TOOLS, askUserTool], parallel_tool_calls: true }
+        : { model, input };
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+      const response = await aiResponsesCompletion(payload);
+
+      if (!response.ok) {
+        const body = await response.text();
+        console.error("[Order Chat] OpenAI error:", response.status, body.slice(0, 300));
+        const message = parseOpenAIError(response.status, body);
+        const statusCode = [401, 403, 429].includes(response.status) ? response.status : 502;
+        return res.status(statusCode).json({ error: message });
+      }
+
+      const data = await response.json();
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      for (const item of data.output || []) {
+        if (item.type === "message") {
+          const text = (item.content || []).map((c) => c.text || "").join("");
+          if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
+        } else if (item.type === "function_call") {
+          if (item.name === "ask_user") {
+            const parsed = parseJsonObject(item.arguments);
+            res.write(`data: ${JSON.stringify({ "question": { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
+          } else {
+            const args = parseJsonObject(item.arguments) || {};
+            const reco = canMutate ? buildRecommendation(item.name, args, { products, orders, variantsMap: chatVariantsMap }) : { recommendation: null, alternatives: [] };
+            res.write(`data: ${JSON.stringify({ "action": { call_id: item.call_id, tool: item.name, ...reco } })}\n\n`);
+          }
+        }
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
+
+    // OpenAI-compatible chat/completions path (e.g. OpenRouter models).
+    const chatMessages = input.map((m) => ({ role: m.role, content: m.content }));
+    const chatTools = canMutate
+      ? [...AI_ACTION_TOOLS, askUserTool].map((t) => ({
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.parameters },
+        }))
+      : undefined;
+
+    const ccResponse = await aiChatCompletion({
+      model,
+      messages: chatMessages,
+      ...(chatTools ? { tools: chatTools, tool_choice: "auto" } : {}),
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      console.error("[Order Chat] OpenAI error:", response.status, body.slice(0, 300));
-      const message = parseOpenAIError(response.status, body);
-      const statusCode = [401, 403, 429].includes(response.status) ? response.status : 502;
+    if (!ccResponse.ok) {
+      const body = await ccResponse.text();
+      console.error("[Order Chat] provider error:", ccResponse.status, body.slice(0, 300));
+      const message = parseOpenAIError(ccResponse.status, body);
+      const statusCode = [401, 403, 429].includes(ccResponse.status) ? ccResponse.status : 502;
       return res.status(statusCode).json({ error: message });
     }
 
-    const data = await response.json();
+    const ccData = await ccResponse.json();
+    const ccMessage = ccData.choices?.[0]?.message || {};
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    for (const item of data.output || []) {
-      if (item.type === "message") {
-        const text = (item.content || []).map((c) => c.text || "").join("");
-        if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
-      } else if (item.type === "function_call") {
-        if (item.name === "ask_user") {
-          const parsed = parseJsonObject(item.arguments);
-          res.write(`data: ${JSON.stringify({ "question": { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
-        } else {
-          const args = parseJsonObject(item.arguments) || {};
-          const reco = canMutate ? buildRecommendation(item.name, args, { products, orders, variantsMap: chatVariantsMap }) : { recommendation: null, alternatives: [] };
-          res.write(`data: ${JSON.stringify({ "action": { call_id: item.call_id, tool: item.name, ...reco } })}\n\n`);
-        }
+    if (ccMessage.content) {
+      res.write(`data: ${JSON.stringify({ delta: { content: ccMessage.content } })}\n\n`);
+    }
+    for (const tc of ccMessage.tool_calls || []) {
+      const fnName = tc.function?.name;
+      const args = parseJsonObject(tc.function?.arguments) || {};
+      if (fnName === "ask_user") {
+        res.write(`data: ${JSON.stringify({ question: { call_id: tc.id || fnName, questions: args.questions || [] } })}\n\n`);
+      } else {
+        const reco = canMutate ? buildRecommendation(fnName, args, { products, orders, variantsMap: chatVariantsMap }) : { recommendation: null, alternatives: [] };
+        res.write(`data: ${JSON.stringify({ action: { call_id: tc.id || fnName, tool: fnName, ...reco } })}\n\n`);
       }
     }
     res.write("data: [DONE]\n\n");
@@ -4585,11 +4766,43 @@ app.post("/api/order-chat/answer", rateLimitAI, async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId, role } = await getUserOrg(supabase, user.id);
     if (role !== "admin") return res.status(403).json({ error: "Admin only" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    const model =
+      req.body?.model ||
+      (AI_PROVIDER === "openrouter" ? AI_DEFAULT_MODEL : "gpt-5.4-mini");
+    // Order Chat uses the OpenAI Responses API for the gpt-5.x family; OpenRouter
+    // models fall back to the OpenAI-compatible chat/completions path with tools.
+    const useResponses = AI_PROVIDER === "openai" && ORDER_CHAT_RESPONSES_MODELS.has(model);
+    if (useResponses) {
+      if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    } else if (!AI_API_KEY) {
+      return res.status(500).json({ error: `${AI_PROVIDER === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"} is not configured` });
+    }
 
-    const model = ORDER_CHAT_MODELS.has(req.body?.model) ? req.body.model : "gpt-5.4-mini";
     const { call_id, answers, priorMessages } = req.body || {};
     if (!call_id || !Array.isArray(answers)) return res.status(400).json({ error: "call_id and answers required" });
+
+    // Fetch product/order context so action recommendations can be built
+    // (mirrors /api/order-chat). This route is admin-only, so canMutate is always true.
+    let ctxProducts = [];
+    const ctxVariants = {};
+    let ctxOrders = [];
+    try {
+      const [{ data: baseProducts }, { data: variantRows }, { data: rawOrders }] = await Promise.all([
+        supabase.from("products").select("*").eq("org_id", orgId),
+        supabase.from("product_variants").select("id, product_id, attributes, stock_quantity, price_adjustment").eq("org_id", orgId),
+        supabase.from("orders").select("*").eq("org_id", orgId).order("created_at", { ascending: false }).limit(500),
+      ]);
+      const bp = baseProducts || [];
+      const stockMap = bp.length > 0 ? await getProductStockMap(orgId, bp.map((p) => p.id)) : {};
+      ctxProducts = bp.map((p) => ({ ...p, stock_quantity: stockMap[p.id] ?? 0 }));
+      for (const v of variantRows || []) {
+        if (!ctxVariants[v.product_id]) ctxVariants[v.product_id] = [];
+        ctxVariants[v.product_id].push(v);
+      }
+      ctxOrders = rawOrders || [];
+    } catch {
+      // Context is optional for building recommendations; fall back to empty.
+    }
 
     const answerText = answers.map((a, i) => {
       const picked = (a.selected || []).map((idx) => a.options?.[idx]).filter(Boolean);
@@ -4598,37 +4811,73 @@ app.post("/api/order-chat/answer", rateLimitAI, async (req, res) => {
       return `Q${i + 1}: ${a.q}\nA: ${parts.join(", ") || "(no answer)"}`;
     }).join("\n\n");
 
-    const input = [
-      ...priorMessages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
-      { type: "function_call_output", call_id, output: answerText },
-    ];
+    if (useResponses) {
+      const input = [
+        ...priorMessages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
+        { role: "user", content: `Clarification answers:\n${answerText}` },
+      ];
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, input, tools: [...AI_ACTION_TOOLS, askUserTool] }),
-    });
-    if (!response.ok) {
-      const body = await response.text();
-      const message = parseOpenAIError(response.status, body);
-      return res.status([401, 403, 429].includes(response.status) ? response.status : 502).json({ error: message });
+      const response = await aiResponsesCompletion({ model, input, tools: [...AI_ACTION_TOOLS, askUserTool] });
+      if (!response.ok) {
+        const body = await response.text();
+        const message = parseOpenAIError(response.status, body);
+        return res.status([401, 403, 429].includes(response.status) ? response.status : 502).json({ error: message });
+      }
+      const data = await response.json();
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      for (const item of data.output || []) {
+        if (item.type === "message") {
+          const text = (item.content || []).map((c) => c.text || "").join("");
+          if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
+        } else if (item.type === "function_call") {
+          if (item.name === "ask_user") {
+            const parsed = parseJsonObject(item.arguments);
+            res.write(`data: ${JSON.stringify({ question: { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
+          } else {
+            const args = parseJsonObject(item.arguments) || {};
+            const reco = buildRecommendation(item.name, args, { products: ctxProducts, orders: ctxOrders, variantsMap: ctxVariants });
+            res.write(`data: ${JSON.stringify({ action: { call_id: item.call_id, tool: item.name, ...reco } })}\n\n`);
+          }
+        }
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
     }
-    const data = await response.json();
+
+    // Chat/completions path: feed the clarification answers as a user message.
+    const chatMessages = [
+      ...priorMessages.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "") })),
+      { role: "user", content: `Clarification answers:\n${answerText}` },
+    ];
+    const ccResponse = await aiChatCompletion({
+      model,
+      messages: chatMessages,
+      tools: [...AI_ACTION_TOOLS, askUserTool].map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })),
+      tool_choice: "auto",
+    });
+    if (!ccResponse.ok) {
+      const body = await ccResponse.text();
+      const message = parseOpenAIError(ccResponse.status, body);
+      return res.status([401, 403, 429].includes(ccResponse.status) ? ccResponse.status : 502).json({ error: message });
+    }
+    const ccData = await ccResponse.json();
+    const ccMessage = ccData.choices?.[0]?.message || {};
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    for (const item of data.output || []) {
-      if (item.type === "message") {
-        const text = (item.content || []).map((c) => c.text || "").join("");
-        if (text) res.write(`data: ${JSON.stringify({ delta: { content: text } })}\n\n`);
-      } else if (item.type === "function_call") {
-        if (item.name === "ask_user") {
-          const parsed = parseJsonObject(item.arguments);
-          res.write(`data: ${JSON.stringify({ question: { call_id: item.call_id, questions: parsed?.questions || [] } })}\n\n`);
-        } else {
-          const args = parseJsonObject(item.arguments) || {};
-          res.write(`data: ${JSON.stringify({ action: { call_id: item.call_id, tool: item.name, recommendation: null, alternatives: [] } })}\n\n`);
-        }
+    if (ccMessage.content) res.write(`data: ${JSON.stringify({ delta: { content: ccMessage.content } })}\n\n`);
+    for (const tc of ccMessage.tool_calls || []) {
+      const fnName = tc.function?.name;
+      const args = parseJsonObject(tc.function?.arguments) || {};
+      if (fnName === "ask_user") {
+        res.write(`data: ${JSON.stringify({ question: { call_id: tc.id || fnName, questions: args.questions || [] } })}\n\n`);
+      } else {
+        const args = parseJsonObject(tc.function?.arguments) || {};
+        const reco = buildRecommendation(fnName, args, { products: ctxProducts, orders: ctxOrders, variantsMap: ctxVariants });
+        res.write(`data: ${JSON.stringify({ action: { call_id: tc.id || fnName, tool: fnName, ...reco } })}\n\n`);
       }
     }
     res.write("data: [DONE]\n\n");
@@ -4639,13 +4888,120 @@ app.post("/api/order-chat/answer", rateLimitAI, async (req, res) => {
   }
 });
 
+// ── Order Chat: list saved conversations (per-org) ───────────────────────────
+app.get("/api/order-chat/history", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("order_chat_history")
+      .select("id, title, created_at, updated_at, message_count")
+      .eq("org_id", orgId)
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    return res.json({ conversations: data || [] });
+  } catch (e) {
+    console.error("[Order Chat history] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: fetch a single conversation (with messages) ──────────────────
+app.get("/api/order-chat/history/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from("order_chat_history")
+      .select("id, title, created_at, updated_at, message_count, messages")
+      .eq("id", id).eq("org_id", orgId).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Conversation not found" });
+    return res.json({ conversation: data });
+  } catch (e) {
+    console.error("[Order Chat history detail] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: create or update a conversation (autosave) ───────────────────
+app.post("/api/order-chat/history", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { id, title, messages } = req.body || {};
+    if (!Array.isArray(messages)) return res.status(400).json({ error: "messages array required" });
+
+    const convId = typeof id === "string" && id ? id : crypto.randomUUID();
+    const row = {
+      org_id: orgId,
+      user_id: user.id,
+      title: String(title || "New chat").slice(0, 200),
+      messages,
+      message_count: messages.length,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: existing } = await supabase
+      .from("order_chat_history").select("id").eq("id", convId).eq("org_id", orgId).maybeSingle();
+
+    let result;
+    if (existing) {
+      const { data, error } = await supabase
+        .from("order_chat_history").update(row).eq("id", convId).eq("org_id", orgId)
+        .select("id, title, updated_at").single();
+      if (error) throw error;
+      result = data;
+    } else {
+      const { data, error } = await supabase
+        .from("order_chat_history").insert({ ...row, id: convId })
+        .select("id, title, updated_at").single();
+      if (error) throw error;
+      result = data;
+    }
+    return res.json({ conversation: result });
+  } catch (e) {
+    console.error("[Order Chat history save] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
+// ── Order Chat: delete a conversation (admin only) ───────────────────────────
+app.delete("/api/order-chat/history/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: "id required" });
+    const { error } = await supabase
+      .from("order_chat_history").delete().eq("id", id).eq("org_id", orgId);
+    if (error) throw error;
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[Order Chat history delete] error:", errorMessage(e));
+    return res.status(500).json({ error: errorMessage(e) });
+  }
+});
+
 // ── Studio: AI Copy Generation ────────────────────────────────────────────────
 app.post("/api/studio/generate", rateLimitAI, async (req, res) => {
   try {
     const token = getToken(req);
     const { user } = await getUser(token);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+    if (!isOpenAIProvider()) return res.status(400).json({ error: "Studio script generation requires AI_PROVIDER=openai (the Responses API is OpenAI-only)." });
+    if (!AI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
 
     const { productDetails, framework, frameworkName, frameworkLabel, language, regenerationTarget, existingScript } = req.body;
     if (!productDetails || !framework) return res.status(400).json({ error: "Missing productDetails or framework" });
@@ -4716,20 +5072,13 @@ ${studioSchemaInstruction}`;
       ? `Regenerate ONLY the hook for this product and existing script. Use one of the provided viral hook templates as inspiration. Return the full JSON shape, but keep all existing non-hook sections unchanged when possible. Make the hook meaningfully different and stronger. Do not copy a template verbatim; adapt its pattern to the product.\n\nProduct:\n${productDetails}\n\nRelevant viral hook templates:\n${JSON.stringify(viralHookContext)}\n\nExisting script JSON:\n${JSON.stringify(existingScript || {}).slice(0, 12000)}`
       : `Create a complete viral marketing script using the ${frameworkName} framework for this product. Use the provided viral hook templates as inspiration for the opening hook and scene psychology. Do not copy a template verbatim; adapt its pattern to the product.\n\nProduct:\n${productDetails}\n\nRelevant viral hook templates:\n${JSON.stringify(viralHookContext)}`;
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-5.4",
-        input: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        max_output_tokens: 3200,
-      }),
+    const response = await aiResponsesCompletion({
+      model: "gpt-5.4",
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      max_output_tokens: 3200,
     });
 
     const bodyText = await response.text();
@@ -5286,13 +5635,13 @@ app.post("/api/customers/ai-insight", rateLimitAI, async (req, res) => {
     if (!customer || typeof customer !== "object") return res.status(400).json({ error: "customer is required" });
 
     const fallback = buildCustomerAiInsight(customer);
-    if (!process.env.OPENAI_API_KEY) return res.json({ insight: fallback, source: "rules" });
+    if (!AI_API_KEY) return res.json({ insight: fallback, source: "rules" });
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({
-        model: process.env.CUSTOMER_INSIGHT_MODEL || "gpt-4o-mini",
+        model: process.env.CUSTOMER_INSIGHT_MODEL || AI_DEFAULT_MODEL,
         temperature: 0.2,
         max_tokens: 350,
         response_format: { type: "json_object" },
@@ -5390,7 +5739,8 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
-    await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+    const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+    if (updErr) throw updErr;
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     return res.json({ success: true, order: data });
   } catch (e) {
@@ -6362,19 +6712,19 @@ async function prepareOpenAiImageRef(url = "", authToken = "") {
 // ─── Image Embedding Helpers ─────────────────────────────────────────────────
 
 async function describeProductImage(imageUrl) {
-  if (!imageUrl || !process.env.OPENAI_API_KEY) return null;
+  if (!imageUrl || !AI_API_KEY) return null;
   try {
     const safeUrl = typeof imageUrl === "string" && imageUrl.startsWith("data:") ? imageUrl : await prepareOpenAiImageRef(imageUrl);
     if (!safeUrl) return null;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         max_tokens: 150,
         messages: [
           {
@@ -6399,13 +6749,13 @@ async function describeProductImage(imageUrl) {
 }
 
 async function generateTextEmbedding(text) {
-  if (!text || !process.env.OPENAI_API_KEY) return null;
+  if (!text || !AI_API_KEY) return null;
   try {
-    const response = await fetch("https://api.openai.com/v1/embeddings", {
+    const response = await fetch(`${AI_BASE_URL}/embeddings`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
         model: "text-embedding-3-small",
@@ -6504,13 +6854,13 @@ async function getRecentConversationHistory(supabase, conversationId, limit = 20
 // ─── Conversation summary generation ─────────────────────────────────────────
 
 async function generateConversationSummary(conversationHistory, existingSummary = "") {
-  if (!process.env.OPENAI_API_KEY || !conversationHistory) return existingSummary || "";
+  if (!AI_API_KEY || !conversationHistory) return existingSummary || "";
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         temperature: 0,
         max_tokens: 300,
         messages: [
@@ -6696,14 +7046,14 @@ Or when customer wants to cancel:
     userContent.push({ type: "text", text: "(Customer sent an image but it could not be loaded. Use conversation context only.)" });
   }
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${AI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: process.env.META_REPLY_MODEL || "gpt-4o",
+      model: process.env.META_REPLY_MODEL || AI_DEFAULT_MODEL,
       temperature: 0.3,
       response_format: { type: "json_object" },
       messages: [
@@ -6927,7 +7277,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
     await saveOrgSettings(orgId, { auto_reply_channels: JSON.stringify(channels) });
     console.log(`[${platform.toUpperCase()} AI] auto-added ${platform} to channels`);
   }
-  if (!process.env.OPENAI_API_KEY) { console.log(`[${platform.toUpperCase()} AI] skipped: no OPENAI_API_KEY`); return; }
+  if (!AI_API_KEY) { console.log(`[${platform.toUpperCase()} AI] skipped: no AI_API_KEY`); return; }
   if (!text && allImageUrls.length === 0) { console.log(`[${platform.toUpperCase()} AI] skipped: no text and no image`); return; }
 
   console.log(`[${platform.toUpperCase()} AI] processing message from senderId=${senderId} images=${allImageUrls.length}`);
@@ -7260,7 +7610,7 @@ function mergeFields(existing = {}, incoming = {}) {
 }
 
 async function extractNewFields({ text, event, fieldsNeeded, existingFields = {}, products = [] }) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!AI_API_KEY) return null;
   if (!fieldsNeeded || fieldsNeeded.length === 0) return null;
 
   const catalog = products.slice(0, 50).map((p) => ({ name: p.name, price: p.price }));
@@ -7298,11 +7648,11 @@ Return ONLY valid JSON with exactly these keys:
 ${JSON.stringify(Object.fromEntries(fieldsNeeded.map((k) => [k, null])))}`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_DEFAULT_MODEL,
         temperature: 0,
         max_tokens: 150,
         response_format: { type: "json_object" },
@@ -9463,10 +9813,10 @@ If a product has no distinguishable variants, return an empty variants array.`,
     if (products.length === 0 && scrapeResult.markdown) {
       try {
         const OpenAI = (await import("openai")).default;
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const openai = new OpenAI({ apiKey: AI_API_KEY, baseURL: AI_BASE_URL });
         const snippet = scrapeResult.markdown.slice(0, 6000);
         const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: AI_DEFAULT_MODEL,
           temperature: 0,
           messages: [
             {
@@ -9615,11 +9965,11 @@ function sanitizeExtractedOrder(aiOrder, fallbackOrder, text) {
 }
 
 async function extractOrderWithAI(text, fallbackOrder, model) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!AI_API_KEY) return null;
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${AI_API_KEY}` },
     body: JSON.stringify({
       model,
       temperature: 0,
@@ -9685,7 +10035,7 @@ app.post("/api/extract-order-from-text", rateLimitAI, async (req, res) => {
     let source = "regex_fallback";
 
     try {
-      const aiOrder = await extractOrderWithAI(text, regexOrder, process.env.ORDER_EXTRACTION_MODEL || "gpt-4o-mini");
+      const aiOrder = await extractOrderWithAI(text, regexOrder, process.env.ORDER_EXTRACTION_MODEL || AI_DEFAULT_MODEL);
       if (aiOrder) {
         extractedOrder = aiOrder;
         source = "ai";
@@ -10323,6 +10673,62 @@ NOTIFY pgrst, 'reload schema';
   }
 }
 
+// ─── Order Chat History Migration ────────────────────────────────────────────
+// Persists Order Chat conversations per org so they can be browsed and (admin)
+// deleted later. One row per conversation; messages stored as JSONB.
+async function migrateOrderChatHistoryTable() {
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const projectRef = supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
+    if (!projectRef || !serviceKey) return;
+
+    const migrationSql = `
+CREATE TABLE IF NOT EXISTS public.order_chat_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL,
+  user_id UUID,
+  title TEXT NOT NULL DEFAULT 'New chat',
+  messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS order_chat_history_org_updated_idx
+    ON public.order_chat_history(org_id, updated_at DESC);
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+ALTER TABLE public.order_chat_history ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  CREATE POLICY "service_role_all_order_chat_history" ON public.order_chat_history TO service_role USING (true) WITH CHECK (true);
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE POLICY "auth_users_order_chat_history" ON public.order_chat_history FOR ALL TO authenticated
+    USING (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id::text = auth.uid()::text))
+    WITH CHECK (org_id IN (SELECT org_id FROM public.user_roles WHERE user_id::text = auth.uid()::text));
+EXCEPTION WHEN undefined_table OR duplicate_object THEN NULL;
+END $$;
+NOTIFY pgrst, 'reload schema';
+    `;
+
+    const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ query: migrationSql }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("[Migrate] order_chat_history failed:", text);
+      return;
+    }
+    console.log("[Migrate] order_chat_history table ensured.");
+  } catch (e) {
+    console.warn("[Migrate] Could not run order_chat_history migration:", e.message);
+  }
+}
+
 // ─── Storefront Settings Migration ────────────────────────────────────────────
 // Creates the storefront_settings table for merchant branding, shipping zones,
 // and storefront configuration. One row per org (org_id is UNIQUE).
@@ -10482,7 +10888,7 @@ async function bootstrapAiProductContext() {
 }
 
 async function backfillProductEmbeddings() {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!AI_API_KEY) return;
   const supabase = getServiceSupabase();
 
   const { data: products, error } = await supabase
@@ -10680,6 +11086,7 @@ if (!process.env.VERCEL) {
         await migrateMultiTenancy();
         await migrateStorefrontSettingsTable();
         await migrateOrdersPaymentColumns();
+        await migrateOrderChatHistoryTable();
         await bootstrapAiProductContext();
         backfillProductEmbeddings().catch((err) => console.warn("[Embedding Backfill] Error:", err.message));
       });
@@ -10696,6 +11103,7 @@ if (!process.env.VERCEL) {
   migrateInboxOrdersTable().catch(() => {});
   migrateStorefrontSettingsTable().catch(() => {});
   migrateOrdersPaymentColumns().catch(() => {});
+  migrateOrderChatHistoryTable().catch(() => {});
 }
 
 export default app;

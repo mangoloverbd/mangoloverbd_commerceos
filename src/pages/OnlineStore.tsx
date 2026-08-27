@@ -47,11 +47,25 @@ const DEFAULTS: StorefrontSettings = {
 };
 
 // ── Section header ───────────────────────────────────────────────────────────
-function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
+function SectionHeader({
+  title,
+  subtitle,
+  highlight,
+}: {
+  title: string;
+  subtitle: string;
+  highlight?: boolean;
+}) {
   return (
     <div>
       <h2 className="text-[17px] font-semibold text-black tracking-tight">
-        {title}
+        {highlight ? (
+          <span className="inline-block rounded-[4px] bg-yellow-300 px-1.5 uppercase">
+            {title}
+          </span>
+        ) : (
+          title
+        )}
       </h2>
       <p className="mt-0.5 text-[13px] text-black/45">{subtitle}</p>
     </div>
@@ -198,7 +212,7 @@ export default function OnlineStore() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex min-h-[calc(100vh-7rem)] items-center justify-center">
         <Spinner />
       </div>
     );
@@ -214,7 +228,8 @@ export default function OnlineStore() {
           <div className="text-center">
             <SectionHeader
               title="Store Assistant"
-              subtitle="Ask about your storefront, products, or orders."
+              subtitle="Ask about your storefront."
+              highlight
             />
           </div>
           <div className="flex-1 min-h-0">

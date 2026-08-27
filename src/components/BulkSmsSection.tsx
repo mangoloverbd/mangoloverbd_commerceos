@@ -81,7 +81,7 @@ export function BulkSmsSection() {
         <p className="mt-0.5 text-[13px] text-black/45">Configure automated SMS updates for confirmed and dispatched orders.</p>
       </div>
 
-      <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
+      <div className="overflow-hidden rounded-2xl bg-black/[0.04] divide-y divide-black/[0.06]">
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
             <Label htmlFor="bulksms-enabled" className="text-[13px] font-medium text-black">Enable Bulk SMS BD</Label>
@@ -91,8 +91,7 @@ export function BulkSmsSection() {
             id="bulksms-enabled"
             checked={bulkSmsEnabled}
             onCheckedChange={setBulkSmsEnabled}
-            className="shrink-0 border border-black/[0.08] bg-black/[0.12] data-[state=checked]:bg-black data-[state=unchecked]:bg-black/[0.12]"
-            thumbClassName="bg-white shadow-sm data-[state=unchecked]:translate-x-0 data-[state=checked]:translate-x-5"
+            className="shrink-0"
           />
         </div>
 

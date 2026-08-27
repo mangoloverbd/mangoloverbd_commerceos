@@ -52,6 +52,6 @@ describe("order chat AI mutations (source inspection)", () => {
     expect(ansSrc).toContain("getToken");
     expect(ansSrc).toMatch(/role\s*!==\s*["']admin["']/);
     expect(ansSrc).toContain("text/event-stream");
-    expect(ansSrc).toContain("function_call_output");
+    expect(ansSrc).toContain("Clarification answers");
   });
 });

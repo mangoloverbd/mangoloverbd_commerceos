@@ -57,6 +57,24 @@ export const AI_ACTION_TOOLS = [
   },
   {
     type: "function",
+    name: "add_variant",
+    description: "Add a NEW variant (e.g. a new size or color option) to an EXISTING product. Use when the merchant asks to add an option that doesn't exist yet, like 'add size S with 20 stock' or 'add a red color' to a product that already has other variants. Do NOT use create_product for this — that makes a duplicate product. Resolve attributes (e.g. {\\\"size\\\":\\\"S\\\"}) from the request. Set optional fields you don't need to null.",
+    strict: true,
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["product_id", "attributes", "stock_quantity", "cog", "price_adjustment"],
+      properties: {
+        product_id: { type: "string", description: "UUID of the product from the PRODUCTS & STOCK context" },
+        attributes: { type: "string", description: "JSON object of attribute key-value pairs describing the new option, e.g. \"{\\\"size\\\":\\\"S\\\"}\". Must be non-empty." },
+        stock_quantity: { type: "integer", minimum: 0, description: "Starting stock for the new variant" },
+        cog: { type: ["number", "null"], minimum: 0, description: "Cost of goods for the new variant. Set to null to default to 0." },
+        price_adjustment: { type: ["number", "null"], description: "Price delta vs product base price (e.g. +50 for a premium size). Set to null for no adjustment." },
+      },
+    },
+  },
+  {
+    type: "function",
     name: "update_order",
     description: "Update an order's status, notes, or fulfillment status. Use for 'cancel order #1234', 'mark #1001 as confirmed', 'add a note to #998'. Set unused fields to null.",
     strict: true,
@@ -65,7 +83,7 @@ export const AI_ACTION_TOOLS = [
       additionalProperties: false,
       required: ["order_id", "fields"],
       properties: {
-        order_id: { type: "string", description: "UUID of the order" },
+        order_id: { type: "string", description: "Order number shown to the user (e.g. \"1001\"), not the internal UUID" },
         fields: {
           type: "object",
           additionalProperties: false,
@@ -90,7 +108,7 @@ export const AI_ACTION_TOOLS = [
       required: ["courier", "order_ids"],
       properties: {
         courier:   { type: "string", enum: ["steadfast", "pathao"] },
-        order_ids: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 25 },
+        order_ids: { type: "array", items: { type: "string" }, description: "Order numbers shown to the user (e.g. [\"1001\",\"1002\"]), not internal UUIDs", minItems: 1, maxItems: 25 },
       },
     },
   },
@@ -188,20 +206,39 @@ export async function getVariantForAudit(supabase, orgId, productId, variantId) 
   return data;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getOrderForAudit(supabase, orgId, orderId) {
+  // The model usually passes the human-facing order number (e.g. "1001" or
+  // "#1001"), not the internal UUID — resolve either way. order_number is
+  // stored as TEXT with a "#" prefix, so match both "#1001" and "1001".
+  const isUuid = UUID_RE.test(orderId);
+  if (isUuid) {
+    const { data, error } = await supabase
+      .from("orders").select("*")
+      .eq("id", orderId).eq("org_id", orgId).maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  const raw = String(orderId).trim();
+  const cleaned = raw.replace(/^#/, "");
+  const candidates = Array.from(new Set([raw, cleaned, `#${cleaned}`]));
   const { data, error } = await supabase
     .from("orders").select("*")
-    .eq("id", orderId).eq("org_id", orgId).maybeSingle();
+    .eq("org_id", orgId).in("order_number", candidates).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 export async function getOrdersForAudit(supabase, orgId, orderIds) {
-  const { data, error } = await supabase
-    .from("orders").select("*")
-    .in("id", orderIds).eq("org_id", orgId);
-  if (error) throw error;
-  return data || [];
+  // Resolve each identifier (UUID or order number) individually so the model
+  // can refer to orders by their displayed number.
+  const rows = [];
+  for (const id of orderIds || []) {
+    const row = await getOrderForAudit(supabase, orgId, id);
+    if (row) rows.push(row);
+  }
+  return rows;
 }
 
 // ── buildRecommendation: turn a model function_call into a card payload ──
@@ -247,6 +284,26 @@ export function buildRecommendation(tool, args, ctx = {}) {
     };
   }
 
+  if (tool === "add_variant") {
+    const product = products.find((p) => p.id === args.product_id);
+    if (!product) return empty;
+    let attrs = args.attributes;
+    if (typeof attrs === "string") {
+      try { attrs = JSON.parse(attrs); } catch { /* leave as-is; label below falls back */ }
+    }
+    const attrLabel = (attrs && typeof attrs === "object" && !Array.isArray(attrs))
+      ? Object.values(attrs).filter(Boolean).join(" · ")
+      : "variant";
+    return {
+      recommendation: {
+        key: "add",
+        summary: `Add ${product.name} / ${attrLabel} (${args.stock_quantity} units in stock)`,
+        args, signal: 3, tone: "green", label: "High confidence", cta: "Add variant",
+      },
+      alternatives: [],
+    };
+  }
+
   if (tool === "update_product") {
     const product = products.find((p) => p.id === args.product_id);
     if (!product) return empty;
@@ -261,8 +318,9 @@ export function buildRecommendation(tool, args, ctx = {}) {
   }
 
   if (tool === "update_order") {
-    const order = orders.find((o) => o.id === args.order_id);
-    const label = order ? `#${order.order_number}` : args.order_id.slice(-6);
+    const norm = String(args.order_id || "").replace(/^#/, "");
+    const order = orders.find((o) => o.id === args.order_id || String(o.order_number).replace(/^#/, "") === norm);
+    const label = order ? `#${order.order_number}` : `#${norm}`;
     const fields = Object.entries(args.fields || {}).map(([k, v]) => `${k}=${v}`).join(", ");
     return {
       recommendation: {
@@ -275,8 +333,9 @@ export function buildRecommendation(tool, args, ctx = {}) {
 
   if (tool === "dispatch_to_courier") {
     const nums = args.order_ids.map((id) => {
-      const o = orders.find((x) => x.id === id);
-      return o ? `#${o.order_number}` : id.slice(-6);
+      const n = String(id).replace(/^#/, "");
+      const o = orders.find((x) => x.id === id || String(x.order_number).replace(/^#/, "") === n);
+      return o ? `#${o.order_number}` : `#${n}`;
     });
     return {
       recommendation: {
@@ -385,6 +444,30 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       return { before, after: data };
     }
 
+    case "add_variant": {
+      const product = await getProductForAudit(supabase, orgId, args.product_id);
+      if (!product) throw new Error("Product not found in your organization");
+      let attrs = args.attributes;
+      if (typeof attrs === "string") {
+        try { attrs = JSON.parse(attrs); } catch { throw new Error("attributes must be valid JSON"); }
+      }
+      if (!attrs || typeof attrs !== "object" || Array.isArray(attrs) || Object.keys(attrs).length === 0)
+        throw new Error("attributes must be a non-empty object");
+      const attributes = Object.fromEntries(
+        Object.entries(attrs).map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
+      );
+      const row = {
+        product_id: args.product_id, org_id: orgId,
+        attributes,
+        cog: args.cog != null ? parseFloat(args.cog) : 0,
+        stock_quantity: Math.max(0, parseInt(args.stock_quantity, 10) || 0),
+        price_adjustment: args.price_adjustment != null ? parseFloat(args.price_adjustment) || 0 : 0,
+      };
+      const { data, error } = await supabase.from("product_variants").insert(row).select().single();
+      if (error) throw error;
+      return { before: null, after: { product, variant: data } };
+    }
+
     case "update_order": {
       const before = await getOrderForAudit(supabase, orgId, args.order_id);
       if (!before) throw new Error("Order not found in your organization");
@@ -392,8 +475,10 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       const update = {};
       for (const k of allowed) if (args.fields?.[k] != null) update[k] = args.fields[k];
       if (!Object.keys(update).length) throw new Error("Nothing to update");
-      await supabase.from("orders").update(update).eq("id", args.order_id).eq("org_id", orgId);
-      const { data, error } = await supabase.from("orders").select("*").eq("id", args.order_id).eq("org_id", orgId).single();
+      const { error: updErr } = await supabase
+        .from("orders").update(update).eq("id", before.id).eq("org_id", orgId);
+      if (updErr) throw updErr;
+      const { data, error } = await supabase.from("orders").select("*").eq("id", before.id).eq("org_id", orgId).single();
       if (error) throw error;
       return { before, after: data };
     }
@@ -403,7 +488,7 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       if (before.length !== args.order_ids.length) throw new Error("One or more orders not found in your organization");
       const results = [];
       for (const orderId of args.order_ids) {
-        const order = before.find((o) => o.id === orderId);
+        const order = before.find((o) => o.id === orderId || String(o.order_number) === String(orderId));
         if (order.sent_to_courier) { results.push({ orderId, skipped: "already sent", consignment_id: order.consignment_id }); continue; }
         const cfg = await helpers.getOrgSettings(orgId, args.courier === "steadfast"
           ? ["steadfast_api_key", "steadfast_secret_key"]

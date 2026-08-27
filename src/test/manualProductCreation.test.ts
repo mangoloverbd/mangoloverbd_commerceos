@@ -4,18 +4,18 @@ import { describe, expect, it } from "vitest";
 
 describe("manual product creation", () => {
   const productsSource = readFileSync(resolve(process.cwd(), "src/pages/Products.tsx"), "utf8");
-  const addProductSource = productsSource.slice(
-    productsSource.indexOf("function AddProductDrawer"),
-    productsSource.indexOf("function ProductImageManager"),
-  );
+  // Add Product now lives on a dedicated full page (/products/new) instead of a popup drawer.
+  const addProductSource = readFileSync(resolve(process.cwd(), "src/pages/ProductNew.tsx"), "utf8");
   const serverSource = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
 
-  it("shows an Add Product action and manual product drawer in the dashboard", () => {
+  it("shows an Add Product action that navigates to the dedicated create page", () => {
     expect(productsSource).toContain("Add Product");
-    expect(productsSource).toContain("AddProductDrawer");
     expect(productsSource).toContain("data-testid=\"button-add-product\"");
-    expect(productsSource).toContain("data-testid=\"input-manual-product-compare-at-price\"");
-    expect(productsSource).toContain("data-testid=\"button-add-manual-variant\"");
+    expect(productsSource).toContain("navigate(\"/products/new\")");
+    // The manual create page carries its own header + compare-at-price field.
+    expect(addProductSource).toContain("Add Product");
+    expect(addProductSource).toContain("data-testid=\"input-manual-product-compare-at-price\"");
+    expect(addProductSource).toContain("data-testid=\"button-add-option\"");
   });
 
   it("keeps the manual product form focused on uploads and labels variant numeric fields", () => {
@@ -24,11 +24,9 @@ describe("manual product creation", () => {
     expect(addProductSource).not.toContain("placeholder=\"Image URL\"");
     expect(addProductSource).not.toContain("placeholder=\"Product URL\"");
     expect(addProductSource).toContain(">Stock</span>");
-    expect(addProductSource).toContain(">COG</span>");
-    expect(addProductSource).toContain(">Price +/-</span>");
-    expect(addProductSource).toContain("placeholder=\"Stock\"");
-    expect(addProductSource).toContain("placeholder=\"COG ৳\"");
-    expect(addProductSource).toContain("placeholder=\"Price +/-\"");
+    expect(addProductSource).toContain(">COG (৳)</span>");
+    expect(addProductSource).toContain(">Price (৳)</span>");
+    expect(addProductSource).toContain("onUploadComplete={addImageFile}");
   });
 
   it("saves manual product stock, publish fields, compare price, and variant inventory", () => {

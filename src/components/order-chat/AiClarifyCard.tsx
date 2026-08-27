@@ -46,12 +46,7 @@ export default function AiClarifyCard({ questions, status, onSubmit, onDismiss }
     });
     if (question.type === "radio") {
       setCustom((cur) => ({ ...cur, [qi]: "" }));
-      window.setTimeout(() => {
-        if (qi === questions.length - 1) {
-          setSent(true);
-          collectAndSubmit();
-        } else setQi((c) => Math.min(questions.length - 1, c + 1));
-      }, 480);
+      if (qi < questions.length - 1) setQi((c) => Math.min(questions.length - 1, c + 1));
     }
   };
 

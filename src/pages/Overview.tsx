@@ -109,11 +109,10 @@ export default function Overview() {
     series.slice(-7).map((d) => d[key] || 0);
 
   return (
-    <div className="space-y-6 p-1 lg:p-2">
+    <div className="min-h-full space-y-6 bg-white p-1 lg:p-2">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Overview</p>
-          <h1 className="mt-1 font-sf-display text-[22px] font-bold tracking-tight text-black">Overview</h1>
+          <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Overview</h1>
         </div>
         <div className="flex items-center gap-2">
           <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
