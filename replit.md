@@ -1,7 +1,7 @@
 # Merchant-Suite — Order Management Dashboard
 
 ## Overview
-Full-stack order management SaaS with multi-tenancy. Built with React/Vite (frontend) + Express (backend) + Supabase (PostgreSQL).
+Private, single-tenant order management system for Mango Lover BD. Built with React/Vite (frontend) + Express (backend) + Supabase (PostgreSQL).
 
 ## Architecture
 
@@ -27,21 +27,23 @@ Full-stack order management SaaS with multi-tenancy. Built with React/Vite (fron
 - Values: `text-2xl font-light`
 - Borderless panels, luxury minimalist aesthetic
 
-## Multi-Tenancy Architecture
+## Mango Lover BD Workspace Architecture
 
-### Org Isolation Strategy
-- Each admin who registers gets a new `org_id` (UUID) auto-generated and stored in `user_roles.org_id`
-- Team members inherit their admin's `org_id`
-- **Settings**: stored as `{orgId}:{key}` in `app_settings` table
-- **Orders**: filtered by `org_id` column on `orders` table
-- **Social**: filtered by `org_id` column on `social_conversations` and `social_inbox_orders` tables
-- **Products**: stored as `{orgId}:products_catalog` in `app_settings`
-- **AI Context**: stored as `{orgId}:ai_product_context` in `app_settings`
-- **Brand Doc**: stored as `{orgId}:brand_doc` in `app_settings`
+### Workspace Strategy
+- This deployment serves Mango Lover BD only; there is one intended workspace and one Supabase project
+- The existing `org_id` is retained as a fixed compatibility/workspace key in `user_roles` and user-data tables
+- Team members inherit the Mango Lover BD workspace's `org_id`
+- **Settings**: stored as `{orgId}:{key}` in `app_settings` for compatibility with the existing server helpers
+- **Orders**: retain the `org_id` guard on the `orders` table
+- **Social**: retain the `org_id` guard on `social_conversations` and `social_inbox_orders`
+- **Products**: retain the existing workspace guard and settings namespace
+- **AI Context**: stored using the existing Mango Lover BD workspace namespace
+- **Brand Doc**: stored using the existing Mango Lover BD workspace namespace
+- New code uses the current workspace and never accepts an arbitrary organization or tenant id from the client
 
 ### Server Helpers
 - `getToken(req)` — extracts Bearer token from Authorization header
-- `getUserAndOrgId(token)` — resolves user + org_id from JWT + user_roles lookup
+- `getUserAndOrgId(token)` — resolves the Mango Lover BD user + workspace key from JWT + user_roles lookup
 - `getSettings(keys, orgId)` — reads org-prefixed settings
 - `saveSettings(settings, orgId)` — writes org-prefixed settings
 
@@ -51,14 +53,14 @@ Full-stack order management SaaS with multi-tenancy. Built with React/Vite (fron
 ## Database Tables
 - `user_roles` — user_id, role (admin/team_member), org_id
 - `orders` — Shopify orders with org_id, fraud data, courier data
-- `app_settings` — key-value store (org-prefixed keys for multi-tenancy)
+- `app_settings` — key-value store using the existing Mango Lover BD workspace-prefixed keys
 - `social_conversations` — Facebook/Instagram/WhatsApp conversations with org_id
 - `social_messages` — messages within conversations
 - `social_inbox_orders` — orders extracted from social chats with org_id
 
 ## Startup Migrations (auto-run)
 - `migrateInboxOrdersTable()` — ensures social_inbox_orders has all courier/fraud columns
-- `migrateMultiTenancy()` — ensures org_id columns exist on all relevant tables
+- `migrateMultiTenancy()` — legacy compatibility migration that ensures org_id columns remain available on relevant tables
 
 ## Key Features
 - **P&L Dashboard**: Framer Motion animated cells, Phosphor Icons, ৳ taka symbol for Ad Spend
@@ -69,6 +71,7 @@ Full-stack order management SaaS with multi-tenancy. Built with React/Vite (fron
 - **Social Inbox**: Facebook Messenger, Instagram DM, WhatsApp Business AI bot
 - **Inbox Orders**: Orders captured from social conversations
 - **Role Management**: Admin/team_member roles, team invite system
+- **Online Store**: Dedicated Mango Lover BD storefront fork from `github.com/noorkarimmehedi/e-commerce`, connected through the public catalog and order APIs
 
 ## External Integrations
 - **Shopify**: Admin API for order sync
