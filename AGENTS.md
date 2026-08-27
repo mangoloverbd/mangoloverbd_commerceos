@@ -7,7 +7,9 @@ Read it fully before making any changes. The rules in the **AI Agent Rules** sec
 
 ## 1. Project Overview
 
-**Merchant-Suite** is a multi-tenant order management SaaS built for Bangladeshi e-commerce businesses. It handles order ingestion, courier dispatch, fraud detection, social inbox management, and P&L analytics.
+**Merchant-Suite** is the private, single-tenant order management system for **Mango Lover BD**. It handles order ingestion, courier dispatch, fraud detection, social inbox management, and P&L analytics for this brand only.
+
+This deployment is not a shared SaaS instance. Use the Mango Lover BD Supabase project, integrations, branding, social accounts, and storefront configuration for every change. The code still contains `org_id` fields and helpers for database compatibility; in this deployment they identify the one Mango Lover BD workspace rather than separate customer tenants.
 
 **Tech stack:**
 - Frontend: React 18 + Vite + TypeScript, Tailwind CSS, shadcn/ui
@@ -37,6 +39,7 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
+STOREFRONT_GIT_REPO=noorkarimmehedi/e-commerce
 # Optional: route chat/completions (incl. Order Chat) through OpenRouter instead of OpenAI
 AI_PROVIDER=openrouter            # "openai" (default) or "openrouter"
 OPENROUTER_API_KEY=
@@ -69,7 +72,7 @@ All frontend code lives in `src/`. Entry point is `src/main.tsx` → `src/App.ts
 
 The entire Express server is `server/index.js` (~2100 lines, ESM). It is a single file by design.
 
-- Uses `getServiceSupabase()` internally — this uses `SUPABASE_SERVICE_ROLE_KEY` and bypasses RLS. All multi-tenancy isolation is enforced manually in route handlers (not by RLS policies).
+- Uses `getServiceSupabase()` internally — this uses `SUPABASE_SERVICE_ROLE_KEY` and bypasses RLS. This deployment serves only Mango Lover BD. Preserve the existing `org_id` checks as defense in depth and database compatibility, but do not design new shared-tenant behavior.
 - In dev, Express also proxies the Vite dev server. In production, it serves the built `dist/` folder.
 - Raw body buffering is enabled for webhook HMAC verification (`req.rawBody`).
 
@@ -92,7 +95,7 @@ Supabase PostgreSQL. Frontend accesses Supabase directly only for auth — all o
 
 **Startup migrations** run automatically on cold-start:
 - `migrateInboxOrdersTable()` — ensures `social_inbox_orders` has all columns
-- `migrateMultiTenancy()` — ensures `org_id` columns exist on all relevant tables + reloads PostgREST schema cache
+- `migrateMultiTenancy()` — legacy compatibility migration that ensures existing `org_id` columns remain available + reloads the PostgREST schema cache
 
 > **Before schema changes or writing Postgres queries:** invoke the `supabase` skill. For query optimization or index design, invoke `supabase-postgres-best-practices`. The Supabase MCP server is configured in `.mcp.json` — use it for direct DB introspection.
 
@@ -130,13 +133,13 @@ Supabase PostgreSQL. Frontend accesses Supabase directly only for auth — all o
 
 ---
 
-## 4. Multi-Tenancy (Critical — Read Before Any DB Work)
+## 4. Single-Tenant Deployment (Critical — Read Before Any DB Work)
 
-This is the most important pattern in the codebase. Every piece of data is scoped to an `org_id`.
+This deployment belongs exclusively to Mango Lover BD. Every piece of data belongs to the one Mango Lover BD workspace. The existing `org_id` is the fixed workspace identifier used by the current schema and route helpers; it is not an invitation to add support for multiple merchants.
 
 ### How it works
 
-When an admin registers, they get a new `org_id` (UUID) stored in `user_roles.org_id`. Team members inherit their admin's `org_id`. The backend resolves the org for every authenticated request.
+The Mango Lover BD admin account and its team members use the same existing `org_id` stored in `user_roles.org_id`. The backend resolves the current workspace for authenticated requests so existing data remains compatible.
 
 **Server auth helpers** (defined at top of `server/index.js`):
 ```js
@@ -147,7 +150,7 @@ const token = getToken(req);
 const { user } = await getUser(token);
 if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-// Resolve org_id from user_roles
+// Resolve the Mango Lover BD workspace from user_roles
 const { data: roleRow } = await supabase
   .from("user_roles")
   .select("org_id, role")
@@ -156,7 +159,7 @@ const { data: roleRow } = await supabase
 const orgId = roleRow?.org_id;
 ```
 
-**Settings isolation** — app_settings keys are prefixed with org_id:
+**Settings namespace** — existing app_settings keys are prefixed with the fixed workspace id:
 ```js
 // Read org-scoped settings
 const cfg = await getSettings([`${orgId}:shopify_token`]);
@@ -165,7 +168,7 @@ const cfg = await getSettings([`${orgId}:shopify_token`]);
 await saveSettings({ [`${orgId}:shopify_token`]: value });
 ```
 
-**Table isolation** — every query on `orders`, `social_conversations`, `social_inbox_orders`, `products` must filter by `org_id`:
+**Workspace guard** — keep the existing `org_id` filter on queries for `orders`, `social_conversations`, `social_inbox_orders`, `products`, and other user data. This prevents accidental cross-workspace data access if legacy records or tooling exist, but the application has one intended merchant: Mango Lover BD.
 ```js
 const { data } = await supabase
   .from("orders")
@@ -175,9 +178,9 @@ const { data } = await supabase
 
 ### Hard rule
 
-**Every new route that reads or writes user data MUST resolve `orgId` and apply it to all queries.** Missing `org_id` filters cause data leakage between tenants. This is the #1 bug class to avoid.
+**Every new route that reads or writes user data MUST use the current Mango Lover BD workspace and preserve the `org_id` guard in all relevant queries.** Do not accept an arbitrary organization or tenant identifier from the client, and do not introduce shared multi-merchant behavior.
 
-> **When adding new DB features:** invoke `supabase` skill. When reviewing a diff that touches DB queries, invoke `review` skill to check for org_id isolation gaps.
+> **When adding new DB features:** invoke `supabase` skill. When reviewing a diff that touches DB queries, invoke `review` skill to check for workspace guard, auth, and data-isolation gaps.
 
 ---
 
@@ -203,7 +206,7 @@ const res = await fetch("/api/orders");
 1. Extract token: `const token = getToken(req);`
 2. Validate and get user: `const { user } = await getUser(token);`
 3. Guard: `if (!user) return res.status(401).json({ error: "Unauthorized" });`
-4. Resolve org: query `user_roles` for `org_id` and `role`
+4. Resolve the Mango Lover BD workspace and role from `user_roles`
 
 First-login side effect: `getUser()` auto-assigns an `admin` role if the user has no role yet.
 
@@ -231,13 +234,13 @@ All routes are in `server/index.js`. Group new routes with their domain section.
 | AI | `POST /api/extract-order-from-text` |
 | DB Setup | `GET /api/db-setup-sql`, `POST /api/db-setup` (admin only) |
 
-> **Before shipping any API changes:** run `review` skill to check for SQL safety, auth gaps, and org_id isolation. Run `qa` skill to verify the feature works end-to-end in the browser.
+> **Before shipping any API changes:** run `review` skill to check for SQL safety, auth gaps, and workspace guards. Run `qa` skill to verify the feature works end-to-end in the browser.
 
 ---
 
 ## 7. External Integrations
 
-All integration credentials are stored in `app_settings` (org-prefixed). They are configured through the Settings page (`/settings`) and read server-side via `getSettings()`.
+All integration credentials are stored in the Mango Lover BD deployment's `app_settings` (using the existing workspace-prefixed keys). They are configured through the Settings page (`/settings`) and read server-side via `getSettings()`.
 
 ### Shopify
 - Admin API for order sync
@@ -364,7 +367,7 @@ This project has gstack and superpowers installed. Skills are the correct way to
 | `systematic-debugging` | Structured debugging workflow for test failures or errors |
 | `test-driven-development` | Write tests before implementation code |
 | `verification-before-completion` | Verify work is actually complete before claiming done |
-| `review` | Pre-landing diff review — SQL safety, auth gaps, org_id isolation |
+| `review` | Pre-landing diff review — SQL safety, auth gaps, and workspace guards |
 | `qa` | End-to-end QA testing in browser + fix bugs found |
 | `qa-only` | QA testing report only (no fixes) |
 | `ship` | Full ship workflow: merge base, checks, VERSION bump, CHANGELOG, PR |
@@ -392,7 +395,7 @@ These are non-negotiable. Violating any of these will introduce bugs or security
 
 1. **Always use `apiFetch()`** from `src/lib/api.ts` for all API calls from the frontend. Never use raw `fetch()` for authenticated endpoints.
 
-2. **Always scope DB queries by `org_id`**. Every query on `orders`, `social_conversations`, `social_inbox_orders`, `products`, and any new user-data table must filter by the resolved `org_id`. Missing this causes tenant data leakage.
+2. **Always use the fixed Mango Lover BD workspace guard**. Every query on `orders`, `social_conversations`, `social_inbox_orders`, `products`, and any new user-data table must preserve the resolved `org_id` filter. Never accept a tenant or organization id from the client.
 
 3. **Always guard new API endpoints with auth**. Call `getToken(req)` → `getUser(token)` → `if (!user) return 401` at the top of every new route handler.
 
@@ -408,4 +411,4 @@ These are non-negotiable. Violating any of these will introduce bugs or security
 
 9. **Before building any feature, invoke `brainstorming` skill.** Before shipping, invoke `review` and `verification-before-completion`.
 
-10. **For any Supabase schema change, invoke the `supabase` skill first.** Schema changes affect multi-tenancy migrations and PostgREST schema cache — they need to be handled carefully.
+10. **For any Supabase schema change, invoke the `supabase` skill first.** Schema changes affect the Mango Lover BD database and PostgREST schema cache — they need to be handled carefully.

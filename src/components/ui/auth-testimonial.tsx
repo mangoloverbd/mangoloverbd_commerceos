@@ -6,21 +6,21 @@ import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from
 const testimonials = [
   {
     quote: "Transformed our entire order management overnight.",
-    author: "Sarah Chen",
+    author: "Nafis Rahman",
     role: "Operations Director",
-    company: "StyleHub BD",
+    company: "Mango Avenue BD",
   },
   {
     quote: "The most elegant commerce solution we've ever used.",
-    author: "Marcus Webb",
+    author: "Maliha Chowdhury",
     role: "Founder",
-    company: "DeshiCart",
+    company: "Noksha Living",
   },
   {
     quote: "Pure craftsmanship in every single detail.",
-    author: "Elena Frost",
+    author: "Tahsin Ahmed",
     role: "Head of E-commerce",
-    company: "FashionBD",
+    company: "Dhaka Edit",
   },
 ]
 

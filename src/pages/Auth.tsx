@@ -6,8 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import { Eye, EyeOff, MailCheck, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles } from "@/components/ui/sparkles";
 import { AuthTestimonial } from "@/components/ui/auth-testimonial";
+import { Sparkles } from "@/components/ui/sparkles";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/logo";
 
@@ -235,7 +235,7 @@ export default function Auth() {
                 <div className="mb-10 flex items-center gap-1">
                   <Logo className="h-[21px] w-auto shrink-0" />
                   <span className="text-[21px] font-bold tracking-tight text-[#111] antialiased">
-                    merchant-suite
+                    Mango Lover BD Suite
                   </span>
                 </div>
 
