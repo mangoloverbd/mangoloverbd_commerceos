@@ -8,7 +8,7 @@ const testimonials = [
     quote: "Transformed our entire order management overnight.",
     author: "Nafis Rahman",
     role: "Operations Director",
-    company: "Mango Avenue BD",
+    company: "Angonaloy",
   },
   {
     quote: "The most elegant commerce solution we've ever used.",
@@ -20,7 +20,7 @@ const testimonials = [
     quote: "Pure craftsmanship in every single detail.",
     author: "Tahsin Ahmed",
     role: "Head of E-commerce",
-    company: "Dhaka Edit",
+    company: "ZAIR",
   },
 ]
 
