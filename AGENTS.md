@@ -80,7 +80,7 @@ The entire Express server is `server/index.js` (~2100 lines, ESM). It is a singl
 
 ### Database
 
-Supabase PostgreSQL. Frontend accesses Supabase directly only for auth — all other DB access goes through the Express API. The backend uses the service role client.
+Supabase PostgreSQL. The Merchant-Suite frontend accesses Supabase directly only for auth; its other DB access goes through the Express API. The separate public storefront may use the same project's publishable key only for the approved read-only revision subscription. The backend uses the service role client.
 
 **Key tables:**
 | Table | Purpose |
@@ -97,7 +97,22 @@ Supabase PostgreSQL. Frontend accesses Supabase directly only for auth — all o
 - `migrateInboxOrdersTable()` — ensures `social_inbox_orders` has all columns
 - `migrateMultiTenancy()` — legacy compatibility migration that ensures existing `org_id` columns remain available + reloads the PostgREST schema cache
 
-> **Before schema changes or writing Postgres queries:** invoke the `supabase` skill. For query optimization or index design, invoke `supabase-postgres-best-practices`. The Supabase MCP server is configured in `.mcp.json` — use it for direct DB introspection.
+> **Before schema changes or writing Postgres queries:** invoke the `supabase` skill. For query optimization or index design, invoke `supabase-postgres-best-practices`. The project-local Supabase MCP server is configured in `.codex/config.toml` (Codex) and `.mcp.json` (Claude Code) — use it for direct DB introspection.
+
+### Storefront integration boundary (approved target architecture)
+
+Merchant-Suite and the dedicated storefront are separate GitHub repositories and separate Vercel projects, but they use the same Mango Lover BD Supabase project for runtime commerce data and merchant-editable content.
+
+- **GitHub + Vercel own application code.** Storefront components, layouts, CSS, application logic, and fixed code assets live in the storefront repository. Agent-led design customization is committed there, and Vercel redeploys it automatically.
+- **Supabase owns runtime content and commerce data.** Products, prices, variants, authoritative stock, product images, editable branding, shipping configuration, customers, orders, and storefront revision state live in the same Mango Lover BD Supabase project.
+- **Dashboard changes never require a storefront redeploy.** Product, image, price, publication, variant, or stock mutations go through authenticated Merchant-Suite APIs, update Supabase, advance catalog/inventory revisions, invalidate Vercel cache entries, and notify already-open storefronts.
+- **The public storefront consumes the versioned Merchant-Suite API.** Keep commerce reads and checkout behind `/api/public/v1/:handle/...`; do not couple storefront UI to internal Supabase product or order tables.
+- **Direct Supabase access in the storefront is notification-only.** A browser-safe Supabase publishable key may subscribe to a narrowly exposed, read-only storefront revision signal. Never expose the service-role/secret key, and never grant the storefront direct writes to commerce tables.
+- **Images use Supabase Storage plus Vercel delivery.** Merchant-uploaded product and branding images use immutable UUID object paths in the shared Supabase Storage project. The storefront serves responsive variants through Vercel Image Optimization/CDN.
+- **One source of stock truth.** Do not maintain parallel stock values in `app_settings` and product/variant rows. Product or variant inventory must have one authoritative database representation, and checkout must validate and decrement it atomically.
+- **Preserve the fixed workspace guard.** The deployment is single-tenant, but all server-side data access continues to resolve and filter by the Mango Lover BD `org_id`. Public clients use the assigned storefront handle and never submit an arbitrary organization id.
+
+The detailed approved direction is documented in `docs/superpowers/specs/2026-08-27-realtime-storefront-sync-design.md`.
 
 ---
 
@@ -128,7 +143,8 @@ Supabase PostgreSQL. Frontend accesses Supabase directly only for auth — all o
 | `server/index.js` | Entire Express backend — all API routes, helpers, migrations |
 | `server/db.ts` | Direct pg Pool connection (used for raw SQL migrations) |
 | `.env` | Environment variables — never commit this |
-| `.mcp.json` | Supabase MCP server configuration |
+| `.codex/config.toml` | Project-local Supabase MCP server configuration (Codex) |
+| `.mcp.json` | Project-local Supabase MCP server configuration (Claude Code) |
 | `supabase/` | Supabase project config and migrations |
 
 ---
@@ -385,7 +401,14 @@ This project has gstack and superpowers installed. Skills are the correct way to
 | `autoplan` | Run CEO + design + eng + DX reviews automatically in sequence |
 
 ### MCP Server
-The Supabase MCP server is configured in `.mcp.json` (project `cuzimtflsqextibxbxxc`). Use it for direct DB introspection, table inspection, and running queries without leaving the agent session.
+The Supabase MCP server is configured project-locally for project `ldiktvcavyabivpxfwpn`, in two places — one per agent runtime, both pointing at the same project:
+
+| File | Runtime |
+|---|---|
+| `.codex/config.toml` | Codex / OpenCode |
+| `.mcp.json` | Claude Code (HTTP transport, `https://mcp.supabase.com/mcp`) |
+
+Use it for direct DB introspection, table inspection, and queries. Never add or replace a global MCP configuration — keep Supabase MCP scoped to this project. Claude Code requires a one-time OAuth flow: run `/mcp`, select `supabase`, then Authenticate. If you change the project ref or enabled features, update both files so the runtimes stay in sync.
 
 ---
 
@@ -412,3 +435,7 @@ These are non-negotiable. Violating any of these will introduce bugs or security
 9. **Before building any feature, invoke `brainstorming` skill.** Before shipping, invoke `review` and `verification-before-completion`.
 
 10. **For any Supabase schema change, invoke the `supabase` skill first.** Schema changes affect the Mango Lover BD database and PostgREST schema cache — they need to be handled carefully.
+
+11. **Keep storefront code and runtime data separate.** Storefront design/code changes belong in its GitHub repository and deploy through Vercel; merchant-editable products, stock, images, branding, and orders belong in the shared Mango Lover BD Supabase project.
+
+12. **Do not give the public storefront direct commerce-table access.** It may use a publishable Supabase key only for the read-only revision notification channel. Catalog, inventory, and checkout continue through the versioned Merchant-Suite public API; never expose a service-role or secret key.
