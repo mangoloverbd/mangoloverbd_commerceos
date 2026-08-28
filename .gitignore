@@ -30,8 +30,8 @@ dist-ssr
 # Local tooling
 .agents/
 .claude/
-.mcp.json
 .gstack/
 .superpowers/
 .opencode/
 .commandcode/
+supabase/.temp/

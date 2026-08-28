@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 describe("order chat history routes (source inspection)", () => {
   const source = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
+  const baseline = readFileSync(
+    resolve(process.cwd(), "supabase/migrations/20260828000000_canonical_schema_reconciliation.sql"),
+    "utf8",
+  );
 
   it("defines GET /api/order-chat/history list endpoint", () => {
     expect(source).toContain('app.get("/api/order-chat/history"');
@@ -34,9 +38,10 @@ describe("order chat history routes (source inspection)", () => {
     expect(getSrc).not.toMatch(/role\s*!==\s*["']admin["']/);
   });
 
-  it("registers the order_chat_history migration at boot (both run paths)", () => {
-    expect(source).toContain("migrateOrderChatHistoryTable()");
-    const calls = source.split("migrateOrderChatHistoryTable()").length - 1;
-    expect(calls).toBeGreaterThanOrEqual(3);
+  it("defines order_chat_history in the versioned baseline, not application startup", () => {
+    expect(baseline).toMatch(
+      /create table(?: if not exists)? public\.order_chat_history/i,
+    );
+    expect(source).not.toContain("migrateOrderChatHistoryTable()");
   });
 });
