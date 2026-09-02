@@ -1,6 +1,8 @@
 # Merchant-Suite
 
-An AI-powered order management and social inbox platform for growing merchants, built with React, Vite, TypeScript, and Supabase.
+**Merchant-Suite** is the private, single-tenant order management system for **Mango Lover BD** — AI-powered order management and social inbox, built with React, Vite, TypeScript, and Supabase.
+
+This is not a shared SaaS instance. It serves Mango Lover BD only, using that brand's own Supabase project, integrations, and storefront configuration. See `AGENTS.md` / `CLAUDE.md` before making changes.
 
 ## Features
 
@@ -65,8 +67,7 @@ string is preferred for startup migrations. You can alternatively set
 `ADMIN_EMAILS` is a comma-separated list of existing Supabase Auth users that
 should be repaired or promoted to admin on their next sign-in.
 `POSTHOG_PROJECT_API_KEY` is used only server-side to forward custom website
-tracker events into the SaaS-owned PostHog project; merchants do not need their
-own PostHog accounts.
+tracker events into this deployment's PostHog project.
 `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID` are used only server-side to
 query PostHog behavior data for Order Analysis.
 
