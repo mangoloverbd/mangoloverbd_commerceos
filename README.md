@@ -71,6 +71,18 @@ tracker events into this deployment's PostHog project.
 `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID` are used only server-side to
 query PostHog behavior data for Order Analysis.
 
+### Storefront product workflow
+
+Add and publish products from Merchant Suite's Products page. The public storefront reads the
+published catalog from Supabase through the Merchant Suite public API, so a newly published product
+usually appears within about 8 seconds without a storefront redeploy.
+
+The storefront also keeps a build-generated catalog snapshot for fast first paint on new devices.
+That snapshot is only an initial fallback. The live API replaces it in the background, and Supabase
+remains the source of truth. To refresh the snapshot deliberately, run `NODE_ENV=production npm run
+build` in the separate `mangoloverbd_storefront` repository and deploy that repository's `main`
+branch. Do not copy product rows or image URLs into dashboard source files.
+
 ### Run the frontend
 
 ```bash
