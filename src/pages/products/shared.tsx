@@ -55,6 +55,43 @@ export type ProductsResponse = {
   products: Product[];
 };
 
+function formatTaka(n: number | null | undefined) {
+  if (n == null) return "—";
+  return "৳" + Number(n).toLocaleString("en-BD", { minimumFractionDigits: 0 });
+}
+
+function variantPrice(product: Product, variant: Pick<ProductVariant, "price_adjustment">) {
+  if (product.selling_price == null) return null;
+  return product.selling_price + (variant.price_adjustment || 0);
+}
+
+export function variantPriceDisplay(product: Product, variant: Pick<ProductVariant, "price_adjustment">) {
+  return formatTaka(variantPrice(product, variant));
+}
+
+export function productPriceDisplay(product: Product) {
+  return productPriceDisplayLines(product).join(" / ");
+}
+
+export function productPriceDisplayLines(product: Product) {
+  if (product.variants.length === 0) return [formatTaka(product.selling_price)];
+  if (product.selling_price == null) return ["—"];
+
+  const prices = product.variants
+    .map((variant) => variantPrice(product, variant))
+    .filter((price): price is number => price != null)
+    .filter((price, index, all) => all.indexOf(price) === index)
+    .sort((a, b) => a - b);
+
+  return prices.length > 0 ? prices.map(formatTaka) : [formatTaka(product.selling_price)];
+}
+
+export function productPriceSortValue(product: Product) {
+  if (product.variants.length === 0) return product.selling_price ?? -1;
+  if (product.selling_price == null) return -1;
+  return Math.min(...product.variants.map((variant) => variantPrice(product, variant) ?? -1));
+}
+
 export type SelectedImage = {
   id: string;
   file: File;

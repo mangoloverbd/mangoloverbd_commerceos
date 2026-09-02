@@ -1,6 +1,6 @@
 # 06 — Storefront Template Refactor (e-commerce repo)
 
-**What to build:** The existing single-tenant e-commerce storefront (`github.com/noorkarimmehedi/e-commerce`, built for Stepprs Bangladesh) is refactored into a multi-tenant template that any Merchant-Suite merchant can use. After this ticket, the storefront fetches all data from the Merchant-Suite public API based on a configurable handle, and renders the correct merchant's branding and products.
+**What to build:** The dedicated Mango Lover BD storefront (`github.com/mangoloverbd/mangoloverbd_storefront`, originally forked from the single-tenant `github.com/noorkarimmehedi/e-commerce` built for Stepprs Bangladesh) is the storefront that fetches all data from the Merchant-Suite public API based on a configurable handle, and renders the correct merchant's branding and products.
 
 **Blocked by:** 01 — Storefront Branding Schema + Config API ✅
 

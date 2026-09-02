@@ -39,7 +39,7 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
-STOREFRONT_GIT_REPO=noorkarimmehedi/e-commerce
+STOREFRONT_GIT_REPO=mangoloverbd/mangoloverbd_storefront
 # Optional: route chat/completions (incl. Order Chat) through OpenRouter instead of OpenAI
 AI_PROVIDER=openrouter            # "openai" (default) or "openrouter"
 OPENROUTER_API_KEY=
@@ -93,9 +93,12 @@ Supabase PostgreSQL. The Merchant-Suite frontend accesses Supabase directly only
 | `social_inbox_orders` | Orders captured from social chats, org_id |
 | `products` | Product catalog with COGs, org_id |
 
-**Startup migrations** run automatically on cold-start:
-- `migrateInboxOrdersTable()` — ensures `social_inbox_orders` has all columns
-- `migrateMultiTenancy()` — legacy compatibility migration that ensures existing `org_id` columns remain available + reloads the PostgREST schema cache
+**Schema changes never run at application startup.** The canonical,
+data-preserving schema reconciliation lives in `supabase/migrations/`; Vercel cold starts perform a read-only
+readiness check and never execute DDL. Historical migrations are archived under
+`supabase/legacy-migrations/` and must not be applied to the canonical project.
+Run `npm run verify:supabase-project` before any linked Supabase command and
+`npm run verify:supabase-baseline` before proposing a migration for deployment.
 
 > **Before schema changes or writing Postgres queries:** invoke the `supabase` skill. For query optimization or index design, invoke `supabase-postgres-best-practices`. The project-local Supabase MCP server is configured in `.codex/config.toml` (Codex) and `.mcp.json` (Claude Code) — use it for direct DB introspection.
 
@@ -105,7 +108,7 @@ Merchant-Suite and the dedicated storefront are separate GitHub repositories and
 
 - **GitHub + Vercel own application code.** Storefront components, layouts, CSS, application logic, and fixed code assets live in the storefront repository. Agent-led design customization is committed there, and Vercel redeploys it automatically.
 - **Supabase owns runtime content and commerce data.** Products, prices, variants, authoritative stock, product images, editable branding, shipping configuration, customers, orders, and storefront revision state live in the same Mango Lover BD Supabase project.
-- **Dashboard changes never require a storefront redeploy.** Product, image, price, publication, variant, or stock mutations go through authenticated Merchant-Suite APIs, update Supabase, advance catalog/inventory revisions, invalidate Vercel cache entries, and notify already-open storefronts.
+- **Dashboard changes never require a storefront redeploy.** Product, image, price, publication, variant, or stock mutations go through authenticated Merchant-Suite APIs, update Supabase, advance catalog/inventory revisions, and notify already-open storefronts. Revision-keyed URLs provide cache correctness on Vercel without a v1 purge dependency.
 - **The public storefront consumes the versioned Merchant-Suite API.** Keep commerce reads and checkout behind `/api/public/v1/:handle/...`; do not couple storefront UI to internal Supabase product or order tables.
 - **Direct Supabase access in the storefront is notification-only.** A browser-safe Supabase publishable key may subscribe to a narrowly exposed, read-only storefront revision signal. Never expose the service-role/secret key, and never grant the storefront direct writes to commerce tables.
 - **Images use Supabase Storage plus Vercel delivery.** Merchant-uploaded product and branding images use immutable UUID object paths in the shared Supabase Storage project. The storefront serves responsive variants through Vercel Image Optimization/CDN.
@@ -141,7 +144,7 @@ The detailed approved direction is documented in `docs/superpowers/specs/2026-08
 | `src/integrations/supabase/client.ts` | Supabase browser client (anon key) |
 | `src/integrations/supabase/types.ts` | Generated Supabase TypeScript types |
 | `server/index.js` | Entire Express backend — all API routes, helpers, migrations |
-| `server/db.ts` | Direct pg Pool connection (used for raw SQL migrations) |
+| `server/db.ts` | Legacy Drizzle connection module; do not use it for runtime migrations |
 | `.env` | Environment variables — never commit this |
 | `.codex/config.toml` | Project-local Supabase MCP server configuration (Codex) |
 | `.mcp.json` | Project-local Supabase MCP server configuration (Claude Code) |
@@ -248,7 +251,6 @@ All routes are in `server/index.js`. Group new routes with their domain section.
 | Brand Doc | `GET /api/social/brand-doc`, `POST /api/social/brand-doc` |
 | Products | `GET /api/products`, `POST /api/products/save`, `POST /api/products/crawl`, `PATCH /api/products/:id`, `DELETE /api/products/:id` |
 | AI | `POST /api/extract-order-from-text` |
-| DB Setup | `GET /api/db-setup-sql`, `POST /api/db-setup` (admin only) |
 
 > **Before shipping any API changes:** run `review` skill to check for SQL safety, auth gaps, and workspace guards. Run `qa` skill to verify the feature works end-to-end in the browser.
 
@@ -439,3 +441,5 @@ These are non-negotiable. Violating any of these will introduce bugs or security
 11. **Keep storefront code and runtime data separate.** Storefront design/code changes belong in its GitHub repository and deploy through Vercel; merchant-editable products, stock, images, branding, and orders belong in the shared Mango Lover BD Supabase project.
 
 12. **Do not give the public storefront direct commerce-table access.** It may use a publishable Supabase key only for the read-only revision notification channel. Catalog, inventory, and checkout continue through the versioned Merchant-Suite public API; never expose a service-role or secret key.
+
+13. **Cache-bust storefront images on swap.** The storefront's `vercel.json` serves image assets with `Cache-Control: public, max-age=31536000, immutable`. Swapping an image at the *same* path (e.g. overwriting `honey.webp`) will NOT show on the deployed site for up to a year — the CDN keeps the old bytes. Always rename the file (or add a version hash, e.g. `honey-4.webp`) and update the reference in `client/src/pages/home.tsx` so the new URL is fetched. Convert PNGs to WebP with `cwebp -q 86 -blend_alpha 0xf5f5f5` to match the section background (`#f5f5f5`).

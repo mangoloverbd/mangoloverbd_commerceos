@@ -1,5 +1,7 @@
 # Public Product API Bridge Implementation Plan
 
+> **Superseded for new work (2026-08-27):** This Cloudflare-oriented plan is historical. Use `docs/superpowers/specs/2026-08-27-realtime-storefront-sync-design.md` and create a new Vercel-oriented implementation plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a public-facing product API so merchant custom websites can read product data (title, price, stock, images) from Merchant-Suite via Cloudflare edge cache.

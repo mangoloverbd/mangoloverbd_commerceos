@@ -25,7 +25,7 @@ Add a **multi-merchant storefront** to Merchant-Suite. Each merchant gets:
 - Shipping zone configuration (Inside Dhaka, Outside Dhaka, etc.)
 - A COD checkout flow that creates orders directly in the Merchant-Suite dashboard
 
-The storefront is a **separate React app** (refactored from the existing `github.com/noorkarimmehedi/e-commerce` repo, currently built for one merchant) deployed on Vercel. It fetches all data from the **public API** on the existing Merchant-Suite Express backend — no direct database access.
+The storefront is a **separate React app** (`github.com/mangoloverbd/mangoloverbd_storefront`, originally forked from `github.com/noorkarimmehedi/e-commerce`, built for one merchant) deployed on Vercel. It fetches all data from the **public API** on the existing Merchant-Suite Express backend — no direct database access.
 
 **Already built:** The public product API (catalog + inventory endpoints), two-tier caching, rate limiting, storefront handle claiming, product variants table, and variant management UI are all implemented and working.
 
@@ -100,7 +100,7 @@ The feature is organized around 4 seams. Each seam is a clear boundary where beh
 
 ### Storefront template
 
-The storefront is a **separate React + Vite + TypeScript app** refactored from `github.com/noorkarimmehedi/e-commerce` (currently a single-tenant storefront built for Stepprs Bangladesh). It is not part of the Merchant-Suite monorepo — it lives in its own repo and deploys independently on Vercel.
+The storefront is a **separate React + Vite + TypeScript app** (`github.com/mangoloverbd/mangoloverbd_storefront`, originally forked from `github.com/noorkarimmehedi/e-commerce` / Stepprs Bangladesh single-tenant storefront). It is not part of the Merchant-Suite monorepo — it lives in its own repo and deploys independently on Vercel.
 
 The refactor strips all hard-coded merchant data and replaces it with runtime config fetched from the public API. The subdomain is read from the `Host` header (production) or a query parameter (local dev).
 
@@ -264,7 +264,7 @@ The following are explicitly **not** part of this feature:
 
 - **Multi-tenancy is non-negotiable.** Every query on `product_variants`, `storefront_settings`, and orders from the storefront must be scoped by `org_id`. The public API resolves `org_id` from the `:handle` parameter via the forward mapping in `app_settings` (`storefront_handle:<handle>` → orgId). Missing `org_id` filters cause data leakage between merchants — this is the #1 bug class to avoid.
 - **Significant infrastructure already exists.** The public product/inventory API, two-tier caching (catalog 60s SWR 1-day, inventory 5s SWR 30s), ETag/304 support, Cache-Tag purging via Cloudflare, warm-token bypass, rate limiting (per IP+handle), handle claiming, product variants table, and variant management UI are all implemented. New work builds on top of this — do not duplicate or refactor existing systems.
-- **The existing e-commerce repo** (`github.com/noorkarimmehedi/e-commerce`) was built for a single merchant (Stepprs Bangladesh). The refactor strips all hard-coded data and replaces it with runtime API calls using the handle. The cart, checkout, and Meta Pixel code already work — the main work is making the handle dynamic.
+- **The dedicated storefront repo** (`github.com/mangoloverbd/mangoloverbd_storefront`, originally forked from `github.com/noorkarimmehedi/e-commerce` built for Stepprs Bangladesh) is the single-tenant Mango Lover BD storefront. It fetches all data via runtime API calls using the handle. The cart, checkout, and Meta Pixel code already work.
 - **Image pipeline adds `sharp` as a new dependency.** This is a native Node.js module — it needs to be in the server's `package.json` and may require platform-specific binaries for deployment. Verify deployment compatibility before merging.
 - **Shipping zones are stored as JSONB** in `storefront_settings`. This is intentionally flexible — merchants can define any number of zones with any conditions. The structure may evolve (e.g., weight-based shipping) without schema changes.
 - **Order confirmation SMS** is listed as a background task in the order submission flow. The existing SMS infrastructure (if any) should be reused. If none exists, this can be deferred to a follow-up ticket.

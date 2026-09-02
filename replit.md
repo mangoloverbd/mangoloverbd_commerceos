@@ -71,7 +71,7 @@ Private, single-tenant order management system for Mango Lover BD. Built with Re
 - **Social Inbox**: Facebook Messenger, Instagram DM, WhatsApp Business AI bot
 - **Inbox Orders**: Orders captured from social conversations
 - **Role Management**: Admin/team_member roles, team invite system
-- **Online Store**: Dedicated Mango Lover BD storefront fork from `github.com/noorkarimmehedi/e-commerce`, connected through the public catalog and order APIs
+- **Online Store**: Dedicated Mango Lover BD storefront (`github.com/mangoloverbd/mangoloverbd_storefront`, originally forked from `noorkarimmehedi/e-commerce`), connected through the public catalog and order APIs
 
 ## External Integrations
 - **Shopify**: Admin API for order sync

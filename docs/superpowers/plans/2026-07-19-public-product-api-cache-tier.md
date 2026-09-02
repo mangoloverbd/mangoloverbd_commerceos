@@ -1,5 +1,7 @@
 # Public Product API — Cache Tier + Purge + Inventory Endpoint
 
+> **Superseded for new work (2026-08-27):** This Cloudflare-oriented plan is historical. Use `docs/superpowers/specs/2026-08-27-realtime-storefront-sync-design.md` and create a new Vercel/revision/Realtime implementation plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Context:** The earlier plan `2026-07-15-public-product-api-bridge.md` landed Phase 0 (contract lockdown, `/v1` prefix, `toPublicProduct()` + Zod strict, handle routing with atomic claim). What is still missing: the edge is not actually caching anything, mutations do not purge, there is no `/inventory` endpoint, and public routes have no rate limit or warm bypass. This plan closes those gaps in one PR.

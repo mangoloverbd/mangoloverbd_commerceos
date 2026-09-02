@@ -142,4 +142,65 @@ describe("executeAiAction dispatcher", () => {
         args: { product_id: "pX", attributes: "{\"size\":\"S\"}", stock_quantity: 5, cog: null, price_adjustment: null }, helpers: noHelpers }),
     ).rejects.toThrow(/not found/i);
   });
+
+  it("passes the updated product slug to cache invalidation", async () => {
+    const purges: Array<unknown[]> = [];
+    const supabase = fakeSupabase({
+      products: {
+        select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({
+          data: { id: "p1", name: "Original", slug: "mango", published: true },
+          error: null,
+        }) }) }) }),
+        update: () => ({ eq: () => ({ eq: () => ({ select: () => ({ single: async () => ({
+          data: { id: "p1", name: "Updated", slug: "mango", published: true },
+          error: null,
+        }) }) }) }) }),
+      },
+    });
+
+    await executeAiAction({
+      supabase,
+      orgId: "org1",
+      userId: "u",
+      tool: "update_product",
+      args: { product_id: "p1", fields: { name: "Updated" } },
+      helpers: {
+        purgeProductCache: (...args: unknown[]) => {
+          purges.push(args);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    expect(purges).toEqual([["org1", { id: "p1", slug: "mango" }, { listChanged: false, warm: true }]]);
+  });
+
+  it("passes a newly published product slug to cache invalidation", async () => {
+    const purges: Array<unknown[]> = [];
+    const supabase = fakeSupabase({
+      products: {
+        insert: () => ({ select: () => ({ single: async () => ({
+          data: { id: "p2", slug: "new-mango", name: "New Mango" },
+          error: null,
+        }) }) }),
+      },
+    });
+
+    await executeAiAction({
+      supabase,
+      orgId: "org1",
+      userId: "u",
+      tool: "create_product",
+      args: { name: "New Mango", published: true, variants: [] },
+      helpers: {
+        getUniqueProductSlug: async () => "new-mango",
+        purgeProductCache: (...args: unknown[]) => {
+          purges.push(args);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    expect(purges).toEqual([["org1", { id: "p2", slug: "new-mango" }, { listChanged: true, warm: true }]]);
+  });
 });

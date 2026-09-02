@@ -9,22 +9,213 @@ import { Checkbox as BuiCheckbox } from "@/components/base/checkbox/checkbox";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { RichButton } from "@/components/ui/rich-button";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { Check, ArrowLeft } from "lucide-react";
+import { Check, ArrowLeft, Plus, Trash2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   type Product,
+  type ProductVariant,
   type ProductsResponse,
   BUI_TEXTAREA_CLS,
   FormSectionLabel,
   ProductImageManager,
+  variantPriceDisplay,
 } from "./products/shared";
+
+const EDIT_INPUT_CLS =
+  "h-9 w-full rounded-[12px] border border-black/[0.1] bg-black/[0.04] px-3 font-mono text-[13px] text-black outline-none tabular-nums transition-colors focus-visible:ring-1 focus-visible:ring-black/20 focus:bg-white placeholder:text-black/25";
+
+function attrLabel(attributes: Record<string, string>) {
+  return Object.values(attributes).filter(Boolean).join(" · ");
+}
+
+function VariantEditorRow({ product, variant }: { product: Product; variant: ProductVariant }) {
+  const qc = useQueryClient();
+  const [stock, setStock] = useState(String(variant.stock_quantity));
+  const [cog, setCog] = useState(String(variant.cog));
+  const [priceAdj, setPriceAdj] = useState(String(variant.price_adjustment ?? 0));
+  const [saving, setSaving] = useState(false);
+
+  async function saveVariant() {
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/variants/${variant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
+          cog: parseFloat(cog) || 0,
+          price_adjustment: parseFloat(priceAdj) || 0,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to save variant");
+      await qc.invalidateQueries({ queryKey: ["/api/products"] });
+      toast.success("Variant saved");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to save variant");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteVariant() {
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/variants/${variant.id}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to delete variant");
+      await qc.invalidateQueries({ queryKey: ["/api/products"] });
+      toast.success("Variant removed");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete variant");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-3 rounded-[14px] border border-black/[0.08] bg-white p-3 md:grid-cols-[1fr_100px_100px_110px_110px_auto] md:items-end">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-black/40">Variant</p>
+        <p className="mt-1 text-[14px] font-medium text-black">{attrLabel(variant.attributes)}</p>
+      </div>
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-black/40">Price</p>
+        <p className="h-9 pt-2 font-mono text-[13px] tabular-nums text-black">{variantPriceDisplay(product, { price_adjustment: parseFloat(priceAdj) || 0 })}</p>
+      </div>
+      <div>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Stock</label>
+        <input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} className={EDIT_INPUT_CLS} />
+      </div>
+      <div>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">COG</label>
+        <input type="number" min={0} value={cog} onChange={(e) => setCog(e.target.value)} className={EDIT_INPUT_CLS} />
+      </div>
+      <div>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Price ±</label>
+        <input type="number" value={priceAdj} onChange={(e) => setPriceAdj(e.target.value)} className={EDIT_INPUT_CLS} />
+      </div>
+      <div className="flex gap-2">
+        <RichButton color="default" size="default" type="button" onClick={saveVariant} disabled={saving} className="h-9 rounded-[8px] px-3">
+          {saving ? <Spinner size="sm" /> : "Save"}
+        </RichButton>
+        <button type="button" onClick={deleteVariant} disabled={saving} className="flex h-9 w-9 items-center justify-center rounded-[8px] text-black/40 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40">
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AddVariantForm({ product }: { product: Product }) {
+  const qc = useQueryClient();
+  const [rows, setRows] = useState([{ key: "", value: "" }]);
+  const [stock, setStock] = useState("0");
+  const [cog, setCog] = useState("0");
+  const [priceAdj, setPriceAdj] = useState("0");
+  const [saving, setSaving] = useState(false);
+
+  function setRow(index: number, field: "key" | "value", value: string) {
+    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+  }
+
+  async function addVariant() {
+    const attributes: Record<string, string> = {};
+    for (const row of rows) {
+      const key = row.key.trim().toLowerCase();
+      const value = row.value.trim();
+      if (key && value) attributes[key] = value;
+    }
+    if (Object.keys(attributes).length === 0) {
+      toast.error("Add at least one variant attribute");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}/variants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attributes,
+          stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
+          cog: parseFloat(cog) || 0,
+          price_adjustment: parseFloat(priceAdj) || 0,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to add variant");
+      await qc.invalidateQueries({ queryKey: ["/api/products"] });
+      setRows([{ key: "", value: "" }]);
+      setStock("0");
+      setCog("0");
+      setPriceAdj("0");
+      toast.success("Variant added");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to add variant");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-[14px] border border-dashed border-black/[0.12] bg-black/[0.02] p-3">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40">Add variant</p>
+      <div className="space-y-2">
+        {rows.map((row, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <input type="text" placeholder="attribute" value={row.key} onChange={(e) => setRow(index, "key", e.target.value)} className={cn(EDIT_INPUT_CLS, "max-w-[160px]")} />
+            <span className="text-black/25">:</span>
+            <input type="text" placeholder="value" value={row.value} onChange={(e) => setRow(index, "value", e.target.value)} className={EDIT_INPUT_CLS} />
+            {rows.length > 1 && (
+              <button type="button" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} className="rounded-lg p-1 text-black/40 hover:text-red-500">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={() => setRows((current) => [...current, { key: "", value: "" }])} className="mt-2 flex items-center gap-1.5 text-[12px] text-black/40 hover:text-black">
+        <Plus className="h-3 w-3" /> Add attribute
+      </button>
+      <div className="mt-3 grid gap-3 md:grid-cols-[100px_100px_110px_auto] md:items-end">
+        <BuiInput label="Stock" type="number" value={stock} onChange={setStock} placeholder="0" />
+        <BuiInput label="COG (৳)" type="number" value={cog} onChange={setCog} placeholder="0" />
+        <BuiInput label="Price ±" type="number" value={priceAdj} onChange={setPriceAdj} placeholder="0" />
+        <RichButton color="default" size="default" type="button" onClick={addVariant} disabled={saving} className="h-9 rounded-[8px]">
+          <span className="flex items-center gap-2">{saving ? <Spinner size="sm" /> : <Plus className="h-4 w-4" />}Add variant</span>
+        </RichButton>
+      </div>
+    </div>
+  );
+}
+
+function ProductVariantsEditor({ product }: { product: Product }) {
+  return (
+    <div className="mt-4 rounded-[14px] border border-black/[0.08] bg-white p-3">
+      <div className="mb-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40">Existing variants</p>
+        <p className="text-[12px] text-black/40">Click a product row to manage variant stock, cost, and price adjustments here.</p>
+      </div>
+      <div className="space-y-2">
+        {product.variants.length > 0 ? product.variants.map((variant) => (
+          <VariantEditorRow key={variant.id} product={product} variant={variant} />
+        )) : (
+          <p className="rounded-[12px] bg-black/[0.03] px-3 py-4 text-[13px] text-black/45">No variants yet.</p>
+        )}
+      </div>
+      <div className="mt-3">
+        <AddVariantForm product={product} />
+      </div>
+    </div>
+  );
+}
 
 function EditForm({ product }: { product: Product }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [name, setName] = useState(product.name || "");
   const [description, setDescription] = useState(product.description || "");
-  const [imageUrl, setImageUrl] = useState(product.image_url || "");
-  const [productUrl, setProductUrl] = useState(product.url || "");
   const [sellingPrice, setSellingPrice] = useState(product.selling_price == null ? "" : String(product.selling_price));
   const [compareAtPrice, setCompareAtPrice] = useState(product.compare_at_price == null ? "" : String(product.compare_at_price));
   const [cog, setCog] = useState(String(product.cog ?? 0));
@@ -45,8 +236,6 @@ function EditForm({ product }: { product: Product }) {
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || null,
-          image_url: imageUrl.trim() || null,
-          url: productUrl.trim() || null,
           selling_price: sellingPrice ? parseFloat(sellingPrice) || 0 : null,
           compare_at_price: compareAtPrice ? parseFloat(compareAtPrice) || 0 : null,
           cog: parseFloat(cog) || 0,
@@ -76,8 +265,6 @@ function EditForm({ product }: { product: Product }) {
       >
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <BuiInput data-testid={`input-edit-product-name-${product.id}`} label="Product name" isRequired value={name} onChange={setName} placeholder="Product name" />
-          <BuiInput label="Fallback image URL" value={imageUrl} onChange={setImageUrl} placeholder="https://…" />
-          <BuiInput label="Product URL" value={productUrl} onChange={setProductUrl} placeholder="https://…" />
           <BuiInput label="Selling price (৳)" type="number" value={sellingPrice} onChange={setSellingPrice} placeholder="0" />
           <BuiInput label="Compare-at price (৳)" type="number" value={compareAtPrice} onChange={setCompareAtPrice} placeholder="0" />
           <BuiInput label="COG (৳)" type="number" value={cog} onChange={setCog} placeholder="0" />
@@ -106,6 +293,8 @@ function EditForm({ product }: { product: Product }) {
         <div className="mt-4">
           <ProductImageManager product={product} onChanged={async () => { await qc.invalidateQueries({ queryKey: ["/api/products"] }); }} />
         </div>
+
+        <ProductVariantsEditor product={product} />
 
         <div className="mt-6 flex items-center gap-2">
           <RichButton color="default" size="default" type="button" onClick={submit} disabled={saving} className="h-9 rounded-[8px]">

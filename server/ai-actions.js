@@ -406,7 +406,7 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       const onlyStock = hasStock && Object.keys(update).length === 0;
       const isUnpublishing = update.published === false;
       if (!onlyStock && (after.published || isUnpublishing)) {
-        helpers.purgeProductCache(orgId, args.product_id, { listChanged: update.published !== undefined, warm: !isUnpublishing }).catch(() => {});
+        helpers.purgeProductCache(orgId, { id: after.id, slug: after.slug }, { listChanged: update.published !== undefined, warm: !isUnpublishing }).catch(() => {});
       }
       if (update.image_url && after.image_url) {
         helpers.generateProductEmbedding(after.image_url).then(({ embedding, description }) => {
@@ -552,7 +552,7 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
         if (vErr) throw vErr;
         variants = vData;
       }
-      if (args.published === true) helpers.purgeProductCache(orgId, product.id, { listChanged: true, warm: true }).catch(() => {});
+      if (args.published === true) helpers.purgeProductCache(orgId, { id: product.id, slug: product.slug }, { listChanged: true, warm: true }).catch(() => {});
       return { before: null, after: { product, variants } };
     }
 

@@ -11,10 +11,19 @@ function toNumber(value, fallback = null) {
 // still has to check the inventory endpoint before allowing add-to-cart, but
 // this flag lets the merchant render greyed-out cards without a round-trip.
 
+const PublicImageSourcesSchema = z
+  .object({
+    "320": z.string().min(1),
+    "640": z.string().min(1),
+    "960": z.string().min(1),
+  })
+  .strict();
+
 const PublicImageSchema = z
   .object({
     id: z.union([z.string(), z.number(), z.null()]),
     url: z.string().min(1),
+    sources: PublicImageSourcesSchema.optional(),
     alt_text: z.string().nullable(),
     sort_order: z.number(),
     is_primary: z.boolean(),
@@ -50,13 +59,28 @@ export const PublicProductSchema = z
 export function toPublicProduct(product, variants = [], images = []) {
   const basePrice = toNumber(product.selling_price, null);
   const safeImages = images
-    .map((image) => ({
-      id: image.id ?? null,
-      url: image.url || image.image_url,
-      alt_text: image.alt_text || null,
-      sort_order: image.sort_order || 0,
-      is_primary: image.is_primary === true,
-    }))
+    .map((image) => {
+      const hasCompleteSources = ["320", "640", "960"].every(
+        (width) => typeof image.sources?.[width] === "string" && image.sources[width],
+      );
+
+      return {
+        id: image.id ?? null,
+        url: image.url || image.image_url,
+        ...(hasCompleteSources
+          ? {
+              sources: {
+                "320": image.sources["320"],
+                "640": image.sources["640"],
+                "960": image.sources["960"],
+              },
+            }
+          : {}),
+        alt_text: image.alt_text || null,
+        sort_order: image.sort_order || 0,
+        is_primary: image.is_primary === true,
+      };
+    })
     .filter((image) => image.url);
   const galleryImages =
     safeImages.length > 0

@@ -23,6 +23,14 @@ import {
   validateStorefrontHandle,
 } from "./storefrontHandle.js";
 import { AI_ACTION_TOOLS, askUserTool, buildRecommendation, executeAiAction } from "./ai-actions.js";
+import {
+  PRODUCT_IMAGE_CACHE_SECONDS,
+  buildProductImageBuffers,
+  createProductImageAssetPaths,
+  getProductImagePathsForCleanup,
+  getProductImageVariantPaths,
+} from "./productImages.js";
+import { buildProductCacheUrls, purgeProductCacheUrls } from "./productCache.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -1168,7 +1176,7 @@ async function getStorefrontHandle(orgId) {
 // Enterprise-only); Cache-Tag headers still ship so the future switch is a
 // config change, not a code change. Failures log + drop — the outbox
 // replay job is a separate plan.
-async function purgeProductCache(orgId, productId, { listChanged = false, warm = true } = {}) {
+async function purgeProductCache(orgId, product, { listChanged = false, warm = true } = {}) {
   if (!CLOUDFLARE_ZONE_ID || !CLOUDFLARE_API_TOKEN || !PUBLIC_DOMAIN) {
     if (process.env.NODE_ENV !== "test") {
       console.warn("[Purge] Cloudflare not configured — skipping purge");
@@ -1176,44 +1184,27 @@ async function purgeProductCache(orgId, productId, { listChanged = false, warm =
     return;
   }
   const handle = await getStorefrontHandle(orgId);
-  if (!handle) return;
-
-  const urls = [];
-  if (productId) {
-    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products/${productId}`);
-    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products/${productId}/inventory`);
-  }
-  if (listChanged) {
-    urls.push(`https://${PUBLIC_DOMAIN}/api/public/v1/${handle}/products`);
-  }
+  const urls = buildProductCacheUrls({
+    publicDomain: PUBLIC_DOMAIN,
+    orgId,
+    handle,
+    productSlug: product?.slug,
+    listChanged,
+  });
+  if (!urls.length) return;
 
   try {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ files: urls }),
-      },
-    );
-    if (!response.ok) {
-      const body = await response.text();
-      console.warn(`[Purge] Cloudflare purge failed: ${body}`);
-    } else {
-      console.log(`[Purge] Purged ${urls.length} URL(s) for org ${orgId} product ${productId || "*"}`);
+    const result = await purgeProductCacheUrls({
+      zoneId: CLOUDFLARE_ZONE_ID,
+      apiToken: CLOUDFLARE_API_TOKEN,
+      urls,
+      warmToken: warm ? WARM_TOKEN : "",
+    });
+    if (result.purged) {
+      console.log(`[Purge] Purged ${urls.length} URL(s) for org ${orgId} product ${product?.id || "*"}`);
     }
   } catch (e) {
     console.warn("[Purge] Cloudflare purge error:", e.message);
-  }
-
-  if (warm && WARM_TOKEN) {
-    const warmHeaders = { headers: { "X-Warm-Token": WARM_TOKEN } };
-    for (const url of urls) {
-      fetch(url, warmHeaders).catch(() => {});
-    }
   }
 }
 
@@ -1343,7 +1334,7 @@ async function loadProductImagesMap(supabase, orgId, productIds) {
   if (!productIds.length) return {};
   const { data, error } = await supabase
     .from("product_images")
-    .select("id, product_id, image_url, alt_text, sort_order, is_primary, created_at")
+    .select("id, product_id, image_url, storage_path, alt_text, sort_order, is_primary, created_at")
     .eq("org_id", orgId)
     .in("product_id", productIds)
     .order("sort_order", { ascending: true })
@@ -1352,9 +1343,19 @@ async function loadProductImagesMap(supabase, orgId, productIds) {
   const map = {};
   for (const image of data || []) {
     if (!map[image.product_id]) map[image.product_id] = [];
+    const variantPaths = getProductImageVariantPaths(image.storage_path);
+    const sources = variantPaths
+      ? Object.fromEntries(
+          Object.entries(variantPaths).map(([width, path]) => [
+            width,
+            supabase.storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(path).data.publicUrl,
+          ]),
+        )
+      : undefined;
     map[image.product_id].push({
       id: image.id,
       url: image.image_url,
+      ...(sources ? { sources } : {}),
       alt_text: image.alt_text || null,
       sort_order: image.sort_order || 0,
       is_primary: image.is_primary === true,
@@ -1396,12 +1397,6 @@ function parseProductImagePayload(file) {
     throw err;
   }
   return { buffer, mimeType };
-}
-
-function productImageExtension(mimeType) {
-  if (mimeType === "image/png") return "png";
-  if (mimeType === "image/webp") return "webp";
-  return "jpg";
 }
 
 function slugifyProductName(value = "") {
@@ -2393,7 +2388,7 @@ async function purgeStorefrontConfigCache(orgId) {
 
 const VERCEL_ACCESS_TOKEN = process.env.VERCEL_ACCESS_TOKEN || "";
 const STOREFRONT_VERCEL_TEAM_ID = process.env.STOREFRONT_VERCEL_TEAM_ID || "";
-const STOREFRONT_GIT_REPO = process.env.STOREFRONT_GIT_REPO || ""; // e.g. "noorkarimmehedi/e-commerce"
+const STOREFRONT_GIT_REPO = process.env.STOREFRONT_GIT_REPO || ""; // e.g. "mangoloverbd/mangoloverbd_storefront"
 // The public URL of THIS Merchant Suite deploy, baked into every auto-provisioned
 // storefront so it reads catalog + posts orders back here.
 const MERCHANT_SUITE_PUBLIC_URL = (process.env.MERCHANT_SUITE_PUBLIC_URL || process.env.PUBLIC_DOMAIN || "").replace(/\/$/, "");
@@ -2479,7 +2474,7 @@ async function syncStorefrontDomain(projectId, prevDomain, newDomain) {
 // env vars, trigger a production deploy, and persist the project id for this merchant.
 async function provisionStorefrontProject(orgId, customOrdersApiKey) {
   if (!VERCEL_ACCESS_TOKEN) return { ok: false, error: "VERCEL_ACCESS_TOKEN not set" };
-  if (!STOREFRONT_GIT_REPO) return { ok: false, error: "STOREFRONT_GIT_REPO not set (e.g. noorkarimmehedi/e-commerce)" };
+  if (!STOREFRONT_GIT_REPO) return { ok: false, error: "STOREFRONT_GIT_REPO not set (e.g. mangoloverbd/mangoloverbd_storefront)" };
   if (!MERCHANT_SUITE_PUBLIC_URL) return { ok: false, error: "MERCHANT_SUITE_PUBLIC_URL not set — the public URL of this Merchant Suite deploy" };
 
   const projectName = `storefront-${orgId.slice(0, 8)}`;
@@ -8514,12 +8509,19 @@ function computeEtag(fingerprint) {
   return "W/\"" + crypto.createHash("sha1").update(fingerprint).digest("base64url").slice(0, 16) + "\"";
 }
 
-// Weak ETag keyed on only render-affecting fields. Includes updated_at
-// so a save that touches no price/slug field still invalidates.
+// Weak ETag keyed on every public field whose image or catalog updates must
+// invalidate a browser's conditional request.
 function catalogEtag(products) {
-  const fp = products
-    .map((p) => `${p.id}:${p.updated_at ?? ""}:${p.slug}:${p.price ?? ""}`)
-    .join("|");
+  const fp = JSON.stringify(
+    products.map((product) => ({
+      id: product.id,
+      slug: product.slug,
+      price: product.price,
+      image_url: product.image_url,
+      image_urls: product.image_urls,
+      images: product.images,
+    })),
+  );
   return computeEtag(fp);
 }
 
@@ -9085,10 +9087,36 @@ app.post("/api/products/save", async (req, res) => {
       const savedProduct = data[i];
       const sourceProduct = sourceProducts[i];
       if (!Array.isArray(sourceProduct.variants) || sourceProduct.variants.length === 0) continue;
+
+      // Derive a base selling price so per-variant pricing works even when the
+      // product-level selling_price is empty. Prefer an explicit product price;
+      // otherwise use the lowest variant price as the base. This prevents
+      // products from saving with a null base (which resolved every variant
+      // price to null/৳0 on the storefront).
+      const variantPrices = sourceProduct.variants
+        .map((v) => (v.selling_price != null ? parseFloat(v.selling_price) : null))
+        .filter((n) => n != null && !Number.isNaN(n));
+      const derivedBase =
+        savedProduct.selling_price != null
+          ? parseFloat(savedProduct.selling_price)
+          : variantPrices.length > 0
+            ? Math.min(...variantPrices)
+            : null;
+
+      if (derivedBase != null && savedProduct.selling_price == null) {
+        const { error: baseErr } = await supabase
+          .from("products")
+          .update({ selling_price: derivedBase })
+          .eq("id", savedProduct.id)
+          .eq("org_id", orgId);
+        if (baseErr) console.error("[products/save] base price update error:", baseErr.message);
+        savedProduct.selling_price = derivedBase;
+      }
+
       for (const v of sourceProduct.variants) {
         if (!v.attributes || typeof v.attributes !== "object" || Object.keys(v.attributes).length === 0) continue;
-        // Compute price_adjustment relative to base selling_price
-        const basePx = savedProduct.selling_price;
+        // Compute price_adjustment relative to the effective base selling price
+        const basePx = derivedBase;
         const varPx = v.selling_price != null ? parseFloat(v.selling_price) : null;
         const priceAdj = basePx != null && varPx != null ? varPx - basePx : 0;
         variantRows.push({
@@ -9529,7 +9557,7 @@ app.patch("/api/products/:id", async (req, res) => {
     if (!onlyStockChanged && (data.published || isUnpublishing)) {
       const isPublishing = update.published === true;
       const listChanged = isPublishing || isUnpublishing;
-      purgeProductCache(orgId, req.params.id, {
+      purgeProductCache(orgId, { id: data.id, slug: data.slug }, {
         listChanged,
         warm: !isUnpublishing,
       }).catch(() => {});
@@ -9558,17 +9586,26 @@ app.delete("/api/products/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: images } = await supabase
+    const { data: product, error: productError } = await supabase
+      .from("products")
+      .select("id, slug")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: "Product not found" });
+    const { data: images, error: imagesError } = await supabase
       .from("product_images")
       .select("storage_path")
       .eq("product_id", req.params.id)
       .eq("org_id", orgId);
-    const { error } = await supabase.from("products").delete().eq("id", req.params.id).eq("org_id", orgId);
+    if (imagesError) throw imagesError;
+    const { error } = await supabase.from("products").delete().eq("id", product.id).eq("org_id", orgId);
     if (error) throw error;
     // List changed + detail stale: purge with warm:false (warming an
     // unpublished 404 would pollute the edge with a negative entry).
-    purgeProductCache(orgId, req.params.id, { listChanged: true, warm: false }).catch(() => {});
-    const paths = (images || []).map((image) => image.storage_path).filter(Boolean);
+    purgeProductCache(orgId, product, { listChanged: true, warm: false }).catch(() => {});
+    const paths = (images || []).flatMap((image) => getProductImagePathsForCleanup(image.storage_path));
     if (paths.length) {
       await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove(paths);
     }
@@ -9616,7 +9653,7 @@ app.post("/api/products/:id/images", async (req, res) => {
 
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, name")
+      .select("id, name, slug")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -9638,33 +9675,75 @@ app.post("/api/products/:id/images", async (req, res) => {
     const inserted = [];
     for (let i = 0; i < files.length; i++) {
       const { buffer, mimeType } = parseProductImagePayload(files[i]);
-      const ext = productImageExtension(mimeType);
-      const storagePath = `${orgId}/${productId}/${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from(PRODUCT_IMAGES_BUCKET)
-        .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
-      if (uploadError) throw uploadError;
-      const { data: publicData } = supabase.storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(storagePath);
-      const imageUrl = publicData.publicUrl;
-      const isPrimary = currentCount === 0 && i === 0;
-      const { data: image, error: insertError } = await supabase
-        .from("product_images")
-        .insert({
-          org_id: orgId,
-          product_id: productId,
-          image_url: imageUrl,
-          storage_path: storagePath,
-          alt_text: files[i]?.alt_text || product.name,
-          sort_order: currentCount + i,
-          is_primary: isPrimary,
-        })
-        .select("id, product_id, image_url, alt_text, sort_order, is_primary, created_at")
-        .single();
-      if (insertError) {
-        await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove([storagePath]);
-        throw insertError;
+      let imageBuffers;
+      try {
+        imageBuffers = await buildProductImageBuffers(buffer, { mimeType });
+      } catch (error) {
+        console.warn("[products/images] image processing failed:", error.message);
+        const processingError = new Error("Product image could not be processed");
+        processingError.status = 400;
+        throw processingError;
       }
-      inserted.push({ ...image, url: image.image_url });
+
+      const asset = createProductImageAssetPaths({
+        orgId,
+        productId,
+        assetId: crypto.randomUUID(),
+      });
+      const uploadedPaths = [];
+      try {
+        const uploads = [
+          { path: asset.sourcePath, buffer: imageBuffers.source.buffer, contentType: imageBuffers.source.mimeType },
+          ...Object.entries(asset.variantPaths).map(([width, path]) => ({
+            path,
+            buffer: imageBuffers.variants[width].buffer,
+            contentType: "image/webp",
+          })),
+        ];
+
+        for (const upload of uploads) {
+          const { error: uploadError } = await supabase.storage
+            .from(PRODUCT_IMAGES_BUCKET)
+            .upload(upload.path, upload.buffer, {
+              contentType: upload.contentType,
+              cacheControl: String(PRODUCT_IMAGE_CACHE_SECONDS),
+              upsert: false,
+            });
+          if (uploadError) throw uploadError;
+          uploadedPaths.push(upload.path);
+        }
+
+        const { data: publicData } = supabase.storage
+          .from(PRODUCT_IMAGES_BUCKET)
+          .getPublicUrl(asset.variantPaths["960"]);
+        const imageUrl = publicData.publicUrl;
+        const isPrimary = currentCount === 0 && i === 0;
+        const { data: image, error: insertError } = await supabase
+          .from("product_images")
+          .insert({
+            org_id: orgId,
+            product_id: productId,
+            image_url: imageUrl,
+            storage_path: asset.sourcePath,
+            alt_text: files[i]?.alt_text || product.name,
+            sort_order: currentCount + i,
+            is_primary: isPrimary,
+          })
+          .select("id, product_id, image_url, alt_text, sort_order, is_primary, created_at")
+          .single();
+        if (insertError) throw insertError;
+        inserted.push({ ...image, url: image.image_url });
+      } catch (error) {
+        if (uploadedPaths.length) {
+          const { error: cleanupError } = await supabase.storage
+            .from(PRODUCT_IMAGES_BUCKET)
+            .remove(uploadedPaths);
+          if (cleanupError) {
+            console.warn("[products/images] asset cleanup failed:", cleanupError.message);
+          }
+        }
+        throw error;
+      }
     }
 
     if (inserted[0] && inserted[0].is_primary) {
@@ -9680,6 +9759,8 @@ app.post("/api/products/:id/images", async (req, res) => {
           .eq("id", productId).eq("org_id", orgId).then(() => {});
       }).catch(() => {});
     }
+
+    purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
 
     return res.json({ images: inserted });
   } catch (e) {
@@ -9699,7 +9780,7 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
 
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id")
+      .select("id, slug")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -9732,6 +9813,7 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
     if (primary) {
       await supabase.from("products").update({ image_url: primary.image_url }).eq("id", productId).eq("org_id", orgId);
     }
+    purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
     const imagesMap = await loadProductImagesMap(supabase, orgId, [productId]);
     return res.json({ images: imagesMap[productId] || [] });
   } catch (e) {
@@ -9746,6 +9828,14 @@ app.delete("/api/products/:id/images/:imageId", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const productId = req.params.id;
+    const { data: product, error: productError } = await supabase
+      .from("products")
+      .select("id, slug")
+      .eq("id", productId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: "Product not found" });
     const { data: image, error: imageError } = await supabase
       .from("product_images")
       .select("id, storage_path, is_primary")
@@ -9764,7 +9854,7 @@ app.delete("/api/products/:id/images/:imageId", async (req, res) => {
       .eq("org_id", orgId);
     if (deleteError) throw deleteError;
     if (image.storage_path) {
-      await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove([image.storage_path]);
+      await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove(getProductImagePathsForCleanup(image.storage_path));
     }
 
     if (image.is_primary) {
@@ -9784,6 +9874,8 @@ app.delete("/api/products/:id/images/:imageId", async (req, res) => {
         await supabase.from("products").update({ image_url: null }).eq("id", productId).eq("org_id", orgId);
       }
     }
+
+    purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
 
     return res.json({ success: true });
   } catch (e) {

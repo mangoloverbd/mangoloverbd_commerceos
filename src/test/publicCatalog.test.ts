@@ -39,7 +39,7 @@ const ALLOWED_PRODUCT_KEYS = new Set([
 ]);
 
 const ALLOWED_VARIANT_KEYS = new Set(["id", "attributes", "price", "available", "stock_quantity"]);
-const ALLOWED_IMAGE_KEYS = new Set(["id", "url", "alt_text", "sort_order", "is_primary"]);
+const ALLOWED_IMAGE_KEYS = new Set(["id", "url", "sources", "alt_text", "sort_order", "is_primary"]);
 
 describe("toPublicProduct", () => {
   it("returns only storefront-safe fields for a published product", () => {
@@ -114,6 +114,11 @@ describe("toPublicProduct", () => {
         {
           id: "img-1",
           url: "https://cdn.test/bag-1.webp",
+          sources: {
+            "320": "https://cdn.test/bag-1-320.webp",
+            "640": "https://cdn.test/bag-1-640.webp",
+            "960": "https://cdn.test/bag-1-960.webp",
+          },
           storage_path: "org/p3/internal.webp",
           alt_text: "Canvas bag",
           sort_order: 0,
@@ -132,10 +137,15 @@ describe("toPublicProduct", () => {
 
     expect(product.image_url).toBe("https://cdn.test/bag-1.webp");
     expect(product.images).toEqual([
-      {
-        id: "img-1",
-        url: "https://cdn.test/bag-1.webp",
-        alt_text: "Canvas bag",
+        {
+          id: "img-1",
+          url: "https://cdn.test/bag-1.webp",
+          sources: {
+            "320": "https://cdn.test/bag-1-320.webp",
+            "640": "https://cdn.test/bag-1-640.webp",
+            "960": "https://cdn.test/bag-1-960.webp",
+          },
+          alt_text: "Canvas bag",
         sort_order: 0,
         is_primary: true,
       },
@@ -150,6 +160,32 @@ describe("toPublicProduct", () => {
     expect(product.image_urls).toEqual(["https://cdn.test/bag-1.webp", "https://cdn.test/bag-2.webp"]);
     expect(product.images[0]).not.toHaveProperty("storage_path");
     expect(product.images[1]).not.toHaveProperty("storage_path");
+  });
+
+  it("keeps an incomplete delivery map out of the public contract", () => {
+    const product = toPublicProduct(
+      { id: "p4", name: "Legacy Bag", selling_price: 900 },
+      [],
+      [
+        {
+          id: "img-legacy",
+          url: "https://cdn.test/legacy.webp",
+          sources: { "320": "https://cdn.test/legacy-320.webp" },
+          alt_text: "Legacy bag",
+          sort_order: 0,
+          is_primary: true,
+        },
+      ],
+    );
+
+    expect(product.images[0]).toEqual({
+      id: "img-legacy",
+      url: "https://cdn.test/legacy.webp",
+      alt_text: "Legacy bag",
+      sort_order: 0,
+      is_primary: true,
+    });
+    expect(product.images[0]).not.toHaveProperty("sources");
   });
 
   it("is sellable by price when a product has no variants", () => {

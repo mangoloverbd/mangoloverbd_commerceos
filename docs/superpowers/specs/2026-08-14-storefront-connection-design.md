@@ -1,11 +1,13 @@
 # Storefront ↔ Merchant Suite Connection — Design
 
+> **Superseded for new work (2026-08-27):** The repository/data boundary remains historical context, but the cache, stock, image, order, and live-synchronization architecture is replaced by `docs/superpowers/specs/2026-08-27-realtime-storefront-sync-design.md`.
+
 Date: 2026-08-14
 Status: Approved by user
 
 ## Goal
 
-Connect the e-commerce storefront repo (github.com/noorkarimmehedi/e-commerce, deployed at stepprsbangladesh.vercel.app) to this Merchant Suite (Commerce-os, Supabase `alupmlvmrtrfshnmpfig`) as a **single-storefront, single-tenant** pair. No visual/design changes to the storefront. Product pages are created from the suite's catalog.
+Connect the e-commerce storefront repo (github.com/mangoloverbd/mangoloverbd_storefront, originally forked from `noorkarimmehedi/e-commerce` and deployed at stepprsbangladesh.vercel.app) to this Merchant Suite (Commerce-os, Supabase `alupmlvmrtrfshnmpfig`) as a **single-storefront, single-tenant** pair. No visual/design changes to the storefront. Product pages are created from the suite's catalog.
 
 ## Context
 
@@ -19,7 +21,7 @@ Connect the e-commerce storefront repo (github.com/noorkarimmehedi/e-commerce, d
 1. Target backend: **this Commerce-os repo** (canonical `/api/public/v1/` API).
 2. Product source of truth: **seed storefront products into the suite** (user-approved).
 3. Tenant: org `2a155750-b11a-4ff2-a7ff-4e26daac46ef`; storefront id = org id.
-4. Order API key: reuse `stepprsbangladesh-098765`, registered in `app_settings` as `2a155750…:custom_store_api_key`.
+4. Historical order API key was registered in `app_settings` as `2a155750…:custom_store_api_key`. Its plaintext value has been removed; generate and inject a unique key through the environment if this legacy seed flow is ever used again.
 5. Defaults: "special" home cards (Top 10 / Accessories / Bottoms) keep current link behavior (not seeded); insoles-specific PDP sections (features, reels, bundles) render unchanged on all PDPs.
 
 ## Changes

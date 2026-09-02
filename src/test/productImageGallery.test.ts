@@ -9,6 +9,8 @@ describe("product image gallery", () => {
   const editProductSource = readFileSync(resolve(process.cwd(), "src/pages/ProductEdit.tsx"), "utf8");
   const sharedSource = readFileSync(resolve(process.cwd(), "src/pages/products/shared.tsx"), "utf8");
   const serverSource = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
+  const imagePipelineSource = readFileSync(resolve(process.cwd(), "server/productImages.js"), "utf8");
+  const productCacheSource = readFileSync(resolve(process.cwd(), "server/productCache.js"), "utf8");
   const publicCatalogSource = readFileSync(resolve(process.cwd(), "server/publicCatalog.js"), "utf8");
   const baselineSource = readFileSync(
     resolve(process.cwd(), "supabase/migrations/20260828000000_canonical_schema_reconciliation.sql"),
@@ -28,7 +30,14 @@ describe("product image gallery", () => {
 
   it("returns image galleries from private and public product APIs", () => {
     expect(serverSource).toContain("loadProductImagesMap");
+    expect(serverSource).toContain("getProductImageVariantPaths");
     expect(serverSource).toContain("images: imagesMap[p.id] || []");
+    expect(serverSource).toContain("buildProductImageBuffers");
+    expect(serverSource).toContain("getProductImagePathsForCleanup");
+    expect(serverSource).toContain("cacheControl: String(PRODUCT_IMAGE_CACHE_SECONDS)");
+    expect(serverSource).toContain("purgeProductCache(orgId, product");
+    expect(imagePipelineSource).toContain("PRODUCT_IMAGE_VARIANT_WIDTHS");
+    expect(productCacheSource).toContain("buildProductCacheUrls");
     expect(publicCatalogSource).toContain("images: galleryImages");
     expect(publicCatalogSource).toContain("image_urls: galleryImages.map((image) => image.url)");
   });

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, Fragment } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { apiFetch } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,7 +12,7 @@ import { motion, AnimatePresence, useReducedMotion, type Transition } from "fram
 import {
   Search, Trash2, PackageSearch,
   Package2, RefreshCw, Plus, X,
-  Check, ChevronDown, FileEdit,
+  ChevronDown, FileEdit,
   ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
@@ -24,7 +24,6 @@ import { Chip } from "@/components/base/badges/chip";
 import { ChevronDownSmall } from "@/components/foundations/icons/chevrons";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { PopButton } from "@/components/ui/pop-button";
 import { RichButton } from "@/components/ui/rich-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -36,6 +35,8 @@ import {
   type Product,
   type ProductVariant,
   type ProductsResponse,
+  productPriceDisplayLines,
+  productPriceSortValue,
 } from "./products/shared";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -146,154 +147,39 @@ function StatCard({
   );
 }
 
-// ── Variant chip + click-to-edit popover ──────────────────────────────────────
+// ── Variant chip ──────────────────────────────────────────────────────────────
 
 function VariantChip({
-  variant, productId, isAdmin,
-}: { variant: ProductVariant; productId: string; isAdmin: boolean }) {
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [stockDraft, setStockDraft] = useState(String(variant.stock_quantity));
-  const [cogDraft, setCogDraft] = useState(String(variant.cog));
-  const [saving, setSaving] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  variant,
+}: { variant: ProductVariant }) {
   const status = stockStatus(variant.stock_quantity);
-
-  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 60); }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const fn = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setStockDraft(String(variant.stock_quantity));
-        setCogDraft(String(variant.cog));
-      }
-    };
-    document.addEventListener("mousedown", fn);
-    return () => document.removeEventListener("mousedown", fn);
-  }, [open, variant.stock_quantity, variant.cog]);
-
-  async function save() {
-    setSaving(true);
-    try {
-      const body: Record<string, unknown> = { stock_quantity: Math.max(0, parseInt(stockDraft, 10) || 0) };
-      if (isAdmin) body.cog = parseFloat(cogDraft) || 0;
-      const res = await apiFetch(`/api/products/${productId}/variants/${variant.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error();
-      await qc.invalidateQueries({ queryKey: ["/api/products"] });
-      setOpen(false);
-      toast.success("Variant saved");
-    } catch { toast.error("Failed to save"); }
-    finally { setSaving(false); }
-  }
-
-  async function del() {
-    try {
-      const res = await apiFetch(`/api/products/${productId}/variants/${variant.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      await qc.invalidateQueries({ queryKey: ["/api/products"] });
-      toast.success("Variant removed");
-    } catch { toast.error("Failed to remove variant"); }
-  }
-
   const token = STATUS_TOKEN[status];
   const chipColor = statusToChipColor(status);
 
   return (
-    <div className="relative inline-block" ref={ref}>
-      <Chip
-        variant="caption"
-        color={chipColor}
-        role="button"
-        tabIndex={0}
-        onClick={(event) => { event.stopPropagation(); setOpen(v => !v); }}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setOpen(v => !v); } }}
-        className={cn("cursor-pointer select-none gap-1.5 leading-none w-[72px] justify-center", open && "ring-2 ring-black/30")}
-      >
-        <span className={cn("h-[5px] w-[5px] rounded-full shrink-0", token.dot)} />
-        <span style={{ fontFamily: SYS }}>{attrLabel(variant.attributes)}</span>
-        <span className="opacity-30">·</span>
-        <span className="tabular-nums" style={{ fontFamily: SYS }}>
-          {status === "out" ? "Out" : variant.stock_quantity}
-        </span>
-      </Chip>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.96 }}
-            transition={{ duration: 0.14, ease: [0.36, 0.66, 0.04, 1] }}
-            className="absolute left-0 top-full z-50 mt-2 w-60 rounded-[14px] border border-black/[0.08] bg-white p-4 shadow-sm"
-            style={{ fontFamily: SYS }}
-          >
-            {/* Attribute tags */}
-            <div className="mb-3 flex flex-wrap gap-1">
-              {Object.entries(variant.attributes).map(([k, v]) => (
-                <span key={k} className="rounded-lg bg-black/[0.04] px-2 py-0.5 text-[11px] text-black">
-                  <span className="text-black/40">{k}:</span> {v}
-                </span>
-              ))}
-            </div>
-
-            <div className="space-y-2.5">
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Stock</label>
-                <input ref={inputRef} type="number" min={0} value={stockDraft}
-                  onChange={e => setStockDraft(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && save()}
-                  className={cn(INPUT_CLS, "h-9")} />
-              </div>
-              {isAdmin && (
-                <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Cost (৳)</label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-zinc-900">৳</span>
-                    <input type="number" min={0} value={cogDraft}
-                      onChange={e => setCogDraft(e.target.value)}
-                      onKeyDown={e => e.key === "Enter" && save()}
-                      className="h-9 w-full rounded-[12px] pl-7 pr-3 font-mono text-[13px] outline-none tabular-nums focus-visible:ring-2 focus-visible:ring-black/20 bg-[#E3E3E3]/80 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] text-zinc-900 transition-all hover:bg-[#E3E3E3]" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <button onClick={save} disabled={saving}
-                className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-xl bg-black text-[12px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40">
-                {saving ? <Spinner size="sm" /> : <><Check className="h-3 w-3" />Save</>}
-              </button>
-              <button onClick={del}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-black/40 transition-colors hover:bg-red-50 hover:text-red-500">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <Chip
+      variant="caption"
+      color={chipColor}
+      className="w-auto min-w-[100px] select-none gap-1.5 rounded-[8px] px-2 leading-none"
+    >
+      <span className={cn("h-[5px] w-[5px] rounded-full shrink-0", token.dot)} />
+      <span style={{ fontFamily: SYS }}>{attrLabel(variant.attributes)}</span>
+      <span className="opacity-30">·</span>
+      <span className="tabular-nums" style={{ fontFamily: SYS }}>
+        {status === "out" ? "Out" : variant.stock_quantity}
+      </span>
+    </Chip>
   );
 }
 
 // ─ Variant chips strip (stacked list) ────────────────────────────────────────
 
-function VariantStrip({
-  product, isAdmin, onAdd,
-}: { product: Product; isAdmin: boolean; onAdd: () => void }) {
+function VariantStrip({ product }: { product: Product }) {
   const { variants } = product;
 
   if (variants.length === 0) {
     return (
-      <button onClick={(event) => { event.stopPropagation(); onAdd(); }}
-        className="inline-flex items-center gap-1 rounded-[8px] border border-dashed border-black/[0.15] px-3 py-[5px] text-[11px] text-text-secondary transition-colors hover:border-black/30 hover:text-text-primary"
-        style={{ fontFamily: SYS }}>
-        <Plus className="h-3 w-3" /> Add variants
-      </button>
+      <span className="text-[12px] text-text-tertiary" style={{ fontFamily: SYS }}>—</span>
     );
   }
 
@@ -302,186 +188,16 @@ function VariantStrip({
   return (
     <div className="flex flex-col gap-1.5">
       {sorted.map(v => (
-        <VariantChip key={v.id} variant={v} productId={product.id} isAdmin={isAdmin} />
+        <VariantChip key={v.id} variant={v} />
       ))}
-      <button onClick={(event) => { event.stopPropagation(); onAdd(); }}
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] border border-dashed border-black/[0.15] text-text-secondary transition-colors hover:border-black/30 hover:text-text-primary">
-        <Plus className="h-3 w-3" />
-      </button>
     </div>
-  );
-}
-
-// ── Add-variant drawer ────────────────────────────────────────────────────────
-
-function AddVariantDrawer({
-  product, isAdmin, onClose,
-}: { product: Product; isAdmin: boolean; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [rows, setRows] = useState([{ key: "", value: "" }]);
-  const [stock, setStock] = useState("0");
-  const [cog, setCog] = useState("0");
-  const [priceAdj, setPriceAdj] = useState("0");
-  const [saving, setSaving] = useState(false);
-
-  function setRow(i: number, f: "key" | "value", v: string) {
-    setRows(r => r.map((x, j) => j === i ? { ...x, [f]: v } : x));
-  }
-
-  async function submit() {
-    const attrs: Record<string, string> = {};
-    for (const r of rows) {
-      const k = r.key.trim().toLowerCase(), v = r.value.trim();
-      if (k && v) attrs[k] = v;
-    }
-    if (!Object.keys(attrs).length) {
-      toast.error("Add at least one attribute (e.g. color: Black)");
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await apiFetch(`/api/products/${product.id}/variants`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          attributes: attrs,
-          stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
-          cog: parseFloat(cog) || 0,
-          price_adjustment: parseFloat(priceAdj) || 0,
-        }),
-      });
-      if (!res.ok) throw new Error();
-      await qc.invalidateQueries({ queryKey: ["/api/products"] });
-      toast.success("Variant added");
-      onClose();
-    } catch { toast.error("Failed to add variant"); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.2, ease: [0.36, 0.66, 0.04, 1] }}
-      className="overflow-hidden border-t border-black/[0.06] bg-[#FAFAF8]"
-      style={{ fontFamily: SYS }}
-    >
-      <div className="px-6 py-5">
-        <div className="mb-4 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-black/40">
-            Add Variant — <span className="text-black">{product.name}</span>
-          </p>
-          <button onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-black/40 transition-colors hover:bg-black/[0.06]">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-          {/* Dynamic attribute builder */}
-          <div className="flex-1 space-y-2">
-            <p className="text-[11px] font-medium text-black/40">
-              Attributes&nbsp;
-              <span className="font-normal text-black/25">— any key / value combination</span>
-            </p>
-            <div className="space-y-2">
-              {rows.map((row, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="attribute (color, weight…)"
-                    value={row.key}
-                    onChange={e => setRow(i, "key", e.target.value)}
-                    className={cn(INPUT_CLS, "h-9 w-36 shrink-0")}
-                  />
-                  <span className="text-[12px] text-black/25 shrink-0">:</span>
-                  <input
-                    type="text"
-                    placeholder="value"
-                    value={row.value}
-                    onChange={e => setRow(i, "value", e.target.value)}
-                    className={cn(INPUT_CLS, "h-9 flex-1")}
-                  />
-                  {rows.length > 1 && (
-                    <button onClick={() => setRows(r => r.filter((_, j) => j !== i))}
-                      className="shrink-0 rounded-lg p-1 text-black/40 hover:text-red-500">
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setRows(r => [...r, { key: "", value: "" }])}
-              className="flex items-center gap-1.5 text-[12px] text-black/40 hover:text-black transition-colors">
-              <Plus className="h-3 w-3" /> Add attribute
-            </button>
-          </div>
-
-          {/* Numeric fields — all h-9, identical styling */}
-          <div className="flex flex-wrap items-end gap-3 lg:flex-nowrap">
-            <div className="w-[104px] space-y-1.5">
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-black/40">Stock</label>
-              <input type="number" min={0} value={stock}
-                onChange={e => setStock(e.target.value)}
-                className={cn(INPUT_CLS, "h-9")} />
-            </div>
-            {isAdmin && (
-              <>
-                <div className="w-[104px] space-y-1.5">
-                  <label className="block text-[10px] font-semibold uppercase tracking-widest text-black/40">Cost (৳)</label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/40">৳</span>
-                    <input type="number" min={0} value={cog}
-                      onChange={e => setCog(e.target.value)}
-                      className={cn(INPUT_CLS, "h-9 pl-7")} />
-                  </div>
-                </div>
-                <div className="w-[104px] space-y-1.5">
-                  <label className="block text-[10px] font-semibold uppercase tracking-widest text-black/40">Price ±</label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-black/40">৳</span>
-                    <input type="number" value={priceAdj}
-                      onChange={e => setPriceAdj(e.target.value)}
-                      className={cn(INPUT_CLS, "h-9 pl-7")} />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-5 flex items-center gap-2">
-          <PopButton
-            color="blue"
-            size="sm"
-            type="button"
-            onClick={submit}
-            disabled={saving}
-            className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
-          >
-            {saving ? <Spinner size="sm" /> : <Plus className="h-3.5 w-3.5" />}
-            Add variant
-          </PopButton>
-          <PopButton
-            color="default"
-            size="sm"
-            type="button"
-            onClick={onClose}
-            className="px-3 text-[11px] font-bold tracking-normal"
-          >
-            Cancel
-          </PopButton>
-        </div>
-      </div>
-    </motion.div>
   );
 }
 
 // ── BoardUI-style data table ──────────────────────────────────────────────────
 // Built on @tanstack/react-table: sortable headers, column visibility toggle,
 // faceted stock filter, global search, pagination and row selection. Keeps every
-// existing interaction (variant chips, inline COG edit, publish toggle, delete,
-// add-variant drawer).
+// existing interaction (variant chips, inline COG edit, publish toggle, delete).
 
 type ColMeta = { align?: "left" | "right" | "center" };
 
@@ -525,7 +241,6 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
   const [cogEdits, setCogEdits] = useState<Record<string, string>>({});
   const [editingCogFor, setEditingCogFor] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
-  const [addingFor, setAddingFor] = useState<string | null>(null);
 
   async function saveCog(product: Product) {
     if (cogEdits[product.id] === undefined) return;
@@ -639,8 +354,6 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
       cell: ({ row }) => (
         <VariantStrip
           product={row.original}
-          isAdmin={isAdmin}
-          onAdd={() => setAddingFor(addingFor === row.original.id ? null : row.original.id)}
         />
       ),
     },
@@ -648,10 +361,15 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
       accessorKey: "selling_price",
       header: ({ column }) => <SortHeader column={column} title="Price" />,
       meta: { align: "center" } as ColMeta,
-      cell: ({ row }) => (
-        <span data-testid={`text-selling-price-${row.original.id}`} className="font-mono text-body-medium tabular-nums text-text-primary">{fmt(row.original.selling_price)}</span>
-      ),
-      sortingFn: (a, b) => (a.original.selling_price ?? -1) - (b.original.selling_price ?? -1),
+      cell: ({ row }) => {
+        const lines = productPriceDisplayLines(row.original);
+        return (
+          <span data-testid={`text-selling-price-${row.original.id}`} className="flex flex-col items-center gap-1 font-mono text-body-medium tabular-nums text-text-primary">
+            {lines.map((line) => <span key={line}>{line}</span>)}
+          </span>
+        );
+      },
+      sortingFn: (a, b) => productPriceSortValue(a.original) - productPriceSortValue(b.original),
     },
     ...(isAdmin ? [{
       accessorKey: "cog",
@@ -901,13 +619,6 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
                       );
                     })}
                   </tr>
-                  {addingFor === row.original.id && (
-                    <tr className="border-b border-[color:var(--color-separator-border)] bg-background-secondary-default">
-                      <td colSpan={row.getVisibleCells().length} className="p-0">
-                        <AddVariantDrawer product={row.original} isAdmin={isAdmin} onClose={() => setAddingFor(null)} />
-                      </td>
-                    </tr>
-                  )}
                 </Fragment>
               ))}
             </tbody>

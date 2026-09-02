@@ -39,7 +39,7 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
-STOREFRONT_GIT_REPO=noorkarimmehedi/e-commerce
+STOREFRONT_GIT_REPO=mangoloverbd/mangoloverbd_storefront
 ```
 
 > **Before starting any new feature:** invoke the `brainstorming` skill to explore requirements and design before touching code. Invoke `writing-plans` after brainstorming to produce an implementation plan. Invoke `plan-ceo-review` if you want to pressure-test scope or ambition.
@@ -86,9 +86,12 @@ Supabase PostgreSQL. The Merchant-Suite frontend accesses Supabase directly only
 | `social_inbox_orders` | Orders captured from social chats, org_id |
 | `products` | Product catalog with COGs, org_id |
 
-**Startup migrations** run automatically on cold-start:
-- `migrateInboxOrdersTable()` — ensures `social_inbox_orders` has all columns
-- `migrateMultiTenancy()` — legacy compatibility migration that ensures existing `org_id` columns remain available + reloads the PostgREST schema cache
+**Schema changes never run at application startup.** The canonical,
+data-preserving schema reconciliation lives in `supabase/migrations/`; Vercel cold starts perform a read-only
+readiness check and never execute DDL. Historical migrations are archived under
+`supabase/legacy-migrations/` and must not be applied to the canonical project.
+Run `npm run verify:supabase-project` before any linked Supabase command and
+`npm run verify:supabase-baseline` before proposing a migration for deployment.
 
 > **Before schema changes or writing Postgres queries:** invoke the `supabase` skill. For query optimization or index design, invoke `supabase-postgres-best-practices`. The project-local Supabase MCP server is configured in `.mcp.json` (Claude Code) and `.codex/config.toml` (Codex) — use it for direct DB introspection.
 
@@ -98,7 +101,7 @@ Merchant-Suite and the dedicated storefront are separate GitHub repositories and
 
 - **GitHub + Vercel own application code.** Storefront components, layouts, CSS, application logic, and fixed code assets live in the storefront repository. Agent-led design customization is committed there, and Vercel redeploys it automatically.
 - **Supabase owns runtime content and commerce data.** Products, prices, variants, authoritative stock, product images, editable branding, shipping configuration, customers, orders, and storefront revision state live in the same Mango Lover BD Supabase project.
-- **Dashboard changes never require a storefront redeploy.** Product, image, price, publication, variant, or stock mutations go through authenticated Merchant-Suite APIs, update Supabase, advance catalog/inventory revisions, invalidate Vercel cache entries, and notify already-open storefronts.
+- **Dashboard changes never require a storefront redeploy.** Product, image, price, publication, variant, or stock mutations go through authenticated Merchant-Suite APIs, update Supabase, advance catalog/inventory revisions, and notify already-open storefronts. Revision-keyed URLs provide cache correctness on Vercel without a v1 purge dependency.
 - **The public storefront consumes the versioned Merchant-Suite API.** Keep commerce reads and checkout behind `/api/public/v1/:handle/...`; do not couple storefront UI to internal Supabase product or order tables.
 - **Direct Supabase access in the storefront is notification-only.** A browser-safe Supabase publishable key may subscribe to a narrowly exposed, read-only storefront revision signal. Never expose the service-role/secret key, and never grant the storefront direct writes to commerce tables.
 - **Images use Supabase Storage plus Vercel delivery.** Merchant-uploaded product and branding images use immutable UUID object paths in the shared Supabase Storage project. The storefront serves responsive variants through Vercel Image Optimization/CDN.
@@ -134,7 +137,7 @@ The detailed approved direction is documented in `docs/superpowers/specs/2026-08
 | `src/integrations/supabase/client.ts` | Supabase browser client (anon key) |
 | `src/integrations/supabase/types.ts` | Generated Supabase TypeScript types |
 | `server/index.js` | Entire Express backend — all API routes, helpers, migrations |
-| `server/db.ts` | Direct pg Pool connection (used for raw SQL migrations) |
+| `server/db.ts` | Legacy Drizzle connection module; do not use it for runtime migrations |
 | `.env` | Environment variables — never commit this |
 | `.mcp.json` | Project-local Supabase MCP server configuration (Claude Code) |
 | `.codex/config.toml` | Project-local Supabase MCP server configuration (Codex) |
@@ -241,7 +244,6 @@ All routes are in `server/index.js`. Group new routes with their domain section.
 | Brand Doc | `GET /api/social/brand-doc`, `POST /api/social/brand-doc` |
 | Products | `GET /api/products`, `POST /api/products/save`, `POST /api/products/crawl`, `PATCH /api/products/:id`, `DELETE /api/products/:id` |
 | AI | `POST /api/extract-order-from-text` |
-| DB Setup | `GET /api/db-setup-sql`, `POST /api/db-setup` (admin only) |
 
 > **Before shipping any API changes:** run `review` skill to check for SQL safety, auth gaps, and workspace guards. Run `qa` skill to verify the feature works end-to-end in the browser.
 
@@ -459,7 +461,7 @@ Key routing rules:
 This repository is the dedicated Merchant-Suite deployment for **Mango Lover BD**. It has one Supabase project, one analytics setup, one branded operations dashboard, and one intended storefront. Do not add merchant selection, tenant provisioning, or shared multi-merchant workflows.
 
 ### Setup for Mango Lover BD (operator)
-1. **Fork & brand.** Fork this Merchant-Suite repository for Mango Lover BD and fork `github.com/noorkarimmehedi/e-commerce` as its dedicated storefront. Use the brand's Facebook page as the primary social reference: `https://www.facebook.com/WeAreMangoLover`.
+1. **Fork & brand.** Fork this Merchant-Suite repository for Mango Lover BD and use `github.com/mangoloverbd/mangoloverbd_storefront` (originally forked from `noorkarimmehedi/e-commerce`) as its dedicated storefront. Use the brand's Facebook page as the primary social reference: `https://www.facebook.com/WeAreMangoLover`.
 2. **Create the accounts.** Use the Mango Lover BD **Supabase** project and the deployment's analytics project. Keep all credentials in environment variables or the existing server-side settings flow; never commit secrets.
 3. **Fill keys & deploy.** Enter Mango Lover BD's Supabase, AI, courier, Shopify, Meta, fraud, analytics, Vercel, and storefront values into the deployment configuration, then deploy the Suite at the approved Mango Lover BD URL.
 4. **Create the admin account.** The first Mango Lover BD admin login receives the existing admin role. Additional staff accounts may be invited and share the same workspace.
@@ -467,7 +469,7 @@ This repository is the dedicated Merchant-Suite deployment for **Mango Lover BD*
 ### Mango Lover BD storefront flow (references in `server/index.js`)
 5. **Add products & provision storefront.** Add Mango Lover BD products manually or through Shopify, publish the products intended for sale, then use **"Provision Storefront"** → `POST /api/storefront/provision` (server/index.js:2559). The server:
    - ensures a `custom_store_api_key` exists for this deployment,
-   - creates a dedicated **Vercel project** from the forked `noorkarimmehedi/e-commerce` storefront repository,
+   - creates a dedicated **Vercel project** from the `mangoloverbd/mangoloverbd_storefront` storefront repository,
    - sets the Merchant-Suite URL and storefront identity variables,
    - under the approved realtime-sync architecture, also sets `VITE_STOREFRONT_HANDLE`, `VITE_SUPABASE_URL`, and the browser-safe `VITE_SUPABASE_PUBLISHABLE_KEY`,
    - keeps `CUSTOM_ORDERS_API_KEY` server-only and never exposes it through a `VITE_` variable,

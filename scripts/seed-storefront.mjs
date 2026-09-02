@@ -3,7 +3,7 @@
  * One-off, idempotent seed for the storefront catalog in the current Merchant Suite DB.
  *
  * Run with the repo's .env loaded:
- *   node --env-file=.env scripts/seed-storefront.mjs
+ *   SEED_ORDER_API_KEY=<generated-secret> node --env-file=.env scripts/seed-storefront.mjs
  *
  * What it does:
  *   1. Ensures the `product_variants` table exists (matches MULTI_TENANCY_SQL) + reloads the
@@ -30,7 +30,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS = join(__dirname, "seed-assets");
 
 const ORG_ID = process.env.SEED_ORG_ID || "2a155750-b11a-4ff2-a7ff-4e26daac46ef";
-const ORDER_API_KEY = process.env.SEED_ORDER_API_KEY || "stepprsbangladesh-098765";
+const ORDER_API_KEY = process.env.SEED_ORDER_API_KEY;
+if (!ORDER_API_KEY) {
+  throw new Error("SEED_ORDER_API_KEY is required; generate a unique secret and provide it through the environment");
+}
 const BUCKET = "product-images";
 
 const INSOLES_IMG_BASE =
