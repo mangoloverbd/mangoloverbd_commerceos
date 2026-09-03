@@ -307,6 +307,20 @@ describe("order item API contract", () => {
     expect(route).toContain("product_id");
   });
 
+  it("invalidates affected storefront caches only after a successful mutation", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const end = source.indexOf('app.post("/api/custom-orders/webhook"', start);
+    const route = source.slice(start, end);
+    const rpc = route.indexOf('supabase.rpc("replace_order_items"');
+    const mutationError = route.indexOf("if (mutationError)", rpc);
+    const cachePurge = route.indexOf("purgeProductCache", rpc);
+    expect(rpc).toBeGreaterThan(-1);
+    expect(cachePurge).toBeGreaterThan(mutationError);
+    expect(route.slice(mutationError, cachePurge)).not.toContain("purgeProductCache");
+    expect(route).toContain("listChanged: false");
+    expect(route).toContain("warm: false");
+  });
+
   it("returns conflict errors for dispatched orders and insufficient stock", () => {
     const start = source.indexOf('app.patch("/api/orders/:id/items"');
     const route = source.slice(start, source.indexOf("\n});", start));

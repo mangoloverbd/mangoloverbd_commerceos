@@ -5373,16 +5373,18 @@ app.patch("/api/orders/:id/items", async (req, res) => {
 
     const productIds = [...new Set(normalizedItems.map((item) => item.productId).filter(Boolean))];
     const variantIds = [...new Set(normalizedItems.map((item) => item.variantId).filter(Boolean))];
+    const affectedProducts = new Map();
     if (productIds.length) {
       const { data: products, error } = await supabase
         .from("products")
-        .select("id")
+        .select("id, slug")
         .in("id", productIds)
         .eq("org_id", orgId);
       if (error) throw error;
       if ((products || []).length !== productIds.length) {
         return res.status(400).json({ error: "One or more products are not available" });
       }
+      for (const product of products || []) affectedProducts.set(product.id, product);
     }
     if (variantIds.length) {
       const { data: variants, error } = await supabase
@@ -5397,6 +5399,17 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       const variantProducts = new Map((variants || []).map((variant) => [variant.id, variant.product_id]));
       if (normalizedItems.some((item) => item.variantId && item.productId && variantProducts.get(item.variantId) !== item.productId)) {
         return res.status(400).json({ error: "Variant does not belong to supplied product" });
+      }
+      const variantProductIds = [...new Set((variants || []).map((variant) => variant.product_id).filter(Boolean))];
+      const missingProductIds = variantProductIds.filter((id) => !affectedProducts.has(id));
+      if (missingProductIds.length) {
+        const { data: products, error: productsError } = await supabase
+          .from("products")
+          .select("id, slug")
+          .in("id", missingProductIds)
+          .eq("org_id", orgId);
+        if (productsError) throw productsError;
+        for (const product of products || []) affectedProducts.set(product.id, product);
       }
     }
 
@@ -5414,6 +5427,14 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       }
       throw mutationError;
     }
+
+    await Promise.all(
+      [...affectedProducts.values()].map((product) =>
+        purgeProductCache(orgId, product, { listChanged: false, warm: false }).catch((error) => {
+          console.warn("[Orders] Product cache purge failed after item edit:", error.message);
+        }),
+      ),
+    );
 
     const [{ data: updatedOrder, error: updatedOrderError }, { data: items, error: updatedItemsError }] = await Promise.all([
       supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single(),
