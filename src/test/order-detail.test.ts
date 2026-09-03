@@ -56,8 +56,9 @@ function response(body: unknown, ok = true, status = ok ? 200 : 404) {
   return { ok, status, json: async () => body } as Response;
 }
 
-function renderPage(id = "order-1") {
+function renderPage(id = "order-1", cachedOrders?: unknown[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (cachedOrders) queryClient.setQueryData(["/api/orders"], cachedOrders);
   const result = render(createElement(
     QueryClientProvider,
     { client: queryClient },
@@ -91,6 +92,16 @@ describe("OrderDetail", () => {
     apiFetch.mockReturnValue(new Promise(() => {}));
     renderPage();
     expect(screen.getByTestId("order-detail-loading")).toBeInTheDocument();
+  });
+
+  it("renders the cached dashboard order while detail data is pending", () => {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") return new Promise(() => {});
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage("order-1", [{ ...order, items: [{ product_id: "product-1", product_name: "Premium Mango", variant_name: '{"size":"1 kg"}', unit_price: 500, quantity: 1 }] }]);
+    expect(screen.queryByTestId("order-detail-loading")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Customer name")).toHaveValue("Ayesha Rahman");
   });
 
   it("shows not found when the detail endpoint returns 404", async () => {

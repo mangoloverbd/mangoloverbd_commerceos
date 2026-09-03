@@ -27,6 +27,7 @@ type Order = {
   created_at?: string | null;
   updated_at?: string | null;
   sent_to_courier?: boolean | null;
+  items?: { product_id?: string | null; variant_id?: string | null; product_name: string | null; variant_name: string | null; unit_price?: number | null; quantity: number }[];
 };
 
 type OrderItem = {
@@ -116,6 +117,7 @@ export default function OrderDetail() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const initializedOrderId = useRef<string | null>(null);
+  const initializedWithPlaceholder = useRef(false);
 
   const detailQuery = useQuery<OrderDetailResponse>({
     queryKey: [`/api/orders/${id}`],
@@ -127,6 +129,23 @@ export default function OrderDetail() {
       if (!res.ok) throw new ApiError(json.error || "Failed to load order", res.status);
       return json;
     },
+    placeholderData: (() => {
+      const cachedOrder = queryClient.getQueryData<Order[]>(["/api/orders"])?.find((cached) => cached.id === id);
+      if (!cachedOrder) return undefined;
+      return {
+        order: cachedOrder,
+        items: (cachedOrder.items || []).map((item, index) => ({
+          id: `cached-${cachedOrder.id}-${index}`,
+          product_id: item.product_id || null,
+          variant_id: item.variant_id || null,
+          product_name: item.product_name,
+          variant_name: item.variant_name,
+          unit_price: item.unit_price || 0,
+          quantity: item.quantity,
+        })),
+        canEditItems: false,
+      };
+    })(),
   });
   const productsQuery = useQuery<ProductsResponse>({
     queryKey: ["/api/products"],
@@ -139,14 +158,15 @@ export default function OrderDetail() {
   });
 
   useEffect(() => {
-    if (detailQuery.data && id && initializedOrderId.current !== id) {
+    if (detailQuery.data && id && (initializedOrderId.current !== id || (initializedWithPlaceholder.current && !detailQuery.isPlaceholderData))) {
       setDraft(detailQuery.data.items);
       setCustomerName(detailQuery.data.order.customer_name || detailQuery.data.order.contact_name || "");
       setPhone(detailQuery.data.order.phone || "");
       setAddress(detailQuery.data.order.address || "");
       initializedOrderId.current = id;
+      initializedWithPlaceholder.current = detailQuery.isPlaceholderData;
     }
-  }, [detailQuery.data, id]);
+  }, [detailQuery.data, detailQuery.isPlaceholderData, id]);
 
   const detail = detailQuery.data;
   const order = detail?.order;
@@ -176,6 +196,7 @@ export default function OrderDetail() {
   const productImage = (candidate: CatalogProduct) => candidate.image_url || candidate.images?.[0]?.url || null;
 
   async function save() {
+    if (detailQuery.isPlaceholderData) return;
     setSaving(true);
     setSaveError("");
     try {
@@ -233,12 +254,12 @@ export default function OrderDetail() {
          >
           <section className="rounded-[16px] border border-black/[0.07] bg-[#FAFAF8] p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/45">Customer details</h2><span className="rounded-[8px] bg-black/[0.05] px-2.5 py-1 text-[10px] uppercase tracking-widest text-black/60">{order.status || "pending"}</span></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><BuiInput label="Customer name" value={customerName} onChange={setCustomerName} isDisabled={saving} /><BuiInput label="Phone" type="tel" value={phone} onChange={setPhone} isDisabled={saving} /><BuiInput label="Delivery address" value={address} onChange={setAddress} isDisabled={saving} /></div><div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailField label="Payment" value={order.payment_method} /><DetailField label="Order total" value={money(order.price)} /><DetailField label="Delivery fee" value={money(order.delivery_rate)} /><DetailField label="Courier" value={order.courier_name || order.courier_status} /><DetailField label="Fraud" value={order.fraud_data?.risk_level} /><DetailField label="Created" value={order.created_at ? new Date(order.created_at).toLocaleString("en-BD") : null} /><DetailField label="Updated" value={order.updated_at ? new Date(order.updated_at).toLocaleString("en-BD") : null} /><DetailField label="Consignment" value={order.consignment_id} /></div></section>
            <section className="rounded-[16px] border border-black/[0.07] bg-[#FAFAF8] p-5"><div className="mb-2 flex items-center justify-between"><div><h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/45">Line items</h2><p className="mt-1 text-[12px] text-black/40">{quantity} item{quantity === 1 ? "" : "s"} · {money(subtotal)} subtotal</p></div></div>
-            {!detail.canEditItems && <p className="mb-2 rounded-[8px] bg-amber-50 px-3 py-2 text-[12px] text-amber-800">Editing is locked after courier dispatch.</p>}
+             {!detailQuery.isPlaceholderData && !detail.canEditItems && <p className="mb-2 rounded-[8px] bg-amber-50 px-3 py-2 text-[12px] text-amber-800">Editing is locked after courier dispatch.</p>}
              <div className="hidden border-b border-black/[0.08] pb-2 text-[9px] font-semibold uppercase tracking-[0.2em] text-black/40 md:grid md:grid-cols-[minmax(0,1fr)_minmax(130px,0.7fr)_100px_100px_36px] md:gap-3"><span>Product</span><span>Variant</span><span>Unit price</span><span>Quantity</span><span /></div><div>{draft.map((item) => <ItemRow key={item.id} item={item} canEdit={detail.canEditItems} onQuantity={(value) => setDraft((items) => items.map((current) => current.id === item.id ? { ...current, quantity: value } : current))} onRemove={() => setDraft((items) => items.filter((current) => current.id !== item.id))} />)}</div>
              <div className="mt-4 grid gap-3 rounded-[14px] border border-dashed border-black/[0.12] bg-black/[0.02] p-3 md:grid-cols-[1fr_1fr_auto] md:items-end"><div className="relative"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Product</span><button type="button" aria-label="Select product" aria-expanded={productPickerOpen} disabled={!detail.canEditItems} onClick={() => setProductPickerOpen((open) => !open)} className="flex h-10 w-full items-center gap-2 rounded-[12px] border border-black/[0.1] bg-white px-2 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-40"><span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-[7px] bg-black/[0.05]">{product && productImage(product) ? <img src={productImage(product)!} alt="" className="h-full w-full object-cover" /> : <Plus weight="light" size={14} className="text-black/35" />}</span><span className="flex-1 truncate">{product?.name || "Select product"}</span><CaretDown weight="light" size={15} className="text-black/40" /></button>{productPickerOpen && <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-[12px] border border-black/[0.1] bg-white p-1 shadow-xl">{(productsQuery.data?.products || []).map((candidate) => <button type="button" key={candidate.id} aria-label={candidate.name} onClick={() => { setSelectedProduct(candidate.id); setSelectedVariant(""); setProductPickerOpen(false); }} className="flex w-full items-center gap-2 rounded-[9px] px-2 py-2 text-left text-[13px] hover:bg-black/[0.05]"><span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[8px] bg-black/[0.05]">{productImage(candidate) ? <img src={productImage(candidate)!} alt={candidate.name} className="h-full w-full object-cover" /> : <Plus weight="light" size={15} className="text-black/35" />}</span><span className="truncate">{candidate.name}</span></button>)}</div>}</div><div><label htmlFor="add-variant" className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Variant</label><select id="add-variant" aria-label="Add variant" value={selectedVariant} onChange={(event) => setSelectedVariant(event.target.value)} disabled={!detail.canEditItems || !product || product.variants.length === 0} className="h-9 w-full rounded-[12px] border border-black/[0.1] bg-white px-3 text-[13px] outline-none disabled:opacity-40"><option value="">{product?.variants.length ? "Select variant" : "Default"}</option>{product?.variants.map((variant) => <option key={variant.id} value={variant.id}>{attributes(variant)}</option>)}</select></div><RichButton type="button" onClick={addItem} disabled={!detail.canEditItems || !product || (product.variants.length > 0 && !selectedVariant)} className="h-9 rounded-[8px]"><Plus weight="light" size={16} /> Add item</RichButton></div>
              <div className="mt-5 flex justify-end border-t border-black/[0.08] pt-4"><span className="font-mono text-[15px] font-medium tabular-nums text-black">Total {money(subtotal + (order.delivery_rate || 0))}</span></div></section>
           {saveError && <p role="alert" className="text-[13px] text-red-600">{saveError}</p>}
-            <div className="flex items-center gap-2"><RichButton type="button" onClick={save} disabled={saving} className="h-9 rounded-[8px]"><span className="flex items-center gap-2">{saving ? <Spinner size="sm" /> : <Check weight="light" size={16} />}{saving ? "Saving…" : "Save changes"}</span></RichButton><RichButton type="button" onClick={() => navigate("/")} disabled={saving} className="bg-transparent text-text-secondary shadow-none hover:bg-black/[0.05]">Cancel</RichButton></div>
+             <div className="flex items-center gap-2"><RichButton type="button" onClick={save} disabled={saving || detailQuery.isPlaceholderData} className="h-9 rounded-[8px]"><span className="flex items-center gap-2">{saving ? <Spinner size="sm" /> : <Check weight="light" size={16} />}{saving ? "Saving…" : "Save changes"}</span></RichButton><RichButton type="button" onClick={() => navigate("/")} disabled={saving} className="bg-transparent text-text-secondary shadow-none hover:bg-black/[0.05]">Cancel</RichButton></div>
          </motion.div>
       )}
     </div>

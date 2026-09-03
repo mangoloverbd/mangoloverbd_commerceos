@@ -5251,7 +5251,7 @@ app.get("/api/orders", async (req, res) => {
     const allOrders = allData || [];
     const orderIds = allOrders.map((order) => order.id).filter(Boolean);
     const { data: orderItems, error: itemsError } = orderIds.length
-      ? await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, quantity").in("order_id", orderIds).eq("org_id", orgId).order("created_at", { ascending: true })
+      ? await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", orderIds).eq("org_id", orgId).order("created_at", { ascending: true })
       : { data: [], error: null };
     if (itemsError) throw itemsError;
     const enrichedItems = await enrichOrderItems(supabase, orgId, orderItems || []);
