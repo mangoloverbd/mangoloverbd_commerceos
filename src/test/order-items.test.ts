@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/integrations/supabase/types";
 
 const root = resolve(process.cwd());
@@ -19,6 +19,10 @@ const baselinePath = join(
 const migrationPath = join(
   root,
   "supabase/migrations/20260902224522_add_order_items.sql",
+);
+const rpcMigrationPath = join(
+  root,
+  "supabase/migrations/20260903000100_add_order_item_edit_rpc.sql",
 );
 
 function commandPath(name: string): string {
@@ -115,10 +119,21 @@ beforeAll(() => {
       ('30000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000002', '2001', 'Other org item', 1.00);
     insert into public.products (id, org_id, name, selling_price) values
       ('50000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Mango', 5.00);
+    insert into public.orders (id, org_id, order_number, product, quantity, price) values
+      ('30000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000001', '1003', 'Mango', 1, 5.00);
     insert into public.product_variants (id, org_id, product_id, attributes) values
       ('60000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '{"size":"large"}');
   `);
   applyFile(migrationPath);
+  applyFile(rpcMigrationPath);
+  runSql(`
+    update public.products
+    set stock_quantity = 10
+    where id = '50000000-0000-0000-0000-000000000001';
+    update public.product_variants
+    set stock_quantity = 4, price_adjustment = 1
+    where id = '60000000-0000-0000-0000-000000000001';
+  `);
 });
 
 afterAll(() => {
@@ -165,7 +180,7 @@ describe("order item schema", () => {
         (select count(distinct order_id) from public.order_items) as item_orders,
         (select count(*) from public.order_items where product_name = 'Odd legacy text' and product_id is null) as legacy_items;
     `);
-    expect(result).toMatch(/\n\s*3\s+\|\s+3\s+\|\s+1\s*\n/);
+    expect(result).toMatch(/\n\s*4\s+\|\s+4\s+\|\s+1\s*\n/);
   });
 
   it("preserves each order total exactly for arbitrary quantities", () => {
@@ -284,6 +299,14 @@ describe("order item API contract", () => {
     expect(route).toContain('.eq("org_id", orgId)');
   });
 
+  it("rejects malformed catalog UUIDs and checks variant/product pairing", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toMatch(/UUID|uuid/i);
+    expect(route).toMatch(/variant.*product|product.*variant/i);
+    expect(route).toContain("product_id");
+  });
+
   it("returns conflict errors for dispatched orders and insufficient stock", () => {
     const start = source.indexOf('app.patch("/api/orders/:id/items"');
     const route = source.slice(start, source.indexOf("\n});", start));
@@ -299,5 +322,125 @@ describe("order item API contract", () => {
     expect(detail).toContain('.eq("id", req.params.id)');
     expect(detail).toContain('.eq("org_id", orgId)');
     expect(detail).toContain("404");
+  });
+});
+
+describe("order item replacement service", () => {
+  const orderId = "30000000-0000-0000-0000-000000000004";
+  const orgId = "40000000-0000-0000-0000-000000000001";
+  const productId = "50000000-0000-0000-0000-000000000001";
+  const variantId = "60000000-0000-0000-0000-000000000001";
+
+  beforeEach(() => {
+    runSql(`
+      insert into public.products (id, org_id, name, selling_price, stock_quantity)
+      values ('${productId}', '${orgId}', 'Mango', 5.00, 10)
+      on conflict (id) do update set org_id = excluded.org_id, name = excluded.name,
+        selling_price = excluded.selling_price, stock_quantity = excluded.stock_quantity;
+      insert into public.product_variants (id, org_id, product_id, attributes, stock_quantity, price_adjustment)
+      values ('${variantId}', '${orgId}', '${productId}', '{"size":"large"}', 4, 1)
+      on conflict (id) do update set org_id = excluded.org_id, product_id = excluded.product_id,
+        stock_quantity = excluded.stock_quantity, price_adjustment = excluded.price_adjustment;
+      delete from public.order_items where order_id = '${orderId}';
+      insert into public.order_items (org_id, order_id, product_id, product_name, unit_price, quantity)
+      values ('${orgId}', '${orderId}', '${productId}', 'Mango', 5, 1);
+      update public.orders set sent_to_courier = false, consignment_id = null,
+        tracking_code = null, courier_status = null, product = 'Mango', quantity = 1, price = 5
+      where id = '${orderId}';
+    `);
+  });
+
+  it("supports add, increase, decrease, and remove with inventory deltas", () => {
+    const result = runSql(`
+      begin;
+      select public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"${productId}","quantity":2},{"variantId":"${variantId}","quantity":1}]');
+      select quantity, price, product from public.orders where id = '${orderId}';
+      select stock_quantity from public.products where id = '${productId}';
+      select stock_quantity from public.product_variants where id = '${variantId}';
+      select public.replace_order_items('${orgId}', '${orderId}', '[{"variantId":"${variantId}","quantity":2}]');
+      select quantity, price from public.orders where id = '${orderId}';
+      select stock_quantity from public.products where id = '${productId}';
+      select stock_quantity from public.product_variants where id = '${variantId}';
+      select public.replace_order_items('${orgId}', '${orderId}', '[]');
+      select quantity, price from public.orders where id = '${orderId}';
+      select stock_quantity from public.products where id = '${productId}';
+      select stock_quantity from public.product_variants where id = '${variantId}';
+      rollback;
+    `);
+    expect(result).toMatch(/3\s+\|\s+16\.00/);
+    expect(result).toMatch(/2\s+\|\s+12\.00/);
+    expect(result).toMatch(/0\s+\|\s+0/);
+    expect(result).toMatch(/9\n/);
+    expect(result).toMatch(/3\n/);
+    expect(result).toMatch(/11\n/);
+    expect(result).toMatch(/4\n/);
+  });
+
+  it("recalculates totals from catalog prices and ignores client totals", () => {
+    const result = runSql(`
+      begin;
+      select public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"${productId}","quantity":2}]');
+      select quantity, price from public.orders where id = '${orderId}';
+      rollback;
+    `);
+    expect(result).toMatch(/2\s+\|\s+10\.00/);
+  });
+
+  it("loads detail data only for the authenticated workspace", () => {
+    const result = runSql(`
+      select count(*)
+      from public.orders as o
+      join public.order_items as i on i.order_id = o.id and i.org_id = o.org_id
+      where o.id = '${orderId}' and o.org_id = '${orgId}';
+      select count(*)
+      from public.orders as o
+      join public.order_items as i on i.order_id = o.id and i.org_id = o.org_id
+      where o.id = '${orderId}' and o.org_id = '40000000-0000-0000-0000-000000000002';
+    `);
+    expect(result).toMatch(/\n\s*1\s*\n/);
+    expect(result).toMatch(/\n\s*0\s*\n/);
+  });
+
+  it("rejects malformed UUIDs and duplicate item keys in the service", () => {
+    expect(() => runSql(`select public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"not-a-uuid","quantity":1}]');`)).toThrow();
+    expect(() => runSql(`select public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"${productId}","quantity":1},{"productId":"${productId}","quantity":2}]');`)).toThrow();
+  });
+
+  it("rolls back inventory and items when stock is insufficient", () => {
+    const result = runSql(`
+      begin;
+      do $$ begin
+        perform public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"${productId}","quantity":12}]');
+      exception when others then null;
+      end $$;
+      select quantity, price from public.orders where id = '${orderId}';
+      select count(*) from public.order_items where order_id = '${orderId}';
+      select stock_quantity from public.products where id = '${productId}';
+      rollback;
+    `);
+    expect(result).toMatch(/1\s+\|\s+5\.00/);
+    expect(result).toMatch(/1\n/);
+    expect(result).toMatch(/10\n/);
+  });
+
+  it("rejects wrong-org orders and mismatched product variants", () => {
+    expect(() => runSql(`select public.replace_order_items('40000000-0000-0000-0000-000000000002', '${orderId}', '[]');`)).toThrow();
+    expect(() => runSql(`select public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"30000000-0000-0000-0000-000000000003","variantId":"${variantId}","quantity":1}]');`)).toThrow();
+  });
+
+  it("locks dispatched orders inside the transaction", () => {
+    const result = runSql(`
+      begin;
+      update public.orders set sent_to_courier = true where id = '${orderId}';
+      do $$ begin
+        perform public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"${productId}","quantity":2}]');
+      exception when others then null;
+      end $$;
+      select quantity, price, stock_quantity
+      from public.orders join public.products on products.id = '${productId}'
+      where orders.id = '${orderId}';
+      rollback;
+    `);
+    expect(result).toMatch(/1\s+\|\s+5\.00\s+\|\s+10/);
   });
 });

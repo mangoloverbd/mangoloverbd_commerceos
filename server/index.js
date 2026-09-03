@@ -5288,6 +5288,8 @@ function isOrderDispatched(order) {
   );
 }
 
+const ORDER_ITEM_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 app.get("/api/orders/:id", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -5343,6 +5345,10 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       if (!Number.isInteger(quantity) || quantity < 1) {
         return res.status(400).json({ error: "Item quantity must be a positive integer" });
       }
+      if ((productId && (typeof productId !== "string" || !ORDER_ITEM_UUID_RE.test(productId))) ||
+          (variantId && (typeof variantId !== "string" || !ORDER_ITEM_UUID_RE.test(variantId)))) {
+        return res.status(400).json({ error: "Product and variant IDs must be UUIDs" });
+      }
       const key = `${productId || ""}:${variantId || ""}`;
       if (itemKeys.has(key)) {
         return res.status(400).json({ error: "Duplicate order item" });
@@ -5381,12 +5387,16 @@ app.patch("/api/orders/:id/items", async (req, res) => {
     if (variantIds.length) {
       const { data: variants, error } = await supabase
         .from("product_variants")
-        .select("id")
+        .select("id, product_id")
         .in("id", variantIds)
         .eq("org_id", orgId);
       if (error) throw error;
       if ((variants || []).length !== variantIds.length) {
         return res.status(400).json({ error: "One or more variants are not available" });
+      }
+      const variantProducts = new Map((variants || []).map((variant) => [variant.id, variant.product_id]));
+      if (normalizedItems.some((item) => item.variantId && item.productId && variantProducts.get(item.variantId) !== item.productId)) {
+        return res.status(400).json({ error: "Variant does not belong to supplied product" });
       }
     }
 
