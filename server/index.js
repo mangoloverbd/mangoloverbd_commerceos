@@ -5279,6 +5279,144 @@ app.get("/api/orders/recent-notifications", async (req, res) => {
   }
 });
 
+function isOrderDispatched(order) {
+  return Boolean(
+    order.sent_to_courier ||
+    order.consignment_id ||
+    order.tracking_code ||
+    order.courier_status,
+  );
+}
+
+app.get("/api/orders/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const { data: items, error: itemsError } = await supabase
+      .from("order_items")
+      .select("*")
+      .eq("order_id", req.params.id)
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+    if (itemsError) throw itemsError;
+
+    return res.json({ order, items: items || [], canEditItems: !isOrderDispatched(order) });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/orders/:id/items", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const requestedItems = req.body?.items;
+    if (!Array.isArray(requestedItems)) {
+      return res.status(400).json({ error: "items array required" });
+    }
+
+    const normalizedItems = [];
+    const itemKeys = new Set();
+    for (const item of requestedItems) {
+      if (!item || typeof item !== "object") {
+        return res.status(400).json({ error: "Each item must be an object" });
+      }
+      const productId = item.productId || null;
+      const variantId = item.variantId || null;
+      const quantity = item.quantity;
+      if (!productId && !variantId) {
+        return res.status(400).json({ error: "Each item requires a productId or variantId" });
+      }
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        return res.status(400).json({ error: "Item quantity must be a positive integer" });
+      }
+      const key = `${productId || ""}:${variantId || ""}`;
+      if (itemKeys.has(key)) {
+        return res.status(400).json({ error: "Duplicate order item" });
+      }
+      itemKeys.add(key);
+      normalizedItems.push({ productId, variantId, quantity });
+    }
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (isOrderDispatched(order)) {
+      return res.status(409).json({ error: "Order items cannot be edited after courier dispatch" });
+    }
+
+    const productIds = [...new Set(normalizedItems.map((item) => item.productId).filter(Boolean))];
+    const variantIds = [...new Set(normalizedItems.map((item) => item.variantId).filter(Boolean))];
+    if (productIds.length) {
+      const { data: products, error } = await supabase
+        .from("products")
+        .select("id")
+        .in("id", productIds)
+        .eq("org_id", orgId);
+      if (error) throw error;
+      if ((products || []).length !== productIds.length) {
+        return res.status(400).json({ error: "One or more products are not available" });
+      }
+    }
+    if (variantIds.length) {
+      const { data: variants, error } = await supabase
+        .from("product_variants")
+        .select("id")
+        .in("id", variantIds)
+        .eq("org_id", orgId);
+      if (error) throw error;
+      if ((variants || []).length !== variantIds.length) {
+        return res.status(400).json({ error: "One or more variants are not available" });
+      }
+    }
+
+    // The RPC locks the order and inventory rows, applies stock deltas, replaces
+    // items, and updates denormalized order totals in one database transaction.
+    const { error: mutationError } = await supabase.rpc("replace_order_items", {
+      p_org_id: orgId,
+      p_order_id: req.params.id,
+      p_items: normalizedItems,
+    });
+    if (mutationError) {
+      const message = mutationError.message || "Unable to update order items";
+      if (/dispatch|courier|insufficient|stock/i.test(message)) {
+        return res.status(409).json({ error: message });
+      }
+      throw mutationError;
+    }
+
+    const [{ data: updatedOrder, error: updatedOrderError }, { data: items, error: updatedItemsError }] = await Promise.all([
+      supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single(),
+      supabase.from("order_items").select("*").eq("order_id", req.params.id).eq("org_id", orgId).order("created_at", { ascending: true }),
+    ]);
+    if (updatedOrderError) throw updatedOrderError;
+    if (updatedItemsError) throw updatedItemsError;
+    return res.json({ order: updatedOrder, items: items || [], canEditItems: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/custom-orders/webhook", async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"];

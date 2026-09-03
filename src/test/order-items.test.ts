@@ -222,3 +222,82 @@ describe("order item schema", () => {
     expect(result).toMatch(/\n\s*2\s*\n/);
   });
 });
+
+describe("order item API contract", () => {
+  const source = readFileSync(join(root, "server/index.js"), "utf8");
+
+  it("defines an authenticated org-scoped order detail endpoint", () => {
+    const start = source.indexOf('app.get("/api/orders/:id"');
+    expect(start).toBeGreaterThan(-1);
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("getToken(req)");
+    expect(route).toContain("getUser(");
+    expect(route).toContain('.eq("id", req.params.id)');
+    expect(route).toContain('.eq("org_id", orgId)');
+    expect(route).toContain("canEditItems");
+    expect(route).toContain("items");
+  });
+
+  it("defines an authenticated org-scoped item replacement endpoint", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    expect(start).toBeGreaterThan(-1);
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("getToken(req)");
+    expect(route).toContain("getUser(");
+    expect(route).toContain('.eq("org_id", orgId)');
+    expect(route).toContain("req.body?.items");
+    expect(route).toContain('rpc("replace_order_items"');
+  });
+
+  it("replaces line items through one transactional RPC", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("replace_order_items");
+    expect(route).not.toMatch(/\.from\("order_items"\)\s*\.delete/);
+    expect(route).not.toMatch(/\.from\("product_variants"\)\s*\.update/);
+    expect(route).not.toMatch(/\.from\("products"\)\s*\.update/);
+  });
+
+  it("rejects malformed, non-positive, and duplicate item requests", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toMatch(/Array\.isArray\(requestedItems\)/);
+    expect(route).toMatch(/quantity.*integer|Number\.isInteger/);
+    expect(route).toMatch(/quantity.*1|quantity < 1/);
+    expect(route).toMatch(/duplicate|Duplicate/i);
+  });
+
+  it("does not trust a client-supplied order total", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("replace_order_items");
+    expect(route).not.toMatch(/req\.body\??\.price|req\.body\??\.total/);
+    expect(route).toContain("order");
+    expect(route).toContain("items");
+  });
+
+  it("validates catalog ownership before replacing items", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain('from("products")');
+    expect(route).toContain('from("product_variants")');
+    expect(route).toContain('.eq("org_id", orgId)');
+  });
+
+  it("returns conflict errors for dispatched orders and insufficient stock", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(source).toMatch(/sent_to_courier|courier_status|consignment_id/);
+    expect(route).toContain("409");
+    expect(route).toMatch(/insufficient stock|stock/i);
+  });
+
+  it("keeps wrong-workspace orders invisible", () => {
+    const start = source.indexOf('app.get("/api/orders/:id"');
+    const end = source.indexOf('app.patch("/api/orders/:id/items"');
+    const detail = source.slice(start, end);
+    expect(detail).toContain('.eq("id", req.params.id)');
+    expect(detail).toContain('.eq("org_id", orgId)');
+    expect(detail).toContain("404");
+  });
+});
