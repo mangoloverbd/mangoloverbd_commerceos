@@ -33,6 +33,7 @@ import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldChe
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -44,11 +45,6 @@ function splitProductLines(product: string | null): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-}
-
-function hasInlineQty(line: string): boolean {
-  // Matches "3x Item" or "3× Item" (case-insensitive)
-  return /^\d+\s*(x|×)\s+/i.test(line);
 }
 
 function OrderStatusIcon({ status }: { status: string }) {
@@ -87,13 +83,6 @@ function orderStatusClasses(status: string, selected = false) {
   return selected
     ? "border-amber-200 bg-amber-100 text-amber-700"
     : "border-amber-200/80 bg-amber-50 text-amber-700 shadow-amber-950/5 hover:border-amber-300 hover:bg-amber-100";
-}
-
-function formatProductLine(line: string, fallbackQty: number | null | undefined): string {
-  if (!line) return "—";
-  if (hasInlineQty(line)) return line;
-  if (fallbackQty && fallbackQty > 0) return `${line} ×${fallbackQty}`;
-  return line;
 }
 
 function displayVariant(value: string | null) {
@@ -1263,7 +1252,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                               <div key={index} className="px-3.5 py-2 flex items-start gap-2.5">
                                 <span className="mt-0.5 h-4 w-4 rounded-lg bg-black/[0.05] text-black/40 text-[9px] font-bold flex items-center justify-center shrink-0">{index + 1}</span>
                                 <p className="text-xs text-foreground leading-relaxed">
-                                  {lines.length === 1 ? formatProductLine(line, order.quantity) : line}
+                                  {formatTooltipProductLine(line, Boolean(order.items?.length), order.quantity)}
                                 </p>
                               </div>
                             ))

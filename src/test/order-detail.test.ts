@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import OrderDetail from "@/pages/OrderDetail";
 import { OrdersTable } from "@/components/OrdersTable";
+import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -82,6 +83,10 @@ beforeEach(() => {
 });
 
 describe("OrderDetail", () => {
+  it("does not append the legacy quantity to structured order item lines", () => {
+    expect(formatTooltipProductLine("Pure Ghee · 1 kg · ×2", true, 1)).toBe("Pure Ghee · 1 kg · ×2");
+  });
+
   it("shows a loading state while order detail is pending", () => {
     apiFetch.mockReturnValue(new Promise(() => {}));
     renderPage();
