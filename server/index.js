@@ -5249,8 +5249,19 @@ app.get("/api/orders", async (req, res) => {
     if (error) throw error;
 
     const allOrders = allData || [];
-
-    const orders = allOrders;
+    const orderIds = allOrders.map((order) => order.id).filter(Boolean);
+    const { data: orderItems, error: itemsError } = orderIds.length
+      ? await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, quantity").in("order_id", orderIds).eq("org_id", orgId).order("created_at", { ascending: true })
+      : { data: [], error: null };
+    if (itemsError) throw itemsError;
+    const enrichedItems = await enrichOrderItems(supabase, orgId, orderItems || []);
+    const itemsByOrder = new Map();
+    for (const item of enrichedItems) {
+      const list = itemsByOrder.get(item.order_id) || [];
+      list.push(item);
+      itemsByOrder.set(item.order_id, list);
+    }
+    const orders = allOrders.map((order) => ({ ...order, items: itemsByOrder.get(order.id) || [] }));
 
     console.log(`[Orders] total=${allOrders.length}`);
     return res.json({ orders });
@@ -5289,6 +5300,34 @@ function isOrderDispatched(order) {
   );
 }
 
+function variantDisplay(attributes) {
+  return Object.values(attributes || {}).filter(Boolean).join(" · ") || null;
+}
+
+async function enrichOrderItems(supabase, orgId, items) {
+  if (!items.length) return items;
+  const variantIds = [...new Set(items.map((item) => item.variant_id).filter(Boolean))];
+  const productIds = [...new Set(items.map((item) => item.product_id).filter(Boolean))];
+  const [variantResult, productVariantResult] = await Promise.all([
+    variantIds.length ? supabase.from("product_variants").select("id, product_id, attributes").in("id", variantIds).eq("org_id", orgId) : Promise.resolve({ data: [], error: null }),
+    productIds.length ? supabase.from("product_variants").select("id, product_id, attributes").in("product_id", productIds).eq("org_id", orgId) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (variantResult.error) throw variantResult.error;
+  if (productVariantResult.error) throw productVariantResult.error;
+  const variantsById = new Map((variantResult.data || []).map((variant) => [variant.id, variant]));
+  const variantsByProduct = new Map();
+  for (const variant of productVariantResult.data || []) {
+    const list = variantsByProduct.get(variant.product_id) || [];
+    list.push(variant);
+    variantsByProduct.set(variant.product_id, list);
+  }
+  return items.map((item) => {
+    const productVariants = variantsByProduct.get(item.product_id) || [];
+    const variant = variantsById.get(item.variant_id) || (productVariants.length === 1 ? productVariants[0] : null);
+    return { ...item, variant_name: variantDisplay(variant?.attributes) || item.variant_name || null };
+  });
+}
+
 const ORDER_ITEM_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 app.get("/api/orders/:id", async (req, res) => {
@@ -5315,7 +5354,8 @@ app.get("/api/orders/:id", async (req, res) => {
       .order("created_at", { ascending: true });
     if (itemsError) throw itemsError;
 
-    return res.json({ order, items: items || [], canEditItems: !isOrderDispatched(order) });
+    const enrichedItems = await enrichOrderItems(supabase, orgId, items || []);
+    return res.json({ order, items: enrichedItems, canEditItems: !isOrderDispatched(order) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -5928,9 +5968,18 @@ app.patch("/api/orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "customer_name", "phone", "address"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
+    if (update.customer_name !== undefined && (typeof update.customer_name !== "string" || !update.customer_name.trim())) {
+      return res.status(400).json({ error: "Customer name is required" });
+    }
+    if (update.phone !== undefined && typeof update.phone !== "string") {
+      return res.status(400).json({ error: "Phone must be text" });
+    }
+    if (update.address !== undefined && typeof update.address !== "string") {
+      return res.status(400).json({ error: "Address must be text" });
+    }
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
