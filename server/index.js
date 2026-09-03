@@ -5293,10 +5293,9 @@ app.get("/api/orders/recent-notifications", async (req, res) => {
 
 function isOrderDispatched(order) {
   return Boolean(
-    order.sent_to_courier ||
+    order.sent_to_courier === true ||
     order.consignment_id ||
-    order.tracking_code ||
-    order.courier_status,
+    order.tracking_code,
   );
 }
 
@@ -5354,7 +5353,22 @@ app.get("/api/orders/:id", async (req, res) => {
       .order("created_at", { ascending: true });
     if (itemsError) throw itemsError;
 
-    const enrichedItems = await enrichOrderItems(supabase, orgId, items || []);
+    const storedItems = items || [];
+    const fallbackQuantity = Math.max(1, Number(order.quantity) || 1);
+    const displayItems = storedItems.length > 0
+      ? storedItems
+      : order.product
+        ? [{
+            id: `legacy-${order.id}`,
+            product_id: null,
+            variant_id: null,
+            product_name: order.product,
+            variant_name: null,
+            unit_price: (Number(order.price) || 0) / fallbackQuantity,
+            quantity: fallbackQuantity,
+          }]
+        : [];
+    const enrichedItems = await enrichOrderItems(supabase, orgId, displayItems);
     return res.json({ order, items: enrichedItems, canEditItems: !isOrderDispatched(order) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -5920,6 +5934,23 @@ app.post("/api/orders", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const requestedItems = req.body?.items;
+    const orderItems = Array.isArray(requestedItems)
+      ? requestedItems.map((item) => ({
+          product_id: item?.product_id || null,
+          variant_id: item?.variant_id || null,
+          product_name: typeof item?.product_name === "string" ? item.product_name.trim() : "",
+          variant_name: typeof item?.variant_name === "string" ? item.variant_name : null,
+          unit_price: Number(item?.unit_price),
+          quantity: Number(item?.quantity),
+        }))
+      : [];
+    if (Array.isArray(requestedItems) && (
+      orderItems.length === 0 ||
+      orderItems.some((item) => !item.product_name || !Number.isFinite(item.unit_price) || item.unit_price < 0 || !Number.isInteger(item.quantity) || item.quantity < 1)
+    )) {
+      return res.status(400).json({ error: "Invalid order items" });
+    }
     const allowed = [
       "shopify_order_id",
       "order_number",
@@ -5956,6 +5987,15 @@ app.post("/api/orders", async (req, res) => {
       .single();
 
     if (error) throw error;
+    if (orderItems.length > 0) {
+      const { error: itemsError } = await supabase.from("order_items").insert(
+        orderItems.map((item) => ({ ...item, org_id: orgId, order_id: data.id })),
+      );
+      if (itemsError) {
+        await supabase.from("orders").delete().eq("id", data.id).eq("org_id", orgId);
+        throw itemsError;
+      }
+    }
     return res.status(201).json({ success: true, order: data });
   } catch (e) {
     return res.status(500).json({ error: e.message });

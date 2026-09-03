@@ -238,6 +238,11 @@ export default function OrderCreatorModal({
           product: lines.map((l) => l.name).join(", "),
           quantity: lines.reduce((s, l) => s + l.quantity, 0),
           price: subtotal - discount,
+          items: lines.map((line) => ({
+            product_name: line.name,
+            unit_price: line.unitPrice,
+            quantity: line.quantity,
+          })),
           delivery_rate: deliveryCharge,
           status: "pending",
           fraud_checked: false,

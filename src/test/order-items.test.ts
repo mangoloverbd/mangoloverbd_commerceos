@@ -242,6 +242,13 @@ describe("order item schema", () => {
 describe("order item API contract", () => {
   const source = readFileSync(join(root, "server/index.js"), "utf8");
 
+  it("does not lock orders from courier status alone", () => {
+    const start = source.indexOf("function isOrderDispatched");
+    const route = source.slice(start, source.indexOf("\n}", start));
+    expect(route).toContain("order.sent_to_courier === true");
+    expect(route).not.toMatch(/order\.courier_status\s*[,)]/);
+  });
+
   it("defines an authenticated org-scoped order detail endpoint", () => {
     const start = source.indexOf('app.get("/api/orders/:id"');
     expect(start).toBeGreaterThan(-1);
@@ -254,6 +261,21 @@ describe("order item API contract", () => {
     expect(route).toContain("items");
   });
 
+  it("keeps legacy orders visible when they have no normalized item rows", () => {
+    const start = source.indexOf('app.get("/api/orders/:id"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("order.product");
+    expect(route).toContain("order.quantity");
+    expect(route).toContain("order.price");
+  });
+
+  it("keeps undisbursed legacy orders editable", () => {
+    const start = source.indexOf('app.get("/api/orders/:id"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("canEditItems: !isOrderDispatched(order)");
+    expect(route).not.toContain("canEditItems: !isOrderDispatched(order) && storedItems.length > 0");
+  });
+
   it("defines an authenticated org-scoped item replacement endpoint", () => {
     const start = source.indexOf('app.patch("/api/orders/:id/items"');
     expect(start).toBeGreaterThan(-1);
@@ -263,6 +285,16 @@ describe("order item API contract", () => {
     expect(route).toContain('.eq("org_id", orgId)');
     expect(route).toContain("req.body?.items");
     expect(route).toContain('rpc("replace_order_items"');
+  });
+
+  it("persists line items when creating a manual order", () => {
+    const start = source.indexOf('app.post("/api/orders"');
+    expect(start).toBeGreaterThan(-1);
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain('from("order_items")');
+    expect(route).toContain("product_name");
+    expect(route).toContain("unit_price");
+    expect(route).toContain("quantity");
   });
 
   it("replaces line items through one transactional RPC", () => {
