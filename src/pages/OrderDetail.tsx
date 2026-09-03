@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Plus, Trash } from "@phosphor-icons/react";
@@ -23,6 +23,7 @@ type Order = {
   consignment_id?: string | null;
   fraud_data?: { risk_level?: string } | null;
   created_at?: string | null;
+  updated_at?: string | null;
   sent_to_courier?: boolean | null;
 };
 
@@ -92,6 +93,7 @@ export default function OrderDetail() {
   const [selectedVariant, setSelectedVariant] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const initializedOrderId = useRef<string | null>(null);
 
   const detailQuery = useQuery<OrderDetailResponse>({
     queryKey: [`/api/orders/${id}`],
@@ -113,8 +115,11 @@ export default function OrderDetail() {
   });
 
   useEffect(() => {
-    if (detailQuery.data) setDraft(detailQuery.data.items);
-  }, [detailQuery.data]);
+    if (detailQuery.data && id && initializedOrderId.current !== id) {
+      setDraft(detailQuery.data.items);
+      initializedOrderId.current = id;
+    }
+  }, [detailQuery.data, id]);
 
   const detail = detailQuery.data;
   const order = detail?.order;
@@ -171,7 +176,7 @@ export default function OrderDetail() {
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={() => navigate("/")} className="mt-2 text-[13px] text-black/50 underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && (
         <>
-          <section className="border-b border-black/[0.08] pb-6"><div className="mb-4 flex items-center justify-between"><h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/45">Order summary</h2><span className="rounded-[8px] bg-black/[0.05] px-2.5 py-1 text-[10px] uppercase tracking-widest text-black/60">{order.status || "pending"}</span></div><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailField label="Customer" value={order.contact_name} /><DetailField label="Phone" value={order.phone} /><DetailField label="Delivery address" value={order.address} /><DetailField label="Payment" value={order.payment_method} /><DetailField label="Order total" value={money(order.price)} /><DetailField label="Courier" value={order.courier_name || order.courier_status} /><DetailField label="Fraud" value={order.fraud_data?.risk_level} /><DetailField label="Created" value={order.created_at ? new Date(order.created_at).toLocaleString("en-BD") : null} /><DetailField label="Consignment" value={order.consignment_id} /></div></section>
+          <section className="border-b border-black/[0.08] pb-6"><div className="mb-4 flex items-center justify-between"><h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/45">Order summary</h2><span className="rounded-[8px] bg-black/[0.05] px-2.5 py-1 text-[10px] uppercase tracking-widest text-black/60">{order.status || "pending"}</span></div><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailField label="Customer" value={order.contact_name} /><DetailField label="Phone" value={order.phone} /><DetailField label="Delivery address" value={order.address} /><DetailField label="Payment" value={order.payment_method} /><DetailField label="Order total" value={money(order.price)} /><DetailField label="Delivery fee" value={money(order.delivery_rate)} /><DetailField label="Courier" value={order.courier_name || order.courier_status} /><DetailField label="Fraud" value={order.fraud_data?.risk_level} /><DetailField label="Created" value={order.created_at ? new Date(order.created_at).toLocaleString("en-BD") : null} /><DetailField label="Updated" value={order.updated_at ? new Date(order.updated_at).toLocaleString("en-BD") : null} /><DetailField label="Consignment" value={order.consignment_id} /></div></section>
           <section><div className="mb-2 flex items-center justify-between"><div><h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/45">Line items</h2><p className="mt-1 text-[12px] text-black/40">{quantity} item{quantity === 1 ? "" : "s"} · {money(subtotal)} subtotal</p></div></div>
             {!detail.canEditItems && <p className="mb-2 rounded-[8px] bg-amber-50 px-3 py-2 text-[12px] text-amber-800">Editing is locked after courier dispatch.</p>}
             <div>{draft.map((item) => <ItemRow key={item.id} item={item} canEdit={detail.canEditItems} onQuantity={(value) => setDraft((items) => items.map((current) => current.id === item.id ? { ...current, quantity: value } : current))} onRemove={() => setDraft((items) => items.filter((current) => current.id !== item.id))} />)}</div>

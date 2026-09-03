@@ -24,6 +24,7 @@ const order = {
   courier_status: null,
   consignment_id: null,
   created_at: "2026-09-03T09:00:00Z",
+  updated_at: "2026-09-03T10:00:00Z",
 };
 
 const products = {
@@ -43,24 +44,29 @@ const detail = {
   canEditItems: true,
 };
 
-function response(body: unknown, ok = true) {
-  return { ok, status: ok ? 200 : 404, json: async () => body } as Response;
+function response(body: unknown, ok = true, status = ok ? 200 : 404) {
+  return { ok, status, json: async () => body } as Response;
 }
 
 function renderPage(id = "order-1") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(createElement(
+  const result = render(createElement(
     QueryClientProvider,
     { client: queryClient },
     createElement(
       MemoryRouter,
       { initialEntries: [`/orders/${id}`] },
-      createElement(Routes, null, createElement(Route, { path: "/orders/:id", element: createElement(OrderDetail) })),
+      createElement(Routes, null,
+        createElement(Route, { path: "/orders/:id", element: createElement(OrderDetail) }),
+        createElement(Route, { path: "/", element: createElement("div", null, "Orders dashboard") }),
+      ),
     ),
   ));
+  return { ...result, queryClient };
 }
 
 beforeEach(() => {
+  apiFetch.mockClear();
   apiFetch.mockImplementation(async (url: string) => {
     if (url === "/api/orders/order-1") return response(detail);
     if (url === "/api/products") return response(products);
@@ -88,6 +94,8 @@ describe("OrderDetail", () => {
     expect(screen.getByText("Dhanmondi, Dhaka")).toBeInTheDocument();
     expect(screen.getByText("Premium Mango")).toBeInTheDocument();
     expect(screen.getByText("৳580")).toBeInTheDocument();
+    expect(screen.getByText("Updated")).toBeInTheDocument();
+    expect(screen.getByText("৳80")).toBeInTheDocument();
   });
 
   it("adds a product and variant, edits quantity, and removes a line", async () => {
@@ -107,22 +115,33 @@ describe("OrderDetail", () => {
 
   it("saves only item identity and quantities and shows saving state", async () => {
     let resolveSave: (value: Response) => void = () => undefined;
+    const savedDetail = { ...detail, order: { ...order, updated_at: "2026-09-03T11:00:00Z" }, items: [{ ...detail.items[0], product_name: "Updated Mango" }] };
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/orders/order-1" && init?.method === "PATCH") {
+      if (url === "/api/orders/order-1/items" && init?.method === "PATCH") {
         return new Promise<Response>((resolve) => { resolveSave = resolve; });
       }
       if (url === "/api/orders/order-1") return response(detail);
       if (url === "/api/products") return response(products);
       throw new Error(`Unexpected API request: ${url}`);
     });
-    renderPage();
+    const { queryClient } = renderPage();
     await screen.findByText("Ayesha Rahman");
     fireEvent.click(screen.getByRole("button", { name: /Save changes/i }));
     expect(screen.getByRole("button", { name: /Saving/i })).toBeDisabled();
     const saveCall = apiFetch.mock.calls.find(([, init]) => init?.method === "PATCH");
     expect(JSON.parse(saveCall[1].body)).toEqual({ items: [{ productId: "product-1", variantId: null, quantity: 1 }] });
-    resolveSave(response(detail));
+    resolveSave(response(savedDetail));
     await waitFor(() => expect(screen.getByRole("button", { name: /Save changes/i })).not.toBeDisabled());
+    expect(screen.getByText("Updated Mango")).toBeInTheDocument();
+    expect(queryClient.getQueryData(["/api/orders/order-1"])).toEqual(savedDetail);
+  });
+
+  it("does not overwrite an edited draft when detail data refetches", async () => {
+    const { queryClient } = renderPage();
+    await screen.findByText("Ayesha Rahman");
+    fireEvent.change(within(screen.getByTestId("order-item-item-1")).getByRole("spinbutton"), { target: { value: "4" } });
+    queryClient.setQueryData(["/api/orders/order-1"], { ...detail, items: [{ ...detail.items[0], quantity: 9 }] });
+    await waitFor(() => expect(within(screen.getByTestId("order-item-item-1")).getByRole("spinbutton")).toHaveValue(4));
   });
 
   it("preserves the draft and displays a save error", async () => {
@@ -140,6 +159,24 @@ describe("OrderDetail", () => {
     expect(within(screen.getByTestId("order-item-item-1")).getByRole("spinbutton")).toHaveValue(2);
   });
 
+  it("shows non-404 detail request errors", async () => {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") return response({ error: "Service unavailable" }, false, 500);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+    expect(await screen.findByText("Service unavailable")).toBeInTheDocument();
+  });
+
+  it("navigates back without saving when cancel is clicked", async () => {
+    renderPage();
+    await screen.findByText("Ayesha Rahman");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
+    expect(apiFetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+
   it("locks item editing when the order has been dispatched", async () => {
     apiFetch.mockImplementation(async (url: string) => {
       if (url === "/api/orders/order-1") return response({ ...detail, canEditItems: false, order: { ...order, sent_to_courier: true, courier_status: "in_transit" } });
@@ -149,6 +186,8 @@ describe("OrderDetail", () => {
     renderPage();
     expect(await screen.findByText(/Editing is locked after courier dispatch/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Add product")).toBeDisabled();
+    expect(within(screen.getByTestId("order-item-item-1")).getByRole("spinbutton")).toBeDisabled();
+    expect(within(screen.getByTestId("order-item-item-1")).getByRole("button", { name: "Remove Premium Mango" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Save changes/i })).toBeDisabled();
   });
 });
