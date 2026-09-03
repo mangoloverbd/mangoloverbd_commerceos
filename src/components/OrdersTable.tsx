@@ -33,6 +33,7 @@ import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldChe
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";

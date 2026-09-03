@@ -2,7 +2,7 @@ function hasInlineQty(line: string): boolean {
   return /^\d+\s*(x|×)\s+/i.test(line);
 }
 
-function formatProductLine(line: string, fallbackQty: number | null | undefined): string {
+export function formatProductLine(line: string, fallbackQty: number | null | undefined): string {
   if (!line) return "—";
   if (hasInlineQty(line)) return line;
   if (fallbackQty && fallbackQty > 0) return `${line} ×${fallbackQty}`;
