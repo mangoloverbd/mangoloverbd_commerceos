@@ -9139,6 +9139,23 @@ async function handlePublicHandleOrderSubmit(req, res) {
       .single();
     if (orderErr) throw orderErr;
 
+    const { error: orderItemsError } = await supabase.from("order_items").insert(
+      orderItems.map((item) => ({
+        org_id: orgId,
+        order_id: order.id,
+        product_id: item.productId,
+        variant_id: item.variantId,
+        product_name: item.productName,
+        variant_name: JSON.stringify(item.attributes || {}),
+        unit_price: item.unitPrice,
+        quantity: item.quantity,
+      })),
+    );
+    if (orderItemsError) {
+      await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
+      throw orderItemsError;
+    }
+
     // ── Decrement variant stock ──────────────────────────────────────────
     for (const item of orderItems) {
       await supabase
