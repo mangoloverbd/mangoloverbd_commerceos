@@ -102,6 +102,7 @@ describe("OrderDetail", () => {
     renderPage("order-1", [{ ...order, items: [{ product_id: "product-1", product_name: "Premium Mango", variant_name: '{"size":"1 kg"}', unit_price: 500, quantity: 1 }] }]);
     expect(screen.queryByTestId("order-detail-loading")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Customer name")).toHaveValue("Ayesha Rahman");
+    expect(screen.getByLabelText("Customer name").closest(".grid")).toHaveClass("lg:grid-cols-3");
   });
 
   it("shows not found when the detail endpoint returns 404", async () => {
