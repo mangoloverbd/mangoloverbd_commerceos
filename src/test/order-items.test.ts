@@ -10,6 +10,7 @@ import { delimiter, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/integrations/supabase/types";
+import { buildProductCacheUrls, purgeProductCacheUrls } from "../../server/productCache.js";
 
 const root = resolve(process.cwd());
 const baselinePath = join(
@@ -307,18 +308,57 @@ describe("order item API contract", () => {
     expect(route).toContain("product_id");
   });
 
-  it("invalidates affected storefront caches only after a successful mutation", () => {
-    const start = source.indexOf('app.patch("/api/orders/:id/items"');
-    const end = source.indexOf('app.post("/api/custom-orders/webhook"', start);
-    const route = source.slice(start, end);
-    const rpc = route.indexOf('supabase.rpc("replace_order_items"');
-    const mutationError = route.indexOf("if (mutationError)", rpc);
-    const cachePurge = route.indexOf("purgeProductCache", rpc);
-    expect(rpc).toBeGreaterThan(-1);
-    expect(cachePurge).toBeGreaterThan(mutationError);
-    expect(route.slice(mutationError, cachePurge)).not.toContain("purgeProductCache");
-    expect(route).toContain("listChanged: false");
-    expect(route).toContain("warm: false");
+  it("purges removed and added product caches plus bulk inventory after success", async () => {
+    const productIds = ["old-product", "new-product", "parent-product"];
+    const urls = [
+      ...productIds.flatMap((productSlug) => buildProductCacheUrls({
+        publicDomain: "merchant.example",
+        orgId: "org-1",
+        handle: "mango-lover",
+        productSlug,
+        listChanged: false,
+      })),
+      ...buildProductCacheUrls({
+        publicDomain: "merchant.example",
+        orgId: "org-1",
+        handle: "mango-lover",
+        inventoryIds: productIds,
+        listChanged: false,
+      }),
+    ];
+    const requests: Array<[string, RequestInit | undefined]> = [];
+    await purgeProductCacheUrls({
+      zoneId: "zone",
+      apiToken: "token",
+      urls,
+      warmToken: "",
+      fetchImpl: async (url, options) => {
+        requests.push([String(url), options]);
+        return new Response("ok", { status: 200 });
+      },
+    });
+
+    expect(urls).toContain("https://merchant.example/api/public/v1/mango-lover/products/old-product");
+    expect(urls).toContain("https://merchant.example/api/public/v1/mango-lover/products/new-product");
+    expect(urls).toContain("https://merchant.example/api/public/v1/mango-lover/products/parent-product");
+    expect(urls).toContain("https://merchant.example/api/public/v1/mango-lover/inventory?ids=old-product,new-product,parent-product");
+    expect(JSON.parse(String(requests[0][1]?.body)).files).toEqual(urls);
+    expect(requests).toHaveLength(1);
+  });
+
+  it("does not warm or continue purging when the cache purge fails", async () => {
+    const requests: string[] = [];
+    await expect(purgeProductCacheUrls({
+      zoneId: "zone",
+      apiToken: "token",
+      urls: ["https://merchant.example/product"],
+      warmToken: "warm",
+      fetchImpl: async (url) => {
+        requests.push(String(url));
+        return new Response("failed", { status: 500 });
+      },
+    })).rejects.toThrow("Cloudflare purge failed");
+    expect(requests).toEqual(["https://api.cloudflare.com/client/v4/zones/zone/purge_cache"]);
   });
 
   it("returns conflict errors for dispatched orders and insufficient stock", () => {

@@ -40,6 +40,18 @@ describe("buildProductCacheUrls", () => {
     ]);
   });
 
+  it("includes the bulk inventory URL for every canonical storefront path", () => {
+    expect(
+      buildProductCacheUrls({
+        publicDomain: "merchant.example",
+        orgId: "org-1",
+        handle: "mango-lover",
+        inventoryIds: ["old-product", "new/product"],
+        listChanged: false,
+      }),
+    ).toContain("https://merchant.example/api/public/v1/storefronts/org-1/inventory?ids=old-product,new%2Fproduct");
+  });
+
   it("purges then warms every supplied URL when cache credentials are configured", async () => {
     const requests: Array<[string, RequestInit | undefined]> = [];
     const urls = ["https://merchant.example/catalog", "https://merchant.example/product"];

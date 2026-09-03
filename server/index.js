@@ -1176,7 +1176,7 @@ async function getStorefrontHandle(orgId) {
 // Enterprise-only); Cache-Tag headers still ship so the future switch is a
 // config change, not a code change. Failures log + drop — the outbox
 // replay job is a separate plan.
-async function purgeProductCache(orgId, product, { listChanged = false, warm = true } = {}) {
+async function purgeProductCache(orgId, product, { listChanged = false, warm = true, inventoryIds = [] } = {}) {
   if (!CLOUDFLARE_ZONE_ID || !CLOUDFLARE_API_TOKEN || !PUBLIC_DOMAIN) {
     if (process.env.NODE_ENV !== "test") {
       console.warn("[Purge] Cloudflare not configured — skipping purge");
@@ -1190,6 +1190,7 @@ async function purgeProductCache(orgId, product, { listChanged = false, warm = t
     handle,
     productSlug: product?.slug,
     listChanged,
+    inventoryIds,
   });
   if (!urls.length) return;
 
@@ -5371,6 +5372,14 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       return res.status(409).json({ error: "Order items cannot be edited after courier dispatch" });
     }
 
+    const { data: existingItems, error: existingItemsError } = await supabase
+      .from("order_items")
+      .select("product_id")
+      .eq("order_id", req.params.id)
+      .eq("org_id", orgId);
+    if (existingItemsError) throw existingItemsError;
+    const existingProductIds = (existingItems || []).map((item) => item.product_id).filter(Boolean);
+
     const productIds = [...new Set(normalizedItems.map((item) => item.productId).filter(Boolean))];
     const variantIds = [...new Set(normalizedItems.map((item) => item.variantId).filter(Boolean))];
     const affectedProducts = new Map();
@@ -5413,6 +5422,23 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       }
     }
 
+    const missingCacheProductIds = [...new Set(existingProductIds)].filter((id) => !affectedProducts.has(id));
+    if (missingCacheProductIds.length) {
+      const { data: products, error } = await supabase
+        .from("products")
+        .select("id, slug")
+        .in("id", missingCacheProductIds)
+        .eq("org_id", orgId);
+      if (error) throw error;
+      for (const product of products || []) affectedProducts.set(product.id, product);
+    }
+
+    const cacheInventoryIds = [...new Set([
+      ...existingProductIds,
+      ...productIds,
+      ...[...affectedProducts.keys()],
+    ])];
+
     // The RPC locks the order and inventory rows, applies stock deltas, replaces
     // items, and updates denormalized order totals in one database transaction.
     const { error: mutationError } = await supabase.rpc("replace_order_items", {
@@ -5429,11 +5455,18 @@ app.patch("/api/orders/:id/items", async (req, res) => {
     }
 
     await Promise.all(
-      [...affectedProducts.values()].map((product) =>
+      [
+        ...[...affectedProducts.values()].map((product) =>
         purgeProductCache(orgId, product, { listChanged: false, warm: false }).catch((error) => {
           console.warn("[Orders] Product cache purge failed after item edit:", error.message);
         }),
-      ),
+        ),
+        purgeProductCache(orgId, null, {
+          listChanged: false,
+          warm: false,
+          inventoryIds: cacheInventoryIds,
+        }),
+      ],
     );
 
     const [{ data: updatedOrder, error: updatedOrderError }, { data: items, error: updatedItemsError }] = await Promise.all([
@@ -8686,9 +8719,14 @@ function catalogEtag(products) {
       id: product.id,
       slug: product.slug,
       price: product.price,
+      compare_at_price: product.compare_at_price,
       image_url: product.image_url,
       image_urls: product.image_urls,
       images: product.images,
+      variants: product.variants?.map((variant) => ({
+        id: variant.id,
+        price: variant.price,
+      })),
     })),
   );
   return computeEtag(fp);
