@@ -12,6 +12,7 @@ import OrderChat from "./pages/OrderChat";
 import Products from "./pages/Products";
 import ProductNew from "./pages/ProductNew";
 import ProductEdit from "./pages/ProductEdit";
+import OrderDetail from "./pages/OrderDetail";
 import Customers from "./pages/Customers";
 import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
@@ -100,6 +101,7 @@ const AppRoutes = () => (
       <Route path="/products" element={<Products />} />
       <Route path="/products/new" element={<ProductNew />} />
       <Route path="/products/:id/edit" element={<ProductEdit />} />
+      <Route path="/orders/:id" element={<OrderDetail />} />
       <Route path="/customers" element={<Customers />} />
       <Route path="/inbox/facebook" element={<FacebookInbox />} />
       <Route path="/inbox/instagram" element={<InstagramInbox />} />

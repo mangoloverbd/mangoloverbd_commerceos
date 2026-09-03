@@ -1176,7 +1176,7 @@ async function getStorefrontHandle(orgId) {
 // Enterprise-only); Cache-Tag headers still ship so the future switch is a
 // config change, not a code change. Failures log + drop — the outbox
 // replay job is a separate plan.
-async function purgeProductCache(orgId, product, { listChanged = false, warm = true } = {}) {
+async function purgeProductCache(orgId, product, { listChanged = false, warm = true, inventoryIds = [] } = {}) {
   if (!CLOUDFLARE_ZONE_ID || !CLOUDFLARE_API_TOKEN || !PUBLIC_DOMAIN) {
     if (process.env.NODE_ENV !== "test") {
       console.warn("[Purge] Cloudflare not configured — skipping purge");
@@ -1190,6 +1190,7 @@ async function purgeProductCache(orgId, product, { listChanged = false, warm = t
     handle,
     productSlug: product?.slug,
     listChanged,
+    inventoryIds,
   });
   if (!urls.length) return;
 
@@ -5248,8 +5249,19 @@ app.get("/api/orders", async (req, res) => {
     if (error) throw error;
 
     const allOrders = allData || [];
-
-    const orders = allOrders;
+    const orderIds = allOrders.map((order) => order.id).filter(Boolean);
+    const { data: orderItems, error: itemsError } = orderIds.length
+      ? await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, quantity").in("order_id", orderIds).eq("org_id", orgId).order("created_at", { ascending: true })
+      : { data: [], error: null };
+    if (itemsError) throw itemsError;
+    const enrichedItems = await enrichOrderItems(supabase, orgId, orderItems || []);
+    const itemsByOrder = new Map();
+    for (const item of enrichedItems) {
+      const list = itemsByOrder.get(item.order_id) || [];
+      list.push(item);
+      itemsByOrder.set(item.order_id, list);
+    }
+    const orders = allOrders.map((order) => ({ ...order, items: itemsByOrder.get(order.id) || [] }));
 
     console.log(`[Orders] total=${allOrders.length}`);
     return res.json({ orders });
@@ -5274,6 +5286,236 @@ app.get("/api/orders/recent-notifications", async (req, res) => {
 
     if (error) throw error;
     return res.json({ orders: data || [] });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+function isOrderDispatched(order) {
+  return Boolean(
+    order.sent_to_courier ||
+    order.consignment_id ||
+    order.tracking_code ||
+    order.courier_status,
+  );
+}
+
+function variantDisplay(attributes) {
+  return Object.values(attributes || {}).filter(Boolean).join(" · ") || null;
+}
+
+async function enrichOrderItems(supabase, orgId, items) {
+  if (!items.length) return items;
+  const variantIds = [...new Set(items.map((item) => item.variant_id).filter(Boolean))];
+  const productIds = [...new Set(items.map((item) => item.product_id).filter(Boolean))];
+  const [variantResult, productVariantResult] = await Promise.all([
+    variantIds.length ? supabase.from("product_variants").select("id, product_id, attributes").in("id", variantIds).eq("org_id", orgId) : Promise.resolve({ data: [], error: null }),
+    productIds.length ? supabase.from("product_variants").select("id, product_id, attributes").in("product_id", productIds).eq("org_id", orgId) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (variantResult.error) throw variantResult.error;
+  if (productVariantResult.error) throw productVariantResult.error;
+  const variantsById = new Map((variantResult.data || []).map((variant) => [variant.id, variant]));
+  const variantsByProduct = new Map();
+  for (const variant of productVariantResult.data || []) {
+    const list = variantsByProduct.get(variant.product_id) || [];
+    list.push(variant);
+    variantsByProduct.set(variant.product_id, list);
+  }
+  return items.map((item) => {
+    const productVariants = variantsByProduct.get(item.product_id) || [];
+    const variant = variantsById.get(item.variant_id) || (productVariants.length === 1 ? productVariants[0] : null);
+    return { ...item, variant_name: variantDisplay(variant?.attributes) || item.variant_name || null };
+  });
+}
+
+const ORDER_ITEM_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+app.get("/api/orders/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    const { data: items, error: itemsError } = await supabase
+      .from("order_items")
+      .select("*")
+      .eq("order_id", req.params.id)
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+    if (itemsError) throw itemsError;
+
+    const enrichedItems = await enrichOrderItems(supabase, orgId, items || []);
+    return res.json({ order, items: enrichedItems, canEditItems: !isOrderDispatched(order) });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/orders/:id/items", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const requestedItems = req.body?.items;
+    if (!Array.isArray(requestedItems)) {
+      return res.status(400).json({ error: "items array required" });
+    }
+
+    const normalizedItems = [];
+    const itemKeys = new Set();
+    for (const item of requestedItems) {
+      if (!item || typeof item !== "object") {
+        return res.status(400).json({ error: "Each item must be an object" });
+      }
+      const productId = item.productId || null;
+      const variantId = item.variantId || null;
+      const quantity = item.quantity;
+      if (!productId && !variantId) {
+        return res.status(400).json({ error: "Each item requires a productId or variantId" });
+      }
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        return res.status(400).json({ error: "Item quantity must be a positive integer" });
+      }
+      if ((productId && (typeof productId !== "string" || !ORDER_ITEM_UUID_RE.test(productId))) ||
+          (variantId && (typeof variantId !== "string" || !ORDER_ITEM_UUID_RE.test(variantId)))) {
+        return res.status(400).json({ error: "Product and variant IDs must be UUIDs" });
+      }
+      const key = `${productId || ""}:${variantId || ""}`;
+      if (itemKeys.has(key)) {
+        return res.status(400).json({ error: "Duplicate order item" });
+      }
+      itemKeys.add(key);
+      normalizedItems.push({ productId, variantId, quantity });
+    }
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (isOrderDispatched(order)) {
+      return res.status(409).json({ error: "Order items cannot be edited after courier dispatch" });
+    }
+
+    const { data: existingItems, error: existingItemsError } = await supabase
+      .from("order_items")
+      .select("product_id")
+      .eq("order_id", req.params.id)
+      .eq("org_id", orgId);
+    if (existingItemsError) throw existingItemsError;
+    const existingProductIds = (existingItems || []).map((item) => item.product_id).filter(Boolean);
+
+    const productIds = [...new Set(normalizedItems.map((item) => item.productId).filter(Boolean))];
+    const variantIds = [...new Set(normalizedItems.map((item) => item.variantId).filter(Boolean))];
+    const affectedProducts = new Map();
+    if (productIds.length) {
+      const { data: products, error } = await supabase
+        .from("products")
+        .select("id, slug")
+        .in("id", productIds)
+        .eq("org_id", orgId);
+      if (error) throw error;
+      if ((products || []).length !== productIds.length) {
+        return res.status(400).json({ error: "One or more products are not available" });
+      }
+      for (const product of products || []) affectedProducts.set(product.id, product);
+    }
+    if (variantIds.length) {
+      const { data: variants, error } = await supabase
+        .from("product_variants")
+        .select("id, product_id")
+        .in("id", variantIds)
+        .eq("org_id", orgId);
+      if (error) throw error;
+      if ((variants || []).length !== variantIds.length) {
+        return res.status(400).json({ error: "One or more variants are not available" });
+      }
+      const variantProducts = new Map((variants || []).map((variant) => [variant.id, variant.product_id]));
+      if (normalizedItems.some((item) => item.variantId && item.productId && variantProducts.get(item.variantId) !== item.productId)) {
+        return res.status(400).json({ error: "Variant does not belong to supplied product" });
+      }
+      const variantProductIds = [...new Set((variants || []).map((variant) => variant.product_id).filter(Boolean))];
+      const missingProductIds = variantProductIds.filter((id) => !affectedProducts.has(id));
+      if (missingProductIds.length) {
+        const { data: products, error: productsError } = await supabase
+          .from("products")
+          .select("id, slug")
+          .in("id", missingProductIds)
+          .eq("org_id", orgId);
+        if (productsError) throw productsError;
+        for (const product of products || []) affectedProducts.set(product.id, product);
+      }
+    }
+
+    const missingCacheProductIds = [...new Set(existingProductIds)].filter((id) => !affectedProducts.has(id));
+    if (missingCacheProductIds.length) {
+      const { data: products, error } = await supabase
+        .from("products")
+        .select("id, slug")
+        .in("id", missingCacheProductIds)
+        .eq("org_id", orgId);
+      if (error) throw error;
+      for (const product of products || []) affectedProducts.set(product.id, product);
+    }
+
+    const cacheInventoryIds = [...new Set([
+      ...existingProductIds,
+      ...productIds,
+      ...[...affectedProducts.keys()],
+    ])];
+
+    // The RPC locks the order and inventory rows, applies stock deltas, replaces
+    // items, and updates denormalized order totals in one database transaction.
+    const { error: mutationError } = await supabase.rpc("replace_order_items", {
+      p_org_id: orgId,
+      p_order_id: req.params.id,
+      p_items: normalizedItems,
+    });
+    if (mutationError) {
+      const message = mutationError.message || "Unable to update order items";
+      if (/dispatch|courier|insufficient|stock/i.test(message)) {
+        return res.status(409).json({ error: message });
+      }
+      throw mutationError;
+    }
+
+    await Promise.all(
+      [
+        ...[...affectedProducts.values()].map((product) =>
+        purgeProductCache(orgId, product, { listChanged: false, warm: false }).catch((error) => {
+          console.warn("[Orders] Product cache purge failed after item edit:", error.message);
+        }),
+        ),
+        purgeProductCache(orgId, null, {
+          listChanged: false,
+          warm: false,
+          inventoryIds: cacheInventoryIds,
+        }),
+      ],
+    );
+
+    const [{ data: updatedOrder, error: updatedOrderError }, { data: items, error: updatedItemsError }] = await Promise.all([
+      supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single(),
+      supabase.from("order_items").select("*").eq("order_id", req.params.id).eq("org_id", orgId).order("created_at", { ascending: true }),
+    ]);
+    if (updatedOrderError) throw updatedOrderError;
+    if (updatedItemsError) throw updatedItemsError;
+    return res.json({ order: updatedOrder, items: items || [], canEditItems: true });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -5726,9 +5968,18 @@ app.patch("/api/orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "customer_name", "phone", "address"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
+    if (update.customer_name !== undefined && (typeof update.customer_name !== "string" || !update.customer_name.trim())) {
+      return res.status(400).json({ error: "Customer name is required" });
+    }
+    if (update.phone !== undefined && typeof update.phone !== "string") {
+      return res.status(400).json({ error: "Phone must be text" });
+    }
+    if (update.address !== undefined && typeof update.address !== "string") {
+      return res.status(400).json({ error: "Address must be text" });
+    }
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
@@ -8517,9 +8768,14 @@ function catalogEtag(products) {
       id: product.id,
       slug: product.slug,
       price: product.price,
+      compare_at_price: product.compare_at_price,
       image_url: product.image_url,
       image_urls: product.image_urls,
       images: product.images,
+      variants: product.variants?.map((variant) => ({
+        id: variant.id,
+        price: variant.price,
+      })),
     })),
   );
   return computeEtag(fp);

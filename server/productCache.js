@@ -2,7 +2,7 @@ function cacheBaseUrl(publicDomain, path) {
   return `https://${publicDomain}${path}`;
 }
 
-export function buildProductCacheUrls({ publicDomain, orgId, handle, productSlug, listChanged }) {
+export function buildProductCacheUrls({ publicDomain, orgId, handle, productSlug, listChanged, inventoryIds = [] }) {
   const bases = [
     handle ? { path: `/api/public/v1/${handle}`, hasProductInventory: true } : null,
     { path: `/api/public/v1/storefronts/${orgId}`, hasProductInventory: true },
@@ -10,8 +10,12 @@ export function buildProductCacheUrls({ publicDomain, orgId, handle, productSlug
   ].filter(Boolean);
   const encodedSlug = productSlug ? encodeURIComponent(productSlug) : null;
 
+  const encodedInventoryIds = inventoryIds.map((id) => encodeURIComponent(id)).join(",");
   return bases.flatMap(({ path, hasProductInventory }) => [
     ...(listChanged ? [cacheBaseUrl(publicDomain, `${path}/products`)] : []),
+    ...(hasProductInventory && encodedInventoryIds
+      ? [cacheBaseUrl(publicDomain, `${path}/inventory?ids=${encodedInventoryIds}`)]
+      : []),
     ...(encodedSlug ? [
       cacheBaseUrl(publicDomain, `${path}/products/${encodedSlug}`),
       ...(hasProductInventory ? [cacheBaseUrl(publicDomain, `${path}/products/${encodedSlug}/inventory`)] : []),
