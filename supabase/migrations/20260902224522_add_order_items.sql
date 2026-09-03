@@ -1,18 +1,41 @@
 begin;
 
+create unique index if not exists orders_org_id_id_unique_idx
+on public.orders (org_id, id);
+
+create unique index if not exists products_org_id_id_unique_idx
+on public.products (org_id, id);
+
+create unique index if not exists product_variants_org_id_id_unique_idx
+on public.product_variants (org_id, id);
+
 create table if not exists public.order_items (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null,
-  order_id uuid not null references public.orders(id) on delete cascade,
-  product_id uuid references public.products(id) on delete set null,
-  variant_id uuid references public.product_variants(id) on delete set null,
+  order_id uuid not null,
+  product_id uuid,
+  variant_id uuid,
   product_name text not null,
   variant_name text,
-  unit_price numeric(12, 2) not null check (unit_price >= 0),
+  unit_price numeric not null check (unit_price >= 0),
   quantity integer not null check (quantity > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.order_items
+  alter column unit_price type numeric using unit_price,
+  drop constraint if exists order_items_order_workspace_fkey,
+  drop constraint if exists order_items_product_workspace_fkey,
+  drop constraint if exists order_items_variant_workspace_fkey;
+
+alter table public.order_items
+  add constraint order_items_order_workspace_fkey
+    foreign key (org_id, order_id) references public.orders(org_id, id) on delete cascade,
+  add constraint order_items_product_workspace_fkey
+    foreign key (org_id, product_id) references public.products(org_id, id) on delete set null,
+  add constraint order_items_variant_workspace_fkey
+    foreign key (org_id, variant_id) references public.product_variants(org_id, id) on delete set null;
 
 create index if not exists order_items_org_order_id_idx
 on public.order_items (org_id, order_id);
@@ -77,6 +100,7 @@ with order_parts as (
       coalesce((regexp_match(part.value, '^[[:space:]]*(Cart Checkout[[:space:]]*-[[:space:]]*)?([0-9]+)[[:space:]]*[xX]'))[2]::integer, 1),
       1
     ) as quantity,
+    part.part_no,
     trim(regexp_replace(
       part.value,
       '^[[:space:]]*(Cart Checkout[[:space:]]*-[[:space:]]*)?[0-9]+[[:space:]]*[xX][[:space:]]*',
@@ -86,8 +110,8 @@ with order_parts as (
   from public.orders as o
   cross join lateral regexp_split_to_table(
     coalesce(nullif(trim(o.product), ''), ''),
-    '\s+\+\s+'
-  ) as part(value)
+    '\s*\+\s*'
+  ) with ordinality as part(value, part_no)
   where not exists (
     select 1 from public.order_items as existing
     where existing.order_id = o.id and existing.org_id = o.org_id
@@ -107,6 +131,16 @@ with order_parts as (
     order by length(p.name) desc
     limit 1
   ) as product on true
+), priced_parts as (
+  select
+    part.*,
+    greatest(coalesce(part.price, 0), 0) / part.total_quantity as base_unit_price,
+    coalesce(sum((greatest(coalesce(part.price, 0), 0) / part.total_quantity) * part.quantity) over (
+      partition by part.order_id order by part.part_no
+      rows between unbounded preceding and 1 preceding
+    ), 0) as prior_total,
+    max(part.part_no) over (partition by part.order_id) as last_part_no
+  from matched_parts as part
 )
 insert into public.order_items (
   org_id,
@@ -125,11 +159,14 @@ select
   product_id,
   coalesce(nullif(catalog_product_name, ''), nullif(product_text, ''), 'Legacy product'),
   null,
-  round(greatest(coalesce(price, 0), 0) / greatest(total_quantity, 1), 2),
+  case when part_no = last_part_no
+    then (greatest(coalesce(price, 0), 0) - prior_total) / quantity
+    else base_unit_price
+  end,
   quantity,
   now(),
   now()
-from matched_parts;
+from priced_parts;
 
 alter table public.order_items enable row level security;
 revoke all on public.order_items from anon, authenticated;
