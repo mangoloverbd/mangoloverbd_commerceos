@@ -33,9 +33,9 @@ alter table public.order_items
   add constraint order_items_order_workspace_fkey
     foreign key (org_id, order_id) references public.orders(org_id, id) on delete cascade,
   add constraint order_items_product_workspace_fkey
-    foreign key (org_id, product_id) references public.products(org_id, id) on delete set null,
+    foreign key (org_id, product_id) references public.products(org_id, id),
   add constraint order_items_variant_workspace_fkey
-    foreign key (org_id, variant_id) references public.product_variants(org_id, id) on delete set null;
+    foreign key (org_id, variant_id) references public.product_variants(org_id, id);
 
 create index if not exists order_items_org_order_id_idx
 on public.order_items (org_id, order_id);
@@ -83,6 +83,36 @@ drop trigger if exists validate_order_items_ownership on public.order_items;
 create trigger validate_order_items_ownership
 before insert or update on public.order_items
 for each row execute function public.validate_order_item_ownership();
+
+create or replace function public.clear_order_item_catalog_reference()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_argv[0] = 'product_id' then
+    update public.order_items
+    set product_id = null
+    where org_id = old.org_id and product_id = old.id;
+  elsif tg_argv[0] = 'variant_id' then
+    update public.order_items
+    set variant_id = null
+    where org_id = old.org_id and variant_id = old.id;
+  end if;
+
+  return old;
+end;
+$$;
+
+drop trigger if exists clear_order_item_product_reference on public.products;
+create trigger clear_order_item_product_reference
+before delete on public.products
+for each row execute function public.clear_order_item_catalog_reference('product_id');
+
+drop trigger if exists clear_order_item_variant_reference on public.product_variants;
+create trigger clear_order_item_variant_reference
+before delete on public.product_variants
+for each row execute function public.clear_order_item_catalog_reference('variant_id');
 
 drop trigger if exists update_order_items_updated_at on public.order_items;
 create trigger update_order_items_updated_at
@@ -171,6 +201,7 @@ from priced_parts;
 alter table public.order_items enable row level security;
 revoke all on public.order_items from anon, authenticated;
 revoke execute on function public.validate_order_item_ownership() from public, anon, authenticated;
+revoke execute on function public.clear_order_item_catalog_reference() from public, anon, authenticated;
 grant all on public.order_items to service_role;
 grant execute on function public.validate_order_item_ownership() to service_role;
 

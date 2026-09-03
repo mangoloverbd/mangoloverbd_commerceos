@@ -115,6 +115,8 @@ beforeAll(() => {
       ('30000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000002', '2001', 'Other org item', 1.00);
     insert into public.products (id, org_id, name, selling_price) values
       ('50000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Mango', 5.00);
+    insert into public.product_variants (id, org_id, product_id, attributes) values
+      ('60000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '{"size":"large"}');
   `);
   applyFile(migrationPath);
 });
@@ -197,5 +199,26 @@ describe("order item schema", () => {
         where id = '30000000-0000-0000-0000-000000000001';
       `),
     ).toThrow();
+  });
+
+  it("clears catalog references without nulling item workspace on catalog deletion", () => {
+    runSql(`
+      insert into public.order_items (org_id, order_id, product_id, product_name, unit_price, quantity)
+      values ('40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', 'Deletion product', 5, 1);
+      insert into public.order_items (org_id, order_id, variant_id, product_name, unit_price, quantity)
+      values ('40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', 'Deletion variant', 5, 1);
+      delete from public.products
+      where id = '50000000-0000-0000-0000-000000000001';
+    `);
+
+    const result = runSql(`
+      select count(*) as preserved
+      from public.order_items
+      where org_id = '40000000-0000-0000-0000-000000000001'
+        and product_id is null
+        and variant_id is null
+        and product_name like 'Deletion %';
+    `);
+    expect(result).toMatch(/\n\s*2\s*\n/);
   });
 });

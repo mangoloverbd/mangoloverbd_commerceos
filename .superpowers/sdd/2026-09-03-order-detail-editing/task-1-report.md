@@ -76,3 +76,24 @@ The pre-existing modification in `server/index.js` was not edited or staged.
   - Passed: Vite production build completed successfully.
 - `npm run verify:supabase-project && npm run verify:supabase-baseline`
   - Passed: `Supabase project preflight passed: ldiktvcavyabivpxfwpn`; `Baseline reset 1: passed`; `Baseline reset 2: passed`.
+
+## Task 1 Re-review Fix
+
+### Status
+
+FIXED
+
+### Issue
+
+The composite product and variant foreign keys used `ON DELETE SET NULL`. PostgreSQL applies that action to every column in the composite key, so deleting a catalog row attempted to set non-null `order_items.org_id` to `NULL` and fired the ownership trigger with an invalid workspace.
+
+### Fix
+
+- Removed `ON DELETE SET NULL` from the composite product and variant foreign keys, retaining composite-key enforcement to prevent cross-workspace references.
+- Added parent-side `BEFORE DELETE` triggers that clear only `order_items.product_id` or `order_items.variant_id`, scoped by the parent workspace.
+- Added a PostgreSQL regression test covering product deletion, cascading variant deletion, nullable reference clearing, and preserved item ownership.
+
+### Verification
+
+- Focused RED: the new deletion test reproduced the previous `order item order and workspace do not match` failure from the composite `SET NULL` action.
+- Focused GREEN: `npm test -- src/test/order-items.test.ts` passed 7 tests.
