@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
@@ -517,6 +518,17 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
 
 export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: OrdersTableProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const prefetchOrder = (orderId: string) => queryClient.prefetchQuery({
+    queryKey: [`/api/orders/${orderId}`],
+    staleTime: 30_000,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/orders/${orderId}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to load order");
+      return json;
+    },
+  });
   const { orgName } = useOrgName();
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
@@ -1098,6 +1110,8 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                   key={order.id}
                   tabIndex={0}
                   aria-label={`Open order ${order.order_number}`}
+                  onMouseEnter={() => prefetchOrder(order.id)}
+                  onFocus={() => prefetchOrder(order.id)}
                   onClick={(event) => {
                     const target = event.target as HTMLElement;
                     if (target.closest("button, a, input, textarea, select, [role='button'], [data-row-interactive='true']")) return;

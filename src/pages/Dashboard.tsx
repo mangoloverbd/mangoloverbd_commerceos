@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -359,6 +360,7 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
   const ORDER_PAGE_SIZE = 100;
   const [orderPage, setOrderPage] = useState(0);
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const liveVisitors = useLiveVisitors();
@@ -391,7 +393,9 @@ export default function Dashboard() {
       const res = await apiFetch("/api/orders");
       if (!res.ok) throw new Error("Failed to load orders");
       const data = await res.json();
-      setOrders((data.orders as Order[]) || []);
+      const nextOrders = (data.orders as Order[]) || [];
+      queryClient.setQueryData(["/api/orders"], nextOrders);
+      setOrders(nextOrders);
     } catch {
       toast.custom(() => (
         <DarkToast className="flex items-center gap-3">
@@ -405,16 +409,17 @@ export default function Dashboard() {
         </DarkToast>
       ), { fit: true });
     } finally { setLoading(false); }
-  }, []);
+  }, [queryClient]);
 
   // Reset state when the logged-in user changes
   useEffect(() => {
-    setOrders([]);
+    const cachedOrders = queryClient.getQueryData<Order[]>(["/api/orders"]);
+    setOrders(cachedOrders || []);
     setAnalytics(null);
     setPrevAnalytics(null);
-    setLoading(true);
+    setLoading(!cachedOrders);
     setAnalyticsLoading(true);
-  }, [user?.id]);
+  }, [queryClient, user?.id]);
 
   const handleDateRangeChange = useCallback((range: DateRange | null) => {
     setDateRange(range);
@@ -500,8 +505,13 @@ export default function Dashboard() {
     finally { setCheckingFraud(false); }
   };
 
-  const handleStatusUpdate = (orderId: string, newStatus: string) =>
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
+  const handleStatusUpdate = (orderId: string, newStatus: string) => {
+    setOrders((prev) => {
+      const next = prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
+      queryClient.setQueryData(["/api/orders"], next);
+      return next;
+    });
+  };
 
   const handleOrderUpdate = (updatedOrder: Order) => {
     setOrders((prev) => {
@@ -515,7 +525,9 @@ export default function Dashboard() {
       if (needsAnalyticsRefresh) {
         fetchAnalytics(dateRange);
       }
-      return prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o));
+      const next = prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o));
+      queryClient.setQueryData(["/api/orders"], next);
+      return next;
     });
   };
 

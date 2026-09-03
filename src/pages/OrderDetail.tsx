@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { ArrowLeft, CaretDown, Check, Plus, Trash } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Button as BuiButton } from "@/components/base/buttons/button";
@@ -118,6 +119,7 @@ export default function OrderDetail() {
 
   const detailQuery = useQuery<OrderDetailResponse>({
     queryKey: [`/api/orders/${id}`],
+    staleTime: 30_000,
     enabled: Boolean(id),
     queryFn: async () => {
       const res = await apiFetch(`/api/orders/${id}`);
@@ -128,6 +130,7 @@ export default function OrderDetail() {
   });
   const productsQuery = useQuery<ProductsResponse>({
     queryKey: ["/api/products"],
+    enabled: productPickerOpen,
     queryFn: async () => {
       const res = await apiFetch("/api/products");
       if (!res.ok) throw new Error("Failed to load products");
@@ -221,7 +224,13 @@ export default function OrderDetail() {
       </div>
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={() => navigate("/")} className="mt-2 text-[13px] text-black/50 underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && (
-        <>
+         <motion.div
+           data-testid="order-detail-animated-content"
+           initial={{ opacity: 0, y: 8 }}
+           animate={{ opacity: 1, y: 0 }}
+           transition={{ duration: 0.4 }}
+           className="space-y-4"
+         >
           <section className="rounded-[16px] border border-black/[0.07] bg-[#FAFAF8] p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/45">Customer details</h2><span className="rounded-[8px] bg-black/[0.05] px-2.5 py-1 text-[10px] uppercase tracking-widest text-black/60">{order.status || "pending"}</span></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><BuiInput label="Customer name" value={customerName} onChange={setCustomerName} isDisabled={saving} /><BuiInput label="Phone" type="tel" value={phone} onChange={setPhone} isDisabled={saving} /><BuiInput label="Delivery address" value={address} onChange={setAddress} isDisabled={saving} /></div><div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4"><DetailField label="Payment" value={order.payment_method} /><DetailField label="Order total" value={money(order.price)} /><DetailField label="Delivery fee" value={money(order.delivery_rate)} /><DetailField label="Courier" value={order.courier_name || order.courier_status} /><DetailField label="Fraud" value={order.fraud_data?.risk_level} /><DetailField label="Created" value={order.created_at ? new Date(order.created_at).toLocaleString("en-BD") : null} /><DetailField label="Updated" value={order.updated_at ? new Date(order.updated_at).toLocaleString("en-BD") : null} /><DetailField label="Consignment" value={order.consignment_id} /></div></section>
            <section className="rounded-[16px] border border-black/[0.07] bg-[#FAFAF8] p-5"><div className="mb-2 flex items-center justify-between"><div><h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/45">Line items</h2><p className="mt-1 text-[12px] text-black/40">{quantity} item{quantity === 1 ? "" : "s"} · {money(subtotal)} subtotal</p></div></div>
             {!detail.canEditItems && <p className="mb-2 rounded-[8px] bg-amber-50 px-3 py-2 text-[12px] text-amber-800">Editing is locked after courier dispatch.</p>}
@@ -230,7 +239,7 @@ export default function OrderDetail() {
              <div className="mt-5 flex justify-end border-t border-black/[0.08] pt-4"><span className="font-mono text-[15px] font-medium tabular-nums text-black">Total {money(subtotal + (order.delivery_rate || 0))}</span></div></section>
           {saveError && <p role="alert" className="text-[13px] text-red-600">{saveError}</p>}
             <div className="flex items-center gap-2"><RichButton type="button" onClick={save} disabled={saving} className="h-9 rounded-[8px]"><span className="flex items-center gap-2">{saving ? <Spinner size="sm" /> : <Check weight="light" size={16} />}{saving ? "Saving…" : "Save changes"}</span></RichButton><RichButton type="button" onClick={() => navigate("/")} disabled={saving} className="bg-transparent text-text-secondary shadow-none hover:bg-black/[0.05]">Cancel</RichButton></div>
-        </>
+         </motion.div>
       )}
     </div>
   );

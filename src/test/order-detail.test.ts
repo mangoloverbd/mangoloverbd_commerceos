@@ -116,6 +116,7 @@ describe("OrderDetail", () => {
     expect(screen.getByText("৳580")).toBeInTheDocument();
     expect(screen.getByText("Updated")).toBeInTheDocument();
     expect(screen.getByText("৳80")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("order-detail-animated-content")).toHaveStyle({ opacity: "1" }));
   });
 
   it("adds a product and variant, edits quantity, and removes a line", async () => {
@@ -232,6 +233,7 @@ describe("OrderDetail", () => {
 
   it("shows the product default image in the product picker", async () => {
     renderPage();
+    expect(apiFetch.mock.calls.some(([url]) => url === "/api/products")).toBe(false);
     fireEvent.click(await screen.findByRole("button", { name: "Select product" }));
     expect(await screen.findByAltText("Honey Jar")).toHaveAttribute("src", "https://cdn.example/honey.jpg");
   });
