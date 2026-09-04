@@ -1,4 +1,5 @@
 import NumberFlow from "@number-flow/react";
+import { useEffect, useState } from "react";
 
 type MetricNumberFlowProps = {
   /** Numeric amount to display. Animates only when this value changes. */
@@ -15,8 +16,15 @@ type MetricNumberFlowProps = {
  * decimals) so numbers look identical at rest.
  */
 export function MetricNumberFlow({ value, prefix = "৳", className }: MetricNumberFlowProps) {
+  const [animationEnabled, setAnimationEnabled] = useState(false);
+
+  useEffect(() => {
+    setAnimationEnabled(true);
+  }, []);
+
   return (
     <NumberFlow
+      animated={animationEnabled}
       value={value}
       prefix={prefix}
       locales="en-BD"
