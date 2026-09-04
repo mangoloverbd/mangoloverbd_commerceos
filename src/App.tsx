@@ -10,6 +10,8 @@ import Settings from "./pages/Settings";
 import OrderAnalysis from "./pages/OrderAnalysis";
 import OrderChat from "./pages/OrderChat";
 import Products from "./pages/Products";
+import Warehouses from "./pages/Warehouses";
+import WarehouseDetail from "./pages/WarehouseDetail";
 import ProductNew from "./pages/ProductNew";
 import ProductEdit from "./pages/ProductEdit";
 import OrderDetail from "./pages/OrderDetail";
@@ -101,6 +103,8 @@ const AppRoutes = () => (
       <Route path="/products" element={<Products />} />
       <Route path="/products/new" element={<ProductNew />} />
       <Route path="/products/:id/edit" element={<ProductEdit />} />
+      <Route path="/warehouses" element={<Warehouses />} />
+      <Route path="/warehouses/:id" element={<WarehouseDetail />} />
       <Route path="/orders/:id" element={<OrderDetail />} />
       <Route path="/customers" element={<Customers />} />
       <Route path="/inbox/facebook" element={<FacebookInbox />} />

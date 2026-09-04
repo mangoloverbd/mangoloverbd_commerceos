@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { toast, DarkToast } from "@/components/ui/sonner";
-import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldCheck, Truck, Search, StickyNote, Package, Check, FileText, Trash2, Printer, ChevronDown, Copy, MapPin, ShoppingBag } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldCheck, Truck, Search, StickyNote, Package, Check, FileText, Trash2, Printer, ChevronDown, Copy, MapPin, ShoppingBag, FileSpreadsheet } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,9 @@ import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
+import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
+import { useWarehouses } from "@/hooks/useWarehouses";
+import { downloadOrderExcel } from "@/lib/orderExcelExport";
 
 function splitProductLines(product: string | null): string[] {
   if (!product) return [];
@@ -131,7 +134,7 @@ interface FraudData {
   }>;
 }
 
-interface Order {
+export interface Order {
   id: string;
   shopify_order_id: number;
   order_number: string;
@@ -147,6 +150,9 @@ interface Order {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fraud_data: FraudData | any | null;
   delivery_rate: number | null;
+  warehouse_id?: string | null;
+  warehouse_auto?: boolean | null;
+  weight_kg?: number | null;
   sent_to_courier?: boolean | null;
   courier_status?: string | null;
   consignment_id?: number | null;
@@ -520,6 +526,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     },
   });
   const { orgName } = useOrgName();
+  const { warehouses } = useWarehouses();
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [sendingPathaoIds, setSendingPathaoIds] = useState<Set<string>>(new Set());
@@ -527,6 +534,15 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkChecking, setIsBulkChecking] = useState(false);
   const [isDeletingOrders, setIsDeletingOrders] = useState(false);
+  const warehouseNames = Object.fromEntries(warehouses.map((warehouse) => [warehouse.id, warehouse.name]));
+
+  const handleWarehouseChange = async (order: Order, warehouseId: string) => {
+    const res = await apiFetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ warehouse_id: warehouseId }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return toast.error(data.error || "Failed to change warehouse");
+    onOrderUpdate?.(data.order || { ...order, warehouse_id: warehouseId, warehouse_auto: false });
+    toast.success("Warehouse updated");
+  };
 
   // Build phone frequency map to detect repeat customers
   const phoneOrderCount = new Map<string, number>();
@@ -1084,6 +1100,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Order ID</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Customer</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Risk</TableHead>
+            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Warehouse</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Ship To</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Items</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-right pr-4">Total</TableHead>
@@ -1196,6 +1213,12 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                         onCheck={() => handleCheckFraud(order)}
                       />
                     </div>
+                  </TableCell>
+                  <TableCell className="py-3 text-center" onClick={(event) => event.stopPropagation()}>
+                    <BuiSelect aria-label={`Warehouse for ${order.order_number}`} selectedKey={order.warehouse_id || null} onSelectionChange={(key) => handleWarehouseChange(order, String(key))} triggerClassName="h-8 min-w-36">
+                      {warehouses.map((warehouse) => <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>)}
+                    </BuiSelect>
+                    <span className="mt-1 block text-[9px] text-black/40">{order.warehouse_auto === false ? "Manual" : "Auto"}</span>
                   </TableCell>
                   <TableCell className="max-w-[150px] py-3">
                     <Tooltip delayDuration={0}>
@@ -1425,6 +1448,9 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                 >
                   <Printer className="h-3 w-3" />
                   Print
+                </button>
+                <button onClick={() => downloadOrderExcel(orders.filter((order) => selectedIds.has(order.id)), warehouseNames)} className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-black hover:bg-black/[0.04]" type="button">
+                  <FileSpreadsheet className="h-3 w-3" /> Excel
                 </button>
 
                 <div className="w-px h-4 bg-black/[0.07] mx-1" />

@@ -16,6 +16,7 @@ export type ProductVariant = {
   cog: number;
   stock_quantity: number;
   price_adjustment: number;
+  weight_kg: number | null;
   org_id: string | null;
   created_at: string;
 };
@@ -39,6 +40,8 @@ export type Product = {
   compare_at_price: number | null;
   cog: number;
   stock_quantity: number;
+  weight_kg: number | null;
+  warehouse_id: string | null;
   source_url: string | null;
   published: boolean;
   published_at: string | null;
@@ -100,7 +103,7 @@ export type SelectedImage = {
 
 // ── Shopify-style option / combination model (Add Product) ──────────────────
 export type ProductOption = { id: string; name: string; values: string[] };
-export type ComboFields = { stock: string; price: string; cog: string };
+export type ComboFields = { stock: string; price: string; cog: string; weight: string };
 
 export function activeOptions(options: ProductOption[]): ProductOption[] {
   return options.filter((o) => o.name.trim() && o.values.length > 0);

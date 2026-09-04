@@ -18,18 +18,21 @@ import {
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { Input as BuiInput } from "@/components/base/input/input";
 import { Button as BuiButton } from "@/components/base/buttons/button";
-import { Checkbox as BuiCheckbox } from "@/components/base/checkbox/checkbox";
 import { FileUpload } from "@/components/base/file-upload/file-upload";
 import { Chip } from "@/components/base/badges/chip";
 import { ChevronDownSmall } from "@/components/foundations/icons/chevrons";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { RichButton } from "@/components/ui/rich-button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { useUserRole } from "@/hooks/useUserRole";
+import {
+  WAREHOUSES_QUERY_KEY,
+  useWarehouses,
+  type Warehouse,
+} from "@/hooks/useWarehouses";
 import { useNavigate } from "react-router-dom";
 import {
   type Product,
@@ -203,6 +206,7 @@ type ColMeta = { align?: "left" | "right" | "center" };
 
 type ProductsDataTableProps = {
   products: Product[];
+  warehouses: Warehouse[];
   isAdmin: boolean;
   isLoading: boolean;
   onAddProduct: () => void;
@@ -229,12 +233,13 @@ function SortHeader({ column, title }: { column: Column<Product>; title: string 
   );
 }
 
-function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditProduct }: ProductsDataTableProps) {
+function ProductsDataTable({ products, warehouses, isAdmin, isLoading, onAddProduct, onEditProduct }: ProductsDataTableProps) {
   const qc = useQueryClient();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ stockStatus: false });
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [globalFilter, setGlobalFilter] = useState("");
 
   // Inline table state
@@ -284,6 +289,28 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
     onError: () => toast.error("Failed to draft"),
   });
 
+  const assignWarehouseMutation = useMutation({
+    mutationFn: async ({ productIds, warehouseId }: { productIds: string[]; warehouseId: string }) => {
+      const res = await apiFetch("/api/products/bulk-assign-warehouse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_ids: productIds, warehouse_id: warehouseId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to assign warehouse");
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/products"] }),
+        qc.invalidateQueries({ queryKey: [WAREHOUSES_QUERY_KEY] }),
+      ]);
+      toast.success("Warehouse assigned");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const defaultWarehouseId = warehouses.find((warehouse) => warehouse.is_default)?.id || "";
+
   const columns: ColumnDef<Product>[] = [
     {
       id: "select",
@@ -292,18 +319,20 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
       size: 40,
       header: ({ table }) => (
         <div onClick={(e) => e.stopPropagation()} className="flex">
-          <Checkbox
-            checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? "indeterminate" : false}
-            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+          <input type="checkbox"
+            checked={products.length > 0 && selectedProductIds.size === products.length}
+            ref={(node) => { if (node) node.indeterminate = selectedProductIds.size > 0 && selectedProductIds.size < products.length; }}
+            onChange={(event) => setSelectedProductIds(event.target.checked ? new Set(products.map((product) => product.id)) : new Set())}
             aria-label="Select all"
           />
         </div>
       ),
       cell: ({ row }) => (
         <div onClick={(e) => e.stopPropagation()}>
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(v) => row.toggleSelected(!!v)}
+          <input type="checkbox"
+            checked={selectedProductIds.has(row.original.id)}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => setSelectedProductIds((current) => { const next = new Set(current); if (event.target.checked) next.add(row.original.id); else next.delete(row.original.id); return next; })}
             aria-label="Select row"
           />
         </div>
@@ -356,6 +385,34 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
           product={row.original}
         />
       ),
+    },
+    {
+      id: "warehouse",
+      header: "Warehouse",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const product = row.original;
+        const selectedWarehouse = product.warehouse_id || defaultWarehouseId;
+        return (
+          <div onClick={(event) => event.stopPropagation()}>
+            <BuiSelect
+              aria-label={`Warehouse for ${product.name}`}
+              selectedKey={selectedWarehouse || null}
+              onSelectionChange={(key) => assignWarehouseMutation.mutate({
+                productIds: [product.id],
+                warehouseId: String(key),
+              })}
+              className="min-w-40"
+            >
+              {warehouses.map((warehouse) => (
+                <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>
+                  {warehouse.name}
+                </BuiSelectItem>
+              ))}
+            </BuiSelect>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "selling_price",
@@ -485,17 +542,17 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
     else col?.setFilterValue([value]);
   }
 
-  const selectedCount = table.getSelectedRowModel().rows.length;
+  const selectedCount = selectedProductIds.size;
   const filteredCount = table.getFilteredRowModel().rows.length;
 
   function deleteSelected() {
-    table.getSelectedRowModel().rows.forEach((r) => deleteMutation.mutate(r.original.id));
-    table.resetRowSelection();
+    selectedProductIds.forEach((id) => deleteMutation.mutate(id));
+    setSelectedProductIds(new Set());
   }
 
   function draftSelected() {
-    table.getSelectedRowModel().rows.forEach((r) => draftMutation.mutate(r.original.id));
-    table.resetRowSelection();
+    selectedProductIds.forEach((id) => draftMutation.mutate(id));
+    setSelectedProductIds(new Set());
   }
 
   return (
@@ -513,6 +570,22 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
           <div className="flex flex-wrap items-center gap-2">
             {selectedCount > 0 && (
               <>
+                <BuiSelect
+                  aria-label="Assign selected products to warehouse"
+                  selectedKey={null}
+                  onSelectionChange={(key) => assignWarehouseMutation.mutate({
+                    productIds: [...selectedProductIds],
+                    warehouseId: String(key),
+                  })}
+                  className="w-48"
+                  placeholder="Assign warehouse"
+                >
+                  {warehouses.map((warehouse) => (
+                    <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>
+                      {warehouse.name}
+                    </BuiSelectItem>
+                  ))}
+                </BuiSelect>
                 <button onClick={draftSelected}
                   className="flex h-9 items-center gap-1.5 rounded-xl bg-background-secondary-default px-3 text-[13px] font-medium text-text-secondary ring-1 ring-inset ring-black/10 transition-colors hover:text-text-primary">
                   <FileEdit className="h-3.5 w-3.5" /> Draft ({selectedCount})
@@ -607,7 +680,7 @@ function ProductsDataTable({ products, isAdmin, isLoading, onAddProduct, onEditP
                   <tr
                     onClick={() => onEditProduct(row.original.id)}
                     data-testid={`row-product-${row.original.id}`}
-                    className={cn("group cursor-pointer border-b border-[color:var(--color-separator-border)] transition-colors hover:bg-background-secondary-default", row.getIsSelected() && "bg-background-secondary-default")}
+                    className={cn("group cursor-pointer border-b border-[color:var(--color-separator-border)] transition-colors hover:bg-background-secondary-default", selectedProductIds.has(row.original.id) && "bg-background-secondary-default")}
                   >
                     {row.getVisibleCells().map((cell) => {
                       const meta = (cell.column.columnDef.meta ?? {}) as ColMeta;
@@ -690,6 +763,7 @@ export default function Products() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useUserRole();
+  const { warehouses } = useWarehouses();
 
   // Import
   const [crawlUrl, setCrawlUrl] = useState("");
@@ -883,6 +957,7 @@ export default function Products() {
         >
           <ProductsDataTable
             products={allProducts}
+            warehouses={warehouses}
             isAdmin={isAdmin}
             isLoading={isLoading}
             onAddProduct={() => navigate("/products/new")}

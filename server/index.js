@@ -14,6 +14,12 @@ import { computeOrderCogs } from "./cog.js";
 import { buildOverviewData } from "./overview.js";
 import { buildSalesTrend } from "./salesTrend.js";
 import { calculateShippingCost } from "./shippingCalculation.js";
+import {
+  computeOrderWeightKg,
+  parseOptionalWeightKg,
+  resolveWarehouseId,
+} from "./warehouseRouting.js";
+import { matchVariantId, variantLabel } from "./variantMatching.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
 import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
@@ -5241,11 +5247,18 @@ app.get("/api/orders", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: allData, error } = await supabase
+    const warehouseFilter = typeof req.query.warehouse_id === "string"
+      ? req.query.warehouse_id.trim()
+      : "";
+    let ordersQuery = supabase
       .from("orders")
       .select("*")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
+    if (warehouseFilter) {
+      ordersQuery = ordersQuery.eq("warehouse_id", warehouseFilter);
+    }
+    const { data: allData, error } = await ordersQuery;
     if (error) throw error;
 
     const allOrders = allData || [];
@@ -6008,7 +6021,7 @@ app.patch("/api/orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "customer_name", "phone", "address"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "customer_name", "phone", "address", "warehouse_id", "weight_kg"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
     if (update.customer_name !== undefined && (typeof update.customer_name !== "string" || !update.customer_name.trim())) {
@@ -6020,6 +6033,16 @@ app.patch("/api/orders/:id", async (req, res) => {
     if (update.address !== undefined && typeof update.address !== "string") {
       return res.status(400).json({ error: "Address must be text" });
     }
+    if (update.weight_kg !== undefined) update.weight_kg = parseOptionalWeightKg(update.weight_kg);
+    if (update.warehouse_id !== undefined) {
+      if (typeof update.warehouse_id !== "string" || !update.warehouse_id.trim()) {
+        return res.status(400).json({ error: "Warehouse is required" });
+      }
+      const warehouse = await getActiveWarehouse(supabase, orgId, update.warehouse_id);
+      if (!warehouse) return res.status(404).json({ error: "Warehouse not found" });
+      update.warehouse_id = warehouse.id;
+      update.warehouse_auto = false;
+    }
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
@@ -6028,7 +6051,7 @@ app.patch("/api/orders/:id", async (req, res) => {
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     return res.json({ success: true, order: data });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return sendError(res, e);
   }
 });
 
@@ -6196,6 +6219,57 @@ app.post("/api/send-to-pathao", async (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
+});
+
+async function validateInboxDispatch(supabase, orgId, order) {
+  let weightKg = 0;
+  for (const item of order.items || []) {
+    const { data: product } = await supabase.from("products").select("id, weight_kg").eq("org_id", orgId).eq("name", item.product).maybeSingle();
+    if (!product) throw new Error(`Catalog product not found: ${item.product}`);
+    const { data: variants } = await supabase.from("product_variants").select("id, weight_kg").eq("org_id", orgId).eq("product_id", product.id);
+    if ((variants || []).length && !item.variant_id) throw new Error(`Pick a variant for ${item.product} before dispatching.`);
+    const variant = item.variant_id ? (variants || []).find((row) => row.id === item.variant_id) : null;
+    if (item.variant_id && !variant) throw new Error(`Invalid variant for ${item.product}.`);
+    const unitWeight = Number(variant?.weight_kg ?? product.weight_kg);
+    if (!Number.isFinite(unitWeight) || unitWeight <= 0) throw new Error(`Set a weight for ${item.product} before dispatching.`);
+    weightKg += unitWeight * Math.max(1, Number(item.quantity) || 1);
+  }
+  return weightKg;
+}
+
+app.post("/api/inbox-orders/send-to-courier", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req)); if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase(); const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order } = await supabase.from("social_inbox_orders").select("*").eq("id", req.body.orderId).eq("org_id", orgId).maybeSingle();
+    if (!order) return res.status(404).json({ error: "Inbox order not found" });
+    await validateInboxDispatch(supabase, orgId, order);
+    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
+    if (!cfg.steadfast_api_key || !cfg.steadfast_secret_key) return res.status(500).json({ error: "Steadfast credentials not configured" });
+    const phone = normalizeBdPhone((order.notes || "").match(/Phone:\s*([^,\n]+)/i)?.[1] || "");
+    if (!phone) return res.status(400).json({ error: "Invalid phone number" });
+    const address = (order.notes || "").match(/Address:\s*(.+)/i)?.[1]?.trim() || "No address provided";
+    const courier = await fetch("https://portal.packzy.com/api/v1/create_order", { method:"POST", headers:{"Api-Key":cfg.steadfast_api_key,"Secret-Key":cfg.steadfast_secret_key,"Content-Type":"application/json"}, body:JSON.stringify({invoice:`IO-${order.id.slice(-8)}`,recipient_name:order.contact_name||"Customer",recipient_phone:phone,recipient_address:address,cod_amount:Number(order.total_price)||0,note:(order.items||[]).map(i=>`${i.quantity}x ${i.product}`).join(", ")}) });
+    const data = await courier.json(); if (!courier.ok || data.status !== 200) return res.status(400).json({ error:data.message||"Steadfast rejected the order" });
+    const { data: updated } = await supabase.from("social_inbox_orders").update({sent_to_courier:true,consignment_id:String(data.consignment?.consignment_id||""),tracking_code:data.consignment?.tracking_code,courier_status:data.consignment?.status,courier_message:"Sent to Steadfast successfully"}).eq("id",order.id).eq("org_id",orgId).select("*").single();
+    return res.json({ success:true, order:updated });
+  } catch (error) { return res.status(400).json({ error:error.message }); }
+});
+
+app.post("/api/inbox-orders/send-to-pathao", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req)); if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase(); const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order } = await supabase.from("social_inbox_orders").select("*").eq("id", req.body.orderId).eq("org_id", orgId).maybeSingle();
+    if (!order) return res.status(404).json({ error: "Inbox order not found" });
+    const weightKg = await validateInboxDispatch(supabase, orgId, order);
+    const cfg = await getOrgSettings(orgId, ["pathao_store_id"]); if (!cfg.pathao_store_id) return res.status(500).json({ error:"Pathao credentials not configured" });
+    const phone = normalizeBdPhone((order.notes || "").match(/Phone:\s*([^,\n]+)/i)?.[1] || ""); if (!phone) return res.status(400).json({ error:"Invalid phone number" });
+    const address=(order.notes||"").match(/Address:\s*(.+)/i)?.[1]?.trim()||"No address provided"; const token=await getPathaoToken(orgId);
+    const courier=await fetch("https://api-hermes.pathao.com/aladdin/api/v1/orders",{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({store_id:Number(cfg.pathao_store_id),merchant_order_id:`IO-${order.id.slice(-8)}`,recipient_name:order.contact_name||"Customer",recipient_phone:phone,recipient_address:address,delivery_type:48,item_type:2,item_quantity:(order.items||[]).reduce((sum,i)=>sum+(Number(i.quantity)||1),0),item_weight:weightKg,amount_to_collect:Number(order.total_price)||0})});
+    const data=await courier.json(); if(!courier.ok)return res.status(400).json({error:data.message||"Pathao rejected the order"}); const consignmentId=String(data.data?.consignment_id||"");
+    const {data:updated}=await supabase.from("social_inbox_orders").update({sent_to_courier:true,consignment_id:consignmentId,tracking_code:consignmentId,courier_status:"Pending",courier_message:"Sent to Pathao successfully"}).eq("id",order.id).eq("org_id",orgId).select("*").single(); return res.json({success:true,order:updated});
+  } catch(error){return res.status(400).json({error:error.message});}
 });
 
 // ── Pathao: refresh courier status for all active Pathao orders ───────────────
@@ -6915,7 +6989,7 @@ async function getMetaReplyProductContext(orgId) {
     if (rows.length > 0) {
       const { data: variantRows } = await supabase
         .from("product_variants")
-        .select("product_id, attributes, stock_quantity, price_adjustment")
+        .select("id, product_id, attributes, stock_quantity, price_adjustment")
         .in("product_id", rows.map((p) => p.id))
         .eq("org_id", orgId);
       for (const v of variantRows || []) {
@@ -6927,7 +7001,9 @@ async function getMetaReplyProductContext(orgId) {
     return rows.map((p) => {
       const baseStock = stockMap[p.id] ?? 0;
       const variants = (variantsMap[p.id] || []).map((v) => ({
+        id: v.id,
         attributes: v.attributes,                      // e.g. {color:"Black", size:"M"}
+        label: variantLabel(v.attributes),
         available: v.stock_quantity > 0,
         price: v.price_adjustment
           ? (p.selling_price != null ? Number(p.selling_price) + Number(v.price_adjustment) : null)
@@ -7422,6 +7498,28 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
     `Source: ${platform} AI auto-capture`,
   ].join("\n");
 
+  const { data: catalogProduct } = await supabase.from("products").select("id").eq("org_id", orgId).eq("name", order.product_name).maybeSingle();
+  let resolvedVariantId = order.variant_id || null;
+  if (!resolvedVariantId && catalogProduct && order.variant_label) {
+    const { data: candidates } = await supabase.from("product_variants").select("id, attributes").eq("org_id", orgId).eq("product_id", catalogProduct.id);
+    resolvedVariantId = matchVariantId({ label: order.variant_label, variants: candidates || [] });
+  }
+  const items = [{
+    product: order.product_name,
+    quantity: order.quantity,
+    unit_price: order.unit_price,
+    variant_id: resolvedVariantId,
+  }];
+  const routing = await resolveOrderRouting(
+    supabase,
+    orgId,
+    items.map((item) => ({
+      productName: item.product,
+      variantId: item.variant_id || undefined,
+      quantity: item.quantity,
+    })),
+  );
+
   const { data, error } = await supabase
     .from("social_inbox_orders")
     .insert({
@@ -7430,11 +7528,14 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
       platform,
       contact_name: order.customer_name,
       contact_id: contactId,
-      items: [{ product: order.product_name, quantity: order.quantity, unit_price: order.unit_price }],
+      items,
       notes,
       total_price: totalPrice,
       delivery_rate: deliveryRate,
       status: "pending",
+      warehouse_id: routing.warehouseId,
+      warehouse_auto: true,
+      weight_kg: routing.weightKg,
     })
     .select("*")
     .single();
@@ -7863,9 +7964,9 @@ function fieldsToExtract(event, existingFields) {
   switch (event) {
     case "phone_shared":      return missing(["phone", "customer_name"]);
     case "price_stated":      return missing(["unit_price", "quantity", "product_name"]);
-    case "order_confirmed":   return missing(["confirmed_total", "customer_name", "phone", "address", "product_name", "quantity", "unit_price"]);
+    case "order_confirmed":   return missing(["confirmed_total", "customer_name", "phone", "address", "product_name", "variant_label", "quantity", "unit_price"]);
     case "address_shared":    return missing(["address", "customer_name"]);
-    case "product_mentioned": return missing(["product_name", "quantity"]);
+    case "product_mentioned": return missing(["product_name", "variant_label", "quantity"]);
     case "name_shared":       return missing(["customer_name"]);
     case "image_uploaded":    return missing(["product_name"]);
     default:                  return [];
@@ -7886,7 +7987,7 @@ function isOrderComplete(fields) {
 
 function mergeFields(existing = {}, incoming = {}) {
   const merged = { ...existing };
-  for (const key of ["customer_name", "phone", "address", "product_name", "quantity", "unit_price", "confirmed_total"]) {
+  for (const key of ["customer_name", "phone", "address", "product_name", "variant_label", "quantity", "unit_price", "confirmed_total"]) {
     const v = incoming[key];
     if (v !== null && v !== undefined && v !== "" && !merged[key]) merged[key] = v;
   }
@@ -7897,7 +7998,7 @@ async function extractNewFields({ text, event, fieldsNeeded, existingFields = {}
   if (!AI_API_KEY) return null;
   if (!fieldsNeeded || fieldsNeeded.length === 0) return null;
 
-  const catalog = products.slice(0, 50).map((p) => ({ name: p.name, price: p.price }));
+  const catalog = products.slice(0, 50).map((p) => ({ name: p.name, price: p.price, variants: p.variants }));
   const knownStr = Object.entries(existingFields).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(", ") || "none yet";
 
   const eventHints = {
@@ -8646,10 +8747,20 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["status", "notes", "sent_to_courier", "consignment_id", "tracking_code", "courier_status", "courier_message", "fraud_checked", "fraud_data", "delivery_rate", "items", "total_price", "contact_name"];
+    const allowed = ["status", "notes", "sent_to_courier", "consignment_id", "tracking_code", "courier_status", "courier_message", "fraud_checked", "fraud_data", "delivery_rate", "items", "total_price", "contact_name", "warehouse_id", "weight_kg"];
     const update = {};
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) update[key] = req.body[key];
+    }
+    if (update.weight_kg !== undefined) update.weight_kg = parseOptionalWeightKg(update.weight_kg);
+    if (update.warehouse_id !== undefined) {
+      if (typeof update.warehouse_id !== "string" || !update.warehouse_id.trim()) {
+        return res.status(400).json({ error: "Warehouse is required" });
+      }
+      const warehouse = await getActiveWarehouse(supabase, orgId, update.warehouse_id);
+      if (!warehouse) return res.status(404).json({ error: "Warehouse not found" });
+      update.warehouse_id = warehouse.id;
+      update.warehouse_auto = false;
     }
     if (!Object.keys(update).length) return res.status(400).json({ error: "Nothing to update" });
     const { data, error } = await supabase
@@ -8713,6 +8824,434 @@ app.post("/api/social/brand-doc", async (req, res) => {
 });
 
 // ─── DB Init ─────────────────────────────────────────────────────────────────
+
+// ─── Warehouses ──────────────────────────────────────────────────────────────
+
+function isValidWarehouseId(value) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function validateWarehouseInput(body, { requireName = false } = {}) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { error: "Invalid warehouse input" };
+  }
+
+  const values = {};
+  if (body.name !== undefined || requireName) {
+    if (typeof body.name !== "string" || !body.name.trim()) {
+      return { error: "Warehouse name is required" };
+    }
+    values.name = body.name.trim();
+  }
+
+  for (const field of ["address", "contact_person", "phone"]) {
+    const value = body[field];
+    if (value === undefined) continue;
+    if (value !== null && typeof value !== "string") {
+      return { error: `${field} must be a string or null` };
+    }
+    values[field] = value === null ? null : value.trim() || null;
+  }
+
+  if (body.is_default !== undefined && typeof body.is_default !== "boolean") {
+    return { error: "is_default must be a boolean" };
+  }
+
+  const isDefault = body.is_default === true;
+  return { values, isDefault };
+}
+
+function sendWarehouseError(res, err) {
+  console.error("[Warehouses] request failed:", errorMessage(err));
+  return res.status(500).json({ error: "An internal error occurred" });
+}
+
+async function getActiveWarehouse(supabase, orgId, warehouseId) {
+  if (!warehouseId) return null;
+  const { data, error } = await supabase
+    .from("warehouses")
+    .select("id, name, address, contact_person, phone, is_default, created_at")
+    .eq("id", warehouseId)
+    .eq("org_id", orgId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function getDefaultWarehouseId(supabase, orgId) {
+  const { data, error } = await supabase
+    .from("warehouses")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("is_default", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.id || null;
+}
+
+function normalizeOrderProductName(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+// Resolves a new order once so its stored warehouse and weight remain an
+// immutable creation-time snapshot rather than changing with catalog edits.
+async function resolveOrderRouting(supabase, orgId, items) {
+  const list = Array.isArray(items) ? items : [];
+  const defaultWarehouseId = await getDefaultWarehouseId(supabase, orgId);
+  if (list.length === 0) {
+    return { warehouseId: defaultWarehouseId, warehouseAuto: true, weightKg: null };
+  }
+
+  const variantIds = [...new Set(list.map((item) => item.variantId).filter(Boolean))];
+  const variantsById = Object.create(null);
+  if (variantIds.length > 0) {
+    const { data, error } = await supabase
+      .from("product_variants")
+      .select("id, product_id, weight_kg")
+      .in("id", variantIds)
+      .eq("org_id", orgId);
+    if (error) throw error;
+    for (const variant of data || []) variantsById[variant.id] = variant;
+  }
+
+  const productIds = [
+    ...new Set([
+      ...list.map((item) => item.productId).filter(Boolean),
+      ...Object.values(variantsById).map((variant) => variant.product_id).filter(Boolean),
+    ]),
+  ];
+  const productsById = Object.create(null);
+  if (productIds.length > 0) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, weight_kg, warehouse_id")
+      .in("id", productIds)
+      .eq("org_id", orgId);
+    if (error) throw error;
+    for (const product of data || []) productsById[product.id] = product;
+  }
+
+  const resolvedProductForItem = (item) => {
+    const directProduct = item.productId ? productsById[item.productId] : null;
+    if (directProduct) return directProduct;
+    const variantProductId = item.variantId ? variantsById[item.variantId]?.product_id : null;
+    return variantProductId ? productsById[variantProductId] || null : null;
+  };
+
+  // Social captures supply product names rather than catalog IDs. Fetch only
+  // this org's candidates, then accept a name only when it has one match.
+  const unresolvedNamedItems = list.filter((item) => !resolvedProductForItem(item));
+  const normalizedNames = new Set(
+    unresolvedNamedItems
+      .map((item) => normalizeOrderProductName(item.productName ?? item.product))
+      .filter(Boolean),
+  );
+  const productsByName = Object.create(null);
+  if (normalizedNames.size > 0) {
+    const matchesByName = new Map();
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const to = from + pageSize - 1;
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, weight_kg, warehouse_id")
+        .eq("org_id", orgId)
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (error) throw error;
+
+      const rows = data || [];
+      for (const product of rows) {
+        const normalizedName = normalizeOrderProductName(product.name);
+        if (!normalizedNames.has(normalizedName)) continue;
+        const matches = matchesByName.get(normalizedName) || [];
+        matches.push(product);
+        matchesByName.set(normalizedName, matches);
+      }
+      if (rows.length < pageSize) break;
+    }
+    for (const [normalizedName, matches] of matchesByName) {
+      if (matches.length !== 1) continue;
+      productsByName[normalizedName] = matches[0];
+      productsById[matches[0].id] ||= matches[0];
+    }
+  }
+
+  // Give a verified social name its canonical ID before weight calculation.
+  const routingItems = list.map((item) => {
+    const normalizedName = normalizeOrderProductName(item.productName ?? item.product);
+    const matchedProduct = resolvedProductForItem(item) ||
+      productsByName[normalizedName] ||
+      null;
+    if (!matchedProduct || item.productId === matchedProduct.id) return item;
+    return { ...item, productId: matchedProduct.id };
+  });
+
+  return {
+    warehouseId: resolveWarehouseId({
+      items: routingItems,
+      productsById,
+      productsByName,
+      defaultWarehouseId,
+    }),
+    warehouseAuto: true,
+    weightKg: computeOrderWeightKg({ items: routingItems, variantsById, productsById }),
+  };
+}
+
+app.get("/api/warehouses", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { data: rows, error } = await supabase
+      .from("warehouses")
+      .select("id, name, address, contact_person, phone, is_default, created_at")
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+
+    const { data: products, error: productsError } = await supabase
+      .from("products")
+      .select("id, warehouse_id")
+      .eq("org_id", orgId);
+    if (productsError) throw productsError;
+
+    const productCounts = {};
+    let unassignedProducts = 0;
+    for (const product of products || []) {
+      if (product.warehouse_id) {
+        productCounts[product.warehouse_id] = (productCounts[product.warehouse_id] || 0) + 1;
+      } else {
+        unassignedProducts += 1;
+      }
+    }
+
+    return res.json({
+      warehouses: (rows || []).map((warehouse) => ({
+        id: warehouse.id,
+        name: warehouse.name,
+        address: warehouse.address,
+        contact_person: warehouse.contact_person,
+        phone: warehouse.phone,
+        is_default: warehouse.is_default,
+        product_count: (productCounts[warehouse.id] || 0) + (warehouse.is_default ? unassignedProducts : 0),
+      })),
+    });
+  } catch (err) {
+    return sendWarehouseError(res, err);
+  }
+});
+
+app.post("/api/warehouses", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const input = validateWarehouseInput(req.body, { requireName: true });
+    if (input.error) return res.status(400).json({ error: input.error });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { name, address = null, contact_person = null, phone = null } = input.values;
+
+    const { data, error } = await supabase.rpc("create_warehouse", {
+      p_org_id: orgId,
+      p_name: name,
+      p_address: address,
+      p_contact_person: contact_person,
+      p_phone: phone,
+      p_is_default: input.isDefault,
+    });
+    if (error) {
+      if (error.code === "23505" || /duplicate/i.test(error.message || "")) {
+        return res.status(409).json({ error: "A warehouse with that name already exists" });
+      }
+      throw error;
+    }
+
+    return res.json({ warehouse: data });
+  } catch (err) {
+    return sendWarehouseError(res, err);
+  }
+});
+
+app.patch("/api/warehouses/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const warehouseId = req.params.id;
+    if (!isValidWarehouseId(warehouseId)) return res.status(400).json({ error: "Invalid warehouse ID" });
+    const input = validateWarehouseInput(req.body);
+    if (input.error) return res.status(400).json({ error: input.error });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const existing = await getActiveWarehouse(supabase, orgId, warehouseId);
+    if (!existing) return res.status(404).json({ error: "Warehouse not found" });
+
+    const values = { ...existing, ...input.values };
+    const { data: warehouse, error } = await supabase.rpc("update_warehouse", {
+      p_org_id: orgId,
+      p_warehouse_id: warehouseId,
+      p_name: values.name,
+      p_address: values.address,
+      p_contact_person: values.contact_person,
+      p_phone: values.phone,
+      p_is_default: input.isDefault,
+    });
+    if (error) {
+      if (error.code === "23505" || /duplicate/i.test(error.message || "")) {
+        return res.status(409).json({ error: "A warehouse with that name already exists" });
+      }
+      if (error.code === "P0002") return res.status(404).json({ error: "Warehouse not found" });
+      throw error;
+    }
+
+    return res.json({ warehouse });
+  } catch (err) {
+    return sendWarehouseError(res, err);
+  }
+});
+
+app.delete("/api/warehouses/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const warehouseId = req.params.id;
+    if (!isValidWarehouseId(warehouseId)) return res.status(400).json({ error: "Invalid warehouse ID" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const existing = await getActiveWarehouse(supabase, orgId, warehouseId);
+    if (!existing) return res.status(404).json({ error: "Warehouse not found" });
+    if (existing.is_default) {
+      return res.status(400).json({ error: "Cannot delete the default warehouse" });
+    }
+
+    const { error } = await supabase.rpc("delete_warehouse", {
+      p_org_id: orgId,
+      p_warehouse_id: warehouseId,
+    });
+    if (error?.code === "23514") {
+      return res.status(400).json({ error: "Cannot delete the default warehouse" });
+    }
+    if (error?.code === "P0002") return res.status(404).json({ error: "Warehouse not found" });
+    if (error) throw error;
+    return res.json({ success: true });
+  } catch (err) {
+    return sendWarehouseError(res, err);
+  }
+});
+
+app.get("/api/warehouses/:id", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const warehouseId = req.params.id;
+    if (!isValidWarehouseId(warehouseId)) return res.status(400).json({ error: "Invalid warehouse ID" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const warehouse = await getActiveWarehouse(supabase, orgId, warehouseId);
+    if (!warehouse) return res.status(404).json({ error: "Warehouse not found" });
+
+    const includeUnassigned = warehouse.is_default === true;
+    let query = supabase
+      .from("products")
+      .select("id, name, selling_price, stock_quantity, weight_kg, published, warehouse_id")
+      .eq("org_id", orgId)
+      .order("name", { ascending: true });
+    query = includeUnassigned
+      ? query.or(`warehouse_id.eq.${warehouseId},warehouse_id.is.null`)
+      : query.eq("warehouse_id", warehouseId);
+
+    const { data: rows, error } = await query;
+    if (error) throw error;
+    const productIds = (rows || []).map((product) => product.id);
+    const variantStock = new Map();
+    if (productIds.length > 0) {
+      const { data: variants, error: variantsError } = await supabase
+        .from("product_variants")
+        .select("product_id, stock_quantity")
+        .eq("org_id", orgId)
+        .in("product_id", productIds);
+      if (variantsError) throw variantsError;
+      for (const variant of variants || []) {
+        const current = variantStock.get(variant.product_id) || 0;
+        variantStock.set(variant.product_id, current + (Number(variant.stock_quantity) || 0));
+      }
+    }
+    const products = (rows || []).map((product) => {
+      const resolvedStock = variantStock.has(product.id)
+        ? variantStock.get(product.id)
+        : Number(product.stock_quantity) || 0;
+      return {
+        id: product.id,
+        name: product.name,
+        selling_price: product.selling_price,
+        stock_quantity: resolvedStock,
+        weight_kg: product.weight_kg,
+        published: product.published,
+        assigned_explicitly: product.warehouse_id === warehouse.id,
+      };
+    });
+
+    return res.json({
+      warehouse,
+      summary: {
+        product_count: products.length,
+        total_stock: products.reduce((sum, product) => sum + (Number(product.stock_quantity) || 0), 0),
+        published_count: products.filter((product) => product.published === true).length,
+      },
+      products,
+    });
+  } catch (err) {
+    return sendWarehouseError(res, err);
+  }
+});
+
+app.post("/api/products/bulk-assign-warehouse", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return res.status(400).json({ error: "Invalid warehouse assignment input" });
+    }
+
+    const productIds = Array.isArray(body.product_ids) ? [...new Set(body.product_ids)] : [];
+    if (!Array.isArray(body.product_ids) || productIds.length === 0 || !productIds.every(isValidWarehouseId)) {
+      return res.status(400).json({ error: "product_ids must be a non-empty array of UUID strings" });
+    }
+
+    const warehouseId = body.warehouse_id;
+    if (warehouseId !== null && !isValidWarehouseId(warehouseId)) {
+      return res.status(400).json({ error: "warehouse_id must be a UUID string or null" });
+    }
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    if (warehouseId !== null) {
+      const warehouse = await getActiveWarehouse(supabase, orgId, warehouseId);
+      if (!warehouse) return res.status(404).json({ error: "Warehouse not found" });
+    }
+
+    const { data, error } = await supabase.rpc("bulk_assign_products_to_warehouse", {
+      p_org_id: orgId,
+      p_product_ids: productIds,
+      p_warehouse_id: warehouseId,
+    });
+    if (error?.code === "P0002") {
+      return res.status(409).json({ error: "One or more products are no longer available" });
+    }
+    if (error) throw error;
+    return res.json({ updated: data });
+  } catch (err) {
+    return sendWarehouseError(res, err);
+  }
+});
 
 
 // ─── Products Catalog ────────────────────────────────────────────────────────
@@ -9064,7 +9603,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     // Fetch all variants + their parent products in one pass
     const { data: variants, error: vErr } = await supabase
       .from("product_variants")
-      .select("id, product_id, org_id, attributes, price_adjustment, stock_quantity")
+      .select("id, product_id, org_id, attributes, price_adjustment, stock_quantity, weight_kg")
       .in("id", variantIds)
       .eq("org_id", orgId);
     if (vErr) throw vErr;
@@ -9076,7 +9615,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const productIds = [...new Set(Object.values(variantMap).map((v) => v.product_id))];
     const { data: products, error: pErr } = await supabase
       .from("products")
-      .select("id, name, selling_price, published")
+      .select("id, name, selling_price, published, weight_kg, warehouse_id")
       .in("id", productIds)
       .eq("org_id", orgId)
       .eq("published", true);
@@ -9151,6 +9690,8 @@ async function handlePublicHandleOrderSubmit(req, res) {
       })
       .join(", ");
 
+    const routing = await resolveOrderRouting(supabase, orgId, orderItems);
+
     // ── Insert order ─────────────────────────────────────────────────────
     const orderSeq = await getNextManualOrderSeq(orgId);
     const orderNumber = `#S${orderSeq}`;
@@ -9169,6 +9710,9 @@ async function handlePublicHandleOrderSubmit(req, res) {
       delivery_rate: shipping,
       status: "pending",
       source: "storefront",
+      warehouse_id: routing.warehouseId,
+      warehouse_auto: true,
+      weight_kg: routing.weightKg,
       notes: notes || null,
     };
 
@@ -9357,6 +9901,7 @@ app.post("/api/products/save", async (req, res) => {
     }
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const activeWarehouseIds = new Map();
 
     // Insert product rows (without variants)
     const rows = [];
@@ -9365,6 +9910,14 @@ app.post("/api/products/save", async (req, res) => {
       const name = String(p.name || "").trim();
       if (!name) continue;
       const published = p.published === true;
+      const warehouseId = typeof p.warehouse_id === "string" && p.warehouse_id.trim()
+        ? p.warehouse_id.trim()
+        : null;
+      if (warehouseId && !activeWarehouseIds.has(warehouseId)) {
+        const warehouse = await getActiveWarehouse(supabase, orgId, warehouseId);
+        if (!warehouse) return res.status(404).json({ error: "Warehouse not found" });
+        activeWarehouseIds.set(warehouseId, warehouse.id);
+      }
       rows.push({
         name,
         url: p.url || null,
@@ -9372,6 +9925,8 @@ app.post("/api/products/save", async (req, res) => {
         selling_price: p.selling_price != null ? parseFloat(p.selling_price) : null,
         compare_at_price: p.compare_at_price != null ? parseFloat(p.compare_at_price) : null,
         cog: p.cog != null ? parseFloat(p.cog) : 0,
+        weight_kg: parseOptionalWeightKg(p.weight_kg),
+        warehouse_id: warehouseId,
         description: p.description || null,
         slug: published ? await getUniqueProductSlug(supabase, orgId, crypto.randomUUID(), p.slug, name) : null,
         published: p.published === true,
@@ -9441,6 +9996,7 @@ app.post("/api/products/save", async (req, res) => {
           cog: v.cog != null ? parseFloat(v.cog) : 0,
           stock_quantity: Math.max(0, parseInt(v.stock_quantity, 10) || 0),
           price_adjustment: priceAdj,
+          weight_kg: parseOptionalWeightKg(v.weight_kg),
         });
       }
     }
@@ -9468,7 +10024,7 @@ app.post("/api/products/save", async (req, res) => {
 
     return res.json({ saved: data.length, variants_saved: variantRows.length, products: data });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return sendError(res, e);
   }
 });
 
@@ -9820,13 +10376,25 @@ app.patch("/api/products/:id", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const allowed = ["name", "url", "image_url", "selling_price", "cog", "published", "slug", "description", "compare_at_price"];
+    const allowed = ["name", "url", "image_url", "selling_price", "cog", "published", "slug", "description", "compare_at_price", "weight_kg", "warehouse_id"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
+    if (update.weight_kg !== undefined) update.weight_kg = parseOptionalWeightKg(update.weight_kg);
     const hasStockUpdate = req.body.stock_quantity !== undefined;
     if (!Object.keys(update).length && !hasStockUpdate) return res.status(400).json({ error: "Nothing to update" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    if (update.warehouse_id !== undefined) {
+      if (update.warehouse_id === null || update.warehouse_id === "") {
+        update.warehouse_id = null;
+      } else if (typeof update.warehouse_id !== "string") {
+        return res.status(400).json({ error: "warehouse_id must be text or null" });
+      } else {
+        const warehouse = await getActiveWarehouse(supabase, orgId, update.warehouse_id);
+        if (!warehouse) return res.status(404).json({ error: "Warehouse not found" });
+        update.warehouse_id = warehouse.id;
+      }
+    }
     if (update.published === true) {
       const { data: current, error: currentError } = await supabase
         .from("products")
@@ -9889,7 +10457,7 @@ app.patch("/api/products/:id", async (req, res) => {
 
     return res.json({ success: true, product: data });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return sendError(res, e);
   }
 });
 
@@ -10262,7 +10830,7 @@ app.post("/api/products/:id/variants", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { attributes, cog, stock_quantity, price_adjustment } = req.body;
+    const { attributes, cog, stock_quantity, price_adjustment, weight_kg } = req.body;
     if (!attributes || typeof attributes !== "object" || Object.keys(attributes).length === 0) {
       return res.status(400).json({ error: "attributes object with at least one key required" });
     }
@@ -10279,13 +10847,14 @@ app.post("/api/products/:id/variants", async (req, res) => {
         cog: parseFloat(cog) || 0,
         stock_quantity: Math.max(0, parseInt(stock_quantity, 10) || 0),
         price_adjustment: parseFloat(price_adjustment) || 0,
+        weight_kg: parseOptionalWeightKg(weight_kg),
       })
       .select()
       .single();
     if (error) throw error;
     return res.json({ variant: data });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return sendError(res, e);
   }
 });
 
@@ -10308,6 +10877,7 @@ app.patch("/api/products/:id/variants/:variantId", async (req, res) => {
     if (req.body.cog !== undefined) patch.cog = parseFloat(req.body.cog) || 0;
     if (req.body.stock_quantity !== undefined) patch.stock_quantity = Math.max(0, parseInt(req.body.stock_quantity, 10) || 0);
     if (req.body.price_adjustment !== undefined) patch.price_adjustment = parseFloat(req.body.price_adjustment) || 0;
+    if (req.body.weight_kg !== undefined) patch.weight_kg = parseOptionalWeightKg(req.body.weight_kg);
     const { data, error } = await supabase
       .from("product_variants")
       .update(patch)
@@ -10319,7 +10889,7 @@ app.patch("/api/products/:id/variants/:variantId", async (req, res) => {
     if (error) throw error;
     return res.json({ variant: data });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return sendError(res, e);
   }
 });
 

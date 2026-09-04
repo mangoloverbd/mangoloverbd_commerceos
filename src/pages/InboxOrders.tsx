@@ -29,13 +29,14 @@ import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
+import { Select, SelectItem } from "@/components/base/select/select";
 
 interface InboxOrder {
   id: string;
   platform: "facebook" | "instagram" | "whatsapp";
   contact_name: string;
   contact_id: string;
-  items: Array<{ product: string; quantity: number }>;
+  items: Array<{ product: string; quantity: number; variant_id?: string | null }>;
   notes: string;
   total_price: number;
   status: "pending" | "confirmed" | "cancelled";
@@ -506,6 +507,13 @@ export default function InboxOrders() {
     queryFn: () => apiFetch("/api/social/inbox-orders").then((r) => r.json()),
     refetchInterval: 15000,
   });
+  const { data: productData } = useQuery<{ products: Array<{ name: string; variants?: Array<{ id: string; attributes?: Record<string, string> }> }> }>({
+    queryKey: ["/api/products", "inbox-variants"],
+    queryFn: async () => { const response = await apiFetch("/api/products"); const body = await response.json(); return Array.isArray(body) ? { products: body } : body; },
+  });
+  const variantsByProductName = useMemo(() => Object.fromEntries((productData?.products ?? []).map(product => [product.name.trim().toLowerCase(), product.variants ?? []])), [productData]);
+  const variantLabelById = useMemo(() => Object.fromEntries(Object.values(variantsByProductName).flat().map(variant => [variant.id, Object.entries(variant.attributes || {}).map(([key,value]) => `${key}: ${value}`).join(", ")])), [variantsByProductName]);
+  const needsVariant = (item: InboxOrder["items"][number]) => (variantsByProductName[item.product.trim().toLowerCase()]?.length ?? 0) > 0 && !item.variant_id;
 
   const allOrders: InboxOrder[] = localOrders ?? data?.orders ?? [];
 
@@ -561,8 +569,23 @@ export default function InboxOrders() {
     }
   };
 
+  const handleVariantChange = async (order: InboxOrder, index: number, variantId: string | null) => {
+    const items = order.items.map((item, itemIndex) => itemIndex === index ? { ...item, variant_id: variantId } : item);
+    updateLocalOrder({ ...order, items });
+    try {
+      const response = await apiFetch(`/api/social/inbox-orders/${order.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Failed to set the variant");
+      if (body.order) updateLocalOrder(body.order);
+    } catch (error) { updateLocalOrder(order); toast.error(error instanceof Error ? error.message : "Failed to set the variant"); }
+  };
+
   // ─── Courier ────────────────────────────────────────────────────────────────
   const handleSendToCourier = async (order: InboxOrder) => {
+    const missingVariantItems = (order.items || []).filter(needsVariant);
+    if (missingVariantItems.length) return toast.error(`Pick a variant for ${missingVariantItems.map(item => item.product).join(", ")} before dispatching.`);
     setSendingIds((prev) => new Set(prev).add(order.id));
     try {
       const res = await apiFetch("/api/inbox-orders/send-to-courier", {
@@ -595,6 +618,8 @@ export default function InboxOrders() {
   };
 
   const handleSendToPathao = async (order: InboxOrder) => {
+    const missingVariantItems = (order.items || []).filter(needsVariant);
+    if (missingVariantItems.length) return toast.error(`Pick a variant for ${missingVariantItems.map(item => item.product).join(", ")} before dispatching.`);
     setSendingPathaoIds((prev) => new Set(prev).add(order.id));
     try {
       const res = await apiFetch("/api/inbox-orders/send-to-pathao", {
@@ -1003,7 +1028,15 @@ export default function InboxOrders() {
                               items.map((item, idx) => (
                                 <div key={idx} className="px-3.5 py-2 flex items-start gap-2.5">
                                   <span className="mt-0.5 h-4 w-4 rounded-lg bg-black/[0.05] text-black/40 text-[9px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
-                                  <p className="text-xs text-foreground leading-relaxed">{item.quantity}× {item.product}</p>
+                                  <div className="min-w-0 flex-1"><p className="text-xs text-foreground leading-relaxed">{item.quantity}× {item.product}</p>
+                                    {(variantsByProductName[item.product.trim().toLowerCase()]?.length ?? 0) > 0 && <Select
+                                      aria-label={`Variant for ${item.product}`}
+                                      data-testid={`select-variant-${order.id}-${idx}`}
+                                      selectedKey={item.variant_id ?? "none"}
+                                      onSelectionChange={key => void handleVariantChange(order, idx, String(key) === "none" ? null : String(key))}
+                                      triggerClassName="mt-1 h-7 text-[10px]"
+                                    ><SelectItem id="none">Pick a variant</SelectItem>{variantsByProductName[item.product.trim().toLowerCase()].map(variant => <SelectItem key={variant.id} id={variant.id}>{variantLabelById[variant.id] || variant.id}</SelectItem>)}</Select>}
+                                  </div>
                                 </div>
                               ))
                             )}

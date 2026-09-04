@@ -7,10 +7,12 @@ import { toast } from "@/components/ui/sonner";
 import { Input as BuiInput } from "@/components/base/input/input";
 import { Checkbox as BuiCheckbox } from "@/components/base/checkbox/checkbox";
 import { Button as BuiButton } from "@/components/base/buttons/button";
+import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { RichButton } from "@/components/ui/rich-button";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Check, ArrowLeft, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWarehouses } from "@/hooks/useWarehouses";
 import {
   type Product,
   type ProductVariant,
@@ -33,6 +35,7 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
   const [stock, setStock] = useState(String(variant.stock_quantity));
   const [cog, setCog] = useState(String(variant.cog));
   const [priceAdj, setPriceAdj] = useState(String(variant.price_adjustment ?? 0));
+  const [weight, setWeight] = useState(variant.weight_kg == null ? "" : String(variant.weight_kg));
   const [saving, setSaving] = useState(false);
 
   async function saveVariant() {
@@ -45,6 +48,7 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
           stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
           cog: parseFloat(cog) || 0,
           price_adjustment: parseFloat(priceAdj) || 0,
+          weight_kg: weight === "" ? null : Number(weight),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -74,7 +78,7 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
   }
 
   return (
-    <div className="grid gap-3 rounded-[14px] border border-black/[0.08] bg-white p-3 md:grid-cols-[1fr_100px_100px_110px_110px_auto] md:items-end">
+    <div className="grid gap-3 rounded-[14px] border border-black/[0.08] bg-white p-3 md:grid-cols-[1fr_100px_100px_110px_110px_110px_auto] md:items-end">
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-black/40">Variant</p>
         <p className="mt-1 text-[14px] font-medium text-black">{attrLabel(variant.attributes)}</p>
@@ -95,8 +99,12 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
         <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Price ±</label>
         <input type="number" value={priceAdj} onChange={(e) => setPriceAdj(e.target.value)} className={EDIT_INPUT_CLS} />
       </div>
+      <div>
+        <label htmlFor={`variant-weight-${variant.id}`} className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Weight</label>
+        <input id={`variant-weight-${variant.id}`} aria-label={`Weight for ${attrLabel(variant.attributes)}`} type="number" min={0} step="0.001" value={weight} onChange={(e) => setWeight(e.target.value)} className={EDIT_INPUT_CLS} />
+      </div>
       <div className="flex gap-2">
-        <RichButton color="default" size="default" type="button" onClick={saveVariant} disabled={saving} className="h-9 rounded-[8px] px-3">
+        <RichButton aria-label={`Save variant ${attrLabel(variant.attributes)}`} color="default" size="default" type="button" onClick={saveVariant} disabled={saving} className="h-9 rounded-[8px] px-3">
           {saving ? <Spinner size="sm" /> : "Save"}
         </RichButton>
         <button type="button" onClick={deleteVariant} disabled={saving} className="flex h-9 w-9 items-center justify-center rounded-[8px] text-black/40 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40">
@@ -113,6 +121,7 @@ function AddVariantForm({ product }: { product: Product }) {
   const [stock, setStock] = useState("0");
   const [cog, setCog] = useState("0");
   const [priceAdj, setPriceAdj] = useState("0");
+  const [weight, setWeight] = useState("");
   const [saving, setSaving] = useState(false);
 
   function setRow(index: number, field: "key" | "value", value: string) {
@@ -141,6 +150,7 @@ function AddVariantForm({ product }: { product: Product }) {
           stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
           cog: parseFloat(cog) || 0,
           price_adjustment: parseFloat(priceAdj) || 0,
+          weight_kg: weight === "" ? null : Number(weight),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -150,6 +160,7 @@ function AddVariantForm({ product }: { product: Product }) {
       setStock("0");
       setCog("0");
       setPriceAdj("0");
+      setWeight("");
       toast.success("Variant added");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to add variant");
@@ -178,10 +189,11 @@ function AddVariantForm({ product }: { product: Product }) {
       <button type="button" onClick={() => setRows((current) => [...current, { key: "", value: "" }])} className="mt-2 flex items-center gap-1.5 text-[12px] text-black/40 hover:text-black">
         <Plus className="h-3 w-3" /> Add attribute
       </button>
-      <div className="mt-3 grid gap-3 md:grid-cols-[100px_100px_110px_auto] md:items-end">
+      <div className="mt-3 grid gap-3 md:grid-cols-[100px_100px_110px_120px_auto] md:items-end">
         <BuiInput label="Stock" type="number" value={stock} onChange={setStock} placeholder="0" />
         <BuiInput label="COG (৳)" type="number" value={cog} onChange={setCog} placeholder="0" />
         <BuiInput label="Price ±" type="number" value={priceAdj} onChange={setPriceAdj} placeholder="0" />
+        <BuiInput label="New variant weight (kg)" type="number" min={0} value={weight} onChange={setWeight} placeholder="0" />
         <RichButton color="default" size="default" type="button" onClick={addVariant} disabled={saving} className="h-9 rounded-[8px]">
           <span className="flex items-center gap-2">{saving ? <Spinner size="sm" /> : <Plus className="h-4 w-4" />}Add variant</span>
         </RichButton>
@@ -214,12 +226,15 @@ function ProductVariantsEditor({ product }: { product: Product }) {
 function EditForm({ product }: { product: Product }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { warehouses } = useWarehouses();
   const [name, setName] = useState(product.name || "");
   const [description, setDescription] = useState(product.description || "");
   const [sellingPrice, setSellingPrice] = useState(product.selling_price == null ? "" : String(product.selling_price));
   const [compareAtPrice, setCompareAtPrice] = useState(product.compare_at_price == null ? "" : String(product.compare_at_price));
   const [cog, setCog] = useState(String(product.cog ?? 0));
   const [stock, setStock] = useState(String(product.stock_quantity ?? 0));
+  const [weight, setWeight] = useState(product.weight_kg == null ? "" : String(product.weight_kg));
+  const [warehouseId, setWarehouseId] = useState(product.warehouse_id || "");
   const [published, setPublished] = useState(product.published === true);
   const [saving, setSaving] = useState(false);
 
@@ -240,6 +255,8 @@ function EditForm({ product }: { product: Product }) {
           compare_at_price: compareAtPrice ? parseFloat(compareAtPrice) || 0 : null,
           cog: parseFloat(cog) || 0,
           stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
+          weight_kg: weight === "" ? null : Number(weight),
+          warehouse_id: warehouseId || null,
           published,
         }),
       });
@@ -269,6 +286,15 @@ function EditForm({ product }: { product: Product }) {
           <BuiInput label="Compare-at price (৳)" type="number" value={compareAtPrice} onChange={setCompareAtPrice} placeholder="0" />
           <BuiInput label="COG (৳)" type="number" value={cog} onChange={setCog} placeholder="0" />
           <BuiInput label="Stock quantity" type="number" value={stock} onChange={setStock} placeholder="0" />
+          <BuiInput label="Weight (kg)" type="number" min={0} value={weight} onChange={setWeight} placeholder="0" />
+          <div className="flex flex-col justify-end space-y-1.5">
+            <FormSectionLabel>Warehouse</FormSectionLabel>
+            <BuiSelect aria-label="Warehouse" selectedKey={warehouseId || null} onSelectionChange={(key) => setWarehouseId(String(key))}>
+              {warehouses.map((warehouse) => (
+                <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>
+              ))}
+            </BuiSelect>
+          </div>
           <div className="flex items-end pb-2.5">
             <BuiCheckbox isSelected={published} onChange={setPublished}>Publish</BuiCheckbox>
           </div>

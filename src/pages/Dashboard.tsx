@@ -4,6 +4,8 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useLiveVisitors } from "@/hooks/useLiveVisitors";
+import { useWarehouses } from "@/hooks/useWarehouses";
+import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
@@ -106,6 +108,9 @@ interface Order {
   delivery_rate: number | null;
   notes: string | null;
   fulfillment_status: string | null;
+  warehouse_id?: string | null;
+  warehouse_auto?: boolean | null;
+  weight_kg?: number | null;
 }
 
 function fmtBDT(n: number) {
@@ -352,6 +357,8 @@ export default function Dashboard() {
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [checkingFraud, setCheckingFraud] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [prevAnalytics, setPrevAnalytics] = useState<Analytics | null>(null);
@@ -532,15 +539,17 @@ export default function Dashboard() {
   };
 
   const filteredOrders = useMemo(() => {
-    if (!debouncedSearch.trim()) return orders;
-    const q = debouncedSearch.toLowerCase();
-    return orders.filter(
-      (o) =>
+    const q = debouncedSearch.trim().toLowerCase();
+    return orders.filter((o) => {
+      if (warehouseFilter !== "all" && o.warehouse_id !== warehouseFilter) return false;
+      if (!q) return true;
+      return (
         o.order_number.toLowerCase().includes(q) ||
         (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
         (o.phone && o.phone.toLowerCase().includes(q))
-    );
-  }, [orders, debouncedSearch]);
+      );
+    });
+  }, [orders, debouncedSearch, warehouseFilter]);
 
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
@@ -874,6 +883,17 @@ export default function Dashboard() {
                 data-testid="input-search-orders"
               />
             </div>
+
+            <Select
+              aria-label="Filter orders by warehouse"
+              data-testid="select-warehouse-filter"
+              selectedKey={warehouseFilter}
+              onSelectionChange={(key) => { setWarehouseFilter(String(key)); setOrderPage(0); }}
+              triggerClassName="h-9"
+            >
+              <SelectItem id="all">All warehouses</SelectItem>
+              {warehouses.map((warehouse) => <SelectItem key={warehouse.id} id={warehouse.id}>{warehouse.name}</SelectItem>)}
+            </Select>
 
             <div className="w-px h-4 bg-black/10" />
 

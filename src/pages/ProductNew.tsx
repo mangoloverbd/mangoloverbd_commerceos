@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -11,6 +11,7 @@ import { Chip } from "@/components/base/badges/chip";
 import { FileUpload } from "@/components/base/file-upload/file-upload";
 import { RichButton } from "@/components/ui/rich-button";
 import { Spinner } from "@/components/ui/ios-spinner";
+import { useWarehouses } from "@/hooks/useWarehouses";
 import { Plus, Trash2, X, ArrowLeft } from "lucide-react";
 import {
   type ProductOption,
@@ -27,6 +28,7 @@ import {
 export default function ProductNew() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { warehouses } = useWarehouses();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -34,6 +36,8 @@ export default function ProductNew() {
   const [compareAtPrice, setCompareAtPrice] = useState("");
   const [cog, setCog] = useState("");
   const [stock, setStock] = useState("");
+  const [weight, setWeight] = useState("");
+  const [warehouseId, setWarehouseId] = useState("");
   const [published, setPublished] = useState(false);
   const [options, setOptions] = useState<ProductOption[]>([]);
   const [comboData, setComboData] = useState<Record<string, ComboFields>>({});
@@ -42,6 +46,10 @@ export default function ProductNew() {
 
   const combinations = useMemo(() => buildCombinations(options), [options]);
   const hasVariants = combinations.length > 0;
+
+  useEffect(() => {
+    if (!warehouseId) setWarehouseId(warehouses.find((warehouse) => warehouse.is_default)?.id || "");
+  }, [warehouseId, warehouses]);
 
   function addOption() {
     if (options.length >= 3) return;
@@ -73,7 +81,7 @@ export default function ProductNew() {
   }
 
   function updateCombo(key: string, patch: Partial<ComboFields>) {
-    setComboData((current) => ({ ...current, [key]: { stock: "", price: "", cog: "", ...current[key], ...patch } }));
+    setComboData((current) => ({ ...current, [key]: { stock: "", price: "", cog: "", weight: "", ...current[key], ...patch } }));
   }
 
   async function addImageFile(uploaded: File) {
@@ -106,13 +114,14 @@ export default function ProductNew() {
     setSaving(true);
     try {
       const generatedVariants = combinations.map((attrs) => {
-        const d = comboData[comboKey(attrs)] ?? { stock: "", price: "", cog: "" };
+        const d = comboData[comboKey(attrs)] ?? { stock: "", price: "", cog: "", weight: "" };
         const px = d.price || sellingPrice;
         return {
           attributes: attrs,
           cog: parseFloat(d.cog || cog) || 0,
           stock_quantity: Math.max(0, parseInt(d.stock || "0", 10) || 0),
           selling_price: px ? parseFloat(px) || 0 : null,
+          weight_kg: d.weight === "" ? null : Number(d.weight),
         };
       });
 
@@ -130,6 +139,8 @@ export default function ProductNew() {
             compare_at_price: compareAtPrice ? parseFloat(compareAtPrice) || 0 : null,
             cog: parseFloat(cog) || 0,
             stock_quantity: Math.max(0, parseInt(stock, 10) || 0),
+            weight_kg: weight === "" ? null : Number(weight),
+            warehouse_id: warehouseId || null,
             published,
             variants: generatedVariants,
           }],
@@ -175,6 +186,15 @@ export default function ProductNew() {
           {!hasVariants && (
             <BuiInput data-testid="input-manual-product-stock" label="Stock quantity" type="number" value={stock} onChange={setStock} placeholder="0" />
           )}
+          <BuiInput label="Weight (kg)" type="number" min={0} value={weight} onChange={setWeight} placeholder="0" />
+          <div className="flex flex-col justify-end space-y-1.5">
+            <FormSectionLabel>Warehouse</FormSectionLabel>
+            <BuiSelect aria-label="Warehouse" selectedKey={warehouseId || null} onSelectionChange={(key) => setWarehouseId(String(key))}>
+              {warehouses.map((warehouse) => (
+                <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>
+              ))}
+            </BuiSelect>
+          </div>
           <div className="flex flex-col justify-end space-y-1.5">
             <FormSectionLabel>Status</FormSectionLabel>
             <BuiSelect
@@ -263,10 +283,18 @@ export default function ProductNew() {
                   type="text"
                   placeholder={opt.values.length ? "" : "Black"}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); addOptionValue(opt.id, e.currentTarget.value); e.currentTarget.value = ""; }
-                    else if (e.key === "Backspace" && !e.currentTarget.value && opt.values.length) { removeOptionValue(opt.id, opt.values[opt.values.length - 1]); }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addOptionValue(opt.id, e.currentTarget.value);
+                      e.currentTarget.value = "";
+                    } else if (e.key === "Backspace" && !e.currentTarget.value && opt.values.length) {
+                      removeOptionValue(opt.id, opt.values[opt.values.length - 1]);
+                    }
                   }}
-                  onBlur={(e) => { addOptionValue(opt.id, e.currentTarget.value); e.currentTarget.value = ""; }}
+                  onBlur={(e) => {
+                    addOptionValue(opt.id, e.currentTarget.value);
+                    e.currentTarget.value = "";
+                  }}
                   className="min-w-24 flex-1 bg-transparent text-[13px] text-black outline-none placeholder:text-black/25"
                 />
               </div>
@@ -280,9 +308,9 @@ export default function ProductNew() {
             <FormSectionLabel>Variants ({combinations.length})</FormSectionLabel>
             {combinations.map((attrs) => {
               const key = comboKey(attrs);
-              const d = comboData[key] ?? { stock: "", price: "", cog: "" };
+              const d = comboData[key] ?? { stock: "", price: "", cog: "", weight: "" };
               return (
-                <div key={key} className="grid items-end gap-2 rounded-2lg border border-border-secondary bg-background-primary-default p-3 md:grid-cols-[1fr_110px_120px_110px]">
+                <div key={key} className="grid items-end gap-2 rounded-2lg border border-border-secondary bg-background-primary-default p-3 md:grid-cols-[1fr_110px_120px_110px_110px]">
                   <div className="flex flex-wrap items-center gap-1.5 pb-1.5">
                     {Object.values(attrs).map((v, i) => <Chip key={i} variant="caption" color="gray">{v}</Chip>)}
                   </div>
@@ -298,6 +326,7 @@ export default function ProductNew() {
                     <span className="block text-caption-1-medium text-text-tertiary">COG (৳)</span>
                     <BuiInput size="small" type="number" value={d.cog} onChange={(v) => updateCombo(key, { cog: v })} placeholder={cog || "0"} />
                   </label>
+                  <BuiInput size="small" label="Variant weight (kg)" type="number" min={0} value={d.weight} onChange={(v) => updateCombo(key, { weight: v })} placeholder={weight || "0"} />
                 </div>
               );
             })}

@@ -3592,13 +3592,14 @@ git commit -m "feat: filter dashboard orders by warehouse"
   export function productNeedsVariant({ item, variantsByProductName });
   ```
 
-**A pre-existing gap this task must work around.** `POST /api/inbox-orders/send-to-courier` and
+**Reviewed scope correction (2026-09-04).** `POST /api/inbox-orders/send-to-courier` and
 `POST /api/inbox-orders/send-to-pathao` are called from `src/pages/InboxOrders.tsx:568` and
-`:600` and documented in `CLAUDE.md` §6, but **neither route exists in `server/index.js` on this
-branch** — verified with `grep -n "inbox-orders/send-to" server/index.js`, which returns nothing.
-Inbox courier dispatch is therefore already broken, independently of this feature. Creating those
-routes is out of scope. The dispatch guard is implemented **client-side**, in front of both
-`apiFetch` calls, so it works the moment the routes are restored and blocks correctly today.
+`:600` and documented in `CLAUDE.md` §6, but neither route exists in `server/index.js` on this
+branch. Restoring both routes is now part of this task. Each route must authenticate, resolve and
+filter by the fixed workspace `org_id`, normalize the destination phone with `normalizeBdPhone()`,
+validate the stored product/variant and weight data, call the existing Steadfast or Pathao helper,
+and persist the courier response on the same inbox order. Missing variants are rejected on the
+server. The client guard remains for immediate feedback, but it is not the security boundary.
 
 - [ ] **Step 1: Write the failing test for the matcher**
 
@@ -4167,13 +4168,143 @@ git commit -m "feat: let staff set inbox order variants and block dispatch witho
 
 ## Post-Implementation Notes
 
-Two things the implementer should surface rather than silently absorb:
+One schema constraint remains intentionally application-level:
 
-1. **`/api/inbox-orders/send-to-courier` and `/api/inbox-orders/send-to-pathao` do not exist**
-   in `server/index.js` on this branch, though `src/pages/InboxOrders.tsx:568` / `:600` call them
-   and `CLAUDE.md` §6 documents them. Inbox courier dispatch is already broken; this plan does not
-   fix it and does not depend on it. Raise it as a separate bug.
-2. **`social_inbox_orders.items` has no schema-level shape.** Task 1 adds `variant_id` to the
+1. **`social_inbox_orders.items` has no schema-level shape.** Task 1 adds `variant_id` to the
    items each writer produces, but nothing prevents an older row from lacking it. Every reader
    added here treats a missing `variant_id` as "not chosen", which is why the guard is a filter
    over items rather than a schema constraint.
+
+## Engineering Review Amendments (2026-09-04)
+
+These amendments supersede conflicting implementation snippets above. They were approved during
+the branch-diff engineering review and are required for completion.
+
+### Architecture and data integrity
+
+```text
+Product/variant assignment
+  -> authenticated Express route
+  -> validate UUIDs and fixed workspace ownership
+  -> service-role-only transactional RPC
+  -> update all requested rows or roll back
+
+Inbox courier dispatch
+  -> client preflight for immediate feedback
+  -> authenticated Express route
+  -> load org-scoped inbox order
+  -> validate every catalog product, variant, and weight
+  -> normalize Bangladesh phone number
+  -> call courier helper
+  -> persist courier result
+```
+
+- Add service-role-only transactional functions for create-with-default, warehouse deletion plus
+  product reassignment, and all-or-error bulk product assignment. Revoke execution from `PUBLIC`,
+  `anon`, and `authenticated`; grant only `service_role`.
+- Replace the existing multi-call Express mutations with those RPCs. Keep request validation,
+  authentication, and fixed-workspace guards in Express.
+- Make warehouse detail stock variant-aware: variant products sum
+  `product_variants.stock_quantity`; variant-less products use `products.stock_quantity`.
+- Treat blank weight as `null`, but reject malformed, non-finite, or negative weight with HTTP 400.
+  Valid values are rounded to three decimals.
+- Validate and deduplicate bulk product IDs. The transaction must update every requested product
+  in the fixed workspace or update none.
+- Restore both inbox courier routes and enforce the missing-variant/weight invariant server-side.
+
+### Test strategy
+
+- Keep source assertions only for route registration, auth/org guard placement, and other
+  boundaries that cannot be imported from the Express monolith.
+- Use React Testing Library for warehouse/product/order/inbox controls, submitted payloads,
+  optimistic updates, rollback, loading, empty, and visible error states.
+- Add SQL/migration tests for function privileges and transactional function bodies, plus baseline
+  verification that executes the migration in the disposable database.
+- Add behavior tests for invalid weights, variant-aware warehouse totals, all-or-error bulk
+  assignment, and both restored courier routes.
+- Extract a DOM-free workbook builder. Serialize and reload the workbook with ExcelJS, then assert
+  Bangla text, column order, numeric cells, formats, blank unknown fields, and filename rules.
+- Add deterministic Meta extraction prompt/parser fixtures. Add a small live-model eval suite that
+  runs only when `OPENAI_API_KEY` is present and is not required by normal CI.
+- Run browser QA for create/edit/delete warehouse, product assignment, order routing and override,
+  dashboard filtering, regular/inbox Excel export, variant correction, and both courier guards.
+
+### Branch integration order
+
+The feature branch is behind `main`. Preserve and verify the existing Task 6/7 work first, commit
+only completed logical units, merge `main`, resolve conflicts without discarding either side, then
+continue Tasks 8-15 and the amendments above.
+
+## NOT in scope
+
+- Per-warehouse inventory pools or stock transfers: warehouses remain routing labels.
+- Split shipments for orders spanning warehouses: first resolvable product still wins.
+- Warehouse-specific courier pickup locations: the deployment keeps one global courier pickup.
+- Per-warehouse team permissions, analytics, P&L, or active/inactive state: none block routing or
+  export.
+- Server-generated exports: browser-side Excel generation is sufficient for selected dashboard
+  rows and avoids a new download API.
+
+## What already exists
+
+- `server/warehouseRouting.js` provides tested pure warehouse and weight decisions and is reused by
+  both order-creation paths.
+- Existing product and variant APIs, `OrdersTable`, product forms, TanStack Query, `apiFetch()`,
+  courier helpers, and the customer export pattern are extended rather than duplicated.
+- The warehouse migration, CRUD/detail APIs, bulk-assignment route shell, and both order-routing
+  call sites are already committed on this branch.
+- Uncommitted Task 6/7 route changes and red tests are preserved and completed in place.
+
+## Failure modes
+
+| Flow | Production failure | Required handling and evidence |
+|---|---|---|
+| Create/default warehouse | Default RPC fails after insert | One transaction; SQL test proves rollback |
+| Delete warehouse | Product reassignment fails | One transaction; SQL test proves warehouse remains active |
+| Bulk assignment | Stale or foreign product ID | Reject and roll back all IDs; behavior test |
+| Weight edit | Negative or malformed value | HTTP 400 and visible form error; route/component tests |
+| Warehouse detail | Variant stock omitted | Variant-aware aggregation test |
+| Excel export | Unicode or format corruption | Serialize/reload workbook round-trip test |
+| Inbox dispatch | Missing/foreign variant | Server rejection plus client feedback test |
+| Courier request | Provider error or timeout | Preserve unsent state and show recoverable error |
+| AI extraction | Ambiguous pack size | Matcher returns null; fixture and optional live eval |
+
+## Worktree execution strategy
+
+| Lane | Work | Depends on |
+|---|---|---|
+| A | Database RPC hardening -> backend validation -> courier routes | Existing Tasks 1-7 |
+| B | Product forms -> Products page -> warehouse pages -> dashboard/inbox UI | Shared warehouse hook and backend APIs |
+| C | Excel builder and workbook tests -> regular/inbox buttons | Warehouse names and order fields |
+
+Lanes B and C are logically independent after the shared hook/API contracts, but this session uses
+one existing worktree. Execute sequentially to preserve the unfinished changes and avoid conflicts
+in `OrdersTable`, `InboxOrders`, and `server/index.js`.
+
+## Implementation Tasks
+
+- [ ] **T1 (P1)** — Finish and behavior-test Task 6 manual override and filtering.
+- [ ] **T2 (P1)** — Finish and behavior-test Task 7 weight and product warehouse APIs.
+- [ ] **T3 (P1)** — Add transactional warehouse mutation RPCs and all-or-error assignment.
+- [ ] **T4 (P1)** — Correct variant-aware warehouse stock summaries.
+- [ ] **T5 (P1)** — Merge current `main` without losing completed feature work.
+- [ ] **T6 (P1)** — Implement Tasks 8-9 product form and assignment UI with RTL tests.
+- [ ] **T7 (P1)** — Implement Task 10 Excel builder and real workbook round-trip tests.
+- [ ] **T8 (P1)** — Implement Tasks 11-14 warehouse/order pages, controls, and filters with RTL tests.
+- [ ] **T9 (P1)** — Implement Task 15 variant capture, restored courier routes, server/client guards,
+  deterministic fixtures, and optional live-model evals.
+- [ ] **T10 (P1)** — Run full tests, lint, build, migration verification, review, and browser QA.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | Not run |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | UNAVAILABLE | Timed out after 5 minutes with no output |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 8 issues found and folded into this plan; 0 critical gaps remain |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | Not run |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | Not run |
+
+- **VERDICT:** ENG CLEARED — ready to implement the approved full scope.
+
+NO UNRESOLVED DECISIONS
