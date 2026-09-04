@@ -50,8 +50,8 @@ describe("warehouse detail", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Main Warehouse" })).toBeInTheDocument();
-    expect(screen.getByText("Products assigned").closest("div.flex.min-w-0")).toHaveTextContent("2");
-    expect(screen.getByText("Units in stock").closest("div.flex.min-w-0")).toHaveTextContent("19");
+    expect(screen.getByText("Products assigned").closest("div.rounded-2xl")).toHaveTextContent("2");
+    expect(screen.getByText("Units in stock").closest("div.rounded-2xl")).toHaveTextContent("19");
     expect(screen.getByTestId("warehouse-products-table")).toBeInTheDocument();
     expect(await screen.findByText("No records found")).toBeInTheDocument();
     expect(screen.getByText("No weight")).toBeInTheDocument();
