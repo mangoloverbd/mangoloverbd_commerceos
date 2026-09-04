@@ -5596,6 +5596,15 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
        row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
 
+    const routingItems = [];
+    if (typeof row.product === "string" && row.product.trim()) {
+      routingItems.push({ productName: row.product.trim(), quantity: Number(row.quantity) || 1 });
+    }
+    const routing = await resolveOrderRouting(supabase, orgId, routingItems);
+    row.warehouse_id = routing.warehouseId;
+    row.warehouse_auto = true;
+    row.weight_kg = routing.weightKg;
+
     const { data, error } = await supabase
       .from("orders")
       .insert(row)

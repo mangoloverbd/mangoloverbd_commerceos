@@ -18,7 +18,7 @@ describe("order routing wiring", () => {
     expect(source).toContain("resolveWarehouseId");
     expect(source).toContain("computeOrderWeightKg");
     expect(source.match(/async function resolveOrderRouting\(/g)).toHaveLength(1);
-    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(3);
+    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(4);
   });
 
   it("org-scopes every routing lookup and throws lookup errors", () => {
@@ -153,6 +153,20 @@ describe("order routing wiring", () => {
     expect(manualCreate).toContain("row.warehouse_auto = true;");
     expect(manualCreate).toContain("row.weight_kg = routing.weightKg;");
     expect(manualCreate).not.toContain("req.body.warehouse");
+  });
+
+  it("stores the same immutable snapshot during custom-store webhook creation", () => {
+    const webhook = sectionBetween(
+      'app.post("/api/custom-orders/webhook"',
+      "// ─── Live Visitor Tracking",
+    );
+
+    expect(webhook).toContain("const routing = await resolveOrderRouting(supabase, orgId, routingItems);");
+    expect(webhook).toContain("productName: row.product");
+    expect(webhook).toContain("row.warehouse_id = routing.warehouseId;");
+    expect(webhook).toContain("row.warehouse_auto = true;");
+    expect(webhook).toContain("row.weight_kg = routing.weightKg;");
+    expect(webhook).not.toContain("req.body.warehouse");
   });
 
   it("stores the same immutable snapshot during social inbox capture", () => {
