@@ -7,6 +7,7 @@ import { toast } from "@/components/ui/sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RichButton } from "@/components/ui/rich-button";
 import { WarehouseDialog } from "@/components/WarehouseDialog";
+import { Chip } from "@/components/base/badges/chip";
 import { useWarehouses, type Warehouse } from "@/hooks/useWarehouses";
 
 function Stat({ label, value, sub }: { label: string; value: string | number; sub: string }) {
@@ -201,7 +202,10 @@ export default function Warehouses() {
                         <p className="text-[10px] text-black/35">assigned</p>
                       </td>
                       <td className="py-3 text-center">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${warehouse.is_default ? "bg-black text-white" : "bg-black/[0.05] text-black/55"}`}>{warehouse.is_default ? "Default" : "Active"}</span>
+                        <Chip variant="caption" color={warehouse.is_default ? "lime" : "cyan"} className="gap-1.5">
+                          <span className={`h-[5px] w-[5px] shrink-0 rounded-full ${warehouse.is_default ? "bg-status-lime-text" : "bg-status-cyan-text"}`} />
+                          {warehouse.is_default ? "Default" : "Active"}
+                        </Chip>
                       </td>
                       <td className="py-3 pr-4 text-right">
                         <div className="flex items-center justify-end gap-1">

@@ -19,6 +19,7 @@ import { OrdersTable, type Order } from "@/components/OrdersTable";
 import { WarehouseDialog } from "@/components/WarehouseDialog";
 import { WarehouseMetric } from "@/components/warehouse/WarehouseMetric";
 import { AddProductsDialog } from "@/components/warehouse/AddProductsDialog";
+import { Chip } from "@/components/base/badges/chip";
 import { RichButton } from "@/components/ui/rich-button";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { toast } from "@/components/ui/sonner";
@@ -129,7 +130,10 @@ export default function WarehouseDetail() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="truncate text-[24px] font-semibold tracking-tight text-black">{data.warehouse.name}</h1>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${data.warehouse.is_default ? "bg-black text-white" : "bg-black/[0.06] text-black/55"}`}>{data.warehouse.is_default ? "Default" : "Active"}</span>
+                  <Chip variant="bold" color={data.warehouse.is_default ? "lime" : "cyan"} className="gap-1.5">
+                    <span className={`h-[5px] w-[5px] shrink-0 rounded-full ${data.warehouse.is_default ? "bg-status-lime-text" : "bg-status-cyan-text"}`} />
+                    {data.warehouse.is_default ? "Default" : "Active"}
+                  </Chip>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-black/45">
                   <span className="inline-flex items-center gap-1.5"><MapPin size={13} weight="light" />{data.warehouse.address || "No address added"}</span>
@@ -170,10 +174,10 @@ export default function WarehouseDetail() {
                   {data.products.map((product) => (
                     <tr key={product.id} className="border-b border-[color:var(--color-separator-border)] transition-colors hover:bg-background-secondary-default">
                       <td className="px-4 py-3.5"><p className="text-[13px] font-semibold text-black">{product.name}</p><p className="mt-0.5 text-[11px] text-black/40">{product.selling_price == null ? "Price not set" : `৳${product.selling_price.toLocaleString()}`}</p></td>
-                      <td className="px-4 py-3.5"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${product.assigned_explicitly ? "bg-black/[0.06] text-black/60" : "bg-amber-50 text-amber-700"}`}>{product.assigned_explicitly ? "Direct assignment" : "Default fallback"}</span></td>
+                      <td className="px-4 py-3.5"><Chip variant="caption" color={product.assigned_explicitly ? "blue" : "yellow"} className="gap-1.5"><span className={`h-[5px] w-[5px] shrink-0 rounded-full ${product.assigned_explicitly ? "bg-status-blue-text" : "bg-status-yellow-text"}`} />{product.assigned_explicitly ? "Direct assignment" : "Default fallback"}</Chip></td>
                       <td className="px-4 py-3.5 text-center text-[12px] text-black/55">{product.weight_kg == null ? "No weight" : `${product.weight_kg} kg`}</td>
                       <td className="px-4 py-3.5 text-center"><span className="text-[13px] font-semibold tabular-nums text-black">{product.stock_quantity ?? 0}</span><p className="text-[10px] text-black/35">units</p></td>
-                      <td className="px-4 py-3.5 text-center"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${product.published ? "bg-emerald-50 text-emerald-700" : "bg-black/[0.05] text-black/45"}`}>{product.published ? "Published" : "Draft"}</span></td>
+                      <td className="px-4 py-3.5 text-center"><Chip variant="caption" color={product.published ? "lime" : "gray"} className="gap-1.5"><span className={`h-[5px] w-[5px] shrink-0 rounded-full ${product.published ? "bg-status-lime-text" : "bg-background-tertiary-default"}`} />{product.published ? "Published" : "Draft"}</Chip></td>
                       <td className="px-4 py-3.5 text-right">
                         {product.assigned_explicitly ? <button type="button" aria-label={`Remove ${product.name} from warehouse`} disabled={removingId === product.id} onClick={() => void removeProduct(product)} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:cursor-wait disabled:opacity-40">{removingId === product.id ? <Spinner size="sm" /> : <Trash size={14} weight="light" />} Remove</button> : <span className="text-[10px] text-black/30">Managed by default</span>}
                       </td>
