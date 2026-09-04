@@ -379,12 +379,15 @@ export type Database = {
       order_items: {
         Row: {
           created_at: string
+          discount_type: string | null
+          discount_value: number
           id: string
           order_id: string
           org_id: string
           product_id: string | null
           product_name: string
           quantity: number
+          unit_discount: number
           unit_price: number
           updated_at: string
           variant_id: string | null
@@ -392,12 +395,15 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          discount_type?: string | null
+          discount_value?: number
           id?: string
           order_id: string
           org_id: string
           product_id?: string | null
           product_name: string
           quantity: number
+          unit_discount?: number
           unit_price: number
           updated_at?: string
           variant_id?: string | null
@@ -405,12 +411,15 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          discount_type?: string | null
+          discount_value?: number
           id?: string
           order_id?: string
           org_id?: string
           product_id?: string | null
           product_name?: string
           quantity?: number
+          unit_discount?: number
           unit_price?: number
           updated_at?: string
           variant_id?: string | null

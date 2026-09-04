@@ -403,6 +403,18 @@ export default function Dashboard() {
       const nextOrders = (data.orders as Order[]) || [];
       queryClient.setQueryData(["/api/orders"], nextOrders);
       setOrders(nextOrders);
+      // Warm the product catalog cache in the background so the order
+      // editor's catalog section renders instantly on open. No-op while fresh.
+      void queryClient.prefetchQuery({
+        queryKey: ["/api/products"],
+        staleTime: 60_000,
+        queryFn: async () => {
+          const productsRes = await apiFetch("/api/products");
+          const productsJson = await productsRes.json().catch(() => ({}));
+          if (!productsRes.ok) throw new Error(productsJson.error || "Failed to load products");
+          return productsJson;
+        },
+      });
     } catch {
       toast.custom(() => (
         <DarkToast className="flex items-center gap-3">

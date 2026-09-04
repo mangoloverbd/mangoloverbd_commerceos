@@ -25,6 +25,10 @@ const rpcMigrationPath = join(
   root,
   "supabase/migrations/20260903000100_add_order_item_edit_rpc.sql",
 );
+const discountMigrationPath = join(
+  root,
+  "supabase/migrations/20260904000100_add_order_item_discounts.sql",
+);
 
 function commandPath(name: string): string {
   const configuredBin = process.env.PG_BINDIR;
@@ -45,6 +49,7 @@ const pgConfig = commandPath("pg_config");
 let workDirectory: string;
 let socketDirectory: string;
 let connection: string[];
+const contractOnly = process.env.ORDER_ITEMS_CONTRACT_ONLY === "1";
 
 function runSql(sql: string): string {
   return execFileSync(psql, [...connection, "-c", sql], {
@@ -75,6 +80,7 @@ function applyFile(path: string): void {
 }
 
 beforeAll(() => {
+  if (contractOnly) return;
   workDirectory = mkdtempSync(join(tmpdir(), "mangoloverbd-order-items-"));
   const dataDirectory = join(workDirectory, "data");
   socketDirectory = join(workDirectory, "socket");
@@ -127,6 +133,7 @@ beforeAll(() => {
   `);
   applyFile(migrationPath);
   applyFile(rpcMigrationPath);
+  applyFile(discountMigrationPath);
   runSql(`
     update public.products
     set stock_quantity = 10
@@ -138,6 +145,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  if (contractOnly) return;
   const dataDirectory = join(workDirectory, "data");
   execFileSync(pgCtl, ["-D", dataDirectory, "stop", "-m", "fast"], {
     stdio: "pipe",
@@ -157,6 +165,9 @@ describe("order item schema", () => {
       product_name: "Legacy product text",
       variant_name: null,
       unit_price: 100,
+      discount_type: null,
+      discount_value: 0,
+      unit_discount: 0,
       quantity: 1,
       created_at: "2026-09-03T00:00:00Z",
       updated_at: "2026-09-03T00:00:00Z",
@@ -172,6 +183,79 @@ describe("order item schema", () => {
       where quantity <= 0 or unit_price < 0;
     `);
     expect(result).toMatch(/\n\s*0\s*\n/);
+  });
+
+  it("rejects negative discount values", () => {
+    expect(() =>
+      runSql(`
+        insert into public.order_items (
+          org_id, order_id, product_name, unit_price, quantity,
+          discount_type, discount_value, unit_discount
+        ) values (
+          '40000000-0000-0000-0000-000000000001',
+          '30000000-0000-0000-0000-000000000001',
+          'Negative entered discount', 5, 1, 'fixed', -1, 0
+        );
+      `),
+    ).toThrow();
+
+    expect(() =>
+      runSql(`
+        insert into public.order_items (
+          org_id, order_id, product_name, unit_price, quantity,
+          discount_type, discount_value, unit_discount
+        ) values (
+          '40000000-0000-0000-0000-000000000001',
+          '30000000-0000-0000-0000-000000000001',
+          'Negative calculated discount', 5, 1, 'fixed', 1, -1
+        );
+      `),
+    ).toThrow();
+  });
+
+  it("rejects unsupported discount types", () => {
+    expect(() =>
+      runSql(`
+        insert into public.order_items (
+          org_id, order_id, product_name, unit_price, quantity,
+          discount_type, discount_value, unit_discount
+        ) values (
+          '40000000-0000-0000-0000-000000000001',
+          '30000000-0000-0000-0000-000000000001',
+          'Unsupported discount', 5, 1, 'coupon', 1, 1
+        );
+      `),
+    ).toThrow();
+  });
+
+  it("rejects percentage discounts above one hundred", () => {
+    expect(() =>
+      runSql(`
+        insert into public.order_items (
+          org_id, order_id, product_name, unit_price, quantity,
+          discount_type, discount_value, unit_discount
+        ) values (
+          '40000000-0000-0000-0000-000000000001',
+          '30000000-0000-0000-0000-000000000001',
+          'Oversized percentage', 5, 1, 'percentage', 100.01, 5
+        );
+      `),
+    ).toThrow();
+  });
+
+  it("rejects calculated discounts above the authoritative unit price", () => {
+    expect(() =>
+      runSql(`
+        insert into public.order_items (
+          org_id, order_id, product_name, unit_price, quantity,
+          discount_type, discount_value, unit_discount
+        ) values (
+          '40000000-0000-0000-0000-000000000001',
+          '30000000-0000-0000-0000-000000000001',
+          'Over-price discount', 5, 1, 'fixed', 5.01, 5.01
+        );
+      `),
+    ).toThrow();
   });
 
   it("preserves every order and unmatched legacy text", () => {
@@ -269,6 +353,24 @@ describe("order item API contract", () => {
     expect(route).toContain("order.price");
   });
 
+  it("uses the shared catalog resolver for synthesized legacy order items", () => {
+    const start = source.indexOf('app.get("/api/orders/:id"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("resolveOrderRouting(supabase, orgId");
+    expect(route).toContain("resolvedItems");
+    expect(route).toContain("catalogMatchComplete");
+    expect(route).toContain("product_id");
+    expect(route).toContain("variant_id");
+  });
+
+  it("returns explicit zero discount fields for synthesized legacy rows", () => {
+    const start = source.indexOf('app.get("/api/orders/:id"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("discount_type: null");
+    expect(route).toContain("discount_value: 0");
+    expect(route).toContain("unit_discount: 0");
+  });
+
   it("keeps undisbursed legacy orders editable", () => {
     const start = source.indexOf('app.get("/api/orders/:id"');
     const route = source.slice(start, source.indexOf("\n});", start));
@@ -338,6 +440,84 @@ describe("order item API contract", () => {
     expect(route).toMatch(/UUID|uuid/i);
     expect(route).toMatch(/variant.*product|product.*variant/i);
     expect(route).toContain("product_id");
+  });
+
+  it("normalizes only supported finite non-negative discount intent", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toMatch(/discountType.*null.*fixed.*percentage/s);
+    expect(route).toMatch(/Number\.isFinite\(discountValue\)/);
+    expect(route).toMatch(/discountValue\s*<\s*0/);
+    expect(route).toMatch(/discountType\s*===\s*["']percentage["'].*discountValue\s*>\s*100/s);
+  });
+
+  it("normalizes the value to zero when no discount mode is selected", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toMatch(/discountType\s*===\s*null\s*\?\s*0\s*:\s*\(item\.discountValue\s*\?\?\s*0\)/);
+  });
+
+  it("passes only identity quantity and discount intent to the transaction", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain(
+      "normalizedItems.push({ productId, variantId, quantity, discountType, discountValue });",
+    );
+    expect(route).not.toMatch(/normalizedItems\.push\([^)]*(?:unitPrice|unitDiscount|price|total)/s);
+  });
+
+  it("rejects client-supplied prices calculated discounts and totals", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toMatch(/unitPrice.*unitDiscount.*price.*total/s);
+    expect(route).toContain("Client-supplied monetary fields are not allowed");
+  });
+
+  it("returns request errors for database-validated discount constraints", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toMatch(/\/discount\/i\.test\(message\)[\s\S]*?res\.status\(400\)/);
+  });
+
+  it("batch-loads org-scoped catalog metadata for order item display", () => {
+    const start = source.indexOf("async function enrichOrderItems");
+    const enrichment = source.slice(start, source.indexOf("const ORDER_ITEM_UUID_RE", start));
+    expect(enrichment).toContain('from("products")');
+    expect(enrichment).toContain('from("product_variants")');
+    expect(enrichment).toContain('from("product_images")');
+    expect(enrichment.match(/\.eq\("org_id", orgId\)/g)).toHaveLength(3);
+    expect(enrichment).toContain("product_slug");
+    expect(enrichment).toContain("image_url");
+    expect(enrichment).toContain("weight_kg");
+    expect(enrichment).toContain("available_stock");
+  });
+
+  it("prefers variant availability and includes the order's reserved quantity", () => {
+    const start = source.indexOf("async function enrichOrderItems");
+    const enrichment = source.slice(start, source.indexOf("const ORDER_ITEM_UUID_RE", start));
+    expect(enrichment).toMatch(/variant\?\.weight_kg\s*\?\?\s*product\?\.weight_kg/);
+    expect(enrichment).toMatch(/variant\?\.stock_quantity\s*\?\?\s*product\?\.stock_quantity/);
+    expect(enrichment).toMatch(/availableStock\s*\+\s*\(inventoryReserved\s*\?\s*\(Number\(item\.quantity\)\s*\|\|\s*0\)\s*:\s*0\)/);
+  });
+
+  it("does not add an unreserved historical quantity to current catalog stock", () => {
+    const start = source.indexOf("async function enrichOrderItems");
+    const enrichment = source.slice(start, source.indexOf("const ORDER_ITEM_UUID_RE", start));
+    expect(enrichment).toContain("inventory_reserved");
+    expect(enrichment).toMatch(/inventoryReserved\s*\?\s*\(Number\(item\.quantity\)\s*\|\|\s*0\)\s*:\s*0/);
+  });
+
+  it("returns enriched items after a successful item replacement", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("enrichOrderItems(supabase, orgId, items || [])");
+    expect(route).toContain("items: enrichedItems");
+  });
+
+  it("requires detached legacy rows to be removed or replaced before cart saves", () => {
+    const start = source.indexOf('app.patch("/api/orders/:id/items"');
+    const route = source.slice(start, source.indexOf("\n});", start));
+    expect(route).toContain("Remove or replace detached legacy items before saving cart changes");
   });
 
   it("purges removed and added product caches plus bulk inventory after success", async () => {
@@ -431,7 +611,8 @@ describe("order item replacement service", () => {
       insert into public.order_items (org_id, order_id, product_id, product_name, unit_price, quantity)
       values ('${orgId}', '${orderId}', '${productId}', 'Mango', 5, 1);
       update public.orders set sent_to_courier = false, consignment_id = null,
-        tracking_code = null, courier_status = null, product = 'Mango', quantity = 1, price = 5
+        tracking_code = null, courier_status = null, product = 'Mango', quantity = 1,
+        price = 5, discount = 0
       where id = '${orderId}';
     `);
   });
@@ -472,6 +653,58 @@ describe("order item replacement service", () => {
     expect(result).toMatch(/2\s+\|\s+10\.00/);
   });
 
+  it("calculates fixed and percentage discounts from authoritative catalog prices", () => {
+    const result = runSql(`
+      begin;
+      select public.replace_order_items(
+        '${orgId}',
+        '${orderId}',
+        '[{"productId":"${productId}","quantity":2,"discountType":"fixed","discountValue":1.25},{"variantId":"${variantId}","quantity":1,"discountType":"percentage","discountValue":25}]'
+      );
+      select product_id, variant_id, unit_price, discount_type, discount_value,
+        unit_discount, quantity
+      from public.order_items
+      where order_id = '${orderId}'
+      order by variant_id nulls first;
+      select quantity, price, discount
+      from public.orders
+      where id = '${orderId}';
+      rollback;
+    `);
+
+    expect(result).toMatch(
+      /50000000-0000-0000-0000-000000000001\s+\|\s+\s+\|\s+5\.00\s+\|\s+fixed\s+\|\s+1\.25\s+\|\s+1\.25\s+\|\s+2/,
+    );
+    expect(result).toMatch(
+      /50000000-0000-0000-0000-000000000001\s+\|\s+60000000-0000-0000-0000-000000000001\s+\|\s+6\.00\s+\|\s+percentage\s+\|\s+25\.00\s+\|\s+1\.50\s+\|\s+1/,
+    );
+    expect(result).toMatch(/3\s+\|\s+12\.00\s+\|\s+4\.00/);
+  });
+
+  it("preserves the legacy order discount remainder when replacing discounted items", () => {
+    const result = runSql(`
+      begin;
+      update public.order_items
+      set discount_type = 'fixed', discount_value = 1, unit_discount = 1
+      where order_id = '${orderId}';
+      update public.orders
+      set discount = 3, price = 2
+      where id = '${orderId}';
+
+      select public.replace_order_items(
+        '${orgId}',
+        '${orderId}',
+        '[{"productId":"${productId}","quantity":2,"discountType":"fixed","discountValue":0.5}]'
+      );
+      select price, discount
+      from public.orders
+      where id = '${orderId}';
+      rollback;
+    `);
+
+    expect(result).toMatch(/7\.00\s+\|\s+3\.00/);
+  });
+
   it("loads detail data only for the authenticated workspace", () => {
     const result = runSql(`
       select count(*)
@@ -496,16 +729,38 @@ describe("order item replacement service", () => {
     const result = runSql(`
       begin;
       do $$ begin
-        perform public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"${productId}","quantity":12}]');
+        perform public.replace_order_items('${orgId}', '${orderId}', '[{"productId":"${productId}","quantity":12,"discountType":"fixed","discountValue":1}]');
       exception when others then null;
       end $$;
-      select quantity, price from public.orders where id = '${orderId}';
-      select count(*) from public.order_items where order_id = '${orderId}';
+      select quantity, price, discount from public.orders where id = '${orderId}';
+      select count(*), max(unit_discount) from public.order_items where order_id = '${orderId}';
       select stock_quantity from public.products where id = '${productId}';
       rollback;
     `);
-    expect(result).toMatch(/1\s+\|\s+5\.00/);
-    expect(result).toMatch(/1\n/);
+    expect(result).toMatch(/1\s+\|\s+5\.00\s+\|\s+0\.00/);
+    expect(result).toMatch(/1\s+\|\s+0\.00/);
+    expect(result).toMatch(/10\n/);
+  });
+
+  it("rolls back inventory, items, and order totals when a discount is invalid", () => {
+    const result = runSql(`
+      begin;
+      do $$ begin
+        perform public.replace_order_items(
+          '${orgId}',
+          '${orderId}',
+          '[{"productId":"${productId}","quantity":2,"discountType":"fixed","discountValue":5.01}]'
+        );
+      exception when others then null;
+      end $$;
+      select quantity, price, discount from public.orders where id = '${orderId}';
+      select count(*), max(unit_discount) from public.order_items where order_id = '${orderId}';
+      select stock_quantity from public.products where id = '${productId}';
+      rollback;
+    `);
+
+    expect(result).toMatch(/1\s+\|\s+5\.00\s+\|\s+0\.00/);
+    expect(result).toMatch(/1\s+\|\s+0\.00/);
     expect(result).toMatch(/10\n/);
   });
 
@@ -528,5 +783,28 @@ describe("order item replacement service", () => {
       rollback;
     `);
     expect(result).toMatch(/1\s+\|\s+5\.00\s+\|\s+10/);
+  });
+
+  it("does not treat courier status alone as proof of dispatch", () => {
+    const result = runSql(`
+      begin;
+      update public.orders
+      set sent_to_courier = false,
+          consignment_id = null,
+          tracking_code = null,
+          courier_status = 'pending'
+      where id = '${orderId}';
+      select public.replace_order_items(
+        '${orgId}',
+        '${orderId}',
+        '[{"productId":"${productId}","quantity":2}]'
+      );
+      select quantity, price
+      from public.orders
+      where id = '${orderId}';
+      rollback;
+    `);
+
+    expect(result).toMatch(/2\s+\|\s+10\.00/);
   });
 });

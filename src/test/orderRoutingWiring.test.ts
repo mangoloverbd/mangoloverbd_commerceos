@@ -18,7 +18,7 @@ describe("order routing wiring", () => {
     expect(source).toContain("resolveWarehouseId");
     expect(source).toContain("computeOrderWeightKg");
     expect(source.match(/async function resolveOrderRouting\(/g)).toHaveLength(1);
-    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(4);
+    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(5);
   });
 
   it("org-scopes every routing lookup and throws lookup errors", () => {
@@ -46,7 +46,7 @@ describe("order routing wiring", () => {
     expect(candidateLookup).toMatch(
       /\.from\("products"\)[\s\S]*?\.eq\("org_id", orgId\)/,
     );
-    expect(resolver.match(/if \(error\) throw error;/g)).toHaveLength(3);
+    expect(resolver.match(/if \(error\) throw error;/g)).toHaveLength(4);
   });
 
   it("only scans unresolved named items and paginates every org-scoped fallback candidate", () => {
@@ -79,7 +79,7 @@ describe("order routing wiring", () => {
     expect(candidateLookup).toContain("if (rows.length < pageSize) break;");
   });
 
-  it("matches social product names in JavaScript without selecting an arbitrary duplicate", () => {
+  it("matches legacy product text in JavaScript without selecting an arbitrary duplicate", () => {
     const resolver = sectionBetween(
       "async function resolveOrderRouting",
       'app.get("/api/warehouses"',
@@ -89,10 +89,15 @@ describe("order routing wiring", () => {
     expect(source).toContain("function normalizeOrderProductName(value)");
     expect(source).toContain("value.trim().toLowerCase()");
     expect(candidateLookup).not.toContain('.in("name",');
-    expect(candidateLookup).toContain("normalizeOrderProductName(product.name)");
-    expect(candidateLookup).toContain("normalizedNames.has(normalizedName)");
-    expect(candidateLookup).toContain("if (matches.length !== 1) continue;");
-    expect(candidateLookup).toContain("productsByName[normalizedName] = matches[0]");
+    expect(source).toContain("matchProductFromText");
+    expect(candidateLookup).toContain("const catalogProducts = [];");
+    expect(candidateLookup).toContain("catalogProducts.push(product);");
+    expect(candidateLookup).toContain(
+      "matchProductFromText({ text: normalizedName, products: catalogProducts })",
+    );
+    expect(candidateLookup).toContain("if (!matchedProduct) continue;");
+    expect(candidateLookup).toContain("productsByName[normalizedName] = matchedProduct");
+    expect(candidateLookup).toContain("matchVariantIdFromText");
   });
 
   it("enriches an unambiguous social name with its canonical product ID before calculating weight", () => {
@@ -167,6 +172,33 @@ describe("order routing wiring", () => {
     expect(webhook).toContain("row.warehouse_auto = true;");
     expect(webhook).toContain("row.weight_kg = routing.weightKg;");
     expect(webhook).not.toContain("req.body.warehouse");
+  });
+
+  it("persists uniquely linked custom-store items through the inventory transaction before sending SMS", () => {
+    const webhook = sectionBetween(
+      'app.post("/api/custom-orders/webhook"',
+      "// ─── Live Visitor Tracking",
+    );
+
+    expect(webhook).toContain("routing.resolvedItems");
+    expect(webhook).toContain("catalogMatchComplete");
+    expect(webhook).toContain('rpc("replace_order_items"');
+    expect(webhook).toContain("productId");
+    expect(webhook).toContain("variantId");
+    expect(webhook).toContain("quantity");
+    expect(webhook).toMatch(
+      /rpc\("replace_order_items"[\s\S]*?\.from\("orders"\)[\s\S]*?\.delete\(\)[\s\S]*?\.eq\("org_id", orgId\)/,
+    );
+    expect(webhook.indexOf('rpc("replace_order_items"')).toBeLessThan(
+      webhook.indexOf("sendBulkSms"),
+    );
+    expect(webhook).toContain("let persistedOrder = data;");
+    expect(webhook).toMatch(
+      /rpc\("replace_order_items"[\s\S]*?\.from\("orders"\)[\s\S]*?\.select\("\*"\)[\s\S]*?\.eq\("id", data\.id\)[\s\S]*?\.eq\("org_id", orgId\)/,
+    );
+    expect(webhook).toContain('sendBulkSms(orgId, "confirmation", persistedOrder)');
+    expect(webhook).toContain("order_id: persistedOrder.order_number");
+    expect(webhook).toContain("order: persistedOrder");
   });
 
   it("stores the same immutable snapshot during social inbox capture", () => {

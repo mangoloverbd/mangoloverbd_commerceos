@@ -19,7 +19,12 @@ import {
   parseOptionalWeightKg,
   resolveWarehouseId,
 } from "./warehouseRouting.js";
-import { matchVariantId, variantLabel } from "./variantMatching.js";
+import {
+  matchProductFromText,
+  matchVariantId,
+  matchVariantIdFromText,
+  variantLabel,
+} from "./variantMatching.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
 import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
@@ -5319,24 +5324,65 @@ function variantDisplay(attributes) {
 async function enrichOrderItems(supabase, orgId, items) {
   if (!items.length) return items;
   const variantIds = [...new Set(items.map((item) => item.variant_id).filter(Boolean))];
-  const productIds = [...new Set(items.map((item) => item.product_id).filter(Boolean))];
-  const [variantResult, productVariantResult] = await Promise.all([
-    variantIds.length ? supabase.from("product_variants").select("id, product_id, attributes").in("id", variantIds).eq("org_id", orgId) : Promise.resolve({ data: [], error: null }),
-    productIds.length ? supabase.from("product_variants").select("id, product_id, attributes").in("product_id", productIds).eq("org_id", orgId) : Promise.resolve({ data: [], error: null }),
-  ]);
+  const variantResult = variantIds.length
+    ? await supabase
+        .from("product_variants")
+        .select("id, product_id, attributes, weight_kg, stock_quantity")
+        .in("id", variantIds)
+        .eq("org_id", orgId)
+    : { data: [], error: null };
   if (variantResult.error) throw variantResult.error;
-  if (productVariantResult.error) throw productVariantResult.error;
   const variantsById = new Map((variantResult.data || []).map((variant) => [variant.id, variant]));
-  const variantsByProduct = new Map();
-  for (const variant of productVariantResult.data || []) {
-    const list = variantsByProduct.get(variant.product_id) || [];
-    list.push(variant);
-    variantsByProduct.set(variant.product_id, list);
+  const productIds = [...new Set([
+    ...items.map((item) => item.product_id).filter(Boolean),
+    ...(variantResult.data || []).map((variant) => variant.product_id).filter(Boolean),
+  ])];
+  const [productResult, imageResult] = await Promise.all([
+    productIds.length
+      ? supabase
+          .from("products")
+          .select("id, slug, image_url, weight_kg, stock_quantity")
+          .in("id", productIds)
+          .eq("org_id", orgId)
+      : Promise.resolve({ data: [], error: null }),
+    productIds.length
+      ? supabase
+          .from("product_images")
+          .select("id, product_id, image_url, is_primary, sort_order")
+          .in("product_id", productIds)
+          .eq("org_id", orgId)
+          .order("is_primary", { ascending: false })
+          .order("sort_order", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (productResult.error) throw productResult.error;
+  if (imageResult.error) throw imageResult.error;
+
+  const productsById = new Map((productResult.data || []).map((product) => [product.id, product]));
+  const primaryImagesByProduct = new Map();
+  for (const image of imageResult.data || []) {
+    if (!primaryImagesByProduct.has(image.product_id)) {
+      primaryImagesByProduct.set(image.product_id, image.image_url);
+    }
   }
+
   return items.map((item) => {
-    const productVariants = variantsByProduct.get(item.product_id) || [];
-    const variant = variantsById.get(item.variant_id) || (productVariants.length === 1 ? productVariants[0] : null);
-    return { ...item, variant_name: variantDisplay(variant?.attributes) || item.variant_name || null };
+    const { inventory_reserved: inventoryReservedValue, ...publicItem } = item;
+    const inventoryReserved = inventoryReservedValue !== false;
+    const variant = variantsById.get(item.variant_id) || null;
+    const productId = item.product_id || variant?.product_id || null;
+    const product = productsById.get(productId) || null;
+    const availableStock = variant?.stock_quantity ?? product?.stock_quantity ?? null;
+    return {
+      ...publicItem,
+      variant_name: variantDisplay(variant?.attributes) || item.variant_name || null,
+      product_slug: product?.slug || null,
+      image_url: primaryImagesByProduct.get(productId) || product?.image_url || null,
+      weight_kg: variant?.weight_kg ?? product?.weight_kg ?? null,
+      available_stock: availableStock === null
+        ? null
+        : availableStock + (inventoryReserved ? (Number(item.quantity) || 0) : 0),
+    };
   });
 }
 
@@ -5368,7 +5414,7 @@ app.get("/api/orders/:id", async (req, res) => {
 
     const storedItems = items || [];
     const fallbackQuantity = Math.max(1, Number(order.quantity) || 1);
-    const displayItems = storedItems.length > 0
+    let displayItems = storedItems.length > 0
       ? storedItems
       : order.product
         ? [{
@@ -5378,9 +5424,28 @@ app.get("/api/orders/:id", async (req, res) => {
             product_name: order.product,
             variant_name: null,
             unit_price: (Number(order.price) || 0) / fallbackQuantity,
+            discount_type: null,
+            discount_value: 0,
+            unit_discount: 0,
             quantity: fallbackQuantity,
           }]
         : [];
+    if (storedItems.length === 0 && displayItems.length > 0) {
+      const routing = await resolveOrderRouting(supabase, orgId, [{
+        productName: order.product,
+        quantity: fallbackQuantity,
+      }]);
+      const matchedItem = routing.resolvedItems[0];
+      if (matchedItem?.catalogMatchComplete) {
+        displayItems = displayItems.map((item) => ({
+          ...item,
+          product_id: matchedItem.productId,
+          variant_id: matchedItem.variantId || null,
+          product_name: matchedItem.productName,
+          inventory_reserved: false,
+        }));
+      }
+    }
     const enrichedItems = await enrichOrderItems(supabase, orgId, displayItems);
     return res.json({ order, items: enrichedItems, canEditItems: !isOrderDispatched(order) });
   } catch (e) {
@@ -5404,14 +5469,39 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       if (!item || typeof item !== "object") {
         return res.status(400).json({ error: "Each item must be an object" });
       }
+      const forbiddenMonetaryFields = [
+        "unitPrice",
+        "unitDiscount",
+        "price",
+        "total",
+        "unit_price",
+        "unit_discount",
+        "lineTotal",
+      ];
+      if (forbiddenMonetaryFields.some((field) => Object.hasOwn(item, field))) {
+        return res.status(400).json({ error: "Client-supplied monetary fields are not allowed" });
+      }
       const productId = item.productId || null;
       const variantId = item.variantId || null;
       const quantity = item.quantity;
+      const discountType = item.discountType ?? null;
+      const discountValue = discountType === null ? 0 : (item.discountValue ?? 0);
       if (!productId && !variantId) {
-        return res.status(400).json({ error: "Each item requires a productId or variantId" });
+        return res.status(400).json({
+          error: "Remove or replace detached legacy items before saving cart changes",
+        });
       }
       if (!Number.isInteger(quantity) || quantity < 1) {
         return res.status(400).json({ error: "Item quantity must be a positive integer" });
+      }
+      if (![null, "fixed", "percentage"].includes(discountType)) {
+        return res.status(400).json({ error: "Discount type must be fixed, percentage, or null" });
+      }
+      if (typeof discountValue !== "number" || !Number.isFinite(discountValue) || discountValue < 0) {
+        return res.status(400).json({ error: "Discount value must be a finite non-negative number" });
+      }
+      if (discountType === "percentage" && discountValue > 100) {
+        return res.status(400).json({ error: "Percentage discount cannot exceed 100" });
       }
       if ((productId && (typeof productId !== "string" || !ORDER_ITEM_UUID_RE.test(productId))) ||
           (variantId && (typeof variantId !== "string" || !ORDER_ITEM_UUID_RE.test(variantId)))) {
@@ -5422,7 +5512,7 @@ app.patch("/api/orders/:id/items", async (req, res) => {
         return res.status(400).json({ error: "Duplicate order item" });
       }
       itemKeys.add(key);
-      normalizedItems.push({ productId, variantId, quantity });
+      normalizedItems.push({ productId, variantId, quantity, discountType, discountValue });
     }
 
     const supabase = getServiceSupabase();
@@ -5518,6 +5608,9 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       if (/dispatch|courier|insufficient|stock/i.test(message)) {
         return res.status(409).json({ error: message });
       }
+      if (/discount/i.test(message)) {
+        return res.status(400).json({ error: message });
+      }
       throw mutationError;
     }
 
@@ -5542,7 +5635,8 @@ app.patch("/api/orders/:id/items", async (req, res) => {
     ]);
     if (updatedOrderError) throw updatedOrderError;
     if (updatedItemsError) throw updatedItemsError;
-    return res.json({ order: updatedOrder, items: items || [], canEditItems: true });
+    const enrichedItems = await enrichOrderItems(supabase, orgId, items || []);
+    return res.json({ order: updatedOrder, items: enrichedItems, canEditItems: true });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -5613,10 +5707,54 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
     if (error) throw error;
 
-    // Send Order Confirmation SMS in background
-    sendBulkSms(orgId, "confirmation", data).catch(console.error);
+    let persistedOrder = data;
+    const linkedItem = routing.resolvedItems.length === 1 &&
+      routing.resolvedItems[0].catalogMatchComplete
+      ? routing.resolvedItems[0]
+      : null;
+    if (linkedItem) {
+      const { error: itemError } = await supabase.rpc("replace_order_items", {
+        p_org_id: orgId,
+        p_order_id: data.id,
+        p_items: [{
+          productId: linkedItem.productId,
+          variantId: linkedItem.variantId || null,
+          quantity: linkedItem.quantity,
+          discountType: null,
+          discountValue: 0,
+        }],
+      });
+      if (itemError) {
+        const { error: cleanupError } = await supabase
+          .from("orders")
+          .delete()
+          .eq("id", data.id)
+          .eq("org_id", orgId);
+        if (cleanupError) console.error("Custom Store Webhook cleanup failed:", cleanupError);
+        throw itemError;
+      }
 
-    return res.status(201).json({ success: true, order_id: data.order_number, order: data });
+      const { data: refreshedOrder, error: refreshedOrderError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", data.id)
+        .eq("org_id", orgId)
+        .single();
+      if (refreshedOrderError) {
+        console.error("Custom Store Webhook authoritative order refresh failed:", refreshedOrderError);
+      } else {
+        persistedOrder = refreshedOrder;
+      }
+    }
+
+    // Send Order Confirmation SMS in background
+    sendBulkSms(orgId, "confirmation", persistedOrder).catch(console.error);
+
+    return res.status(201).json({
+      success: true,
+      order_id: persistedOrder.order_number,
+      order: persistedOrder,
+    });
   } catch (e) {
     console.error("Custom Store Webhook Error:", e);
     return res.status(500).json({ error: e.message });
@@ -8924,7 +9062,7 @@ async function resolveOrderRouting(supabase, orgId, items) {
   const list = Array.isArray(items) ? items : [];
   const defaultWarehouseId = await getDefaultWarehouseId(supabase, orgId);
   if (list.length === 0) {
-    return { warehouseId: defaultWarehouseId, warehouseAuto: true, weightKg: null };
+    return { warehouseId: defaultWarehouseId, warehouseAuto: true, weightKg: null, resolvedItems: [] };
   }
 
   const variantIds = [...new Set(list.map((item) => item.variantId).filter(Boolean))];
@@ -8932,7 +9070,7 @@ async function resolveOrderRouting(supabase, orgId, items) {
   if (variantIds.length > 0) {
     const { data, error } = await supabase
       .from("product_variants")
-      .select("id, product_id, weight_kg")
+      .select("id, product_id, attributes, weight_kg, stock_quantity")
       .in("id", variantIds)
       .eq("org_id", orgId);
     if (error) throw error;
@@ -8963,8 +9101,8 @@ async function resolveOrderRouting(supabase, orgId, items) {
     return variantProductId ? productsById[variantProductId] || null : null;
   };
 
-  // Social captures supply product names rather than catalog IDs. Fetch only
-  // this org's candidates, then accept a name only when it has one match.
+  // Social and legacy custom-store captures supply product text rather than
+  // catalog IDs. Fetch this org's candidates and accept deterministic matches.
   const unresolvedNamedItems = list.filter((item) => !resolvedProductForItem(item));
   const normalizedNames = new Set(
     unresolvedNamedItems
@@ -8973,7 +9111,7 @@ async function resolveOrderRouting(supabase, orgId, items) {
   );
   const productsByName = Object.create(null);
   if (normalizedNames.size > 0) {
-    const matchesByName = new Map();
+    const catalogProducts = [];
     const pageSize = 500;
     for (let from = 0; ; from += pageSize) {
       const to = from + pageSize - 1;
@@ -8987,29 +9125,73 @@ async function resolveOrderRouting(supabase, orgId, items) {
 
       const rows = data || [];
       for (const product of rows) {
-        const normalizedName = normalizeOrderProductName(product.name);
-        if (!normalizedNames.has(normalizedName)) continue;
-        const matches = matchesByName.get(normalizedName) || [];
-        matches.push(product);
-        matchesByName.set(normalizedName, matches);
+        catalogProducts.push(product);
       }
       if (rows.length < pageSize) break;
     }
-    for (const [normalizedName, matches] of matchesByName) {
-      if (matches.length !== 1) continue;
-      productsByName[normalizedName] = matches[0];
-      productsById[matches[0].id] ||= matches[0];
+    for (const normalizedName of normalizedNames) {
+      const matchedProduct = matchProductFromText({ text: normalizedName, products: catalogProducts });
+      if (!matchedProduct) continue;
+      productsByName[normalizedName] = matchedProduct;
+      productsById[matchedProduct.id] ||= matchedProduct;
     }
+  }
+
+  const resolvedProductForName = (item) => {
+    const normalizedName = normalizeOrderProductName(item.productName ?? item.product);
+    return productsByName[normalizedName] || null;
+  };
+  const productsNeedingVariantLookup = [
+    ...new Set(list
+      .filter((item) => !item.variantId)
+      .map((item) => resolvedProductForItem(item) || resolvedProductForName(item))
+      .filter(Boolean)
+      .map((product) => product.id)),
+  ];
+  if (productsNeedingVariantLookup.length > 0) {
+    const { data, error } = await supabase
+      .from("product_variants")
+      .select("id, product_id, attributes, weight_kg, stock_quantity")
+      .in("product_id", productsNeedingVariantLookup)
+      .eq("org_id", orgId);
+    if (error) throw error;
+    for (const variant of data || []) variantsById[variant.id] = variant;
+  }
+
+  const variantsByProductId = Object.create(null);
+  for (const variant of Object.values(variantsById)) {
+    const productVariants = variantsByProductId[variant.product_id] || [];
+    productVariants.push(variant);
+    variantsByProductId[variant.product_id] = productVariants;
   }
 
   // Give a verified social name its canonical ID before weight calculation.
   const routingItems = list.map((item) => {
     const normalizedName = normalizeOrderProductName(item.productName ?? item.product);
+    const directlyResolved = Boolean(resolvedProductForItem(item));
     const matchedProduct = resolvedProductForItem(item) ||
       productsByName[normalizedName] ||
       null;
-    if (!matchedProduct || item.productId === matchedProduct.id) return item;
-    return { ...item, productId: matchedProduct.id };
+    if (!matchedProduct) return { ...item, catalogMatchComplete: false };
+
+    const productVariants = variantsByProductId[matchedProduct.id] || [];
+    const directVariant = item.variantId ? variantsById[item.variantId] : null;
+    const matchedVariantId = directVariant?.product_id === matchedProduct.id
+      ? directVariant.id
+      : matchVariantIdFromText({
+          text: item.productName ?? item.product,
+          variants: productVariants,
+        });
+    const catalogMatchComplete = directlyResolved ||
+      productVariants.length === 0 ||
+      Boolean(matchedVariantId);
+    return {
+      ...item,
+      productId: matchedProduct.id,
+      variantId: matchedVariantId || null,
+      productName: matchedProduct.name,
+      catalogMatchComplete,
+    };
   });
 
   return {
@@ -9021,6 +9203,7 @@ async function resolveOrderRouting(supabase, orgId, items) {
     }),
     warehouseAuto: true,
     weightKg: computeOrderWeightKg({ items: routingItems, variantsById, productsById }),
+    resolvedItems: routingItems,
   };
 }
 
