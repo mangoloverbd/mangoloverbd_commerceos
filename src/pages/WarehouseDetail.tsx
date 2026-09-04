@@ -237,7 +237,7 @@ export default function WarehouseDetail() {
         <motion.section initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0 : 0.3, delay: reduce ? 0 : 0.15 }} className="overflow-hidden rounded-2xl bg-white">
           <div className="flex flex-col gap-3 border-b border-[color:var(--color-separator-border)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-2.5">
-              <h2 className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Orders routed here</h2>
+              <p className="font-sf-display text-[18px] font-bold tracking-tight text-foreground">{data.warehouse.name}</p>
               <div className="h-3.5 w-px bg-black/10" />
               {orders.isLoading ? (
                 <span className="text-[13px] tabular-nums text-muted-foreground">—</span>
