@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -5,30 +6,41 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import Dashboard from "./pages/Dashboard";
-import Auth from "./pages/Auth";
-import Settings from "./pages/Settings";
-import OrderAnalysis from "./pages/OrderAnalysis";
-import OrderChat from "./pages/OrderChat";
-import Products from "./pages/Products";
-import Warehouses from "./pages/Warehouses";
-import WarehouseDetail from "./pages/WarehouseDetail";
-import ProductNew from "./pages/ProductNew";
-import ProductEdit from "./pages/ProductEdit";
-import OrderDetail from "./pages/OrderDetail";
-import Customers from "./pages/Customers";
-import Onboarding from "./pages/Onboarding";
-import NotFound from "./pages/NotFound";
-import FacebookInbox from "./pages/FacebookInbox";
-import InstagramInbox from "./pages/InstagramInbox";
-import WhatsappInbox from "./pages/WhatsappInbox";
-import InboxOrders from "./pages/InboxOrders";
-import Studio from "./pages/Studio";
-import Billing from "./pages/Billing";
-import Returns from "./pages/Returns";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import OnlineStore from "./pages/OnlineStore";
-import Overview from "./pages/Overview";
+// All other routes are code-split so the dashboard's initial bundle stays
+// small (fast first load in production). Dashboard itself stays eager.
+// Auth is split too — unauthenticated visitors only download it on demand.
+const Auth = lazy(() => import("./pages/Auth"));
+const Settings = lazy(() => import("./pages/Settings"));
+const OrderAnalysis = lazy(() => import("./pages/OrderAnalysis"));
+const OrderChat = lazy(() => import("./pages/OrderChat"));
+const Products = lazy(() => import("./pages/Products"));
+const Warehouses = lazy(() => import("./pages/Warehouses"));
+const WarehouseDetail = lazy(() => import("./pages/WarehouseDetail"));
+const ProductNew = lazy(() => import("./pages/ProductNew"));
+const ProductEdit = lazy(() => import("./pages/ProductEdit"));
+const OrderDetail = lazy(() => import("./pages/OrderDetail"));
+const Customers = lazy(() => import("./pages/Customers"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const FacebookInbox = lazy(() => import("./pages/FacebookInbox"));
+const InstagramInbox = lazy(() => import("./pages/InstagramInbox"));
+const WhatsappInbox = lazy(() => import("./pages/WhatsappInbox"));
+const InboxOrders = lazy(() => import("./pages/InboxOrders"));
+const Studio = lazy(() => import("./pages/Studio"));
+const Billing = lazy(() => import("./pages/Billing"));
+const Returns = lazy(() => import("./pages/Returns"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const OnlineStore = lazy(() => import("./pages/OnlineStore"));
+const Overview = lazy(() => import("./pages/Overview"));
 import { Spinner } from "@/components/ui/ios-spinner";
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Spinner size="lg" className="text-muted-foreground" />
+    </div>
+  );
+}
 
 const queryClient = new QueryClient();
 
@@ -143,7 +155,9 @@ const App = () => (
       <Toaster />
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <Suspense fallback={<RouteFallback />}>
+            <AppRoutes />
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

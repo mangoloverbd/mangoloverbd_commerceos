@@ -7,7 +7,7 @@ describe("Customers page routing", () => {
   const sidebarSource = readFileSync(resolve(process.cwd(), "src/components/AppSidebar.tsx"), "utf8");
 
   it("registers a protected Customers route", () => {
-    expect(appSource).toContain('import Customers from "./pages/Customers"');
+    expect(appSource).toContain('const Customers = lazy(() => import("./pages/Customers"))');
     expect(appSource).toContain('<Route path="/customers" element={<Customers />} />');
   });
 

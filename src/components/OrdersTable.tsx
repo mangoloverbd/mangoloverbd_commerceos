@@ -35,7 +35,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
-import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
@@ -877,6 +876,8 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
       // Small delay to ensure UI renders before heavy PDF gen blocks thread
       await new Promise(resolve => setTimeout(resolve, 100));
 
+      // Dynamically imported so jsPDF stays out of the dashboard's initial bundle
+      const { generateInvoice } = await import("@/utils/invoiceGenerator");
       await generateInvoice(selectedOrders, orgName);
 
       toast.dismiss(toastId);
@@ -915,6 +916,8 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
     if (selectedOrders.length === 0) return;
     try {
+      // Dynamically imported so jsPDF stays out of the dashboard's initial bundle
+      const { printInvoice } = await import("@/utils/invoiceGenerator");
       printInvoice(selectedOrders, orgName);
     } catch (error) {
       console.error("Print failed:", error);
