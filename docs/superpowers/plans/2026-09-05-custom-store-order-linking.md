@@ -29,19 +29,19 @@
 - Produces: `matchProductFromText({ text, products })` returning one product or `null`.
 - Produces: `matchVariantIdFromText({ text, variants })` returning one variant ID or `null`.
 
-- [ ] **Step 1: Write failing matcher tests**
+- [x] **Step 1: Write failing matcher tests**
 
 Cover the exact `Sundarbans Natural Honey - 0.5KG` payload, longest unique product selection, duplicate-name ambiguity, unique variant attributes, ambiguous variants, and empty input.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run: `npx vitest run src/test/inboxVariantCapture.test.ts`
 
-- [ ] **Step 3: Implement minimal pure matching helpers**
+- [x] **Step 3: Implement minimal pure matching helpers**
 
 Normalize case and whitespace, require deterministic matches, select a product only when the longest match is unique, and match all variant attribute values against delimited legacy text.
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [x] **Step 4: Run the focused test and verify GREEN**
 
 Run: `npx vitest run src/test/inboxVariantCapture.test.ts`
 
@@ -56,27 +56,27 @@ Run: `npx vitest run src/test/inboxVariantCapture.test.ts`
 - Produces: workspace-scoped `resolveOrderCatalogItems(supabase, orgId, items)` results with canonical IDs and an explicit complete-match flag.
 - Updates: `resolveOrderRouting()` to expose resolved items without changing existing warehouse/weight behavior.
 
-- [ ] **Step 1: Write failing source-contract regression tests**
+- [x] **Step 1: Write failing source-contract regression tests**
 
 Assert that detail fallback invokes shared resolution, unresolved historical stock is not treated as previously reserved, the custom webhook invokes `replace_order_items` only after a complete match, failure cleanup retains the workspace guard, and SMS occurs only after item persistence.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `npx vitest run src/test/orderRoutingWiring.test.ts src/test/order-items.test.ts`
 
-- [ ] **Step 3: Implement the shared workspace-scoped resolver**
+- [x] **Step 3: Implement the shared workspace-scoped resolver**
 
 Reuse pure matching helpers, page product reads, query only matched products' variants, retain direct IDs, and mark inferred product-only matches incomplete when a variant choice remains ambiguous.
 
-- [ ] **Step 4: Repair historical detail responses without mutating on GET**
+- [x] **Step 4: Repair historical detail responses without mutating on GET**
 
 For synthesized legacy rows, copy canonical IDs only from complete matches, strip internal resolver metadata from the response, enrich images normally, and report current stock without adding the unreserved legacy quantity.
 
-- [ ] **Step 5: Persist future matched webhook items transactionally**
+- [x] **Step 5: Persist future matched webhook items transactionally**
 
 After order insertion, call `replace_order_items` with canonical IDs and quantity. On RPC failure, delete only the newly inserted order in the same workspace and return the error. Send SMS only after this succeeds.
 
-- [ ] **Step 6: Run focused tests and verify GREEN**
+- [x] **Step 6: Run focused tests and verify GREEN**
 
 Run: `npx vitest run src/test/inboxVariantCapture.test.ts src/test/orderRoutingWiring.test.ts src/test/order-items.test.ts`
 
@@ -85,15 +85,15 @@ Run: `npx vitest run src/test/inboxVariantCapture.test.ts src/test/orderRoutingW
 **Files:**
 - Modify: `docs/superpowers/plans/2026-09-05-custom-store-order-linking.md`
 
-- [ ] **Step 1: Run the complete verification suite**
+- [x] **Step 1: Run the complete verification suite**
 
 Run: `npm test && npm run lint && npm run build && git diff --check`
 
-- [ ] **Step 2: Confirm Supabase project and baseline**
+- [x] **Step 2: Confirm Supabase project and baseline**
 
 Run: `npm run verify:supabase-project && npm run verify:supabase-baseline`
 
-- [ ] **Step 3: Review the final diff**
+- [x] **Step 3: Review the final diff**
 
 Confirm no secret, raw tenant input, unguarded user-data query, client-supplied price, or non-transactional matched-order inventory mutation was introduced.
 
@@ -142,15 +142,15 @@ Sequential implementation, no parallelization opportunity.
 
 ## Implementation Tasks
 
-- [ ] **T1 (P1, human: ~2h / CC: ~15min)** — Matching — Add deterministic product and variant matching for legacy custom-site text.
+- [x] **T1 (P1, human: ~2h / CC: ~15min)** — Matching — Add deterministic product and variant matching for legacy custom-site text.
   - Surfaced by: Architecture review — wrong matches could mutate unrelated inventory.
   - Files: `server/variantMatching.js`, `src/test/inboxVariantCapture.test.ts`
   - Verify: `npx vitest run src/test/inboxVariantCapture.test.ts`
-- [ ] **T2 (P1, human: ~4h / CC: ~25min)** — Orders API — Reuse matching in detail, routing, and webhook persistence with RPC cleanup.
+- [x] **T2 (P1, human: ~4h / CC: ~25min)** — Orders API — Reuse matching in detail, routing, and webhook persistence with RPC cleanup.
   - Surfaced by: Architecture and test review — historical display and future reservation must use the same identity rule.
   - Files: `server/index.js`, `src/test/orderRoutingWiring.test.ts`, `src/test/order-items.test.ts`
   - Verify: `npx vitest run src/test/orderRoutingWiring.test.ts src/test/order-items.test.ts`
-- [ ] **T3 (P1, human: ~1h / CC: ~10min)** — Verification — Run full tests and static checks.
+- [x] **T3 (P1, human: ~1h / CC: ~10min)** — Verification — Run full tests and static checks.
   - Surfaced by: Test review — regression touches order ingestion, inventory, and editing.
   - Files: repository-wide verification only
   - Verify: `npm test && npm run lint && npm run build && git diff --check`
@@ -160,11 +160,11 @@ Sequential implementation, no parallelization opportunity.
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | Not run | Bug fix does not require product-scope review |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | Not run | Pending outside-voice preflight |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 0 unresolved issues, 0 critical gaps |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | Unavailable | Codex workspace was out of credits |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 1 pricing-response issue found and fixed; 0 critical gaps |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | Not run | No visual design change |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | Not run | No developer-facing workflow change |
 
-- **VERDICT:** ENG CLEARED — ready to implement.
+- **VERDICT:** ENG CLEARED — implemented and verified.
 
 NO UNRESOLVED DECISIONS
