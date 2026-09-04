@@ -5993,6 +5993,20 @@ app.post("/api/orders", async (req, res) => {
     if (!row.order_number) row.order_number = `#M${await getNextManualOrderSeq(orgId)}`;
     if (!row.status) row.status = "pending";
 
+    const routingItems = orderItems.map((item) => ({
+      productId: item.product_id || undefined,
+      variantId: item.variant_id || undefined,
+      productName: item.product_name,
+      quantity: item.quantity,
+    }));
+    if (routingItems.length === 0 && typeof row.product === "string" && row.product.trim()) {
+      routingItems.push({ productName: row.product.trim(), quantity: Number(row.quantity) || 1 });
+    }
+    const routing = await resolveOrderRouting(supabase, orgId, routingItems);
+    row.warehouse_id = routing.warehouseId;
+    row.warehouse_auto = true;
+    row.weight_kg = routing.weightKg;
+
     const { data, error } = await supabase
       .from("orders")
       .insert(row)

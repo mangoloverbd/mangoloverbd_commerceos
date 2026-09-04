@@ -13,12 +13,12 @@ function sectionBetween(startMarker: string, endMarker: string) {
 }
 
 describe("order routing wiring", () => {
-  it("imports one shared resolver and invokes it only for the two permitted creation paths", () => {
+  it("imports one shared resolver and invokes it for every order creation path", () => {
     expect(source).toContain('from "./warehouseRouting.js"');
     expect(source).toContain("resolveWarehouseId");
     expect(source).toContain("computeOrderWeightKg");
     expect(source.match(/async function resolveOrderRouting\(/g)).toHaveLength(1);
-    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(2);
+    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(3);
   });
 
   it("org-scopes every routing lookup and throws lookup errors", () => {
@@ -137,6 +137,22 @@ describe("order routing wiring", () => {
     expect(checkout).toContain('"Each item must have a variantId"');
     expect(checkout).toContain("variant.stock_quantity < qty");
     expect(checkout).toContain(".update({ stock_quantity: Math.max(0, variantMap[item.variantId].stock_quantity - item.quantity) })");
+  });
+
+  it("stores the same immutable snapshot during manual dashboard order creation", () => {
+    const manualCreate = sectionBetween(
+      'app.post("/api/orders"',
+      'app.patch("/api/orders/:id"',
+    );
+
+    expect(manualCreate).toContain("const routing = await resolveOrderRouting(supabase, orgId, routingItems);");
+    expect(manualCreate).toContain("productId: item.product_id || undefined");
+    expect(manualCreate).toContain("variantId: item.variant_id || undefined");
+    expect(manualCreate).toContain("productName: item.product_name");
+    expect(manualCreate).toContain("row.warehouse_id = routing.warehouseId;");
+    expect(manualCreate).toContain("row.warehouse_auto = true;");
+    expect(manualCreate).toContain("row.weight_kg = routing.weightKg;");
+    expect(manualCreate).not.toContain("req.body.warehouse");
   });
 
   it("stores the same immutable snapshot during social inbox capture", () => {

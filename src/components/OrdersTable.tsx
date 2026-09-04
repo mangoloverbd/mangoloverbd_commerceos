@@ -1215,7 +1215,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                     </div>
                   </TableCell>
                   <TableCell className="py-3 text-center" onClick={(event) => event.stopPropagation()}>
-                    <BuiSelect aria-label={`Warehouse for ${order.order_number}`} selectedKey={order.warehouse_id || null} onSelectionChange={(key) => handleWarehouseChange(order, String(key))} triggerClassName="h-8 min-w-36">
+                    <BuiSelect aria-label={`Warehouse for ${order.order_number}`} placeholder="Select warehouse" selectedKey={order.warehouse_id || null} onSelectionChange={(key) => handleWarehouseChange(order, String(key))} triggerClassName="h-8 min-w-36">
                       {warehouses.map((warehouse) => <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>)}
                     </BuiSelect>
                     <span className="mt-1 block text-[9px] text-black/40">{order.warehouse_auto === false ? "Manual" : "Auto"}</span>
