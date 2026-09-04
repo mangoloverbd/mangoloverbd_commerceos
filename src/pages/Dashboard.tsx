@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -122,21 +122,37 @@ function fmtBDT(n: number) {
 // the order editor (or any page) and back renders these cached values
 // instantly — no skeleton flash, no number-animation replay. NumberFlow then
 // tweens only when a value actually changes (silent refresh, new data).
-type AnalyticsSnapshot = { rangeKey: string; analytics: Analytics; prev: Analytics | null };
+type AnalyticsSnapshot = {
+  userId: string | undefined;
+  rangeKey: string;
+  range: DateRange | null;
+  analytics: Analytics;
+  prev: Analytics | null;
+};
 let analyticsSnapshot: AnalyticsSnapshot | null = null;
 
 function rangeKeyOf(range?: DateRange | null) {
   return `${range?.from ? toYMD(range.from) : ""}__${range?.to ? toYMD(range.to) : ""}`;
 }
 
-function cachedSnapshotFor(range?: DateRange | null) {
+function cachedSnapshotFor(range?: DateRange | null, userId?: string) {
   const key = rangeKeyOf(range);
-  return analyticsSnapshot && analyticsSnapshot.rangeKey === key ? analyticsSnapshot : null;
+  return analyticsSnapshot?.userId === userId && analyticsSnapshot.rangeKey === key
+    ? analyticsSnapshot
+    : null;
 }
 
 
 
 function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
+  const dataSignature = JSON.stringify(data);
+  const previousDataSignature = useRef(dataSignature);
+  const chartAnimationEnabled = previousDataSignature.current !== dataSignature;
+
+  useEffect(() => {
+    previousDataSignature.current = dataSignature;
+  }, [dataSignature]);
+
   const max = Math.max(...data.map((d) => d.value), 1);
   // The tallest bar is inked black (reference look); the rest are light gray.
   const peakIdx = data.reduce((best, d, i) => (d.value > data[best].value ? i : best), 0);
@@ -164,7 +180,13 @@ function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
               );
             }}
           />
-          <Bar dataKey="display" radius={[2, 2, 2, 2]} isAnimationActive animationDuration={600} animationEasing="ease-out">
+          <Bar
+            dataKey="display"
+            radius={[2, 2, 2, 2]}
+            isAnimationActive={chartAnimationEnabled}
+            animationDuration={600}
+            animationEasing="ease-out"
+          >
             {chartData.map((d, i) => {
               const isPeak = i === peakIdx;
               const fill = isPeak ? "#111111" : "#D4D4D1";
@@ -223,7 +245,7 @@ function DashboardTextEffect({
   );
 }
 
-function FinanceMetric({
+const FinanceMetric = memo(function FinanceMetric({
   label,
   loading,
   amount,
@@ -283,12 +305,7 @@ function FinanceMetric({
             </div>
           </motion.div>
         ) : (
-          <motion.div
-            key="value"
-            initial={{ opacity: 0, y: 2 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          >
+          <div key="value">
             {/* Inner white card */}
             <div
               style={{
@@ -364,16 +381,18 @@ function FinanceMetric({
                 <span className="text-[12px] text-black/30">—</span>
               )}
             </div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
   );
-}
+});
 
 export default function Dashboard() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [orders, setOrders] = useState<Order[]>(() => queryClient.getQueryData<Order[]>(["/api/orders"]) || []);
+  const [loading, setLoading] = useState(() => !queryClient.getQueryData<Order[]>(["/api/orders"]));
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [checkingFraud, setCheckingFraud] = useState(false);
@@ -382,16 +401,25 @@ export default function Dashboard() {
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
-  const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
+  const initialAnalyticsSnapshot = analyticsSnapshot?.userId === user?.id
+    ? analyticsSnapshot
+    : null;
+  const [dateRange, setDateRange] = useState<DateRange | null>(
+    () => initialAnalyticsSnapshot?.range ?? todayRange,
+  );
   // Seed from the module snapshot so back-navigation renders instantly with
   // no loading flash (NumberFlow won't replay — same values, no animation).
-  const [analytics, setAnalytics] = useState<Analytics | null>(() => cachedSnapshotFor(todayRange)?.analytics ?? null);
-  const [prevAnalytics, setPrevAnalytics] = useState<Analytics | null>(() => cachedSnapshotFor(todayRange)?.prev ?? null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(() => !cachedSnapshotFor(todayRange)?.analytics);
+  const [analytics, setAnalytics] = useState<Analytics | null>(
+    () => initialAnalyticsSnapshot?.analytics ?? null,
+  );
+  const [prevAnalytics, setPrevAnalytics] = useState<Analytics | null>(
+    () => initialAnalyticsSnapshot?.prev ?? null,
+  );
+  const [analyticsLoading, setAnalyticsLoading] = useState(
+    () => !initialAnalyticsSnapshot?.analytics,
+  );
   const ORDER_PAGE_SIZE = 100;
   const [orderPage, setOrderPage] = useState(0);
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const liveVisitors = useLiveVisitors();
 
@@ -410,11 +438,17 @@ export default function Dashboard() {
         prev ? apiFetch(`/api/analytics?${buildParams(prev)}`, { cache: "no-store" }) : Promise.resolve(null),
       ]);
       const data = await res.json();
-      if (res.ok) setAnalytics(data);
+      if (res.ok) {
+        setAnalytics((current) => (
+          JSON.stringify(current) === JSON.stringify(data) ? current : data
+        ));
+      }
       let snapshotPrev: Analytics | null | undefined;
       if (prevRes && prevRes.ok) {
         const prevData = await prevRes.json();
-        setPrevAnalytics(prevData);
+        setPrevAnalytics((current) => (
+          JSON.stringify(current) === JSON.stringify(prevData) ? current : prevData
+        ));
         snapshotPrev = prevData;
       }
       else if (!prev) {
@@ -424,11 +458,17 @@ export default function Dashboard() {
       // Write through to the module snapshot only when both halves are
       // definitive, so back-navigation never restores a half-stale pair.
       if (res.ok && snapshotPrev !== undefined) {
-        analyticsSnapshot = { rangeKey: rangeKeyOf(range), analytics: data, prev: snapshotPrev };
+        analyticsSnapshot = {
+          userId: user?.id,
+          rangeKey: rangeKeyOf(range),
+          range: range ? { ...range } : null,
+          analytics: data,
+          prev: snapshotPrev,
+        };
       }
     } catch { /* non-critical */ }
     finally { if (!silent) setAnalyticsLoading(false); }
-  }, []);
+  }, [user?.id]);
 
   // Hoisted to useCallback so effects can reference it without stale closures
   const fetchOrders = useCallback(async () => {
@@ -466,21 +506,21 @@ export default function Dashboard() {
     } finally { setLoading(false); }
   }, [queryClient]);
 
-  // Reset state when the logged-in user changes
+  // Rehydrate user-scoped cached data. On a route remount this preserves the
+  // existing P&L section instead of replacing it with skeletons.
   useEffect(() => {
     const cachedOrders = queryClient.getQueryData<Order[]>(["/api/orders"]);
+    const cached = cachedSnapshotFor(dateRange, user?.id);
     setOrders(cachedOrders || []);
-    analyticsSnapshot = null;
-    setAnalytics(null);
-    setPrevAnalytics(null);
+    setAnalytics(cached?.analytics ?? null);
+    setPrevAnalytics(cached?.prev ?? null);
     setLoading(!cachedOrders);
-    setAnalyticsLoading(true);
-  }, [queryClient, user?.id]);
+    setAnalyticsLoading(!cached?.analytics);
+  }, [dateRange, queryClient, user?.id]);
 
   const handleDateRangeChange = useCallback((range: DateRange | null) => {
     setDateRange(range);
-    fetchAnalytics(range);
-  }, [fetchAnalytics]);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -489,6 +529,14 @@ export default function Dashboard() {
     }, 200);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Revalidate the selected P&L range independently. Cached data stays visible
+  // while an equal response is ignored and changed metrics update in place.
+  useEffect(() => {
+    if (!user?.id || roleLoading) return;
+    const cached = cachedSnapshotFor(dateRange, user.id);
+    void fetchAnalytics(dateRange, Boolean(cached));
+  }, [dateRange, fetchAnalytics, roleLoading, user?.id]);
 
   // Auto-sync on mount, then poll orders every 30 s.
   // The Shopify sync is throttled to once per session per user via sessionStorage
@@ -502,10 +550,6 @@ export default function Dashboard() {
     const runAutoSync = async () => {
       // Load orders from DB immediately — don't wait for Shopify sync
       fetchOrders();
-      // Skip the blocking analytics fetch when a cached snapshot exists:
-      // cards render instantly with no animation replay, and the 30 s
-      // silent tick below keeps the numbers fresh in the background.
-      if (!cachedSnapshotFor(todayRange)) fetchAnalytics(todayRange);
 
       // Refresh Pathao and Steadfast courier statuses in background
       apiFetch("/api/pathao/refresh-status", { method: "POST" })
@@ -523,7 +567,7 @@ export default function Dashboard() {
           sessionStorage.setItem(syncKey, "1");
           // Refresh orders after sync completes
           fetchOrders();
-          fetchAnalytics(todayRange);
+          fetchAnalytics(todayRange, true);
         } catch { /* ignore */ }
         finally {
           setAutoSyncing(false);
@@ -535,8 +579,8 @@ export default function Dashboard() {
     return () => clearInterval(intervalId);
   }, [user?.id, roleLoading, fetchOrders, fetchAnalytics, todayRange]);
 
-  // Silent analytics tick — keeps today's metric values and sparkline bars
-  // growing live without flashing the skeleton loader.
+  // Silent analytics tick keeps the selected range's metric values and mini
+  // bars current without flashing the skeleton loader.
   useEffect(() => {
     const id = setInterval(() => fetchAnalytics(dateRange, true), 30000);
     return () => clearInterval(id);
@@ -709,10 +753,7 @@ export default function Dashboard() {
       )}
 
       {/* ── P&L Panel ───────────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+      <div
         className="relative rounded-2xl bg-[#F3F3F3]"
         // Clip top/sides (rounded) but leave the bottom open so the globe
         // can flow down behind the Fulfillment Queue card instead of cutting off.
@@ -787,12 +828,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Greeting band — inside the hero, above the globe ───────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05, duration: 0.4 }}
-          className="relative z-10 grid items-center md:grid-cols-[1fr_auto_1fr] pb-10 pt-8"
-        >
+        <div className="relative z-10 grid items-center md:grid-cols-[1fr_auto_1fr] pb-10 pt-8">
           {/* Pixel background — left side only (globe stays on the right) */}
           <div
             aria-hidden
@@ -852,8 +888,8 @@ export default function Dashboard() {
           </DateRangePicker>
         </div>
           <div className="hidden md:block" />
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
 
       {/* ── Orders table card ────────────────────────────────────────────── */}
       <motion.div

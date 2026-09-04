@@ -137,7 +137,7 @@ const SECTIONS: SectionDef[] = [
             <div>
               <p className="text-[10px] uppercase font-bold text-black/40 mb-1">Webhook URL</p>
               <code className="block bg-white p-2 border border-black/10 rounded text-[11px] text-black">
-                POST https://suite.arclabtechnology.com/api/custom-orders/webhook
+                POST https://admin.mangolover.com.bd/api/custom-orders/webhook
               </code>
             </div>
             <div>
@@ -214,7 +214,7 @@ const SECTIONS: SectionDef[] = [
     color: "bg-[#0866FF]",
     fields: [
       { key: "fb_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Meta Business Suite → Your Page → Settings → Page Access Token" },
-      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://merchant-suite.com/api/webhooks/facebook` },
+      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://admin.mangolover.com.bd/api/webhooks/facebook` },
       { key: "fb_app_secret", label: "App Secret", placeholder: "Your Meta App Secret", secret: true, hint: "Meta Developer Portal → Your App → Settings → Basic → App Secret" },
     ],
   },
@@ -226,7 +226,7 @@ const SECTIONS: SectionDef[] = [
     color: "bg-gradient-to-br from-[#f9ce34] via-[#ee2a7b] to-[#6228d7]",
     fields: [
       { key: "ig_page_access_token", label: "Page Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Same Facebook Page token — Instagram is connected via Facebook." },
-      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "same-as-facebook", hint: `Uses the same webhook as Facebook: https://merchant-suite.com/api/webhooks/facebook` },
+      { key: "fb_verify_token", label: "Webhook Verify Token", placeholder: "same-as-facebook", hint: `Uses the same webhook as Facebook: https://admin.mangolover.com.bd/api/webhooks/facebook` },
     ],
   },
   {
@@ -238,7 +238,7 @@ const SECTIONS: SectionDef[] = [
     fields: [
       { key: "wa_phone_number_id", label: "Phone Number ID", placeholder: "123456789012345", hint: "Meta Developer Console → WhatsApp → API Setup → Phone Number ID" },
       { key: "wa_access_token", label: "Access Token", placeholder: "EAAxxxxxxxxx", secret: true, hint: "Permanent system user token from Meta Business Suite" },
-      { key: "wa_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://merchant-suite.com/api/webhooks/whatsapp` },
+      { key: "wa_verify_token", label: "Webhook Verify Token", placeholder: "any-secret-string-you-choose", hint: `Webhook URL: https://admin.mangolover.com.bd/api/webhooks/whatsapp` },
     ],
   },
 ];
@@ -1161,7 +1161,7 @@ function ShopifyDetailView({
               <li>Copy the <span className="font-medium text-black/80">Client ID</span> and <span className="font-medium text-black/80">Client secret</span> below</li>
             </ol>
             <p className="text-[11px] text-black/30">
-              Redirect URL to add in your Shopify app: <span className="font-mono select-all">https://merchant-suite.com/api/auth/shopify/callback</span>
+              Redirect URL to add in your Shopify app: <span className="font-mono select-all">https://admin.mangolover.com.bd/api/auth/shopify/callback</span>
             </p>
           </div>
 
