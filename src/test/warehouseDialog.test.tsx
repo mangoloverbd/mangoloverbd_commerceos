@@ -21,7 +21,7 @@ describe("warehouse presentation", () => {
   it("renders a compact Products-style metric", () => {
     render(<WarehouseMetric label="Warehouses" value={3} detail="Active locations" icon={<Warehouse weight="light" />} />);
 
-    expect(screen.getByText("Warehouses")).toHaveClass("uppercase", "tracking-wider");
+    expect(screen.getByText("Warehouses")).toHaveClass("uppercase", "tracking-[0.3em]");
     expect(screen.getByText("3")).toHaveClass("text-2xl", "tabular-nums");
     expect(screen.getByText("Active locations")).toBeInTheDocument();
   });
