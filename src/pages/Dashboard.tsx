@@ -22,6 +22,7 @@ import { format, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { TextEffect } from "@/components/ui/text-effect";
+import { MetricNumberFlow } from "@/components/ui/number-flow";
 import { TextShimmer } from "@/components/ui/text-shimmer";
 import { PopButton } from "@/components/ui/pop-button";
 import { DateRangePicker } from "@/components/DateRangePicker";
@@ -117,6 +118,22 @@ function fmtBDT(n: number) {
   return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 0 });
 }
 
+// Module-level P&L snapshot so the metric cards survive navigation. Going to
+// the order editor (or any page) and back renders these cached values
+// instantly — no skeleton flash, no number-animation replay. NumberFlow then
+// tweens only when a value actually changes (silent refresh, new data).
+type AnalyticsSnapshot = { rangeKey: string; analytics: Analytics; prev: Analytics | null };
+let analyticsSnapshot: AnalyticsSnapshot | null = null;
+
+function rangeKeyOf(range?: DateRange | null) {
+  return `${range?.from ? toYMD(range.from) : ""}__${range?.to ? toYMD(range.to) : ""}`;
+}
+
+function cachedSnapshotFor(range?: DateRange | null) {
+  const key = rangeKeyOf(range);
+  return analyticsSnapshot && analyticsSnapshot.rangeKey === key ? analyticsSnapshot : null;
+}
+
 
 
 function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
@@ -209,13 +226,16 @@ function DashboardTextEffect({
 function FinanceMetric({
   label,
   loading,
-  value,
+  amount,
+  prefix = "৳",
   data,
   trend,
 }: {
   label: string;
   loading: boolean;
-  value: string;
+  /** Numeric metric value. Renders "—" when null. */
+  amount: number | null;
+  prefix?: string;
   data: { label: string; value: number }[];
   trend?: number | null;
   seed?: number;
@@ -295,14 +315,15 @@ function FinanceMetric({
 
               {/* Value + Bar chart row */}
               <div className="mt-2 flex items-end justify-between">
-                <DashboardTextEffect
-                  as="p"
-                  per="char"
-                  delay={0.12}
-                  className="m-0 text-[22px] font-bold leading-none text-[#1A1A1A] tabular-nums tracking-tight"
-                >
-                  {value}
-                </DashboardTextEffect>
+                {amount == null ? (
+                  <p className="m-0 text-[22px] font-bold leading-none text-[#1A1A1A] tabular-nums tracking-tight">
+                    —
+                  </p>
+                ) : (
+                  <p className="m-0 text-[22px] font-bold leading-none text-[#1A1A1A] tabular-nums tracking-tight">
+                    <MetricNumberFlow value={amount} prefix={prefix} />
+                  </p>
+                )}
                 <MiniBarChart data={data} />
               </div>
             </div>
@@ -360,11 +381,13 @@ export default function Dashboard() {
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [analytics, setAnalytics] = useState<Analytics | null>(null);
-  const [prevAnalytics, setPrevAnalytics] = useState<Analytics | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
+  // Seed from the module snapshot so back-navigation renders instantly with
+  // no loading flash (NumberFlow won't replay — same values, no animation).
+  const [analytics, setAnalytics] = useState<Analytics | null>(() => cachedSnapshotFor(todayRange)?.analytics ?? null);
+  const [prevAnalytics, setPrevAnalytics] = useState<Analytics | null>(() => cachedSnapshotFor(todayRange)?.prev ?? null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(() => !cachedSnapshotFor(todayRange)?.analytics);
   const ORDER_PAGE_SIZE = 100;
   const [orderPage, setOrderPage] = useState(0);
   const queryClient = useQueryClient();
@@ -388,8 +411,21 @@ export default function Dashboard() {
       ]);
       const data = await res.json();
       if (res.ok) setAnalytics(data);
-      if (prevRes && prevRes.ok) setPrevAnalytics(await prevRes.json());
-      else if (!prev) setPrevAnalytics(null);
+      let snapshotPrev: Analytics | null | undefined;
+      if (prevRes && prevRes.ok) {
+        const prevData = await prevRes.json();
+        setPrevAnalytics(prevData);
+        snapshotPrev = prevData;
+      }
+      else if (!prev) {
+        setPrevAnalytics(null);
+        snapshotPrev = null;
+      }
+      // Write through to the module snapshot only when both halves are
+      // definitive, so back-navigation never restores a half-stale pair.
+      if (res.ok && snapshotPrev !== undefined) {
+        analyticsSnapshot = { rangeKey: rangeKeyOf(range), analytics: data, prev: snapshotPrev };
+      }
     } catch { /* non-critical */ }
     finally { if (!silent) setAnalyticsLoading(false); }
   }, []);
@@ -434,6 +470,7 @@ export default function Dashboard() {
   useEffect(() => {
     const cachedOrders = queryClient.getQueryData<Order[]>(["/api/orders"]);
     setOrders(cachedOrders || []);
+    analyticsSnapshot = null;
     setAnalytics(null);
     setPrevAnalytics(null);
     setLoading(!cachedOrders);
@@ -465,7 +502,10 @@ export default function Dashboard() {
     const runAutoSync = async () => {
       // Load orders from DB immediately — don't wait for Shopify sync
       fetchOrders();
-      fetchAnalytics(todayRange);
+      // Skip the blocking analytics fetch when a cached snapshot exists:
+      // cards render instantly with no animation replay, and the 30 s
+      // silent tick below keeps the numbers fresh in the background.
+      if (!cachedSnapshotFor(todayRange)) fetchAnalytics(todayRange);
 
       // Refresh Pathao and Steadfast courier statuses in background
       apiFetch("/api/pathao/refresh-status", { method: "POST" })
@@ -699,7 +739,7 @@ export default function Dashboard() {
             <FinanceMetric
               label="Revenue"
               loading={analyticsLoading}
-              value={fmtBDT(analytics?.revenue ?? 0)}
+              amount={analytics?.revenue ?? 0}
               data={metricSparklines.revenue}
               trend={trends.revenue}
               seed={11}
@@ -707,7 +747,7 @@ export default function Dashboard() {
             <FinanceMetric
               label="Ad Spend"
               loading={analyticsLoading}
-              value={analytics?.adSpend != null ? fmtBDT(analytics.adSpend) : "—"}
+              amount={analytics?.adSpend ?? null}
               data={metricSparklines.adSpend}
               trend={trends.adSpend}
               seed={27}
@@ -715,7 +755,7 @@ export default function Dashboard() {
             <FinanceMetric
               label="Shipping"
               loading={analyticsLoading}
-              value={fmtBDT(analytics?.shipping ?? 0)}
+              amount={analytics?.shipping ?? 0}
               data={metricSparklines.shipping}
               trend={trends.shipping}
               seed={43}
@@ -723,7 +763,7 @@ export default function Dashboard() {
             <FinanceMetric
               label="Cost of Goods"
               loading={analyticsLoading}
-              value={fmtBDT(analytics?.totalCog ?? 0)}
+              amount={analytics?.totalCog ?? 0}
               data={metricSparklines.cog}
               trend={trends.cog}
               seed={59}
@@ -731,7 +771,8 @@ export default function Dashboard() {
             <FinanceMetric
               label="Net Profit"
               loading={analyticsLoading}
-              value={analytics?.profit != null ? `${analytics.profit < 0 ? "−" : ""}${fmtBDT(Math.abs(analytics.profit))}` : "—"}
+              amount={analytics?.profit != null ? Math.abs(analytics.profit) : null}
+              prefix={analytics?.profit != null && analytics.profit < 0 ? "−৳" : "৳"}
               data={metricSparklines.profit}
               trend={trends.profit}
               seed={75}
