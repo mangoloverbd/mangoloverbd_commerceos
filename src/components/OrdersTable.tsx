@@ -1215,10 +1215,9 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                     </div>
                   </TableCell>
                   <TableCell className="py-3 text-center" onClick={(event) => event.stopPropagation()}>
-                    <BuiSelect aria-label={`Warehouse for ${order.order_number}`} placeholder="Select warehouse" selectedKey={order.warehouse_id || null} onSelectionChange={(key) => handleWarehouseChange(order, String(key))} className="items-center" triggerClassName="h-8 w-auto max-w-full">
+                    <BuiSelect aria-label={`Warehouse for ${order.order_number}`} placeholder="Select warehouse" selectedKey={order.warehouse_id || null} onSelectionChange={(key) => handleWarehouseChange(order, String(key))} className="items-center" triggerClassName={`h-8 w-auto max-w-full border-transparent ${order.warehouse_id ? "bg-status-lime-background text-status-lime-text hover:bg-status-lime-background" : "bg-status-yellow-background text-status-yellow-text hover:bg-status-yellow-background"}`}>
                       {warehouses.map((warehouse) => <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>)}
                     </BuiSelect>
-                    <span className="mt-1 block text-[9px] text-black/40">{order.warehouse_auto === false ? "Manual" : "Auto"}</span>
                   </TableCell>
                   <TableCell className="max-w-[150px] py-3">
                     <Tooltip delayDuration={0}>
