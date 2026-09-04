@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,15 +26,32 @@ function renderDetail() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/warehouses/main"]}>
-        <Routes>
-          <Route path="/warehouses/:id" element={<WarehouseDetail />} />
-          <Route path="/warehouses" element={<div>Warehouse directory destination</div>} />
-        </Routes>
-      </MemoryRouter>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/warehouses/main"]}>
+          <Routes>
+            <Route path="/warehouses/:id" element={<WarehouseDetail />} />
+            <Route path="/warehouses" element={<div>Warehouse directory destination</div>} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
+
+const warehouseOrders = [
+  {
+    id: "o1", shopify_order_id: -1, order_number: "#101", customer_name: "Anis uz Zaman",
+    phone: "01737022302", address: "Dhaka", product: "Honey", quantity: 1, price: 850,
+    status: "pending", created_at: "2026-09-04T00:00:00.000Z", fraud_checked: false,
+    fraud_data: null, delivery_rate: 0, warehouse_id: "main",
+  },
+  {
+    id: "o2", shopify_order_id: -2, order_number: "#102", customer_name: "Murad",
+    phone: "01601033011", address: "Dhaka", product: "Chia", quantity: 1, price: 560,
+    status: "pending", created_at: "2026-09-03T00:00:00.000Z", fraud_checked: false,
+    fraud_data: null, delivery_rate: 0, warehouse_id: "main",
+  },
+];
 
 describe("warehouse detail", () => {
   beforeEach(() => {
@@ -73,6 +91,50 @@ describe("warehouse detail", () => {
     renderDetail();
     await user.click(await screen.findByRole("button", { name: "Back to warehouses" }));
     expect(screen.getByText("Warehouse directory destination")).toBeInTheDocument();
+  });
+
+  it("filters routed orders through the dashboard-style search", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
+      if (url === "/api/orders?warehouse_id=main") return { ok: true, json: async () => ({ orders: warehouseOrders }) };
+      return { ok: true, json: async () => ({}) };
+    });
+    renderDetail();
+
+    expect(await screen.findByText("Anis uz Zaman")).toBeInTheDocument();
+    expect(screen.getByText("2 orders")).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Search warehouse orders" }), "murad");
+    expect(screen.queryByText("Anis uz Zaman")).not.toBeInTheDocument();
+    expect(screen.getByText("Murad")).toBeInTheDocument();
+    expect(screen.getByText("1 orders")).toBeInTheDocument();
+  });
+
+  it("opens the create order modal from the routed orders header", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Create Order" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("verifies all routed orders from the header", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
+      if (url === "/api/orders?warehouse_id=main") return { ok: true, json: async () => ({ orders: warehouseOrders }) };
+      if (url === "/api/check-fraud" && init?.method === "POST") {
+        return { ok: true, json: async () => ({ successful: 2, checked: 2 }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Verify All" }));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+      "/api/check-fraud",
+      expect.objectContaining({ method: "POST" }),
+    ));
   });
 
   it("opens the add-products picker and assigns the selection", async () => {
