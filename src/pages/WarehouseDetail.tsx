@@ -16,6 +16,7 @@ import {
 import { Plus as PlusIcon, Search, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { OrdersTable, type Order } from "@/components/OrdersTable";
+import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegmentedControl";
 import { WarehouseDialog } from "@/components/WarehouseDialog";
 import { WarehouseMetric } from "@/components/warehouse/WarehouseMetric";
 import { AddProductsDialog } from "@/components/warehouse/AddProductsDialog";
@@ -27,6 +28,11 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import { WAREHOUSES_QUERY_KEY, type Warehouse } from "@/hooks/useWarehouses";
+import {
+  countOrdersByStatus,
+  filterOrdersByStatus,
+  type OrderStatusFilter,
+} from "@/lib/orderStatusFilters";
 
 const SYS = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
 const headClass = "h-11 px-4 text-left text-[11px] font-medium uppercase tracking-wider text-black/45";
@@ -61,6 +67,7 @@ export default function WarehouseDetail() {
   const [addOpen, setAddOpen] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [checkingFraud, setCheckingFraud] = useState(false);
 
@@ -114,16 +121,25 @@ export default function WarehouseDetail() {
     }
   }
 
+  const warehouseOrders = useMemo(
+    () => orders.data?.orders ?? [],
+    [orders.data?.orders],
+  );
+  const orderStatusCounts = useMemo(
+    () => countOrdersByStatus(warehouseOrders),
+    [warehouseOrders],
+  );
+
   const filteredWarehouseOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const list = orders.data?.orders ?? [];
+    const list = filterOrdersByStatus(warehouseOrders, statusFilter);
     if (!query) return list;
     return list.filter((order) =>
       order.order_number.toLowerCase().includes(query) ||
       (order.customer_name && order.customer_name.toLowerCase().includes(query)) ||
       (order.phone && order.phone.toLowerCase().includes(query)),
     );
-  }, [orders.data, search]);
+  }, [search, statusFilter, warehouseOrders]);
 
   async function removeProduct(product: Product) {
     setRemovingId(product.id);
@@ -281,6 +297,12 @@ export default function WarehouseDetail() {
               </PopButton>
             </div>
           </div>
+          <OrderStatusSegmentedControl
+            counts={orderStatusCounts}
+            value={statusFilter}
+            loading={orders.isLoading}
+            onChange={setStatusFilter}
+          />
           {orders.isError ? <div className="py-16 text-center"><WarningCircle size={28} weight="light" className="mx-auto text-black/20" /><p className="mt-2 text-[12px] text-black/45">Couldn’t load warehouse orders.</p><button type="button" onClick={() => void orders.refetch()} className="mt-3 text-[12px] font-medium underline underline-offset-4">Try again</button></div> : <OrdersTable orders={filteredWarehouseOrders} loading={orders.isLoading} onStatusUpdate={() => void orders.refetch()} onOrderUpdate={() => void orders.refetch()} />}
         </motion.section>
       </div>

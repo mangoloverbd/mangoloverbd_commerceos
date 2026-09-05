@@ -110,6 +110,35 @@ describe("warehouse detail", () => {
     expect(screen.getByText("1 orders")).toBeInTheDocument();
   });
 
+  it("shows warehouse-scoped status counts and filters the routed orders", async () => {
+    const user = userEvent.setup();
+    const deliveredOrder = {
+      ...warehouseOrders[1],
+      status: "confirmed",
+      courier_status: "delivered",
+      fulfillment_status: "delivered",
+      sent_to_courier: true,
+    };
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
+      if (url === "/api/orders?warehouse_id=main") {
+        return { ok: true, json: async () => ({ orders: [warehouseOrders[0], deliveredOrder] }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    renderDetail();
+
+    expect(await screen.findByRole("radio", { name: /All Orders.*2/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Pending.*1/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Delivered.*1/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /Delivered.*1/ }));
+
+    expect(screen.queryByText("Anis uz Zaman")).not.toBeInTheDocument();
+    expect(screen.getByText("Murad")).toBeInTheDocument();
+    expect(screen.getByText("1 orders")).toBeInTheDocument();
+  });
+
   it("opens the create order modal from the routed orders header", async () => {
     const user = userEvent.setup();
     renderDetail();
