@@ -12,7 +12,17 @@ Add a polished order-status summary and filter to both the Dashboard fulfillment
 - Show these mutually exclusive buckets in this order: All Orders, Pending, On Hold, Approved, Processing, Ready To Ship, In-Transit, Delivered, Flagged, Cancelled.
 - Each segment displays a small status dot, an uppercase label, and a tabular formatted count.
 - Keep the control on one line. On narrow viewports, make the strip horizontally scrollable instead of wrapping.
-- Use BoardUI's animated selected thumb with the application's restrained neutral palette. Status colors appear only in the small dot and count accent.
+- Use BoardUI's animated selected thumb with the application's restrained neutral palette.
+
+## Styling revision
+
+- Keep the existing BoardUI segmented-control component and selection behavior unchanged.
+- Make the control fill the order-table width. On desktop, all ten segments use equal widths.
+- Remove the inset gray pill appearance. Use a flat row that aligns with the table edges.
+- Separate segments with faint vertical rules. The selected segment keeps BoardUI's white animated thumb.
+- Keep labels and counts neutral. Status color appears only in the small dot.
+- Reduce vertical padding so the filter reads as part of the table header rather than a separate card.
+- Below the desktop breakpoint, preserve a practical minimum segment width and allow horizontal scrolling.
 
 ## Behavior
 
