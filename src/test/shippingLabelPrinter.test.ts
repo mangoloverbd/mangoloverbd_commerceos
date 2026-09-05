@@ -26,13 +26,11 @@ function makeOrder(overrides: Partial<ShippingLabelOrder> = {}): ShippingLabelOr
       {
         product_name: "Honey",
         variant_name: "1 kg jar",
-        weight_kg: 1,
         quantity: 2,
       },
       {
         product_name: "Chia Seed",
         variant_name: "500 g pouch",
-        weight_kg: 0.5,
         quantity: 1,
       },
     ],
@@ -75,13 +73,14 @@ describe("shipping label HTML", () => {
     expect(document.querySelectorAll("iframe")).toHaveLength(frameCount);
   });
 
-  it("renders the customer, COD, variants, weights, quantities, and barcode", () => {
+  it("renders the customer, COD, selected variant weights, quantities, and barcode", () => {
     const result = buildShippingLabelHtml([makeOrder()], "Mango Lover BD");
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("Expected printable label HTML");
 
-    expect(result.html).toContain("Mango Lover BD Shipping Label");
+    expect(result.html).toContain("<title></title>");
+    expect(result.html).not.toContain("Mango Lover BD Shipping Label");
     expect(result.html).toContain("20250523001");
     expect(result.html).toContain("ML567907");
     expect(result.html).toContain("Rahim Uddin");
@@ -93,7 +92,9 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("1 kg");
     expect(result.html).toContain("Chia Seed");
     expect(result.html).toContain("500 g pouch");
-    expect(result.html).toContain("500 g");
+    expect(result.html).toContain("<tr><th>Product</th><th>Weight</th><th>Qty</th></tr>");
+    expect(result.html).not.toContain("<th>Variant</th>");
+    expect(result.html).not.toContain('<td class="variant">');
     expect(result.html).toMatch(/<svg[^>]+class="barcode"/);
     expect(result.html).toContain("<rect");
   });
@@ -103,7 +104,7 @@ describe("shipping label HTML", () => {
       makeOrder({
         customer_name: "<script>alert('x')</script>",
         address: "House <7> & Road 2",
-        items: [{ product_name: "Honey & Jam", variant_name: 'Jar "Large"', weight_kg: 1, quantity: 1 }],
+        items: [{ product_name: "Honey & Jam", variant_name: 'Jar "Large"', quantity: 1 }],
       }),
     ]);
 
@@ -146,7 +147,7 @@ describe("shipping label HTML", () => {
 });
 
 describe("shipping label action wiring", () => {
-  it("routes only the Dashboard Print action to shipping labels with item weights", () => {
+  it("routes only the Dashboard Print action to shipping labels", () => {
     const dashboardSource = readFileSync(
       resolve(process.cwd(), "src/components/OrdersTable.tsx"),
       "utf8",
@@ -159,9 +160,11 @@ describe("shipping label action wiring", () => {
     expect(dashboardSource).toContain(
       'const { printShippingLabels } = await import("@/utils/shippingLabelPrinter");',
     );
-    expect(dashboardSource).toMatch(
-      /interface OrderItemSummary \{[\s\S]*?weight_kg\?: number \| null;/,
-    );
+    const orderItemType = dashboardSource.match(
+      /interface OrderItemSummary \{[\s\S]*?\n\}/,
+    )?.[0];
+    expect(orderItemType).toContain("variant_name: string | null;");
+    expect(orderItemType).not.toContain("weight_kg");
     expect(dashboardSource).toContain("printShippingLabels(selectedOrders, orgName)");
     expect(inboxSource).toContain(
       'import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";',

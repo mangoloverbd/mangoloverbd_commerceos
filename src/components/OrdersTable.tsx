@@ -165,7 +165,6 @@ export interface Order {
 interface OrderItemSummary {
   product_name: string | null;
   variant_name: string | null;
-  weight_kg?: number | null;
   quantity: number;
 }
 

@@ -3,7 +3,6 @@ import JsBarcode from "jsbarcode";
 export interface ShippingLabelItem {
   product_name: string | null;
   variant_name: string | null;
-  weight_kg?: number | null;
   quantity: number;
 }
 
@@ -54,13 +53,6 @@ const parseInlineQuantity = (value: string) => {
     : null;
 };
 
-const formatWeight = (weightKg: number | null | undefined) => {
-  if (weightKg == null || !Number.isFinite(Number(weightKg))) return "—";
-  const value = Number(weightKg);
-  if (value < 1) return `${Math.round(value * 1000)} g`;
-  return `${Number(value.toFixed(3))} kg`;
-};
-
 const formatCod = (order: ShippingLabelOrder) => {
   const amount = Number(order.price || 0) + Number(order.delivery_rate || 0);
   return `৳${amount.toLocaleString("en-BD", { maximumFractionDigits: 0 })}`;
@@ -98,8 +90,7 @@ function productRows(order: ShippingLabelOrder) {
   if (order.items?.length) {
     return order.items.map((item) => ({
       productName: item.product_name || "Item",
-      variantName: item.variant_name || "—",
-      weight: formatWeight(item.weight_kg),
+      weight: item.variant_name || "—",
       quantity: item.quantity || 1,
     }));
   }
@@ -113,7 +104,6 @@ function productRows(order: ShippingLabelOrder) {
     const parsed = parseInlineQuantity(line);
     return {
       productName: parsed?.productName || line,
-      variantName: "—",
       weight: "—",
       quantity: parsed?.quantity || (lines.length === 1 ? order.quantity || 1 : 1),
     };
@@ -125,7 +115,6 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
     .map((item) => `
       <tr>
         <td class="product">${escapeHtml(item.productName)}</td>
-        <td class="variant">${escapeHtml(item.variantName)}</td>
         <td class="weight">${escapeHtml(item.weight)}</td>
         <td class="quantity">${item.quantity}</td>
       </tr>`)
@@ -152,7 +141,7 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
       </div>
       <table>
         <thead>
-          <tr><th>Product</th><th>Variant</th><th>Weight</th><th>Qty</th></tr>
+          <tr><th>Product</th><th>Weight</th><th>Qty</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -181,7 +170,7 @@ export function buildShippingLabelHtml(
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>${escapeHtml(businessName)} Shipping Label</title>
+          <title></title>
           <style>
             @page { size: 3in 4in; margin: 0; }
             * { box-sizing: border-box; }
@@ -214,12 +203,11 @@ export function buildShippingLabelHtml(
             table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.045in; font-size: 7.3px; line-height: 1.1; }
             th, td { border: 1px solid #000; padding: 0.026in 0.02in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
             th { background: #000; color: #fff; text-transform: uppercase; font-size: 6.7px; letter-spacing: 0.25px; }
-            th:nth-child(1) { width: 31%; }
-            th:nth-child(2) { width: 30%; }
-            th:nth-child(3) { width: 25%; }
-            th:nth-child(4) { width: 14%; }
+            th:nth-child(1) { width: 46%; }
+            th:nth-child(2) { width: 38%; }
+            th:nth-child(3) { width: 16%; }
             td.product { text-align: left; font-weight: 700; }
-            td.variant { text-align: left; }
+            td.weight { text-align: left; }
             td.weight, td.quantity { white-space: nowrap; }
             @media print {
               html, body { width: 3in; }

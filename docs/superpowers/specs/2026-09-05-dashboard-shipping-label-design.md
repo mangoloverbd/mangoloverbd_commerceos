@@ -20,15 +20,15 @@ Each label contains:
 3. A prominent CN value.
 4. Order number and customer name.
 5. Customer phone number, delivery address, and COD amount.
-6. A product table with Product, Variant, Weight, and Quantity columns.
+6. A product table with Product, Weight, and Quantity columns. The selected variant label is displayed as Weight.
 
 The barcode and CN value use the Steadfast tracking code when available, falling back to the consignment ID.
 
 ## Product Data
 
-Order items already returned by the orders API are enriched with `weight_kg`. The enrichment resolves weight from the selected variant first and falls back to the product's default weight. The label uses this value and does not require a database or API schema change.
+The label uses each order item's selected variant label as its Weight value. This matches the storefront flow where customers select a weight variant. It does not add a separate calculated-weight column or require a database or API schema change.
 
-Legacy orders without structured order items fall back to the existing product description and order quantity. Unknown item weights display an em dash.
+Legacy orders without structured order items fall back to the existing product description and order quantity. Unknown variants display an em dash in the Weight column.
 
 ## Validation and Errors
 
@@ -41,6 +41,7 @@ Legacy orders without structured order items fall back to the existing product d
 - Add a dedicated Dashboard shipping-label print path rather than changing the shared invoice print function used by Inbox Orders.
 - Keep `generateInvoice()` and the Invoice button behavior unchanged.
 - Keep the current hidden-iframe browser print mechanism.
+- Leave the print document title blank and retain zero page margins to minimize browser-added headers and footers. Browsers may still require the operator to disable their Headers and footers print setting because web code cannot override it.
 - Generate the barcode locally in the browser; no third-party barcode service or network request is used.
 - Add the supplied Mango Lover logo as a repository asset in a browser-compatible format.
 
