@@ -63,6 +63,7 @@ function jsonResponse(body: unknown) {
 describe("dashboard order status filter", () => {
   beforeEach(() => {
     sessionStorage.setItem("autosync_done_user-1", "1");
+    localStorage.clear();
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (url: string) => {
       if (url === "/api/orders") return jsonResponse({ orders });
@@ -97,5 +98,52 @@ describe("dashboard order status filter", () => {
     expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Delivered Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Cancelled Customer");
+  });
+
+  it("paginates the filtered dashboard orders with its saved row limit", async () => {
+    const user = userEvent.setup();
+    const pagedOrders = Array.from({ length: 25 }, (_, index) => ({
+      ...orders[0],
+      id: `pending-${index + 1}`,
+      shopify_order_id: index + 1,
+      order_number: `#${index + 1}`,
+      customer_name: `Dashboard Customer ${index + 1}`,
+    }));
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders") return jsonResponse({ orders: pagedOrders });
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url.startsWith("/api/analytics")) {
+        return jsonResponse({
+          revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+          profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+        });
+      }
+      return jsonResponse({ updated: 0 });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("radio", { name: /All Orders.*25/ })).toBeInTheDocument();
+    const pageSize = screen.getByRole("combobox", { name: "Rows per page for dashboard orders" });
+    pageSize.focus();
+    await user.keyboard("{Enter}{Home}{Enter}");
+
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Dashboard Customer 20");
+    expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Dashboard Customer 21");
+    expect(localStorage.getItem("dashboard-order-page-size")).toBe("20");
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Dashboard Customer 1");
+    expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Dashboard Customer 21");
   });
 });

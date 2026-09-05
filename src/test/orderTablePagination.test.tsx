@@ -1,27 +1,8 @@
 import { act, render, renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OrderTablePagination } from "@/components/orders/OrderTablePagination";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
-
-beforeAll(() => {
-  Object.defineProperty(Element.prototype, "hasPointerCapture", {
-    configurable: true,
-    value: () => false,
-  });
-  Object.defineProperty(Element.prototype, "setPointerCapture", {
-    configurable: true,
-    value: () => undefined,
-  });
-  Object.defineProperty(Element.prototype, "releasePointerCapture", {
-    configurable: true,
-    value: () => undefined,
-  });
-  Object.defineProperty(Element.prototype, "scrollIntoView", {
-    configurable: true,
-    value: () => undefined,
-  });
-});
 
 describe("OrderTablePagination", () => {
   beforeEach(() => {

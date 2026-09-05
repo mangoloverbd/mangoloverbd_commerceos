@@ -9,6 +9,7 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
+import { OrderTablePagination } from "@/components/orders/OrderTablePagination";
 import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegmentedControl";
 import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
@@ -34,6 +35,7 @@ import {
   filterOrdersByStatus,
   type OrderStatusFilter,
 } from "@/lib/orderStatusFilters";
+import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -427,7 +429,7 @@ export default function Dashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(
     () => !initialAnalyticsSnapshot?.analytics,
   );
-  const ORDER_PAGE_SIZE = 100;
+  const [orderPageSize, setOrderPageSize] = useOrderPageSize("dashboard-order-page-size");
   const [orderPage, setOrderPage] = useState(0);
   const { isAdmin, loading: roleLoading } = useUserRole();
   const liveVisitors = useLiveVisitors();
@@ -667,11 +669,11 @@ export default function Dashboard() {
 
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
-  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / orderPageSize));
   const orderSafePage = Math.min(orderPage, orderTotalPages - 1);
   const visibleOrders = useMemo(
-    () => filteredOrders.slice(orderSafePage * ORDER_PAGE_SIZE, (orderSafePage + 1) * ORDER_PAGE_SIZE),
-    [filteredOrders, orderSafePage],
+    () => filteredOrders.slice(orderSafePage * orderPageSize, (orderSafePage + 1) * orderPageSize),
+    [filteredOrders, orderPageSize, orderSafePage],
   );
 
   const metricSparklines = useMemo(() => {
@@ -1048,29 +1050,17 @@ export default function Dashboard() {
           onOrderUpdate={handleOrderUpdate}
         />
 
-        {orderTotalPages > 1 && (
-          <div className="relative flex items-center justify-between border-t border-black/10 px-4 py-3">
-            <button
-              type="button"
-              onClick={() => setOrderPage((p) => Math.max(0, p - 1))}
-              disabled={orderSafePage === 0}
-              className="rounded-[8px] bg-[#E3E3E3]/80 px-5 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <span className="absolute left-1/2 -translate-x-1/2 text-[11px] font-medium text-black/55 tabular-nums">
-              Page {orderSafePage + 1} of {orderTotalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setOrderPage((p) => Math.min(orderTotalPages - 1, p + 1))}
-              disabled={orderSafePage >= orderTotalPages - 1}
-              className="rounded-[8px] bg-[#E3E3E3]/80 px-5 py-2 text-[12px] font-medium text-zinc-900 shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] transition-all hover:bg-[#E3E3E3] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
-        )}
+        <OrderTablePagination
+          page={orderSafePage}
+          pageSize={orderPageSize}
+          totalItems={filteredOrders.length}
+          onPageChange={setOrderPage}
+          onPageSizeChange={(nextPageSize) => {
+            setOrderPageSize(nextPageSize);
+            setOrderPage(0);
+          }}
+          ariaLabel="Rows per page for dashboard orders"
+        />
       </motion.div>
 
       <OrderCreatorModal
