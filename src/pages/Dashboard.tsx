@@ -9,7 +9,10 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
-import { OrderTablePagination } from "@/components/orders/OrderTablePagination";
+import {
+  OrderRowsPerPageSelect,
+  OrderTablePagination,
+} from "@/components/orders/OrderTablePagination";
 import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegmentedControl";
 import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
@@ -919,8 +922,8 @@ export default function Dashboard() {
         className="relative z-10 overflow-hidden rounded-xl border border-black/10 bg-white"
       >
         {/* Toolbar */}
-        <div className="flex items-center justify-between border-b border-black/10 px-6 py-3">
-          <div className="flex items-center gap-2.5">
+        <div data-testid="dashboard-order-toolbar" className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2.5">
             <TextEffect
               as="span"
               per="word"
@@ -979,9 +982,18 @@ export default function Dashboard() {
                 {`${filteredOrders.length} orders`}
               </TextEffect>
             )}
+            <div className="h-3.5 w-px bg-black/10" />
+            <OrderRowsPerPageSelect
+              pageSize={orderPageSize}
+              onPageSizeChange={(nextPageSize) => {
+                setOrderPageSize(nextPageSize);
+                setOrderPage(0);
+              }}
+              ariaLabel="Rows per page for dashboard orders"
+            />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -1055,11 +1067,6 @@ export default function Dashboard() {
           pageSize={orderPageSize}
           totalItems={filteredOrders.length}
           onPageChange={setOrderPage}
-          onPageSizeChange={(nextPageSize) => {
-            setOrderPageSize(nextPageSize);
-            setOrderPage(0);
-          }}
-          ariaLabel="Rows per page for dashboard orders"
         />
       </motion.div>
 

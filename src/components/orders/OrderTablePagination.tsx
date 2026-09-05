@@ -7,13 +7,45 @@ import {
 } from "@/components/ui/interfaces-select";
 import { ORDER_PAGE_SIZE_OPTIONS } from "@/hooks/useOrderPageSize";
 
+type OrderRowsPerPageSelectProps = {
+  pageSize: number;
+  onPageSizeChange: (pageSize: number) => void;
+  ariaLabel: string;
+};
+
+export function OrderRowsPerPageSelect({
+  pageSize,
+  onPageSizeChange,
+  ariaLabel,
+}: OrderRowsPerPageSelectProps) {
+  return (
+    <div className="flex items-center gap-2 text-[11px] font-medium text-black/55">
+      <span className="whitespace-nowrap">Rows per page</span>
+      <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
+        <SelectTrigger
+          size="sm"
+          aria-label={ariaLabel}
+          className="w-[72px] rounded-lg border-black/10 bg-[#E9E9E7] text-[12px] font-medium text-black shadow-none hover:bg-[#E3E3E0] focus-visible:ring-black/15"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="start" className="min-w-[88px] rounded-lg border-black/10 bg-white">
+          {ORDER_PAGE_SIZE_OPTIONS.map((option) => (
+            <SelectItem key={option} value={String(option)} className="text-[12px]">
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 type OrderTablePaginationProps = {
   page: number;
   pageSize: number;
   totalItems: number;
   onPageChange: (page: number) => void;
-  onPageSizeChange: (pageSize: number) => void;
-  ariaLabel: string;
 };
 
 export function OrderTablePagination({
@@ -21,33 +53,13 @@ export function OrderTablePagination({
   pageSize,
   totalItems,
   onPageChange,
-  onPageSizeChange,
-  ariaLabel,
 }: OrderTablePaginationProps) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safePage = Math.min(Math.max(page, 0), totalPages - 1);
 
   return (
-    <div className="flex flex-col gap-3 border-t border-black/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-2 text-[11px] font-medium text-black/55">
-        <span>Rows per page</span>
-        <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
-          <SelectTrigger
-            size="sm"
-            aria-label={ariaLabel}
-            className="w-[72px] rounded-lg border-black/10 bg-[#E9E9E7] text-[12px] font-medium text-black shadow-none hover:bg-[#E3E3E0] focus-visible:ring-black/15"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="start" className="min-w-[88px] rounded-lg border-black/10 bg-white">
-            {ORDER_PAGE_SIZE_OPTIONS.map((option) => (
-              <SelectItem key={option} value={String(option)} className="text-[12px]">
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+    <div data-testid="order-pagination-footer" className="grid gap-3 border-t border-black/10 px-4 py-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+      <span aria-hidden="true" className="hidden sm:block" />
 
       <span className="text-center text-[11px] font-medium tabular-nums text-black/55">
         Page {safePage + 1} of {totalPages}

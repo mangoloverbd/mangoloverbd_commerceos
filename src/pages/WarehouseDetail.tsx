@@ -16,7 +16,10 @@ import {
 import { Plus as PlusIcon, Search, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { OrdersTable, type Order } from "@/components/OrdersTable";
-import { OrderTablePagination } from "@/components/orders/OrderTablePagination";
+import {
+  OrderRowsPerPageSelect,
+  OrderTablePagination,
+} from "@/components/orders/OrderTablePagination";
 import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegmentedControl";
 import { WarehouseDialog } from "@/components/WarehouseDialog";
 import { WarehouseMetric } from "@/components/warehouse/WarehouseMetric";
@@ -265,8 +268,8 @@ export default function WarehouseDetail() {
         </motion.section>
 
         <motion.section initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0 : 0.3, delay: reduce ? 0 : 0.15 }} className="overflow-hidden rounded-2xl bg-white">
-          <div className="flex flex-col gap-3 border-b border-[color:var(--color-separator-border)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-2.5">
+          <div data-testid="warehouse-order-toolbar" className="flex flex-col gap-3 border-b border-[color:var(--color-separator-border)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2.5">
               <p className="font-sf-display text-[18px] font-bold tracking-tight text-foreground">{data.warehouse.name}</p>
               <div className="h-3.5 w-px bg-black/10" />
               {orders.isLoading ? (
@@ -274,6 +277,15 @@ export default function WarehouseDetail() {
               ) : (
                 <span className="text-[13px] tabular-nums text-muted-foreground">{`${filteredWarehouseOrders.length} orders`}</span>
               )}
+              <div className="h-3.5 w-px bg-black/10" />
+              <OrderRowsPerPageSelect
+                pageSize={orderPageSize}
+                onPageSizeChange={(nextPageSize) => {
+                  setOrderPageSize(nextPageSize);
+                  setOrderPage(0);
+                }}
+                ariaLabel="Rows per page for warehouse orders"
+              />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
@@ -333,11 +345,6 @@ export default function WarehouseDetail() {
                 pageSize={orderPageSize}
                 totalItems={filteredWarehouseOrders.length}
                 onPageChange={setOrderPage}
-                onPageSizeChange={(nextPageSize) => {
-                  setOrderPageSize(nextPageSize);
-                  setOrderPage(0);
-                }}
-                ariaLabel="Rows per page for warehouse orders"
               />
             </>
           )}

@@ -1,7 +1,10 @@
 import { act, render, renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { OrderTablePagination } from "@/components/orders/OrderTablePagination";
+import {
+  OrderRowsPerPageSelect,
+  OrderTablePagination,
+} from "@/components/orders/OrderTablePagination";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 
 describe("OrderTablePagination", () => {
@@ -19,8 +22,6 @@ describe("OrderTablePagination", () => {
         pageSize={100}
         totalItems={145}
         onPageChange={onPageChange}
-        onPageSizeChange={vi.fn()}
-        ariaLabel="Rows per page for dashboard orders"
       />,
     );
 
@@ -32,16 +33,27 @@ describe("OrderTablePagination", () => {
     expect(onPageChange).toHaveBeenCalledWith(1);
   });
 
-  it("offers the supported row limits and reports a selection", async () => {
-    const user = userEvent.setup();
-    const onPageSizeChange = vi.fn();
-
+  it("renders page navigation without the row selector", () => {
     render(
       <OrderTablePagination
         page={0}
         pageSize={100}
         totalItems={10}
         onPageChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("Rows per page")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("offers the supported row limits from the standalone selector", async () => {
+    const user = userEvent.setup();
+    const onPageSizeChange = vi.fn();
+
+    render(
+      <OrderRowsPerPageSelect
+        pageSize={100}
         onPageSizeChange={onPageSizeChange}
         ariaLabel="Rows per page for warehouse orders"
       />,
