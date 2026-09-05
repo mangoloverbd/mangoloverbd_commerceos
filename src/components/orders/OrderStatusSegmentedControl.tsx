@@ -71,7 +71,7 @@ export function OrderStatusSegmentedControl({
   return (
     <div
       data-testid="order-status-scroll-container"
-      className="w-full overflow-x-auto border-b border-black/[0.07] bg-black/[0.012] px-3 py-2 [scrollbar-width:thin] sm:px-5"
+      className="w-full overflow-x-auto border-b border-black/[0.07] bg-[#FAFAF8] px-3 py-2.5 [scrollbar-width:thin] sm:px-5"
     >
       <SegmentedControl
         data-testid="order-status-control"
@@ -81,7 +81,7 @@ export function OrderStatusSegmentedControl({
           const selected = [...keys][0];
           if (selected) onChange(String(selected) as OrderStatusFilter);
         }}
-        className="w-max min-w-full gap-0 rounded-none bg-transparent p-0 xl:grid xl:w-full xl:grid-cols-10"
+        className="w-max min-w-full rounded-xl bg-black/[0.045] p-1 ring-1 ring-black/[0.025] xl:grid xl:w-full xl:grid-cols-10"
       >
         {ORDER_STATUS_FILTERS.map((status) => {
           const presentation = STATUS_PRESENTATION[status];
@@ -93,8 +93,8 @@ export function OrderStatusSegmentedControl({
               id={status}
               aria-label={`${presentation.label}: ${loading ? "loading" : formattedCount}`}
               className={({ isSelected }) => [
-                "min-w-[112px] rounded-none border-r border-black/[0.06] px-2.5 py-1.5 last:border-r-0 xl:min-w-0 xl:w-full",
-                "first:rounded-l-md last:rounded-r-md hover:bg-white/45 data-[pressed]:scale-[0.99]",
+                "min-w-[112px] rounded-lg px-3 py-2 xl:min-w-0 xl:w-full",
+                "hover:bg-white/45 data-[pressed]:scale-[0.99]",
                 isSelected ? "text-black" : "text-black/55",
               ].join(" ")}
             >
