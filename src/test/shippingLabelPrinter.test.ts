@@ -157,7 +157,7 @@ describe("shipping label action wiring", () => {
     );
 
     expect(dashboardSource).toContain(
-      'import { printShippingLabels } from "@/utils/shippingLabelPrinter";',
+      'const { printShippingLabels } = await import("@/utils/shippingLabelPrinter");',
     );
     expect(dashboardSource).toMatch(
       /interface OrderItemSummary \{[\s\S]*?weight_kg\?: number \| null;/,

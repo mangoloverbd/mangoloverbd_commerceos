@@ -41,7 +41,6 @@ import { PopButton } from "@/components/ui/pop-button";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { downloadOrderExcel } from "@/lib/orderExcelExport";
-import { printShippingLabels } from "@/utils/shippingLabelPrinter";
 
 function splitProductLines(product: string | null): string[] {
   if (!product) return [];
@@ -914,10 +913,11 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     }
   };
 
-  const handlePrintInvoice = () => {
+  const handlePrintInvoice = async () => {
     const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
     if (selectedOrders.length === 0) return;
     try {
+      const { printShippingLabels } = await import("@/utils/shippingLabelPrinter");
       const result = printShippingLabels(selectedOrders, orgName);
       if (!result.ok) {
         toast.error(
