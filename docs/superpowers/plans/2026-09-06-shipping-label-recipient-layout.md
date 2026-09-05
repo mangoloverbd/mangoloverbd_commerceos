@@ -31,7 +31,7 @@
 - Consumes: `buildShippingLabelHtml(orders, businessName?)`
 - Produces: the same `ShippingLabelHtmlResult` with revised recipient markup and styling
 
-- [ ] **Step 1: Write failing recipient-layout tests**
+- [x] **Step 1: Write failing recipient-layout tests**
 
 Update the existing rendered-details test to assert:
 
@@ -50,13 +50,13 @@ expect(result.html).not.toContain("<b>Address:</b>");
 
 Add a second case with `phone: "+8801700000000"` and assert that non-11-digit values remain unchanged.
 
-- [ ] **Step 2: Run the focused test and verify red**
+- [x] **Step 2: Run the focused test and verify red**
 
 Run: `npm test -- src/test/shippingLabelPrinter.test.ts`
 
 Expected: FAIL because the output still contains `.order-customer`, `.delivery-details`, and labeled fields.
 
-- [ ] **Step 3: Implement the minimal recipient markup and CSS**
+- [x] **Step 3: Implement the minimal recipient markup and CSS**
 
 Add a local formatter:
 
@@ -84,13 +84,13 @@ Replace the old details blocks with:
 
 Style the metadata row with a solid bottom border, the COD amount with a 2px outline, the name at 18–20px bold uppercase, the phone at 14–16px bold, and the address at 10–12px with wrapping. Remove obsolete `.order-customer` and `.delivery-details` rules.
 
-- [ ] **Step 4: Run the focused test and verify green**
+- [x] **Step 4: Run the focused test and verify green**
 
 Run: `npm test -- src/test/shippingLabelPrinter.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run repository verification**
+- [x] **Step 5: Run repository verification**
 
 Run:
 
@@ -103,7 +103,7 @@ git diff --check
 
 Expected: tests and build pass; lint reports no errors.
 
-- [ ] **Step 6: Review and commit**
+- [x] **Step 6: Review and commit**
 
 Confirm only the Dashboard shipping-label HTML/CSS and its tests changed. Then commit:
 
@@ -120,18 +120,18 @@ git commit -m "feat: prioritize recipients on shipping labels"
 **Interfaces:**
 - Produces: local `main` containing the approved recipient layout
 
-- [ ] **Step 1: Run completion verification**
+- [x] **Step 1: Run completion verification**
 
 Run: `npm test && npm run lint && npm run build && git diff --check main...HEAD`
 
-- [ ] **Step 2: Merge without pushing**
+- [x] **Step 2: Merge without pushing**
 
 ```bash
 git switch main
 git merge --no-ff feat/shipping-label-recipient-layout -m "merge: improve shipping label recipient layout"
 ```
 
-- [ ] **Step 3: Confirm clean local state**
+- [x] **Step 3: Confirm clean local state**
 
 Run: `git status --short && git log -3 --oneline`
 
