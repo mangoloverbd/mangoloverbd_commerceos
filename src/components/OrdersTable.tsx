@@ -165,6 +165,7 @@ export interface Order {
 interface OrderItemSummary {
   product_name: string | null;
   variant_name: string | null;
+  weight_kg?: number | null;
   quantity: number;
 }
 
@@ -916,12 +917,16 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
     if (selectedOrders.length === 0) return;
     try {
-      // Dynamically imported so jsPDF stays out of the dashboard's initial bundle
-      const { printInvoice } = await import("@/utils/invoiceGenerator");
-      printInvoice(selectedOrders, orgName);
+      const { printShippingLabels } = await import("@/utils/shippingLabelPrinter");
+      const result = printShippingLabels(selectedOrders, orgName);
+      if (!result.ok) {
+        toast.error(
+          `Send ${result.missingOrderNumbers.join(", ")} to Steadfast before printing the label`,
+        );
+      }
     } catch (error) {
       console.error("Print failed:", error);
-      toast.error("Failed to print invoices");
+      toast.error("Failed to print shipping labels");
     }
   };
 
