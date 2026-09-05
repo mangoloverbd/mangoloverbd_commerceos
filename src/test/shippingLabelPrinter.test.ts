@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -140,5 +142,31 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("Dried Mango");
     expect(result.html).toContain('<td class="quantity">3</td>');
     expect(result.html).toContain('<td class="weight">—</td>');
+  });
+});
+
+describe("shipping label action wiring", () => {
+  it("routes only the Dashboard Print action to shipping labels with item weights", () => {
+    const dashboardSource = readFileSync(
+      resolve(process.cwd(), "src/components/OrdersTable.tsx"),
+      "utf8",
+    );
+    const inboxSource = readFileSync(
+      resolve(process.cwd(), "src/pages/InboxOrders.tsx"),
+      "utf8",
+    );
+
+    expect(dashboardSource).toContain(
+      'import { printShippingLabels } from "@/utils/shippingLabelPrinter";',
+    );
+    expect(dashboardSource).toMatch(
+      /interface OrderItemSummary \{[\s\S]*?weight_kg\?: number \| null;/,
+    );
+    expect(dashboardSource).toContain("printShippingLabels(selectedOrders, orgName)");
+    expect(inboxSource).toContain(
+      'import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";',
+    );
+    expect(inboxSource).toContain("printInvoice(selectedOrders");
+    expect(inboxSource).not.toContain("printShippingLabels");
   });
 });
