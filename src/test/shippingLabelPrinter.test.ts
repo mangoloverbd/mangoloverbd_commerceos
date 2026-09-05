@@ -39,12 +39,12 @@ function makeOrder(overrides: Partial<ShippingLabelOrder> = {}): ShippingLabelOr
 }
 
 describe("shipping label CN resolution", () => {
-  it("prefers the Steadfast tracking code", () => {
-    expect(getShippingLabelCn(makeOrder())).toBe("20250523001");
+  it("uses the same consignment ID shown in fulfillment", () => {
+    expect(getShippingLabelCn(makeOrder())).toBe("999");
   });
 
-  it("falls back to the consignment ID", () => {
-    expect(getShippingLabelCn(makeOrder({ tracking_code: null }))).toBe("999");
+  it("falls back to the tracking code", () => {
+    expect(getShippingLabelCn(makeOrder({ consignment_id: null }))).toBe("20250523001");
   });
 
   it("rejects blank courier identifiers", () => {
@@ -81,12 +81,15 @@ describe("shipping label HTML", () => {
 
     expect(result.html).toContain("<title></title>");
     expect(result.html).not.toContain("Mango Lover BD Shipping Label");
-    expect(result.html).toContain("20250523001");
+    expect(result.html).toContain("999");
     expect(result.html).toContain("ML567907");
     expect(result.html).toContain("Rahim Uddin");
     expect(result.html).toContain("01700000000");
     expect(result.html).toContain("Dhaka");
     expect(result.html).toContain("৳1,580");
+    expect(result.html).toContain("<b>Phone:</b>");
+    expect(result.html).toContain("<b>COD:</b>");
+    expect(result.html).toContain("<b>Address:</b>");
     expect(result.html).toContain("Honey");
     expect(result.html).toContain("1 kg jar");
     expect(result.html).toContain("1 kg");

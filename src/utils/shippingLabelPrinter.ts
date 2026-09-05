@@ -61,7 +61,7 @@ const formatCod = (order: ShippingLabelOrder) => {
 const orderNumberText = (orderNumber: string) => orderNumber.replace(/^#/, "");
 
 export function getShippingLabelCn(order: ShippingLabelOrder): string | null {
-  for (const candidate of [order.tracking_code, order.consignment_id]) {
+  for (const candidate of [order.consignment_id, order.tracking_code]) {
     if (candidate == null) continue;
     const value = String(candidate).trim();
     if (value) return value;
@@ -135,9 +135,9 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
         <span><b>Name:</b> ${customerName}</span>
       </div>
       <div class="delivery-details">
-        <div><b>Phone</b><span>${phone}</span></div>
-        <div><b>COD</b><span>${formatCod(order)}</span></div>
-        <div class="address"><b>Address</b><span>${address}</span></div>
+        <div><b>Phone:</b><span>${phone}</span></div>
+        <div><b>COD:</b><span>${formatCod(order)}</span></div>
+        <div class="address"><b>Address:</b><span>${address}</span></div>
       </div>
       <table>
         <thead>
