@@ -55,6 +55,7 @@ const warehouseOrders = [
 
 describe("warehouse detail", () => {
   beforeEach(() => {
+    localStorage.clear();
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
@@ -137,6 +138,48 @@ describe("warehouse detail", () => {
     expect(screen.queryByText("Anis uz Zaman")).not.toBeInTheDocument();
     expect(screen.getByText("Murad")).toBeInTheDocument();
     expect(screen.getByText("1 orders")).toBeInTheDocument();
+  });
+
+  it("paginates only the current warehouse orders with its own saved row limit", async () => {
+    const user = userEvent.setup();
+    const pagedWarehouseOrders = Array.from({ length: 21 }, (_, index) => ({
+      ...warehouseOrders[0],
+      id: `warehouse-order-${index + 1}`,
+      shopify_order_id: -(index + 1),
+      order_number: `#${index + 1}`,
+      customer_name: `Warehouse Customer ${index + 1}`,
+    }));
+    localStorage.setItem("dashboard-order-page-size", "50");
+    localStorage.setItem("warehouse-order-page-size", "20");
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
+      if (url === "/api/orders?warehouse_id=main") {
+        return { ok: true, json: async () => ({ orders: pagedWarehouseOrders }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderDetail();
+
+    expect(await screen.findByText("Page 1 of 2")).toBeInTheDocument();
+    const pageSize = screen.getByRole("combobox", { name: "Rows per page for warehouse orders" });
+    expect(pageSize).toHaveTextContent("20");
+    expect(screen.getByTestId("warehouse-order-toolbar")).toContainElement(pageSize);
+    expect(screen.getByTestId("warehouse-order-actions")).toContainElement(pageSize);
+    expect(
+      screen.getByTestId("input-search-warehouse-orders").compareDocumentPosition(pageSize)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByTestId("order-pagination-footer")).not.toContainElement(pageSize);
+    expect(screen.getByText("Warehouse Customer 20")).toBeInTheDocument();
+    expect(screen.queryByText("Warehouse Customer 21")).not.toBeInTheDocument();
+    expect(localStorage.getItem("dashboard-order-page-size")).toBe("50");
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.queryByText("Warehouse Customer 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Warehouse Customer 21")).toBeInTheDocument();
   });
 
   it("opens the create order modal from the routed orders header", async () => {
