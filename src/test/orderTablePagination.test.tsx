@@ -59,6 +59,7 @@ describe("OrderTablePagination", () => {
       />,
     );
 
+    expect(screen.queryByText("Rows per page")).not.toBeInTheDocument();
     await user.click(screen.getByRole("combobox", { name: "Rows per page for warehouse orders" }));
     expect(screen.getAllByRole("option")).toHaveLength(5);
     await user.click(screen.getByRole("option", { name: "20" }));

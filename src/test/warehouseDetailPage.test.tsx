@@ -165,6 +165,11 @@ describe("warehouse detail", () => {
     const pageSize = screen.getByRole("combobox", { name: "Rows per page for warehouse orders" });
     expect(pageSize).toHaveTextContent("20");
     expect(screen.getByTestId("warehouse-order-toolbar")).toContainElement(pageSize);
+    expect(screen.getByTestId("warehouse-order-actions")).toContainElement(pageSize);
+    expect(
+      screen.getByTestId("input-search-warehouse-orders").compareDocumentPosition(pageSize)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByTestId("order-pagination-footer")).not.toContainElement(pageSize);
     expect(screen.getByText("Warehouse Customer 20")).toBeInTheDocument();
     expect(screen.queryByText("Warehouse Customer 21")).not.toBeInTheDocument();

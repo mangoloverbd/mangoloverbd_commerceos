@@ -19,25 +19,22 @@ export function OrderRowsPerPageSelect({
   ariaLabel,
 }: OrderRowsPerPageSelectProps) {
   return (
-    <div className="flex items-center gap-2 text-[11px] font-medium text-black/55">
-      <span className="whitespace-nowrap">Rows per page</span>
-      <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
-        <SelectTrigger
-          size="sm"
-          aria-label={ariaLabel}
-          className="w-[72px] rounded-lg border-black/10 bg-[#E9E9E7] text-[12px] font-medium text-black shadow-none hover:bg-[#E3E3E0] focus-visible:ring-black/15"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="start" className="min-w-[88px] rounded-lg border-black/10 bg-white">
-          {ORDER_PAGE_SIZE_OPTIONS.map((option) => (
-            <SelectItem key={option} value={String(option)} className="text-[12px]">
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
+      <SelectTrigger
+        size="sm"
+        aria-label={ariaLabel}
+        className="w-[72px] rounded-lg border-black/10 bg-[#E9E9E7] text-[12px] font-medium text-black shadow-none hover:bg-[#E3E3E0] focus-visible:ring-black/15"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="start" className="min-w-[88px] rounded-lg border-black/10 bg-white">
+        {ORDER_PAGE_SIZE_OPTIONS.map((option) => (
+          <SelectItem key={option} value={String(option)} className="text-[12px]">
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

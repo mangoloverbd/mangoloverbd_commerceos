@@ -982,18 +982,9 @@ export default function Dashboard() {
                 {`${filteredOrders.length} orders`}
               </TextEffect>
             )}
-            <div className="h-3.5 w-px bg-black/10" />
-            <OrderRowsPerPageSelect
-              pageSize={orderPageSize}
-              onPageSizeChange={(nextPageSize) => {
-                setOrderPageSize(nextPageSize);
-                setOrderPage(0);
-              }}
-              ariaLabel="Rows per page for dashboard orders"
-            />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -1004,6 +995,15 @@ export default function Dashboard() {
                 data-testid="input-search-orders"
               />
             </div>
+
+            <OrderRowsPerPageSelect
+              pageSize={orderPageSize}
+              onPageSizeChange={(nextPageSize) => {
+                setOrderPageSize(nextPageSize);
+                setOrderPage(0);
+              }}
+              ariaLabel="Rows per page for dashboard orders"
+            />
 
             <Select
               aria-label="Filter orders by warehouse"

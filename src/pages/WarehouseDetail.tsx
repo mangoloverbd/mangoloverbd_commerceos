@@ -277,17 +277,8 @@ export default function WarehouseDetail() {
               ) : (
                 <span className="text-[13px] tabular-nums text-muted-foreground">{`${filteredWarehouseOrders.length} orders`}</span>
               )}
-              <div className="h-3.5 w-px bg-black/10" />
-              <OrderRowsPerPageSelect
-                pageSize={orderPageSize}
-                onPageSizeChange={(nextPageSize) => {
-                  setOrderPageSize(nextPageSize);
-                  setOrderPage(0);
-                }}
-                ariaLabel="Rows per page for warehouse orders"
-              />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div data-testid="warehouse-order-actions" className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -302,6 +293,14 @@ export default function WarehouseDetail() {
                   data-testid="input-search-warehouse-orders"
                 />
               </div>
+              <OrderRowsPerPageSelect
+                pageSize={orderPageSize}
+                onPageSizeChange={(nextPageSize) => {
+                  setOrderPageSize(nextPageSize);
+                  setOrderPage(0);
+                }}
+                ariaLabel="Rows per page for warehouse orders"
+              />
               <div className="h-4 w-px bg-black/10" />
               <PopButton
                 color="yellow"
