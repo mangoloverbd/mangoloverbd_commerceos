@@ -9,6 +9,7 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
+import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegmentedControl";
 import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import {
@@ -28,6 +29,11 @@ import { PopButton } from "@/components/ui/pop-button";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import PixelRipple from "@/components/ui/pixel-ripple";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import {
+  countOrdersByStatus,
+  filterOrdersByStatus,
+  type OrderStatusFilter,
+} from "@/lib/orderStatusFilters";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -109,6 +115,8 @@ interface Order {
   delivery_rate: number | null;
   notes: string | null;
   fulfillment_status: string | null;
+  sent_to_courier?: boolean | null;
+  courier_status?: string | null;
   warehouse_id?: string | null;
   warehouse_auto?: boolean | null;
   weight_kg?: number | null;
@@ -398,6 +406,7 @@ export default function Dashboard() {
   const [checkingFraud, setCheckingFraud] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
@@ -634,10 +643,19 @@ export default function Dashboard() {
     });
   };
 
+  const warehouseOrders = useMemo(
+    () => orders.filter((order) => warehouseFilter === "all" || order.warehouse_id === warehouseFilter),
+    [orders, warehouseFilter],
+  );
+
+  const orderStatusCounts = useMemo(
+    () => countOrdersByStatus(warehouseOrders),
+    [warehouseOrders],
+  );
+
   const filteredOrders = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
-    return orders.filter((o) => {
-      if (warehouseFilter !== "all" && o.warehouse_id !== warehouseFilter) return false;
+    return filterOrdersByStatus(warehouseOrders, statusFilter).filter((o) => {
       if (!q) return true;
       return (
         o.order_number.toLowerCase().includes(q) ||
@@ -645,7 +663,7 @@ export default function Dashboard() {
         (o.phone && o.phone.toLowerCase().includes(q))
       );
     });
-  }, [orders, debouncedSearch, warehouseFilter]);
+  }, [debouncedSearch, statusFilter, warehouseOrders]);
 
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
@@ -1011,6 +1029,16 @@ export default function Dashboard() {
             </PopButton>
           </div>
         </div>
+
+        <OrderStatusSegmentedControl
+          counts={orderStatusCounts}
+          value={statusFilter}
+          loading={loading}
+          onChange={(nextStatus) => {
+            setStatusFilter(nextStatus);
+            setOrderPage(0);
+          }}
+        />
 
         {/* Table */}
         <OrdersTable
