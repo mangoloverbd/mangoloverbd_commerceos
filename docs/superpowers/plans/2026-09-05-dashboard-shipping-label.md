@@ -14,7 +14,7 @@
 - Output is black-and-white and suitable for thermal printers.
 - Barcode and CN prefer `tracking_code` and fall back to `consignment_id`.
 - Printing stops before opening a dialog if any selected order lacks both identifiers.
-- Product rows show Product, Variant, Weight, and Quantity.
+- Product rows show Product, Weight, and Quantity; Weight displays the selected variant label.
 - The downloadable Invoice PDF and Inbox Orders print action remain unchanged.
 - Every selected order prints on its own page.
 
@@ -92,7 +92,7 @@ export function getShippingLabelCn(order: ShippingLabelOrder): string | null {
 }
 ```
 
-Generate Code 128 as an inline SVG with `JsBarcode(svg, cn, { format: "CODE128", displayValue: false, margin: 0, background: "#fff", lineColor: "#000" })`. Build one `.shipping-label` section per order with logo, barcode, CN, order/customer details, phone, address, COD, and structured item rows. Format weights below 1 kg as grams and other values as kilograms. Fall back to legacy product and quantity fields when `items` is empty. Escape every dynamic HTML value.
+Generate Code 128 as an inline SVG with `JsBarcode(svg, cn, { format: "CODE128", displayValue: false, margin: 0, background: "#fff", lineColor: "#000" })`. Build one `.shipping-label` section per order with logo, barcode, CN, order/customer details, phone, address, COD, and structured item rows. Display each selected variant label in the Weight column. Fall back to legacy product and quantity fields when `items` is empty. Escape every dynamic HTML value.
 
 Validate all orders before generating any page. `printShippingLabels` must create no iframe for an invalid selection; for valid data it writes the HTML into a hidden iframe, waits for embedded images to settle, focuses the frame, prints, and removes it after the existing cleanup delay.
 
