@@ -16,6 +16,7 @@ import {
 import { Plus as PlusIcon, Search, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { OrdersTable, type Order } from "@/components/OrdersTable";
+import { OrderTablePagination } from "@/components/orders/OrderTablePagination";
 import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegmentedControl";
 import { WarehouseDialog } from "@/components/WarehouseDialog";
 import { WarehouseMetric } from "@/components/warehouse/WarehouseMetric";
@@ -33,6 +34,7 @@ import {
   filterOrdersByStatus,
   type OrderStatusFilter,
 } from "@/lib/orderStatusFilters";
+import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 
 const SYS = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
 const headClass = "h-11 px-4 text-left text-[11px] font-medium uppercase tracking-wider text-black/45";
@@ -68,6 +70,8 @@ export default function WarehouseDetail() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
+  const [orderPageSize, setOrderPageSize] = useOrderPageSize("warehouse-order-page-size");
+  const [orderPage, setOrderPage] = useState(0);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [checkingFraud, setCheckingFraud] = useState(false);
 
@@ -140,6 +144,16 @@ export default function WarehouseDetail() {
       (order.phone && order.phone.toLowerCase().includes(query)),
     );
   }, [search, statusFilter, warehouseOrders]);
+
+  const orderTotalPages = Math.max(1, Math.ceil(filteredWarehouseOrders.length / orderPageSize));
+  const orderSafePage = Math.min(orderPage, orderTotalPages - 1);
+  const visibleWarehouseOrders = useMemo(
+    () => filteredWarehouseOrders.slice(
+      orderSafePage * orderPageSize,
+      (orderSafePage + 1) * orderPageSize,
+    ),
+    [filteredWarehouseOrders, orderPageSize, orderSafePage],
+  );
 
   async function removeProduct(product: Product) {
     setRemovingId(product.id);
@@ -268,7 +282,10 @@ export default function WarehouseDetail() {
                   placeholder="Search orders…"
                   aria-label="Search warehouse orders"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setOrderPage(0);
+                  }}
                   className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
                   data-testid="input-search-warehouse-orders"
                 />
@@ -301,9 +318,29 @@ export default function WarehouseDetail() {
             counts={orderStatusCounts}
             value={statusFilter}
             loading={orders.isLoading}
-            onChange={setStatusFilter}
+            onChange={(nextStatus) => {
+              setStatusFilter(nextStatus);
+              setOrderPage(0);
+            }}
           />
-          {orders.isError ? <div className="py-16 text-center"><WarningCircle size={28} weight="light" className="mx-auto text-black/20" /><p className="mt-2 text-[12px] text-black/45">Couldn’t load warehouse orders.</p><button type="button" onClick={() => void orders.refetch()} className="mt-3 text-[12px] font-medium underline underline-offset-4">Try again</button></div> : <OrdersTable orders={filteredWarehouseOrders} loading={orders.isLoading} onStatusUpdate={() => void orders.refetch()} onOrderUpdate={() => void orders.refetch()} />}
+          {orders.isError ? (
+            <div className="py-16 text-center"><WarningCircle size={28} weight="light" className="mx-auto text-black/20" /><p className="mt-2 text-[12px] text-black/45">Couldn’t load warehouse orders.</p><button type="button" onClick={() => void orders.refetch()} className="mt-3 text-[12px] font-medium underline underline-offset-4">Try again</button></div>
+          ) : (
+            <>
+              <OrdersTable orders={visibleWarehouseOrders} loading={orders.isLoading} onStatusUpdate={() => void orders.refetch()} onOrderUpdate={() => void orders.refetch()} />
+              <OrderTablePagination
+                page={orderSafePage}
+                pageSize={orderPageSize}
+                totalItems={filteredWarehouseOrders.length}
+                onPageChange={setOrderPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setOrderPageSize(nextPageSize);
+                  setOrderPage(0);
+                }}
+                ariaLabel="Rows per page for warehouse orders"
+              />
+            </>
+          )}
         </motion.section>
       </div>
 
