@@ -44,4 +44,14 @@ describe("OrderStatusSegmentedControl", () => {
     expect(screen.getByRole("radio", { name: /All Orders.*loading/ })).toBeInTheDocument();
     expect(screen.getAllByText("—")).toHaveLength(10);
   });
+
+  it("uses a full-width flat rail with neutral count text", () => {
+    render(<OrderStatusSegmentedControl counts={counts} value="all" onChange={vi.fn()} />);
+
+    expect(screen.getByTestId("order-status-scroll-container")).toHaveClass("w-full");
+    expect(screen.getByTestId("order-status-control")).toHaveClass("xl:grid", "xl:grid-cols-10", "xl:w-full");
+    expect(screen.getByRole("radio", { name: /Delivered.*37,678/ })).toHaveClass("xl:min-w-0");
+    expect(screen.getByTestId("order-status-count-delivered")).toHaveClass("text-black/80");
+    expect(screen.getByTestId("order-status-count-delivered").className).not.toMatch(/text-emerald/);
+  });
 });
