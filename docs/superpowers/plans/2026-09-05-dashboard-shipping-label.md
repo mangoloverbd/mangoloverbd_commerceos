@@ -12,7 +12,7 @@
 
 - Physical output is exactly 3 inches wide by 4 inches high, portrait.
 - Output is black-and-white and suitable for thermal printers.
-- Barcode and CN prefer `tracking_code` and fall back to `consignment_id`.
+- Barcode and CN prefer `consignment_id` to match fulfillment and fall back to `tracking_code`.
 - Printing stops before opening a dialog if any selected order lacks both identifiers.
 - Product rows show Product, Weight, and Quantity; Weight displays the selected variant label.
 - The downloadable Invoice PDF and Inbox Orders print action remain unchanged.
@@ -63,7 +63,7 @@ const order = {
 };
 ```
 
-Assert that tracking code wins over consignment ID, missing CN returns all affected order numbers without HTML, generated HTML contains Code 128 SVG bars and all customer/COD/item fields, dangerous HTML is escaped, CSS includes `@page { size: 3in 4in; margin: 0; }`, and two orders yield two page sections.
+Assert that consignment ID wins over tracking code, missing CN returns all affected order numbers without HTML, generated HTML contains Code 128 SVG bars and all customer/COD/item fields, dangerous HTML is escaped, CSS includes `@page { size: 3in 4in; margin: 0; }`, and two orders yield two page sections.
 
 - [ ] **Step 2: Run the focused test and verify red**
 
@@ -87,7 +87,7 @@ Define a narrow `ShippingLabelOrder` type and implement:
 
 ```ts
 export function getShippingLabelCn(order: ShippingLabelOrder): string | null {
-  const value = order.tracking_code || order.consignment_id;
+  const value = order.consignment_id || order.tracking_code;
   return value == null || String(value).trim() === "" ? null : String(value).trim();
 }
 ```

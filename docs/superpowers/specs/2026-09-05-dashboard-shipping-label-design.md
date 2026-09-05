@@ -22,7 +22,7 @@ Each label contains:
 5. Customer phone number, delivery address, and COD amount.
 6. A product table with Product, Weight, and Quantity columns. The selected variant label is displayed as Weight.
 
-The barcode and CN value use the Steadfast tracking code when available, falling back to the consignment ID.
+The barcode and CN value use the courier consignment ID shown in fulfillment, falling back to the tracking code.
 
 ## Product Data
 
