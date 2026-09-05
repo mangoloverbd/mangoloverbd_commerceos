@@ -58,6 +58,11 @@ const formatCod = (order: ShippingLabelOrder) => {
   return `৳${amount.toLocaleString("en-BD", { maximumFractionDigits: 0 })}`;
 };
 
+const formatShippingPhone = (phone: string) => {
+  const value = phone.trim();
+  return /^\d{11}$/.test(value) ? `${value.slice(0, 5)} ${value.slice(5)}` : value;
+};
+
 const orderNumberText = (orderNumber: string) => orderNumber.replace(/^#/, "");
 
 export function getShippingLabelCn(order: ShippingLabelOrder): string | null {
@@ -120,7 +125,7 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
       </tr>`)
     .join("");
   const customerName = escapeHtml(order.customer_name || "Customer");
-  const phone = escapeHtml(order.phone || "—");
+  const phone = escapeHtml(order.phone ? formatShippingPhone(order.phone) : "—");
   const address = escapeHtml(order.address ? cleanAddress(order.address) : "—");
 
   return `
@@ -130,14 +135,15 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
       </header>
       <div class="barcode-wrap">${barcodeSvg(cn)}</div>
       <div class="cn"><span>CN:</span> ${escapeHtml(cn)}</div>
-      <div class="order-customer">
-        <span><b>Order:</b> ${escapeHtml(orderNumberText(order.order_number))}</span>
-        <span><b>Name:</b> ${customerName}</span>
-      </div>
-      <div class="delivery-details">
-        <div><b>Phone:</b><span>${phone}</span></div>
-        <div><b>COD:</b><span>${formatCod(order)}</span></div>
-        <div class="address"><b>Address:</b><span>${address}</span></div>
+      <div class="recipient-details">
+        <div class="shipment-meta">
+          <span class="order-reference">ORDER <strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></span>
+          <span class="cod-box">COD ${formatCod(order)}</span>
+        </div>
+        <div class="deliver-to">DELIVER TO</div>
+        <div class="recipient-name">${customerName}</div>
+        <div class="recipient-phone">${phone}</div>
+        <div class="recipient-address">${address}</div>
       </div>
       <table>
         <thead>
@@ -194,12 +200,15 @@ export function buildShippingLabelHtml(
             .barcode { display: block; width: 100%; height: 0.52in; }
             .cn { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 0.045in 0; text-align: center; font-size: 18px; line-height: 1; font-weight: 800; letter-spacing: 0.6px; }
             .cn span { font-size: 15px; }
-            .order-customer { display: grid; grid-template-columns: 0.9fr 1.35fr; gap: 0.06in; padding: 0.045in 0.025in; border-bottom: 1px dashed #000; font-size: 8.5px; line-height: 1.15; }
-            .order-customer span { min-width: 0; overflow-wrap: anywhere; }
-            .delivery-details { display: grid; grid-template-columns: 1fr 0.72fr; gap: 0.025in 0.06in; padding: 0.045in 0.025in; border-bottom: 1px solid #000; font-size: 8px; line-height: 1.15; }
-            .delivery-details div { display: grid; grid-template-columns: auto 1fr; gap: 0.04in; min-width: 0; }
-            .delivery-details .address { grid-column: 1 / -1; }
-            .delivery-details span { overflow-wrap: anywhere; }
+            .recipient-details { padding: 0.055in 0.025in 0.06in; border-bottom: 1px solid #000; }
+            .shipment-meta { display: flex; align-items: center; justify-content: space-between; gap: 0.08in; padding-bottom: 0.045in; border-bottom: 1px solid #000; }
+            .order-reference { min-width: 0; font-size: 7px; line-height: 1; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
+            .order-reference strong { font-size: 11px; letter-spacing: 0; }
+            .cod-box { flex: 0 0 auto; border: 2px solid #000; padding: 0.035in 0.055in; font-size: 11px; line-height: 1; font-weight: 800; white-space: nowrap; }
+            .deliver-to { margin-top: 0.045in; font-size: 6.5px; line-height: 1; font-weight: 700; letter-spacing: 0.18em; }
+            .recipient-name { margin-top: 0.025in; font-size: 18px; line-height: 1.05; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; }
+            .recipient-phone { margin-top: 0.025in; font-size: 14px; line-height: 1; font-weight: 700; letter-spacing: 0.04em; }
+            .recipient-address { margin-top: 0.04in; font-size: 9px; line-height: 1.2; overflow-wrap: anywhere; }
             table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.045in; font-size: 7.3px; line-height: 1.1; }
             th, td { border: 1px solid #000; padding: 0.026in 0.02in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
             th { background: #000; color: #fff; text-transform: uppercase; font-size: 6.7px; letter-spacing: 0.25px; }
