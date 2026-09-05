@@ -27,7 +27,7 @@ Add a compact rows-per-page dropdown to the Dashboard order table and each Wareh
 - Add the supplied Radix/shadcn-style Select implementation at `src/components/ui/interfaces-select.tsx`.
 - Place the shared page-size dropdown immediately to the right of the search field in the order-table toolbar on both pages.
 - Show only the selected numeric value in the toolbar. Keep the descriptive accessible label on the dropdown, but do not render visible `Rows per page` text.
-- Keep only page position and Previous/Next actions in the shared footer below `OrdersTable`.
+- Keep only page position and Previous/Next actions in the shared footer below `OrdersTable`: Previous aligned left, page position centered, and Next aligned right.
 - Keep the toolbar selector visible even when there is only one page.
 - Keep the footer visible so page position and disabled navigation remain clear.
 - Stack or wrap footer controls on narrow screens without clipping.
