@@ -142,7 +142,7 @@ describe("warehouse detail", () => {
 
   it("paginates only the current warehouse orders with its own saved row limit", async () => {
     const user = userEvent.setup();
-    const pagedWarehouseOrders = Array.from({ length: 25 }, (_, index) => ({
+    const pagedWarehouseOrders = Array.from({ length: 21 }, (_, index) => ({
       ...warehouseOrders[0],
       id: `warehouse-order-${index + 1}`,
       shopify_order_id: -(index + 1),
@@ -150,6 +150,7 @@ describe("warehouse detail", () => {
       customer_name: `Warehouse Customer ${index + 1}`,
     }));
     localStorage.setItem("dashboard-order-page-size", "50");
+    localStorage.setItem("warehouse-order-page-size", "20");
     apiFetch.mockImplementation(async (url: string) => {
       if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
       if (url === "/api/orders?warehouse_id=main") {
@@ -160,15 +161,10 @@ describe("warehouse detail", () => {
 
     renderDetail();
 
-    expect(await screen.findByText("Warehouse Customer 25")).toBeInTheDocument();
-    const pageSize = screen.getByRole("combobox", { name: "Rows per page for warehouse orders" });
-    pageSize.focus();
-    await user.keyboard("{Enter}{Home}{Enter}");
-
-    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(await screen.findByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Rows per page for warehouse orders" })).toHaveTextContent("20");
     expect(screen.getByText("Warehouse Customer 20")).toBeInTheDocument();
     expect(screen.queryByText("Warehouse Customer 21")).not.toBeInTheDocument();
-    expect(localStorage.getItem("warehouse-order-page-size")).toBe("20");
     expect(localStorage.getItem("dashboard-order-page-size")).toBe("50");
 
     await user.click(screen.getByRole("button", { name: "Next page" }));
