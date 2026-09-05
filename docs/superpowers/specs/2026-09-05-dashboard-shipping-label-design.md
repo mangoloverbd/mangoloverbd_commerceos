@@ -24,6 +24,19 @@ Each label contains:
 
 The barcode and CN value use the courier consignment ID shown in fulfillment, falling back to the tracking code.
 
+## Recipient Details Layout
+
+Use the approved **Recipient first** layout for the customer-details section:
+
+1. Start with a compact metadata row: `ORDER #<number>` on the left and an outlined `COD ৳<amount>` box on the right.
+2. Separate the metadata row from the recipient with one thin solid rule. Do not use dashed separators in this section.
+3. Add a small uppercase `DELIVER TO` eyebrow below the rule.
+4. Show the customer name as the largest, boldest text in the section. Use uppercase styling for faster parcel identification.
+5. Show the phone number directly below the name in large bold text. Group an 11-digit Bangladeshi number as five digits followed by six digits for readability, without changing its value.
+6. Show the address beneath the phone at full width with enough line height to support wrapping.
+
+The layout removes the separate `Name:`, `Phone:`, and `Address:` labels because position and hierarchy identify those values. The COD box retains its `COD` label so the collection amount remains unmistakable.
+
 ## Product Data
 
 The label uses each order item's selected variant label as its Weight value. This matches the storefront flow where customers select a weight variant. It does not add a separate calculated-weight column or require a database or API schema change.

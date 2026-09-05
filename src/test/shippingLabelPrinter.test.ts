@@ -73,7 +73,7 @@ describe("shipping label HTML", () => {
     expect(document.querySelectorAll("iframe")).toHaveLength(frameCount);
   });
 
-  it("renders the customer, COD, selected variant weights, quantities, and barcode", () => {
+  it("renders recipient details with the approved recipient-first hierarchy", () => {
     const result = buildShippingLabelHtml([makeOrder()], "Mango Lover BD");
 
     expect(result.ok).toBe(true);
@@ -82,14 +82,20 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("<title></title>");
     expect(result.html).not.toContain("Mango Lover BD Shipping Label");
     expect(result.html).toContain("999");
-    expect(result.html).toContain("ML567907");
-    expect(result.html).toContain("Rahim Uddin");
-    expect(result.html).toContain("01700000000");
-    expect(result.html).toContain("Dhaka");
-    expect(result.html).toContain("৳1,580");
-    expect(result.html).toContain("<b>Phone:</b>");
-    expect(result.html).toContain("<b>COD:</b>");
-    expect(result.html).toContain("<b>Address:</b>");
+    expect(result.html).toContain('<div class="shipment-meta">');
+    expect(result.html).toContain(
+      '<span class="order-reference">ORDER <strong>#ML567907</strong></span>',
+    );
+    expect(result.html).toContain('<span class="cod-box">COD ৳1,580</span>');
+    expect(result.html).toContain('<div class="deliver-to">DELIVER TO</div>');
+    expect(result.html).toContain('<div class="recipient-name">Rahim Uddin</div>');
+    expect(result.html).toContain('<div class="recipient-phone">01700 000000</div>');
+    expect(result.html).toContain('<div class="recipient-address">Dhaka</div>');
+    expect(result.html).not.toContain("<b>Name:</b>");
+    expect(result.html).not.toContain("<b>Phone:</b>");
+    expect(result.html).not.toContain("<b>Address:</b>");
+    expect(result.html).not.toContain('class="order-customer"');
+    expect(result.html).not.toContain('class="delivery-details"');
     expect(result.html).toContain("Honey");
     expect(result.html).toContain("1 kg jar");
     expect(result.html).toContain("1 kg");
@@ -100,6 +106,19 @@ describe("shipping label HTML", () => {
     expect(result.html).not.toContain('<td class="variant">');
     expect(result.html).toMatch(/<svg[^>]+class="barcode"/);
     expect(result.html).toContain("<rect");
+  });
+
+  it("leaves phone values unchanged unless they are exactly 11 digits", () => {
+    const result = buildShippingLabelHtml([
+      makeOrder({ phone: "+8801700000000" }),
+    ]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected printable label HTML");
+
+    expect(result.html).toContain(
+      '<div class="recipient-phone">+8801700000000</div>',
+    );
   });
 
   it("escapes all customer and merchandise text", () => {
