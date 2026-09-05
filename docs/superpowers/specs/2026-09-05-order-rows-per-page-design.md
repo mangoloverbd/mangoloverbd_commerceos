@@ -25,9 +25,10 @@ Add a compact rows-per-page dropdown to the Dashboard order table and each Wareh
 ## UI
 
 - Add the supplied Radix/shadcn-style Select implementation at `src/components/ui/interfaces-select.tsx`.
-- Use a shared order-pagination footer below `OrdersTable` on both pages.
-- Place `Rows per page` and its dropdown on the left, page position in the center, and Previous/Next actions on the right.
-- Keep the footer visible even when there is only one page so the size control remains available.
+- Place the shared `Rows per page` dropdown in the order-table toolbar on both pages, next to the table title and filtered order count.
+- Keep only page position and Previous/Next actions in the shared footer below `OrdersTable`.
+- Keep the toolbar selector visible even when there is only one page.
+- Keep the footer visible so page position and disabled navigation remain clear.
 - Stack or wrap footer controls on narrow screens without clipping.
 - Match the existing gray table controls and restrained Merchant-Suite styling.
 
