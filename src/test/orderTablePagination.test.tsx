@@ -47,6 +47,23 @@ describe("OrderTablePagination", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
+  it("places previous left, page position center, and next right", () => {
+    render(
+      <OrderTablePagination
+        page={0}
+        pageSize={100}
+        totalItems={145}
+        onPageChange={vi.fn()}
+      />,
+    );
+
+    const footer = screen.getByTestId("order-pagination-footer");
+    expect(footer.children).toHaveLength(3);
+    expect(footer.children[0]).toBe(screen.getByRole("button", { name: "Previous page" }));
+    expect(footer.children[1]).toBe(screen.getByText("Page 1 of 2"));
+    expect(footer.children[2]).toBe(screen.getByRole("button", { name: "Next page" }));
+  });
+
   it("offers the supported row limits from the standalone selector", async () => {
     const user = userEvent.setup();
     const onPageSizeChange = vi.fn();
