@@ -37,15 +37,6 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const cleanAddress = (value: string) =>
-  value
-    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "")
-    .replace(/,\s*,/g, ",")
-    .replace(/,?\s*Bangladesh/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .replace(/,$/, "");
-
 const parseInlineQuantity = (value: string) => {
   const match = value.match(/^(\d+)\s*(?:x|×)\s+(.+)$/i);
   return match
@@ -58,10 +49,7 @@ const formatCod = (order: ShippingLabelOrder) => {
   return `৳${amount.toLocaleString("en-BD", { maximumFractionDigits: 0 })}`;
 };
 
-const formatShippingPhone = (phone: string) => {
-  const value = phone.trim();
-  return /^\d{11}$/.test(value) ? `${value.slice(0, 5)} ${value.slice(5)}` : value;
-};
+const formatShippingPhone = (phone: string) => phone.trim().replace(/\s+/g, "");
 
 const contactSizeClass = (length: number) => {
   if (length > 48) return "contact-size-tight";
@@ -134,7 +122,6 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
   const customerName = order.customer_name || "Customer";
   const phone = order.phone ? formatShippingPhone(order.phone) : "—";
   const contactClass = contactSizeClass(Array.from(`${customerName} - ${phone}`).length);
-  const address = escapeHtml(order.address ? cleanAddress(order.address) : "—");
 
   return `
     <section class="shipping-label">
@@ -151,7 +138,6 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
           </div>
           <div class="customer-label">CUSTOMER</div>
           <div class="recipient-contact ${contactClass}">${escapeHtml(customerName)} - ${escapeHtml(phone)}</div>
-          <div class="recipient-address"><div class="address-label">ADDRESS</div><div>${address}</div></div>
         </div>
       </div>
       <table>
@@ -203,7 +189,7 @@ export function buildShippingLabelHtml(
               flex-direction: column;
             }
             .shipping-label:last-child { page-break-after: auto; break-after: auto; }
-            .label-summary { min-height: 1.58in; flex: 0 0 auto; }
+            .label-summary { flex: 0 0 auto; }
             .brand-header { height: 0.25in; display: flex; align-items: center; justify-content: center; padding: 0.01in 0.16in; }
             .brand-header img { display: block; max-width: 2.04in; max-height: 0.22in; filter: grayscale(1) brightness(0); }
             .barcode-wrap { height: 0.32in; display: flex; align-items: center; justify-content: center; padding: 0.008in 0.08in 0; }
@@ -213,7 +199,7 @@ export function buildShippingLabelHtml(
             .recipient-details { padding: 0.025in 0.025in 0.03in; border-bottom: 1px solid #000; }
             .shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.08in; padding-bottom: 0.025in; border-bottom: 1px solid #000; }
             .meta-field { min-width: 0; }
-            .meta-field span, .customer-label, .address-label { display: block; font-size: 6px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
+            .meta-field span, .customer-label { display: block; font-size: 6px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
             .meta-field strong { display: block; margin-top: 0.012in; font-size: 11px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }
             .customer-label { margin-top: 0.025in; }
             .recipient-contact { margin-top: 0.015in; line-height: 1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.015em; white-space: nowrap; }
@@ -221,8 +207,6 @@ export function buildShippingLabelHtml(
             .contact-size-compact { font-size: 13px; }
             .contact-size-small { font-size: 11px; }
             .contact-size-tight { font-size: 9px; }
-            .recipient-address { margin-top: 0.025in; padding-top: 0.02in; border-top: 1px solid #000; font-size: 8.5px; line-height: 1.12; overflow-wrap: anywhere; }
-            .address-label { margin-bottom: 0.015in; }
             table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.035in; font-size: 7.1px; line-height: 1.08; }
             th, td { border: 1px solid #000; padding: 0.022in 0.018in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
             th { background: #000; color: #fff; text-transform: uppercase; font-size: 6.5px; letter-spacing: 0.25px; }
