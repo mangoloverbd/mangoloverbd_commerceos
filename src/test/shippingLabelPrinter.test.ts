@@ -73,7 +73,7 @@ describe("shipping label HTML", () => {
     expect(document.querySelectorAll("iframe")).toHaveLength(frameCount);
   });
 
-  it("renders recipient details with the approved recipient-first hierarchy", () => {
+  it("renders recipient details with the approved balanced-stack hierarchy", () => {
     const result = buildShippingLabelHtml([makeOrder()], "Mango Lover BD");
 
     expect(result.ok).toBe(true);
@@ -84,13 +84,26 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("999");
     expect(result.html).toContain('<div class="shipment-meta">');
     expect(result.html).toContain(
-      '<span class="order-reference">ORDER <strong>#ML567907</strong></span>',
+      '<div class="meta-field"><span>ORDER</span><strong>#ML567907</strong></div>',
     );
-    expect(result.html).toContain('<span class="cod-box">COD ৳1,580</span>');
-    expect(result.html).toContain('<div class="deliver-to">DELIVER TO</div>');
-    expect(result.html).toContain('<div class="recipient-name">Rahim Uddin</div>');
-    expect(result.html).toContain('<div class="recipient-phone">01700 000000</div>');
-    expect(result.html).toContain('<div class="recipient-address">Dhaka</div>');
+    expect(result.html).toContain(
+      '<div class="meta-field"><span>COD</span><strong>৳1,580</strong></div>',
+    );
+    expect(result.html).toContain('<div class="customer-label">CUSTOMER</div>');
+    expect(result.html).toContain(
+      '<div class="recipient-contact contact-size-normal">Rahim Uddin - 01700000000</div>',
+    );
+    expect(result.html).not.toContain('class="recipient-name"');
+    expect(result.html).not.toContain('class="recipient-phone"');
+    expect(result.html).not.toContain('class="recipient-address"');
+    expect(result.html).not.toContain('class="address-label"');
+    expect(result.html).not.toContain("ADDRESS");
+    expect(result.html).not.toContain("Dhaka");
+    expect(result.html).toContain(
+      ".shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));",
+    );
+    expect(result.html).not.toContain('class="cod-box"');
+    expect(result.html).not.toContain("DELIVER TO");
     expect(result.html).not.toContain("<b>Name:</b>");
     expect(result.html).not.toContain("<b>Phone:</b>");
     expect(result.html).not.toContain("<b>Address:</b>");
@@ -108,16 +121,32 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("<rect");
   });
 
-  it("leaves phone values unchanged unless they are exactly 11 digits", () => {
+  it.each([
+    [19, "contact-size-compact"],
+    [27, "contact-size-small"],
+    [35, "contact-size-tight"],
+  ])("uses an adaptive contact size for a %i-character customer name", (nameLength, sizeClass) => {
+    const customerName = "A".repeat(nameLength);
+    const result = buildShippingLabelHtml([makeOrder({ customer_name: customerName })]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected printable label HTML");
+
+    expect(result.html).toContain(
+      `<div class="recipient-contact ${sizeClass}">${customerName} - 01700000000</div>`,
+    );
+  });
+
+  it("removes phone whitespace without otherwise rewriting the value", () => {
     const result = buildShippingLabelHtml([
-      makeOrder({ phone: "+8801700000000" }),
+      makeOrder({ phone: "+880 1700 000000" }),
     ]);
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("Expected printable label HTML");
 
     expect(result.html).toContain(
-      '<div class="recipient-phone">+8801700000000</div>',
+      '<div class="recipient-contact contact-size-normal">Rahim Uddin - +8801700000000</div>',
     );
   });
 
@@ -135,7 +164,7 @@ describe("shipping label HTML", () => {
 
     expect(result.html).not.toContain("<script>alert");
     expect(result.html).toContain("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;");
-    expect(result.html).toContain("House &lt;7&gt; &amp; Road 2");
+    expect(result.html).not.toContain("House &lt;7&gt; &amp; Road 2");
     expect(result.html).toContain("Honey &amp; Jam");
     expect(result.html).toContain("Jar &quot;Large&quot;");
   });
@@ -154,6 +183,24 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("page-break-after: always");
   });
 
+  it("releases unused summary height and fits five product rows", () => {
+    const items = Array.from({ length: 5 }, (_, index) => ({
+      product_name: `পণ্য ${index + 1} | Product ${index + 1}`,
+      variant_name: "500 g pouch",
+      quantity: 1,
+    }));
+    const result = buildShippingLabelHtml([makeOrder({ items })]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected printable label HTML");
+
+    expect(result.html).toContain('<div class="label-summary">');
+    expect(result.html).toContain(".label-summary { flex: 0 0 auto; }");
+    expect(result.html).not.toContain("min-height: 1.58in");
+    expect(result.html).toContain("tbody tr { height: 0.29in; }");
+    expect(result.html.match(/<td class="product">পণ্য \d \| Product \d<\/td>/g)).toHaveLength(5);
+  });
+
   it("falls back to legacy merchandise fields", () => {
     const result = buildShippingLabelHtml([
       makeOrder({ items: [], product: "3x Dried Mango", quantity: 3 }),
@@ -169,7 +216,7 @@ describe("shipping label HTML", () => {
 });
 
 describe("shipping label action wiring", () => {
-  it("routes only the Dashboard Print action to shipping labels", () => {
+  it("routes both order-screen Print actions to shipping labels", () => {
     const dashboardSource = readFileSync(
       resolve(process.cwd(), "src/components/OrdersTable.tsx"),
       "utf8",
@@ -189,9 +236,8 @@ describe("shipping label action wiring", () => {
     expect(orderItemType).not.toContain("weight_kg");
     expect(dashboardSource).toContain("printShippingLabels(selectedOrders, orgName)");
     expect(inboxSource).toContain(
-      'import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";',
+      'const { printShippingLabels } = await import("@/utils/shippingLabelPrinter");',
     );
-    expect(inboxSource).toContain("printInvoice(selectedOrders");
-    expect(inboxSource).not.toContain("printShippingLabels");
+    expect(inboxSource).toContain("printShippingLabels(selectedOrders, orgName)");
   });
 });

@@ -1,7 +1,13 @@
-import jsPDF from "jspdf";
 import { format } from "date-fns";
+import JsBarcode from "jsbarcode";
 
-interface Order {
+export interface InvoiceItem {
+  product_name: string | null;
+  variant_name: string | null;
+  quantity: number;
+}
+
+export interface InvoiceOrder {
   id: string;
   order_number: string;
   customer_name: string | null;
@@ -14,367 +20,18 @@ interface Order {
   created_at: string;
   delivery_rate: number | null;
   courier_status?: string | null;
-  consignment_id?: number | null;
+  consignment_id?: string | number | null;
   tracking_code?: string | null;
   courier_message?: string | null;
+  notes?: string | null;
+  items?: InvoiceItem[];
 }
 
-/** Split comma-separated product field into individual lines */
-function splitProductLines(product: string | null): string[] {
-  if (!product) return [];
-  return product.split(",").map((s) => s.trim()).filter(Boolean);
+interface InvoiceProductRow {
+  productName: string;
+  weight: string;
+  quantity: number;
 }
-
-/** Check if a line already contains an inline quantity like "3x Item" */
-function parseInlineQty(line: string): { name: string; qty: number } | null {
-  const match = line.match(/^(\d+)\s*(x|×)\s+(.+)$/i);
-  if (match) return { qty: parseInt(match[1], 10), name: match[3].trim() };
-  return null;
-}
-
-/** Remove IP addresses and clean up extra commas/spaces from address strings */
-function cleanAddress(text: string): string {
-  return text
-    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "")
-    .replace(/,\s*,/g, ",")
-    .replace(/,?\s*Bangladesh/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .replace(/,$/, "");
-}
-
-/** jsPDF built-in fonts only support a narrow character set. Strip symbols that render as mojibake. */
-function cleanPdfText(text: string | null | undefined, fallback = ""): string {
-  const cleaned = (text || fallback)
-    .normalize("NFKC")
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/[–—]/g, "-")
-    .replace(/[•·]/g, "-")
-    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "")
-    .replace(/(\u200D|\uFE0E|\uFE0F)/g, "")
-    .replace(/[^\x20-\x7E]/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-  return cleaned || fallback;
-}
-
-/** Convert SVG data URI to PNG data URL via canvas */
-function svgToPngDataUrl(svgDataUri: string, width: number, height: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = width * 2;
-      canvas.height = height * 2;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { reject("no ctx"); return; }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = reject;
-    img.src = svgDataUri;
-  });
-}
-
-/** Render a classic FRAGILE / HANDLE WITH CARE label as a PNG data URL via canvas */
-function renderFragileBadge(widthPx: number, heightPx: number): Promise<string> {
-  return new Promise((resolve) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = widthPx;
-    canvas.height = heightPx;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) { resolve(""); return; }
-
-    // White background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, widthPx, heightPx);
-
-    // Solid black border
-    ctx.strokeStyle = "#111111";
-    ctx.lineWidth = 6;
-    ctx.setLineDash([]);
-    ctx.strokeRect(3, 3, widthPx - 6, heightPx - 6);
-
-    // --- TOP: Wine glass with lightning crack ---
-    const glassZone = heightPx * 0.46;
-    const gPadX = widthPx * 0.18;
-    const gLeft  = gPadX;
-    const gRight = widthPx - gPadX;
-    const gTop   = heightPx * 0.04;
-    const gW     = gRight - gLeft;
-    const gCX    = widthPx / 2;
-    const bowlBottom = gTop + glassZone * 0.57;
-
-    // Bowl (trapezoid — wider at top, narrow at bottom)
-    ctx.fillStyle = "#cc0000";
-    ctx.beginPath();
-    ctx.moveTo(gLeft, gTop);
-    ctx.lineTo(gRight, gTop);
-    ctx.lineTo(gCX + gW * 0.12, bowlBottom);
-    ctx.lineTo(gCX - gW * 0.12, bowlBottom);
-    ctx.closePath();
-    ctx.fill();
-
-    // Lightning bolt crack — white cutout inside bowl
-    ctx.fillStyle = "#ffffff";
-    const bx = gCX + gW * 0.05;
-    const by = gTop + glassZone * 0.07;
-    const bh = bowlBottom - by - glassZone * 0.04;
-    ctx.beginPath();
-    ctx.moveTo(bx,              by);
-    ctx.lineTo(bx - gW * 0.20, by + bh * 0.42);
-    ctx.lineTo(bx - gW * 0.06, by + bh * 0.42);
-    ctx.lineTo(bx - gW * 0.24, by + bh * 0.90);
-    ctx.lineTo(bx + gW * 0.20, by + bh * 0.42);
-    ctx.lineTo(bx + gW * 0.06, by + bh * 0.42);
-    ctx.lineTo(bx + gW * 0.18, by);
-    ctx.closePath();
-    ctx.fill();
-
-    // Stem
-    ctx.fillStyle = "#cc0000";
-    const stemW = gW * 0.14;
-    const stemH = glassZone * 0.27;
-    ctx.fillRect(gCX - stemW / 2, bowlBottom, stemW, stemH);
-
-    // Base
-    const baseW = gW * 0.76;
-    const baseH = glassZone * 0.10;
-    ctx.fillRect(gCX - baseW / 2, bowlBottom + stemH, baseW, baseH);
-
-    // --- MIDDLE: "FRAGILE" ---
-    ctx.fillStyle = "#cc0000";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.font = `900 ${Math.round(heightPx * 0.155)}px Arial, sans-serif`;
-    ctx.fillText("FRAGILE", widthPx / 2, heightPx * 0.50);
-
-    // --- BOTTOM: "HANDLE WITH CARE" ---
-    ctx.font = `bold ${Math.round(heightPx * 0.093)}px Arial, sans-serif`;
-    ctx.fillText("HANDLE", widthPx / 2, heightPx * 0.695);
-    ctx.fillText("WITH CARE", widthPx / 2, heightPx * 0.812);
-
-    resolve(canvas.toDataURL("image/png"));
-  });
-}
-
-const buildInvoicePdf = async (orders: Order[], businessName?: string) => {
-  const pageWidth = 75;
-  const pageHeight = 100;
-
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: [pageWidth, pageHeight],
-  });
-
-  const margin = 4;
-  const contentWidth = pageWidth - margin * 2;
-
-
-  for (let index = 0; index < orders.length; index++) {
-    const order = orders[index];
-    if (index > 0) {
-      doc.addPage([pageWidth, pageHeight]);
-    }
-
-    const money = (value: number) =>
-      value.toLocaleString("en-BD", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const muted = () => doc.setTextColor(128, 128, 128);
-    const ink = () => doc.setTextColor(28, 28, 30);
-    const drawLabel = (label: string, x: number, yy: number, align: "left" | "right" | "center" = "left") => {
-      muted();
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(3.9);
-      doc.text(label.toUpperCase(), x, yy, { align });
-      ink();
-    };
-    const clampLines = (linesToClamp: string[], max: number) => {
-      if (linesToClamp.length <= max) return linesToClamp;
-      const next = linesToClamp.slice(0, max);
-      next[max - 1] = `${next[max - 1].replace(/\.+$/, "")}...`;
-      return next;
-    };
-
-    let y = margin + 2.5;
-
-    // --- Swiss Header ---
-    const brandName = businessName || "My Business";
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    ink();
-    doc.text(cleanPdfText(brandName, "My Business"), margin, y + 1);
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.2);
-    ink();
-    doc.text("Invoice", pageWidth - margin, y + 0.5, { align: "right" });
-    muted();
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(4.5);
-    doc.text("Order receipt", pageWidth - margin, y + 4.8, { align: "right" });
-
-    doc.setDrawColor(232, 232, 232);
-    doc.setLineWidth(0.12);
-    doc.line(margin, 14.5, pageWidth - margin, 14.5);
-
-    y = 17;
-    const invoiceNo = order.order_number.replace("#", "");
-    const courierName = order.courier_message?.toLowerCase().includes("pathao") ? "Pathao" : "Steadfast";
-    const consignmentId = order.consignment_id;
-
-    drawLabel("Invoice No.", margin, y + 1.5);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.4);
-    doc.text(`AN-${invoiceNo}`, margin, y + 6);
-
-    drawLabel("Date", margin + 24, y + 1.5);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.4);
-    doc.text(format(new Date(order.created_at), "MMM dd, yyyy"), margin + 24, y + 6);
-
-    drawLabel("Courier", margin + 49, y + 1.5);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.4);
-    doc.text(courierName, margin + 49, y + 6);
-    y += 10.5;
-    doc.setDrawColor(232, 232, 232);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 5;
-
-    if (consignmentId != null) {
-      drawLabel("Delivery ID", margin, y);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(6.6);
-      doc.text(String(consignmentId), margin + 20, y);
-      y += 5.5;
-    }
-
-    // --- Customer ---
-    const customerName = cleanPdfText(order.customer_name, "Customer");
-    const customerPhone = cleanPdfText(order.phone, "");
-    const addressLines = order.address
-      ? clampLines(doc.splitTextToSize(cleanPdfText(cleanAddress(order.address)), contentWidth), 3)
-      : [];
-
-    drawLabel("Invoice To", margin, y);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.2);
-    doc.text(customerName, margin, y + 5);
-    let customerY = y + 9.2;
-    if (customerPhone) {
-      muted();
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(6);
-      doc.text(customerPhone, margin, customerY);
-      customerY += 3.3;
-    }
-    if (addressLines.length) {
-      muted();
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(5.8);
-      doc.text(addressLines, margin, customerY);
-      customerY += addressLines.length * 3;
-    }
-    ink();
-    y = customerY + 4;
-    doc.setDrawColor(232, 232, 232);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 5;
-
-    // --- Products ---
-    const subtotal = order.price || 0;
-    const shipping = order.delivery_rate || 0;
-    const total = subtotal + shipping;
-    const lines = splitProductLines(order.product);
-    const fallbackQty = order.quantity || 1;
-    const productRows = lines.length <= 1
-      ? [{
-          name: cleanPdfText(parseInlineQty(order.product || "")?.name || order.product, "Item"),
-          qty: parseInlineQty(order.product || "")?.qty || fallbackQty,
-          price: money(subtotal),
-        }]
-      : lines.map((line) => {
-          const parsed = parseInlineQty(line);
-          return {
-            name: cleanPdfText(parsed ? parsed.name : line, "Item"),
-            qty: parsed ? parsed.qty : 1,
-            price: "",
-          };
-        });
-
-    const rowLineSets = productRows.map((row) => clampLines(doc.splitTextToSize(row.name, 40), 2));
-
-    drawLabel("Product", margin, y);
-    drawLabel("Qty", margin + 48.5, y, "center");
-    drawLabel("Price", pageWidth - margin, y, "right");
-    y += 4;
-    doc.setDrawColor(232, 232, 232);
-    doc.line(margin, y - 1.7, pageWidth - margin, y - 1.7);
-
-    let rowY = y + 2;
-    productRows.forEach((row, rowIndex) => {
-      if (rowY > 76) return;
-      const rowLines = rowLineSets[rowIndex];
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7);
-      ink();
-      doc.text(rowLines, margin, rowY);
-      doc.setFont("helvetica", "bold");
-      doc.text(String(row.qty), margin + 48.5, rowY, { align: "center" });
-      if (row.price) doc.text(row.price, pageWidth - margin, rowY, { align: "right" });
-      rowY += Math.max(5.5, rowLines.length * 3.2 + 1.8);
-    });
-    if (lines.length > 1 && rowY <= 78) {
-      muted();
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(5.8);
-      doc.text("All items", margin, rowY);
-      ink();
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(6.8);
-      doc.text(money(subtotal), pageWidth - margin, rowY, { align: "right" });
-      rowY += 5;
-    }
-    y = Math.max(rowY + 4, 70);
-    doc.setDrawColor(232, 232, 232);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 5;
-
-    // --- Swiss Totals ---
-    const totalsLabelX = margin + 32;
-    muted();
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6.2);
-    doc.text("Sub Total", totalsLabelX, y);
-    doc.text(money(subtotal), pageWidth - margin, y, { align: "right" });
-    y += 4;
-    doc.text("Delivery Fee", totalsLabelX, y);
-    doc.text(money(shipping), pageWidth - margin, y, { align: "right" });
-    y += 4;
-    doc.setDrawColor(28, 28, 30);
-    doc.setLineWidth(0.18);
-    doc.line(totalsLabelX, y, pageWidth - margin, y);
-    y += 5;
-    ink();
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.2);
-    doc.text("Due Amount", totalsLabelX, y);
-    doc.text(money(total), pageWidth - margin, y, { align: "right" });
-    ink();
-  }
-
-  return doc;
-};
-
-export const generateInvoice = async (orders: Order[], businessName?: string) => {
-  const doc = await buildInvoicePdf(orders, businessName);
-  const filename = orders.length > 1
-    ? `Invoices_Bulk_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`
-    : `Invoice_${orders[0].order_number}.pdf`;
-  doc.save(filename);
-};
 
 const escapeHtml = (value: string) =>
   value
@@ -384,178 +41,268 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const cleanAddress = (value: string) =>
+  value
+    .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "")
+    .replace(/,\s*,/g, ",")
+    .replace(/,?\s*Bangladesh/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .replace(/,$/, "");
+
 const formatMoney = (value: number | null | undefined) =>
-  (value ?? 0).toLocaleString("en-BD", {
+  `৳${Number(value || 0).toLocaleString("en-BD", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  })}`;
+
+const formatPhone = (value: string) => value.trim().replace(/\s+/g, "");
+
+const formatStatus = (value: string) =>
+  value
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const parseInlineQuantity = (value: string) => {
+  const match = value.match(/^(\d+)\s*(?:x|×)\s+(.+)$/i);
+  return match
+    ? { quantity: Number.parseInt(match[1], 10), productName: match[2].trim() }
+    : null;
+};
+
+const productRows = (order: InvoiceOrder): InvoiceProductRow[] => {
+  if (order.items?.length) {
+    return order.items.map((item) => ({
+      productName: item.product_name || "Item",
+      weight: item.variant_name || "—",
+      quantity: item.quantity || 1,
+    }));
+  }
+
+  const lines = (order.product || "Item")
+    .split(",")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return (lines.length ? lines : ["Item"]).map((line) => {
+    const parsed = parseInlineQuantity(line);
+    return {
+      productName: parsed?.productName || line,
+      weight: "—",
+      quantity: parsed?.quantity || (lines.length === 1 ? order.quantity || 1 : 1),
+    };
   });
+};
 
-export const printInvoice = (orders: Order[], businessName?: string) => {
-  const invoicePages = orders
-    .map((order) => {
-      const invoiceNo = escapeHtml(order.order_number.replace("#", ""));
-      const customerName = escapeHtml(order.customer_name || "Customer");
-      const phone = order.phone ? escapeHtml(order.phone) : "";
-      const address = order.address ? escapeHtml(cleanAddress(order.address)) : "";
-      const subtotal = order.price || 0;
-      const shipping = order.delivery_rate || 0;
-      const total = subtotal + shipping;
-      const consignmentId = order.consignment_id;
-      const courierName = order.courier_message?.toLowerCase().includes("pathao") ? "Pathao" : "Steadfast";
-      const lines = splitProductLines(order.product);
-      const fallbackQty = order.quantity || 1;
+const courierName = (order: InvoiceOrder) => {
+  const message = order.courier_message?.toLowerCase() || "";
+  if (message.includes("pathao")) return "Pathao";
+  if (message.includes("steadfast")) return "Steadfast";
+  return order.consignment_id || order.tracking_code ? "Steadfast" : "Not assigned";
+};
 
-      let productRowsHtml: string;
-      if (lines.length <= 1) {
-        const product = escapeHtml(order.product || "Item");
-        productRowsHtml = `<div class="table-row"><span>${product}</span><span>${fallbackQty}</span><span>${formatMoney(subtotal)}</span></div>`;
-      } else {
-        productRowsHtml = lines.map((line) => {
-          const parsed = parseInlineQty(line);
-          const itemName = escapeHtml(parsed ? parsed.name : line);
-          const itemQty = parsed ? parsed.qty : 1;
-          return `<div class="table-row"><span>${itemName}</span><span>${itemQty}</span><span></span></div>`;
-        }).join("");
-        productRowsHtml += `<div class="table-row"><span>(all items)</span><span></span><span>${formatMoney(subtotal)}</span></div>`;
-      }
+const courierIdentifier = (order: InvoiceOrder) => {
+  for (const candidate of [order.consignment_id, order.tracking_code]) {
+    if (candidate == null) continue;
+    const value = String(candidate).trim();
+    if (value) return value;
+  }
+  return null;
+};
 
-      return `
-        <section class="invoice">
-          <div class="fragile-badge">
-            <svg class="fragile-glass" viewBox="0 0 50 70" xmlns="http://www.w3.org/2000/svg">
-              <path fill="#cc0000" d="M3,2 L47,2 L29,37 L21,37 Z"/>
-              <path fill="white" d="M26,5 L18,20 L24,20 L21,34 L32,20 L26,20 L34,5 Z"/>
-              <rect fill="#cc0000" x="23" y="37" width="4" height="18"/>
-              <rect fill="#cc0000" x="13" y="55" width="24" height="7" rx="1"/>
-            </svg>
-            <span class="fragile-title">FRAGILE</span>
-            <span class="fragile-sub">HANDLE<br>WITH CARE</span>
-          </div>
-          <div class="brand">${escapeHtml(businessName || "My Business")}</div>
-          <div class="meta"><span>Invoice No.:</span> <strong>AN-${invoiceNo}</strong></div>
-          <div class="meta"><span>Invoice Date:</span> <strong>${format(new Date(order.created_at), "MMM dd, yyyy")}</strong></div>
-          <div class="meta"><span>Courier:</span> <strong>${courierName}</strong></div>
-          ${consignmentId != null ? `<div class="delivery-id-box">Delivery ID: <strong>${escapeHtml(String(consignmentId))}</strong></div>` : ""}
+const barcodeSvg = (value: string) => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "barcode");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `Invoice barcode ${value}`);
+  JsBarcode(svg, value, {
+    format: "CODE128",
+    displayValue: false,
+    background: "#ffffff",
+    lineColor: "#000000",
+    width: 1.4,
+    height: 42,
+    margin: 0,
+  });
+  return new XMLSerializer().serializeToString(svg);
+};
 
-          <div class="section-title">Invoice To:</div>
-          <div class="line">\u2022 ${customerName}</div>
-          ${phone ? `<div class="line">\u2022 ${phone}</div>` : ""}
-          ${address ? `<div class="line">\u2022 ${address}</div>` : ""}
-
-          <hr />
-
-          <div class="table-head"><span>Product</span><span>Qty</span><span>Price</span></div>
-          ${productRowsHtml}
-
-          <hr />
-
-          <div class="total"><span>Sub Total</span><span>${formatMoney(subtotal)}</span></div>
-          <div class="total"><span>Delivery Fee</span><span>${formatMoney(shipping)}</span></div>
-          <div class="total grand"><span>Grand Total</span><span>${formatMoney(total)}</span></div>
-          <div class="total grand"><span>Due Amount</span><span>${formatMoney(total)}</span></div>
-        </section>
-      `;
-    })
+const invoicePage = (order: InvoiceOrder, businessName: string) => {
+  const identifier = courierIdentifier(order);
+  const subtotal = Number(order.price || 0);
+  const deliveryFee = Number(order.delivery_rate || 0);
+  const total = subtotal + deliveryFee;
+  const customerName = order.customer_name || "Customer";
+  const phone = order.phone ? formatPhone(order.phone) : "—";
+  const address = order.address ? cleanAddress(order.address) : "—";
+  const notes = order.notes?.trim();
+  const rows = productRows(order)
+    .map((item) => `
+              <tr>
+                <td class="product">${escapeHtml(item.productName)}</td>
+                <td class="weight">${escapeHtml(item.weight)}</td>
+                <td class="quantity">${item.quantity}</td>
+              </tr>`)
     .join("");
 
-  const html = `
-    <!doctype html>
+  return `
+        <section class="invoice-page">
+          <header class="invoice-header">
+            <div class="brand-block">
+              <img src="/mango-lover-print-logo.png" alt="${escapeHtml(businessName)}" />
+              <span>PREMIUM FOODS</span>
+            </div>
+            <div class="invoice-heading">
+              <div class="invoice-title">INVOICE</div>
+              <div class="invoice-number">${escapeHtml(order.order_number)}</div>
+            </div>
+          </header>
+
+          <section class="metadata-grid">
+            <div class="metadata-field"><span>INVOICE DATE</span><strong>${format(new Date(order.created_at), "MMM dd, yyyy")}</strong></div>
+            <div class="metadata-field"><span>ORDER STATUS</span><strong>${escapeHtml(formatStatus(order.status))}</strong></div>
+            <div class="metadata-field"><span>COURIER</span><strong>${courierName(order)}</strong></div>
+            <div class="metadata-field identifier-field">
+              <span>CN / TRACKING</span>
+              <strong>${identifier ? escapeHtml(identifier) : "NOT ASSIGNED"}</strong>
+              ${identifier ? barcodeSvg(identifier) : ""}
+            </div>
+          </section>
+
+          <section class="detail-grid">
+            <div class="detail-panel">
+              <span class="section-label">CUSTOMER</span>
+              <strong class="customer-contact">${escapeHtml(customerName)} - ${escapeHtml(phone)}</strong>
+              <div class="customer-address">${escapeHtml(address)}</div>
+            </div>
+            <div class="detail-panel payment-panel">
+              <span class="section-label">PAYMENT</span>
+              <strong>CASH ON DELIVERY</strong>
+              <span class="payment-due">PAYMENT DUE</span>
+              <div>Order value ${formatMoney(subtotal)}</div>
+              <div>Delivery fee ${formatMoney(deliveryFee)}</div>
+            </div>
+          </section>
+
+          <section class="products-section">
+            <table>
+              <thead><tr><th>Product</th><th>Weight</th><th>Qty</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </section>
+
+          <section class="invoice-summary">
+            <div class="invoice-notes">
+              <span class="section-label">ORDER NOTE</span>
+              <div>${notes ? escapeHtml(notes) : "No additional instructions."}</div>
+              <strong>Thank you for choosing Mango Lover.</strong>
+            </div>
+            <div class="totals">
+              <div><span>Subtotal</span><strong>${formatMoney(subtotal)}</strong></div>
+              <div><span>Delivery fee</span><strong>${formatMoney(deliveryFee)}</strong></div>
+              <div class="grand-total"><span>Grand total</span><strong>${formatMoney(total)}</strong></div>
+              <div class="due-total"><span>Amount due</span><strong>${formatMoney(total)}</strong></div>
+            </div>
+          </section>
+
+          <footer>${escapeHtml(businessName)} · CUSTOMER COPY · KEEP FOR YOUR RECORDS</footer>
+        </section>`;
+};
+
+export function buildInvoiceHtml(
+  orders: InvoiceOrder[],
+  businessName = "Mango Lover BD",
+) {
+  const pages = orders.map((order) => invoicePage(order, businessName)).join("");
+
+  return `<!doctype html>
     <html>
       <head>
         <meta charset="utf-8" />
         <title>Invoice Print</title>
         <style>
-          @page { size: 75mm 100mm; margin: 0; }
+          @page { size: A4 portrait; margin: 0; }
           * { box-sizing: border-box; }
-          body {
-            margin: 0;
-            font-family: "Segoe UI", Arial, sans-serif;
-            color: #000;
-          }
-          .invoice {
-            width: 75mm;
-            height: 100mm;
-            padding: 4mm;
-            page-break-after: always;
-            font-size: 8.5px;
-            line-height: 1.2;
-            position: relative;
-          }
-          .invoice:last-child { page-break-after: auto; }
-          .fragile-badge {
-            position: absolute;
-            top: 2.5mm;
-            right: 2.5mm;
-            border: 2px solid #111;
-            background: #fff;
+          html, body { margin: 0; padding: 0; color: #000; background: #fff; }
+          body { font-family: Arial, "Noto Sans Bengali", sans-serif; }
+          .invoice-page {
+            width: 210mm;
+            height: 297mm;
+            padding: 14mm;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
+            page-break-after: always;
+            break-after: page;
+          }
+          .invoice-page:last-child { page-break-after: auto; break-after: auto; }
+          .invoice-header {
+            min-height: 34mm;
+            margin: -14mm -14mm 0;
+            padding: 10mm 14mm 8mm;
+            display: flex;
             align-items: center;
-            padding: 1.8mm 2mm;
-            gap: 0.9mm;
-            width: 19mm;
-            text-align: center;
+            justify-content: space-between;
+            background: #000;
+            color: #fff;
           }
-          .fragile-title {
-            display: block;
-            color: #cc0000;
-            font-size: 10.5px;
-            font-weight: 900;
-            letter-spacing: 0.5px;
-            line-height: 1;
+          .brand-block img { display: block; width: 58mm; max-height: 12mm; object-fit: contain; object-position: left center; filter: grayscale(1) brightness(0) invert(1); }
+          .brand-block span { display: block; margin-top: 2mm; font-size: 7px; font-weight: 700; letter-spacing: 0.24em; }
+          .invoice-heading { text-align: right; }
+          .invoice-title { font-size: 30px; line-height: 1; font-weight: 900; letter-spacing: 0.12em; }
+          .invoice-number { margin-top: 2mm; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
+          .metadata-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5mm; padding: 8mm 0 6mm; }
+          .metadata-field { min-width: 0; padding-bottom: 3mm; border-bottom: 1px solid #999; }
+          .metadata-field > span, .section-label { display: block; color: #555; font-size: 7px; line-height: 1; font-weight: 700; letter-spacing: 0.16em; }
+          .metadata-field strong { display: block; margin-top: 2mm; font-size: 12px; line-height: 1.15; overflow-wrap: anywhere; }
+          .identifier-field .barcode { display: block; width: 100%; height: 9mm; margin-top: 2mm; }
+          .detail-grid { display: grid; grid-template-columns: 1.4fr 1fr; border: 2px solid #000; }
+          .detail-panel { min-height: 42mm; padding: 6mm; font-size: 11px; line-height: 1.5; }
+          .detail-panel + .detail-panel { border-left: 1px solid #000; }
+          .detail-panel > strong { display: block; margin: 3mm 0 1.5mm; font-size: 15px; line-height: 1.2; }
+          .customer-contact { text-transform: uppercase; overflow-wrap: anywhere; }
+          .customer-address { max-width: 105mm; }
+          .payment-due { display: inline-block; margin: 0 0 2mm; padding: 1mm 2mm; border: 1px solid #000; font-size: 8px; font-weight: 800; letter-spacing: 0.1em; }
+          .products-section { margin-top: 8mm; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+          th, td { border: 1px solid #000; padding: 4mm 3mm; vertical-align: middle; overflow-wrap: anywhere; }
+          th { background: #000; color: #fff; text-align: left; text-transform: uppercase; font-size: 9px; letter-spacing: 0.12em; }
+          th:nth-child(1) { width: 56%; }
+          th:nth-child(2) { width: 30%; }
+          th:nth-child(3) { width: 14%; }
+          td.product { font-weight: 700; }
+          td.quantity, th:nth-child(3) { text-align: center; white-space: nowrap; }
+          .invoice-summary { display: grid; grid-template-columns: 1fr 72mm; gap: 12mm; margin-top: 8mm; }
+          .invoice-notes { color: #444; font-size: 10px; line-height: 1.5; }
+          .invoice-notes > div { margin-top: 3mm; white-space: pre-wrap; overflow-wrap: anywhere; }
+          .invoice-notes > strong { display: block; margin-top: 6mm; color: #000; }
+          .totals { font-size: 11px; }
+          .totals > div { display: flex; justify-content: space-between; gap: 6mm; padding: 2mm 0; }
+          .grand-total { margin-top: 2mm; padding-top: 4mm !important; border-top: 2px solid #000; font-size: 14px; }
+          .due-total { margin-top: 1mm; background: #000; color: #fff; padding: 4mm !important; font-size: 15px; text-transform: uppercase; }
+          footer { margin-top: auto; padding-top: 4mm; border-top: 1px solid #999; text-align: center; font-size: 8px; font-weight: 700; letter-spacing: 0.12em; }
+          @media print {
+            html, body { width: 210mm; }
+            .invoice-page { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
           }
-          .fragile-sub {
-            display: block;
-            color: #cc0000;
-            font-size: 6px;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-            line-height: 1.5;
-          }
-          .fragile-glass {
-            width: 17px;
-            height: 23px;
-          }
-          .brand { font-size: 16px; font-weight: 700; margin-bottom: 1.5mm; }
-          .meta { margin-bottom: 0.8mm; }
-          .meta span { display: inline-block; min-width: 17mm; }
-          .section-title { font-weight: 700; margin-top: 1.6mm; margin-bottom: 1mm; }
-          .line { margin-bottom: 0.8mm; word-break: break-word; }
-          .delivery-id-box {
-            display: inline-block;
-            border: 1.5px solid #000;
-            padding: 1.5mm 3mm;
-            font-size: 14px;
-            font-weight: 400;
-            letter-spacing: 0.3px;
-            margin-top: 1.5mm;
-            margin-bottom: 1.5mm;
-          }
-          hr { border: none; border-top: 1px solid #000; margin: 1.6mm 0; }
-          .table-head,
-          .table-row,
-          .total {
-            display: grid;
-            grid-template-columns: 1fr 8mm 14mm;
-            gap: 1mm;
-            align-items: start;
-            margin-bottom: 0.9mm;
-          }
-          .table-head { font-weight: 700; }
-          .table-head span:nth-child(2),
-          .table-row span:nth-child(2) { text-align: center; }
-          .table-head span:nth-child(3),
-          .table-row span:nth-child(3),
-          .total span:last-child { text-align: right; }
-          .total { grid-template-columns: 1fr 14mm; }
-          .total.grand { font-weight: 700; font-size: 9.5px; }
         </style>
       </head>
-      <body>${invoicePages}</body>
-    </html>
-  `;
+      <body>${pages}</body>
+    </html>`;
+}
 
-  // Use a hidden iframe to trigger native print dialog
+const waitForImages = (doc: Document) =>
+  Promise.all(
+    Array.from(doc.images).map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      });
+    }),
+  );
+
+export function printInvoice(orders: InvoiceOrder[], businessName?: string) {
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -563,27 +310,36 @@ export const printInvoice = (orders: Order[], businessName?: string) => {
   iframe.style.width = "0";
   iframe.style.height = "0";
   iframe.style.border = "none";
+  iframe.setAttribute("title", "Invoice print frame");
   document.body.appendChild(iframe);
 
   const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!iframeDoc) {
-    document.body.removeChild(iframe);
-    generateInvoice(orders, businessName).catch(() => {});
-    return;
+  const iframeWindow = iframe.contentWindow;
+  const removeIframe = () => {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+  };
+
+  if (!iframeDoc || !iframeWindow || typeof iframeWindow.print !== "function") {
+    removeIframe();
+    throw new Error("Unable to prepare invoices for printing");
   }
 
-  iframeDoc.open();
-  iframeDoc.write(html);
-  iframeDoc.close();
+  try {
+    iframeDoc.open();
+    iframeDoc.write(buildInvoiceHtml(orders, businessName));
+    iframeDoc.close();
+  } catch {
+    removeIframe();
+    throw new Error("Unable to prepare invoices for printing");
+  }
 
-  iframe.onload = () => {
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      // Clean up after a delay
-      setTimeout(() => {
-        try { document.body.removeChild(iframe); } catch (_) { /* iframe already removed */ }
+  void waitForImages(iframeDoc).then(() => {
+    window.setTimeout(() => {
+      iframeWindow.focus();
+      iframeWindow.print();
+      window.setTimeout(() => {
+        removeIframe();
       }, 5000);
-    }, 300);
-  };
-};
+    }, 150);
+  });
+}

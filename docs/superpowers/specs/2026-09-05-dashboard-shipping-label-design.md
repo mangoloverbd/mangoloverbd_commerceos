@@ -19,29 +19,38 @@ Each label contains:
 2. A scannable Code 128 barcode.
 3. A prominent CN value.
 4. Order number and customer name.
-5. Customer phone number, delivery address, and COD amount.
+5. Customer phone number and COD amount. The delivery address is intentionally omitted.
 6. A product table with Product, Weight, and Quantity columns. The selected variant label is displayed as Weight.
 
 The barcode and CN value use the courier consignment ID shown in fulfillment, falling back to the tracking code.
 
 ## Recipient Details Layout
 
-Use the approved **Recipient first** layout for the customer-details section:
+Use the approved **Balanced stack** layout for the customer-details section. This supersedes the earlier Recipient-first selection:
 
-1. Start with a compact metadata row: `ORDER #<number>` on the left and an outlined `COD ৳<amount>` box on the right.
-2. Separate the metadata row from the recipient with one thin solid rule. Do not use dashed separators in this section.
-3. Add a small uppercase `DELIVER TO` eyebrow below the rule.
-4. Show the customer name as the largest, boldest text in the section. Use uppercase styling for faster parcel identification.
-5. Show the phone number directly below the name in large bold text. Group an 11-digit Bangladeshi number as five digits followed by six digits for readability, without changing its value.
-6. Show the address beneath the phone at full width with enough line height to support wrapping.
+1. Start with two equal-width columns. The left column contains a small uppercase `ORDER` label above the bold `#<number>` value. The right column contains a small uppercase `COD` label above the bold `৳<amount>` value.
+2. Separate the two-column metadata row from the customer stack with one thin solid rule. Do not use dashed separators in this section.
+3. Add a small uppercase `CUSTOMER` eyebrow below the rule.
+4. Show the customer name and phone number together in one bold, no-wrap contact row: `<UPPERCASE NAME> - <PHONE>`.
+5. Use a normal contact-row size of 15px, slightly smaller than the previous separate name and phone lines. Render the phone number without inserting spaces.
+6. Select a smaller contact-row class from the combined display-text length so longer names remain on one line: 13px above 32 characters, 11px above 40 characters, and 9px above 48 characters.
+7. Do not render an address label or delivery address on the shipping label.
 
-The layout removes the separate `Name:`, `Phone:`, and `Address:` labels because position and hierarchy identify those values. The COD box retains its `COD` label so the collection amount remains unmistakable.
+The balanced stack uses compact labels to make each value immediately recognizable. It does not use an outlined COD box or a `DELIVER TO` eyebrow.
 
 ## Product Data
 
 The label uses each order item's selected variant label as its Weight value. This matches the storefront flow where customers select a weight variant. It does not add a separate calculated-weight column or require a database or API schema change.
 
 Legacy orders without structured order items fall back to the existing product description and order quantity. Unknown variants display an em dash in the Weight column.
+
+## Vertical Space Allocation
+
+- Keep the logo, barcode, CN, Order/COD, and customer contact row together in a compact summary block using no more space than needed.
+- Compress the summary's vertical gaps, logo, and barcode while preserving barcode scanability and readable customer contact information.
+- Start the product table immediately after the summary and make the remaining label height available to it.
+- Use compact table typography and approximately 0.29-inch product rows so an order containing up to five normal product entries, including wrapped bilingual names, fits within one label.
+- Do not split one order across multiple labels or change the one-order-per-page rule.
 
 ## Validation and Errors
 
