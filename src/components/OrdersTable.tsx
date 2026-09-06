@@ -35,6 +35,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
+import { canEnterPrint, courierSendBlockReason, isPrintStatus } from "@/lib/orderTransitions";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
@@ -578,6 +579,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     } catch (error) {
       console.error("Error updating order status:", error);
       console.error("Error updating order status:", error);
+      const message = error instanceof Error ? error.message : "Could not save status";
       toast.custom((t) => (
         <DarkToast className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
@@ -585,7 +587,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Update Failed</span>
-            <span className="text-sm font-bold text-white">Could not save status</span>
+            <span className="text-sm font-bold text-white">{message}</span>
           </div>
         </DarkToast>
       ), { fit: true });
@@ -1074,6 +1076,12 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
         <TableBody>
             {orders.map((order, idx) => {
               const { primary, lines, names } = productSummary(order);
+              const statusOptions = isPrintStatus(order.status)
+                ? ["print", "confirmed", "cancelled"]
+                : canEnterPrint(order.status)
+                  ? ["pending", "confirmed", "print", "cancelled"]
+                  : ["pending", "confirmed", "cancelled"];
+              const sendBlockReason = courierSendBlockReason(order.status);
 
               return (
                 <TableRow
@@ -1270,7 +1278,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                         </PopoverTrigger>
                         <PopoverContent className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="center">
                           <div className="flex flex-col gap-1">
-                            {["pending", "confirmed", "cancelled"].map((st) => (
+                            {statusOptions.map((st) => (
                               <button
                                 key={st}
                                 onClick={() => handleStatusChange(order, st)}
@@ -1313,7 +1321,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                             <div className="flex flex-col gap-1">
                               <button
                                 onClick={() => handleSendToCourier(order)}
-                                disabled={sendingIds.has(order.id)}
+                                disabled={sendingIds.has(order.id) || sendBlockReason !== null}
                                 className="flex items-center justify-center gap-2 h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all hover:bg-blue-50 text-blue-600 disabled:opacity-50"
                               >
                                 {sendingIds.has(order.id) && <Spinner size="sm" />}
@@ -1321,12 +1329,15 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                               </button>
                               <button
                                 onClick={() => handleSendToPathao(order)}
-                                disabled={sendingPathaoIds.has(order.id)}
+                                disabled={sendingPathaoIds.has(order.id) || sendBlockReason !== null}
                                 className="flex items-center justify-center gap-2 h-8 w-full text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all hover:bg-red-50 text-[#D82128] disabled:opacity-50"
                               >
                                 {sendingPathaoIds.has(order.id) && <Spinner size="sm" />}
                                 <PathaoLogo className="h-5 w-auto" />
                               </button>
+                              {sendBlockReason !== null && (
+                                <p className="px-2 pb-1 pt-1 text-center text-[10px] font-medium text-muted-foreground">{sendBlockReason}</p>
+                              )}
                             </div>
                           </PopoverContent>
                         </Popover>
