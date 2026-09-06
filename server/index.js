@@ -6219,7 +6219,7 @@ app.patch("/api/orders/:id", async (req, res) => {
       const fromApproved = fromStatus === "approved" || fromStatus === "confirmed";
       const toApproved = toStatus === "approved" || toStatus === "confirmed";
       const toCancelled = toStatus === "cancelled" || toStatus === "canceled";
-      if (toStatus === "print" && !fromApproved) {
+      if (toStatus === "print" && !fromApproved && fromStatus !== "print") {
         return res.status(400).json({ error: "Only Approved orders can move to Print" });
       }
       if (fromStatus === "print" && !(toStatus === "print" || toApproved || toCancelled)) {
