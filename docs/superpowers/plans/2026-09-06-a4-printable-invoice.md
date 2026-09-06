@@ -31,23 +31,23 @@
 - `buildInvoiceHtml`: `(orders: InvoiceOrder[], businessName?: string) => string`
 - `printInvoice`: `(orders: InvoiceOrder[], businessName?: string) => void`
 
-- [ ] **Step 1: Write failing invoice HTML tests**
+- [x] **Step 1: Write failing invoice HTML tests**
 
 Create tests using a structured two-item order. Assert A4 portrait CSS, 210mm by 297mm sizing, one `.invoice-page` per order, Bold Shipping header, date/status/courier/CN, customer/continuous phone/cleaned address, Product/Weight/Qty table, notes, subtotal/delivery/grand-total/due values, and HTML escaping. Add a tracking-only barcode case and a no-identifier case that renders `NOT ASSIGNED` without an SVG barcode.
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run `npm test -- src/test/invoicePrinter.test.ts`; expect failure because `buildInvoiceHtml` and structured invoice rows do not exist.
 
-- [ ] **Step 3: Replace the PDF generator with the HTML builder**
+- [x] **Step 3: Replace the PDF generator with the HTML builder**
 
 Implement the exported types and pure builder. Resolve barcode data from `consignment_id` then `tracking_code`, generate Code 128 locally, normalize phone whitespace, clean addresses, escape dynamic text, prefer structured item rows, and retain legacy comma/inline-quantity fallback. Render the approved A4 sections and print CSS.
 
-- [ ] **Step 4: Implement native printing**
+- [x] **Step 4: Implement native printing**
 
 Implement `printInvoice()` with a titled hidden iframe. Write `buildInvoiceHtml()` output, wait for images, call `focus()` and `print()`, clean up after five seconds, and throw if iframe document setup fails. Do not call any download fallback.
 
-- [ ] **Step 5: Verify green and commit**
+- [x] **Step 5: Verify green and commit**
 
 Run `npm test -- src/test/invoicePrinter.test.ts` and `git diff --check`, then commit as `feat: redesign invoices for A4 printing`.
 
