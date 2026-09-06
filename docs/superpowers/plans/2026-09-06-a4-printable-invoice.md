@@ -66,23 +66,23 @@ Run `npm test -- src/test/invoicePrinter.test.ts` and `git diff --check`, then c
 - Consumes: `printShippingLabels()` from `src/utils/shippingLabelPrinter.ts`
 - Produces: exported `toInvoiceOrder()` mapping with structured printable items
 
-- [ ] **Step 1: Write failing wiring and mapping tests**
+- [x] **Step 1: Write failing wiring and mapping tests**
 
 Assert Dashboard Invoice dynamically imports and calls `printInvoice`, Dashboard Print still calls `printShippingLabels`, Inbox Invoice calls `printInvoice`, and Inbox Print dynamically imports and calls `printShippingLabels`. Test `toInvoiceOrder()` maps product text, quantity, notes, delivery rate, consignment ID, and tracking code.
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run `npm test -- src/test/invoiceActionWiring.test.ts src/test/shippingLabelPrinter.test.ts`; expect failures because Invoice still downloads and Inbox Print still prints the old invoice.
 
-- [ ] **Step 3: Update Dashboard actions**
+- [x] **Step 3: Update Dashboard actions**
 
 Replace the loading/download invoice handler with a native print handler that dynamically imports `printInvoice`, calls it for selected orders, and reports initialization errors. Keep the adjacent Print action connected to shipping labels.
 
-- [ ] **Step 4: Update Inbox mapping and actions**
+- [x] **Step 4: Update Inbox mapping and actions**
 
 Remove the `generateInvoice` import and download handler. Extend `toInvoiceOrder()` with structured items, notes, delivery rate, and courier identifiers. Connect Invoice to A4 invoice printing and Print to shipping-label printing, including the missing-CN/tracking warning.
 
-- [ ] **Step 5: Verify green and commit**
+- [x] **Step 5: Verify green and commit**
 
 Run `npm test -- src/test/invoiceActionWiring.test.ts src/test/shippingLabelPrinter.test.ts src/test/invoicePrinter.test.ts` and `git diff --check`, then commit as `feat: print invoices from order actions`.
 

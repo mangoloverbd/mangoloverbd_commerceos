@@ -216,7 +216,7 @@ describe("shipping label HTML", () => {
 });
 
 describe("shipping label action wiring", () => {
-  it("routes only the Dashboard Print action to shipping labels", () => {
+  it("routes both order-screen Print actions to shipping labels", () => {
     const dashboardSource = readFileSync(
       resolve(process.cwd(), "src/components/OrdersTable.tsx"),
       "utf8",
@@ -236,9 +236,8 @@ describe("shipping label action wiring", () => {
     expect(orderItemType).not.toContain("weight_kg");
     expect(dashboardSource).toContain("printShippingLabels(selectedOrders, orgName)");
     expect(inboxSource).toContain(
-      'import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";',
+      'const { printShippingLabels } = await import("@/utils/shippingLabelPrinter");',
     );
-    expect(inboxSource).toContain("printInvoice(selectedOrders");
-    expect(inboxSource).not.toContain("printShippingLabels");
+    expect(inboxSource).toContain("printShippingLabels(selectedOrders, orgName)");
   });
 });

@@ -25,7 +25,7 @@ import {
   Trash, Check, MapPin,
 } from "@phosphor-icons/react";
 import { AlertTriangle, HelpCircle, ShieldAlert, ShieldCheck as LucideShieldCheck } from "lucide-react";
-import { generateInvoice, printInvoice } from "@/utils/invoiceGenerator";
+import { printInvoice } from "@/utils/invoiceGenerator";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
@@ -51,18 +51,23 @@ interface InboxOrder {
   delivery_rate?: number | null;
 }
 
-function parseNotes(notes: string): { phone: string; address: string } {
+function parseNotes(notes: string): { phone: string; address: string; orderNote: string } {
   const phone = notes?.match(/Phone:\s*([^,\n]+)/i)?.[1]?.trim() || "";
-  const address = notes?.match(/Address:\s*(.+)/i)?.[1]?.trim() || "";
-  return { phone, address };
+  const address = notes?.match(/Address:\s*([^\n]+)/i)?.[1]?.trim() || "";
+  const orderNote = (notes || "")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:Phone|Address):/i.test(line))
+    .join("\n")
+    .trim();
+  return { phone, address, orderNote };
 }
 
 function itemsToProduct(items: InboxOrder["items"]): string {
   return (items || []).map((i) => `${i.quantity}x ${i.product}`).join(", ");
 }
 
-function toInvoiceOrder(o: InboxOrder) {
-  const { phone, address } = parseNotes(o.notes);
+export function toInvoiceOrder(o: InboxOrder, variantLabels: Record<string, string> = {}) {
+  const { phone, address, orderNote } = parseNotes(o.notes);
   const items = o.items || [];
   const totalQty = items.reduce((a, i) => a + (i.quantity || 1), 0);
   return {
@@ -76,11 +81,17 @@ function toInvoiceOrder(o: InboxOrder) {
     price: o.total_price,
     status: o.status,
     created_at: o.created_at,
-    delivery_rate: null,
+    delivery_rate: o.delivery_rate ?? null,
     courier_status: o.courier_status || null,
-    consignment_id: null,
+    consignment_id: o.consignment_id || null,
     tracking_code: o.tracking_code || null,
     courier_message: o.courier_message || null,
+    notes: orderNote || null,
+    items: items.map((item) => ({
+      product_name: item.product || "Item",
+      variant_name: item.variant_id ? variantLabels[item.variant_id] || null : null,
+      quantity: item.quantity || 1,
+    })),
   };
 }
 
@@ -714,48 +725,34 @@ export default function InboxOrders() {
   };
 
   // ─── Invoice ────────────────────────────────────────────────────────────────
-  const handleGenerateInvoice = async () => {
-    const selectedOrders = allOrders.filter((o) => selectedIds.has(o.id)).map(toInvoiceOrder);
+  const handleGenerateInvoice = () => {
+    const selectedOrders = allOrders
+      .filter((o) => selectedIds.has(o.id))
+      .map((order) => toInvoiceOrder(order, variantLabelById));
     if (selectedOrders.length === 0) return;
-    const toastId = toast.custom(() => (
-      <DarkToast className="flex items-center gap-4">
-        <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-          <Spinner size="lg" className="text-white" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Processing</span>
-          <span className="text-sm font-bold text-white">Generating Invoices...</span>
-        </div>
-      </DarkToast>
-    ), { duration: Infinity, fit: true });
     try {
-      await new Promise((r) => setTimeout(r, 100));
-      await generateInvoice(selectedOrders as Parameters<typeof generateInvoice>[0], orgName);
-      toast.dismiss(toastId);
-      toast.custom(() => (
-        <DarkToast className="flex items-center gap-4">
-          <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
-            <FileText size={20} weight="light" className="text-white" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Complete</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-white">{selectedOrders.length} Invoices</span>
-              <span className="text-xs text-white/60 font-medium">Generated</span>
-            </div>
-          </div>
-        </DarkToast>
-      ), { fit: true });
+      printInvoice(selectedOrders, orgName);
     } catch {
-      toast.dismiss(toastId);
-      toast.error("Failed to generate invoice");
+      toast.error("Failed to prepare invoices for printing");
     }
   };
 
-  const handlePrintInvoice = () => {
-    const selectedOrders = allOrders.filter((o) => selectedIds.has(o.id)).map(toInvoiceOrder);
+  const handlePrintInvoice = async () => {
+    const selectedOrders = allOrders
+      .filter((o) => selectedIds.has(o.id))
+      .map((order) => toInvoiceOrder(order, variantLabelById));
     if (selectedOrders.length === 0) return;
-    try { printInvoice(selectedOrders as Parameters<typeof printInvoice>[0], orgName); } catch { toast.error("Failed to print"); }
+    try {
+      const { printShippingLabels } = await import("@/utils/shippingLabelPrinter");
+      const result = printShippingLabels(selectedOrders, orgName);
+      if (!result.ok) {
+        toast.error(
+          `Send ${result.missingOrderNumbers.join(", ")} to a courier before printing the label`,
+        );
+      }
+    } catch {
+      toast.error("Failed to print shipping labels");
+    }
   };
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
