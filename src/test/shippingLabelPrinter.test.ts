@@ -73,7 +73,7 @@ describe("shipping label HTML", () => {
     expect(document.querySelectorAll("iframe")).toHaveLength(frameCount);
   });
 
-  it("renders recipient details with the approved recipient-first hierarchy", () => {
+  it("renders recipient details with the approved balanced-stack hierarchy", () => {
     const result = buildShippingLabelHtml([makeOrder()], "Mango Lover BD");
 
     expect(result.ok).toBe(true);
@@ -84,13 +84,22 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("999");
     expect(result.html).toContain('<div class="shipment-meta">');
     expect(result.html).toContain(
-      '<span class="order-reference">ORDER <strong>#ML567907</strong></span>',
+      '<div class="meta-field"><span>ORDER</span><strong>#ML567907</strong></div>',
     );
-    expect(result.html).toContain('<span class="cod-box">COD ৳1,580</span>');
-    expect(result.html).toContain('<div class="deliver-to">DELIVER TO</div>');
+    expect(result.html).toContain(
+      '<div class="meta-field"><span>COD</span><strong>৳1,580</strong></div>',
+    );
+    expect(result.html).toContain('<div class="customer-label">CUSTOMER</div>');
     expect(result.html).toContain('<div class="recipient-name">Rahim Uddin</div>');
     expect(result.html).toContain('<div class="recipient-phone">01700 000000</div>');
-    expect(result.html).toContain('<div class="recipient-address">Dhaka</div>');
+    expect(result.html).toContain(
+      '<div class="recipient-address"><div class="address-label">ADDRESS</div><div>Dhaka</div></div>',
+    );
+    expect(result.html).toContain(
+      ".shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));",
+    );
+    expect(result.html).not.toContain('class="cod-box"');
+    expect(result.html).not.toContain("DELIVER TO");
     expect(result.html).not.toContain("<b>Name:</b>");
     expect(result.html).not.toContain("<b>Phone:</b>");
     expect(result.html).not.toContain("<b>Address:</b>");

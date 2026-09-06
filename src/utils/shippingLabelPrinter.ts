@@ -137,13 +137,13 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
       <div class="cn"><span>CN:</span> ${escapeHtml(cn)}</div>
       <div class="recipient-details">
         <div class="shipment-meta">
-          <span class="order-reference">ORDER <strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></span>
-          <span class="cod-box">COD ${formatCod(order)}</span>
+          <div class="meta-field"><span>ORDER</span><strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></div>
+          <div class="meta-field"><span>COD</span><strong>${formatCod(order)}</strong></div>
         </div>
-        <div class="deliver-to">DELIVER TO</div>
+        <div class="customer-label">CUSTOMER</div>
         <div class="recipient-name">${customerName}</div>
         <div class="recipient-phone">${phone}</div>
-        <div class="recipient-address">${address}</div>
+        <div class="recipient-address"><div class="address-label">ADDRESS</div><div>${address}</div></div>
       </div>
       <table>
         <thead>
@@ -201,14 +201,15 @@ export function buildShippingLabelHtml(
             .cn { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 0.045in 0; text-align: center; font-size: 18px; line-height: 1; font-weight: 800; letter-spacing: 0.6px; }
             .cn span { font-size: 15px; }
             .recipient-details { padding: 0.055in 0.025in 0.06in; border-bottom: 1px solid #000; }
-            .shipment-meta { display: flex; align-items: center; justify-content: space-between; gap: 0.08in; padding-bottom: 0.045in; border-bottom: 1px solid #000; }
-            .order-reference { min-width: 0; font-size: 7px; line-height: 1; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap; }
-            .order-reference strong { font-size: 11px; letter-spacing: 0; }
-            .cod-box { flex: 0 0 auto; border: 2px solid #000; padding: 0.035in 0.055in; font-size: 11px; line-height: 1; font-weight: 800; white-space: nowrap; }
-            .deliver-to { margin-top: 0.045in; font-size: 6.5px; line-height: 1; font-weight: 700; letter-spacing: 0.18em; }
-            .recipient-name { margin-top: 0.025in; font-size: 18px; line-height: 1.05; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; }
-            .recipient-phone { margin-top: 0.025in; font-size: 14px; line-height: 1; font-weight: 700; letter-spacing: 0.04em; }
-            .recipient-address { margin-top: 0.04in; font-size: 9px; line-height: 1.2; overflow-wrap: anywhere; }
+            .shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.08in; padding-bottom: 0.05in; border-bottom: 1px solid #000; }
+            .meta-field { min-width: 0; }
+            .meta-field span, .customer-label, .address-label { display: block; font-size: 6.5px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
+            .meta-field strong { display: block; margin-top: 0.025in; font-size: 13px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }
+            .customer-label { margin-top: 0.05in; }
+            .recipient-name { margin-top: 0.025in; font-size: 17px; line-height: 1.05; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; }
+            .recipient-phone { margin-top: 0.035in; font-size: 18px; line-height: 1; font-weight: 800; letter-spacing: 0.04em; }
+            .recipient-address { margin-top: 0.055in; padding-top: 0.045in; border-top: 1px solid #000; font-size: 10px; line-height: 1.22; overflow-wrap: anywhere; }
+            .address-label { margin-bottom: 0.03in; }
             table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.045in; font-size: 7.3px; line-height: 1.1; }
             th, td { border: 1px solid #000; padding: 0.026in 0.02in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
             th { background: #000; color: #fff; text-transform: uppercase; font-size: 6.7px; letter-spacing: 0.25px; }
