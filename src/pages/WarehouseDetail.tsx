@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   Buildings,
+  CaretDown,
   MapPin,
   Package,
   PencilSimple,
@@ -13,7 +14,7 @@ import {
   UserCircle,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { Plus as PlusIcon, Search, ShieldCheck } from "lucide-react";
+import { Plus as PlusIcon, Search } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { OrdersTable, type Order } from "@/components/OrdersTable";
 import {
@@ -28,15 +29,22 @@ import { Chip } from "@/components/base/badges/chip";
 import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { RichButton } from "@/components/ui/rich-button";
 import { PopButton } from "@/components/ui/pop-button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { UpdateStatusIcon } from "@/components/UpdateStatusIcon";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { toast, DarkToast } from "@/components/ui/sonner";
+import { toast } from "@/components/ui/sonner";
 import { WAREHOUSES_QUERY_KEY, type Warehouse } from "@/hooks/useWarehouses";
 import {
   countOrdersByStatus,
   filterOrdersByStatus,
   type OrderStatusFilter,
 } from "@/lib/orderStatusFilters";
+import { planBulkStatusChange } from "@/lib/orderTransitions";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 
 const SYS = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
@@ -76,7 +84,9 @@ export default function WarehouseDetail() {
   const [orderPageSize, setOrderPageSize] = useOrderPageSize("warehouse-order-page-size");
   const [orderPage, setOrderPage] = useState(0);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
-  const [checkingFraud, setCheckingFraud] = useState(false);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   const detail = useQuery<Detail>({
     queryKey: ["warehouse", id],
@@ -99,32 +109,42 @@ export default function WarehouseDetail() {
     },
   });
 
-  async function checkFraud() {
-    setCheckingFraud(true);
+  async function applyBulkStatus(target: string, targetLabel: string) {
+    if (bulkUpdating) return;
+    setBulkMenuOpen(false);
+    const { validIds, skipped } = planBulkStatusChange(warehouseOrders, selectedOrderIds, target);
+    if (validIds.length === 0) {
+      toast.error(skipped > 0 ? `Selected orders can't move to ${targetLabel}` : "Select orders first");
+      return;
+    }
+    setBulkUpdating(true);
+    let moved = 0;
+    let failed = 0;
     try {
-      const response = await apiFetch("/api/check-fraud", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const body = await response.json();
-      if (!response.ok) throw await responseError(response, "Fraud check failed");
+      for (const orderId of validIds) {
+        try {
+          const response = await apiFetch(`/api/orders/${orderId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: target }),
+          });
+          if (!response.ok) throw await responseError(response, "Failed to update status");
+          await response.json().catch(() => ({}));
+          moved += 1;
+        } catch {
+          failed += 1;
+        }
+      }
       await orders.refetch();
-      toast.custom(() => (
-        <DarkToast className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/15">
-            <ShieldCheck className="h-4 w-4 text-blue-400" />
-          </div>
-          <div>
-            <p className="text-[13px] font-medium text-white">{body?.successful ?? 0} verified</p>
-            <p className="text-[11px] text-white/50">of {body?.checked ?? 0} checked</p>
-          </div>
-        </DarkToast>
-      ), { fit: true });
-    } catch {
-      toast.error("Fraud check failed");
+      const skippedTotal = skipped + failed;
+      if (moved > 0) {
+        toast.success(`${moved} order${moved === 1 ? "" : "s"} moved to ${targetLabel}${skippedTotal > 0 ? `, ${skippedTotal} skipped` : ""}`);
+        setSelectedOrderIds(new Set());
+      } else {
+        toast.error(`No orders moved to ${targetLabel}`);
+      }
     } finally {
-      setCheckingFraud(false);
+      setBulkUpdating(false);
     }
   }
 
@@ -312,17 +332,40 @@ export default function WarehouseDetail() {
                 <PlusIcon className="h-3.5 w-3.5" />
                 Create Order
               </PopButton>
-              <PopButton
-                color="sky"
-                size="sm"
-                onClick={() => void checkFraud()}
-                disabled={checkingFraud}
-                className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
-                data-testid="button-verify-warehouse-orders"
-              >
-                {checkingFraud ? <Spinner size="sm" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                Verify All
-              </PopButton>
+              <Popover open={bulkMenuOpen} onOpenChange={setBulkMenuOpen}>
+                <PopoverTrigger asChild>
+                  <PopButton
+                    color="sky"
+                    size="sm"
+                    disabled={bulkUpdating || selectedOrderIds.size === 0}
+                    className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                    data-testid="button-bulk-status"
+                  >
+                    {bulkUpdating ? <Spinner size="sm" /> : <UpdateStatusIcon className="h-3.5 w-3.5" />}
+                    Update Status
+                    <CaretDown weight="bold" className={`h-3 w-3 transition-transform duration-200 ${bulkMenuOpen ? "rotate-180" : ""}`} />
+                  </PopButton>
+                </PopoverTrigger>
+                <PopoverContent data-testid="bulk-status-menu" className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="end">
+                  <div className="flex flex-col gap-1">
+                    {[
+                      { id: "pending", label: "Pending" },
+                      { id: "confirmed", label: "Approved" },
+                      { id: "print", label: "Print" },
+                      { id: "cancelled", label: "Cancelled" },
+                    ].map((target) => (
+                      <button
+                        key={target.id}
+                        onClick={() => void applyBulkStatus(target.id, target.label)}
+                        disabled={bulkUpdating}
+                        className="flex h-9 w-full items-center rounded-xl border border-transparent px-3 text-left text-xs font-medium capitalize transition-all text-foreground hover:border-black/10 hover:bg-black/[0.04] disabled:opacity-40"
+                      >
+                        {target.label}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
           <OrderStatusSegmentedControl
@@ -338,7 +381,7 @@ export default function WarehouseDetail() {
             <div className="py-16 text-center"><WarningCircle size={28} weight="light" className="mx-auto text-black/20" /><p className="mt-2 text-[12px] text-black/45">Couldn’t load warehouse orders.</p><button type="button" onClick={() => void orders.refetch()} className="mt-3 text-[12px] font-medium underline underline-offset-4">Try again</button></div>
           ) : (
             <>
-              <OrdersTable orders={visibleWarehouseOrders} loading={orders.isLoading} onStatusUpdate={() => void orders.refetch()} onOrderUpdate={() => void orders.refetch()} />
+              <OrdersTable orders={visibleWarehouseOrders} loading={orders.isLoading} onStatusUpdate={() => void orders.refetch()} onOrderUpdate={() => void orders.refetch()} selectedIds={selectedOrderIds} onSelectionChange={setSelectedOrderIds} />
               <OrderTablePagination
                 page={orderSafePage}
                 pageSize={orderPageSize}

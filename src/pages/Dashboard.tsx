@@ -17,7 +17,7 @@ import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegm
 import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import {
-  ShieldCheck, Search, AlertTriangle,
+  Search, AlertTriangle,
   Info, Check, X, Plus,
 } from "lucide-react";
 import { CaretDown } from "@phosphor-icons/react";
@@ -31,6 +31,7 @@ import { TextEffect } from "@/components/ui/text-effect";
 import { MetricNumberFlow } from "@/components/ui/number-flow";
 import { TextShimmer } from "@/components/ui/text-shimmer";
 import { PopButton } from "@/components/ui/pop-button";
+import { UpdateStatusIcon } from "@/components/UpdateStatusIcon";
 import {
   Popover,
   PopoverContent,
@@ -1066,7 +1067,7 @@ export default function Dashboard() {
                   className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
                   data-testid="button-bulk-status"
                 >
-                  {bulkUpdating ? <Spinner size="sm" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  {bulkUpdating ? <Spinner size="sm" /> : <UpdateStatusIcon className="h-3.5 w-3.5" />}
                   Update Status
                   <CaretDown weight="bold" className={cn("h-3 w-3 transition-transform duration-200", bulkMenuOpen && "rotate-180")} />
                 </PopButton>

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -190,23 +190,34 @@ describe("warehouse detail", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("verifies all routed orders from the header", async () => {
+  it("moves selected routed orders from the header status menu", async () => {
     const user = userEvent.setup();
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
       if (url === "/api/orders?warehouse_id=main") return { ok: true, json: async () => ({ orders: warehouseOrders }) };
-      if (url === "/api/check-fraud" && init?.method === "POST") {
-        return { ok: true, json: async () => ({ successful: 2, checked: 2 }) };
+      if (url === "/api/orders/o1" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        return { ok: true, json: async () => ({ success: true, order: { ...warehouseOrders[0], status: body.status } }) };
       }
       return { ok: true, json: async () => ({}) };
     });
     renderDetail();
 
-    await user.click(await screen.findByRole("button", { name: "Verify All" }));
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
-      "/api/check-fraud",
-      expect.objectContaining({ method: "POST" }),
-    ));
+    const trigger = await screen.findByRole("button", { name: "Update Status" });
+    expect(trigger).toBeDisabled();
+
+    await user.click(screen.getByTestId("checkbox-order-o1"));
+    expect(trigger).not.toBeDisabled();
+
+    await user.click(trigger);
+    await user.click(within(screen.getByTestId("bulk-status-menu")).getByRole("button", { name: "Cancelled" }));
+
+    await waitFor(() => {
+      const patches = apiFetch.mock.calls.filter(([url, init]) => url === "/api/orders/o1" && init?.method === "PATCH");
+      expect(patches).toHaveLength(1);
+      expect(JSON.parse(String(patches[0][1]?.body))).toEqual({ status: "cancelled" });
+    });
+    expect(screen.getByRole("button", { name: "Update Status" })).toBeDisabled();
   });
 
   it("opens the add-products picker and assigns the selection", async () => {
