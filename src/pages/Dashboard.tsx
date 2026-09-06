@@ -20,6 +20,7 @@ import {
   ShieldCheck, Search, AlertTriangle,
   Info, Check, X, Plus,
 } from "lucide-react";
+import { CaretDown } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -416,6 +417,7 @@ export default function Dashboard() {
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
@@ -609,6 +611,7 @@ export default function Dashboard() {
 
   const applyBulkStatus = async (target: string, targetLabel: string) => {
     if (bulkUpdating) return;
+    setBulkMenuOpen(false);
     const { validIds, skipped } = planBulkStatusChange(orders, selectedOrderIds, target);
     if (validIds.length === 0) {
       toast.error(skipped > 0 ? `Selected orders can't move to ${targetLabel}` : "Select orders first");
@@ -1054,7 +1057,7 @@ export default function Dashboard() {
               Create Order
             </PopButton>
 
-            <Popover>
+            <Popover open={bulkMenuOpen} onOpenChange={setBulkMenuOpen}>
               <PopoverTrigger asChild>
                 <PopButton
                   color="sky"
@@ -1065,6 +1068,7 @@ export default function Dashboard() {
                 >
                   {bulkUpdating ? <Spinner size="sm" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                   Update Status
+                  <CaretDown weight="bold" className={cn("h-3 w-3 transition-transform duration-200", bulkMenuOpen && "rotate-180")} />
                 </PopButton>
               </PopoverTrigger>
               <PopoverContent data-testid="bulk-status-menu" className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="end">

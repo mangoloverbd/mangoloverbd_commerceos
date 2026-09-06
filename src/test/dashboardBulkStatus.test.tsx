@@ -143,4 +143,17 @@ describe("dashboard bulk status button", () => {
     const patches = apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH");
     expect(patches).toHaveLength(0);
   });
+
+  it("shows a dropdown chevron that rotates open", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+
+    await screen.findByRole("button", { name: "Update Status" });
+    await user.click(screen.getByTestId("checkbox-order-approved-1"));
+    expect(screen.getByRole("button", { name: "Update Status" }).innerHTML).not.toContain("rotate-180");
+
+    await user.click(screen.getByRole("button", { name: "Update Status" }));
+    expect(await screen.findByTestId("bulk-status-menu")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update Status" }).innerHTML).toContain("rotate-180");
+  });
 });
