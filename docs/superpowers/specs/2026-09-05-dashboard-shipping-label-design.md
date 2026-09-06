@@ -19,7 +19,7 @@ Each label contains:
 2. A scannable Code 128 barcode.
 3. A prominent CN value.
 4. Order number and customer name.
-5. Customer phone number, delivery address, and COD amount.
+5. Customer phone number and COD amount. The delivery address is intentionally omitted.
 6. A product table with Product, Weight, and Quantity columns. The selected variant label is displayed as Weight.
 
 The barcode and CN value use the courier consignment ID shown in fulfillment, falling back to the tracking code.
@@ -32,9 +32,9 @@ Use the approved **Balanced stack** layout for the customer-details section. Thi
 2. Separate the two-column metadata row from the customer stack with one thin solid rule. Do not use dashed separators in this section.
 3. Add a small uppercase `CUSTOMER` eyebrow below the rule.
 4. Show the customer name and phone number together in one bold, no-wrap contact row: `<UPPERCASE NAME> - <PHONE>`.
-5. Use a normal contact-row size of 15px, slightly smaller than the previous separate name and phone lines. Group an 11-digit Bangladeshi number as five digits followed by six digits for readability, without changing its value.
+5. Use a normal contact-row size of 15px, slightly smaller than the previous separate name and phone lines. Render the phone number without inserting spaces.
 6. Select a smaller contact-row class from the combined display-text length so longer names remain on one line: 13px above 32 characters, 11px above 40 characters, and 9px above 48 characters.
-7. Separate the address with one thin solid rule. Add a small uppercase `ADDRESS` label, then show the full-width address with enough line height to support wrapping.
+7. Do not render an address label or delivery address on the shipping label.
 
 The balanced stack uses compact labels to make each value immediately recognizable. It does not use an outlined COD box or a `DELIVER TO` eyebrow.
 
@@ -46,8 +46,8 @@ Legacy orders without structured order items fall back to the existing product d
 
 ## Vertical Space Allocation
 
-- Keep the logo, barcode, CN, Order/COD, customer contact row, and address together in a compact summary block with a typical minimum height of 1.58 inches, approximately 40% of the 4-inch label.
-- Compress the summary's vertical gaps, logo, and barcode while preserving barcode scanability and full recipient information. The summary may grow slightly for a wrapping address rather than clipping it.
+- Keep the logo, barcode, CN, Order/COD, and customer contact row together in a compact summary block using no more space than needed.
+- Compress the summary's vertical gaps, logo, and barcode while preserving barcode scanability and readable customer contact information.
 - Start the product table immediately after the summary and make the remaining label height available to it.
 - Use compact table typography and approximately 0.29-inch product rows so an order containing up to five normal product entries, including wrapped bilingual names, fits within one label.
 - Do not split one order across multiple labels or change the one-order-per-page rule.
