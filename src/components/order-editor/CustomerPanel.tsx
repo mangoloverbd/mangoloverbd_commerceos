@@ -186,6 +186,34 @@ export function CustomerPanel({ order, customer, notes, disabled = false, onAppl
             {statusPending && <Spinner size="sm" className="shrink-0 text-black/40" />}
           </div>
         </div>
+        {isOnHoldStatus(order.status) && (
+          <div className="min-w-0 sm:col-span-2 xl:col-span-1 2xl:col-span-2">
+            <label className="block text-[8px] font-medium uppercase tracking-[0.3em] text-black/40" htmlFor="hold-note">
+              Hold note
+            </label>
+            <textarea
+              id="hold-note"
+              aria-label="Hold note"
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value)}
+              disabled={disabled || notesPending}
+              rows={3}
+              placeholder="Why is this order on hold?"
+              className={`${inputClass} mt-1.5 h-auto min-h-20 py-2 normal-case tracking-normal`}
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Save note"
+                onClick={() => onSaveNotes(noteDraft.trim())}
+                disabled={disabled || notesPending || noteDraft.trim() === (notes ?? "").trim()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black px-3 text-[12px] text-white disabled:opacity-40"
+              >
+                {notesPending ? <Spinner size="sm" /> : <Check weight="light" size={15} />} Save note
+              </button>
+            </div>
+          </div>
+        )}
         <DetailField label="Payment" value={order.payment_method} />
         <DetailField label="Order total" value={formatTaka(order.price)} />
         <DetailField label="Delivery fee" value={formatTaka(order.delivery_rate)} />
@@ -195,34 +223,6 @@ export function CustomerPanel({ order, customer, notes, disabled = false, onAppl
         <DetailField label="Updated" value={dateTime(order.updated_at)} />
         <DetailField label="Consignment" value={order.consignment_id} />
       </div>
-      {isOnHoldStatus(order.status) && (
-        <div className="mt-5 min-w-0">
-          <label className="block text-[8px] font-medium uppercase tracking-[0.3em] text-black/40" htmlFor="hold-note">
-            Hold note
-          </label>
-          <textarea
-            id="hold-note"
-            aria-label="Hold note"
-            value={noteDraft}
-            onChange={(event) => setNoteDraft(event.target.value)}
-            disabled={disabled || notesPending}
-            rows={3}
-            placeholder="Why is this order on hold?"
-            className={`${inputClass} mt-1.5 h-auto min-h-20 py-2 normal-case tracking-normal`}
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="Save note"
-              onClick={() => onSaveNotes(noteDraft.trim())}
-              disabled={disabled || notesPending || noteDraft.trim() === (notes ?? "").trim()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black px-3 text-[12px] text-white disabled:opacity-40"
-            >
-              {notesPending ? <Spinner size="sm" /> : <Check weight="light" size={15} />} Save note
-            </button>
-          </div>
-        </div>
-      )}
     </section>
   );
 }
