@@ -15,11 +15,17 @@ export function isPrintStatus(value: string | null | undefined): boolean {
   return normalizeBusinessStatus(value) === "print";
 }
 
+export function isOnHoldStatus(value: string | null | undefined): boolean {
+  const normalized = normalizeBusinessStatus(value);
+  return normalized === "on_hold" || normalized === "hold";
+}
+
 export function canEnterPrint(fromStatus: string | null | undefined): boolean {
   return isApprovedStatus(fromStatus);
 }
 
 export function canLeavePrint(toStatus: string | null | undefined): boolean {
+  if (isOnHoldStatus(toStatus)) return true;
   const normalized = normalizeBusinessStatus(toStatus);
   return (
     normalized === "print" ||
@@ -33,6 +39,13 @@ export function canLeavePrint(toStatus: string | null | undefined): boolean {
 export function courierSendBlockReason(status: string | null | undefined): string | null {
   if (isApprovedStatus(status)) return "Move to Print first";
   return null;
+}
+
+export function displayStatusLabel(status: string | null | undefined): string {
+  const normalized = normalizeBusinessStatus(status);
+  if (normalized === "confirmed") return "Approved";
+  if (normalized === "on_hold" || normalized === "hold") return "On Hold";
+  return (status || "").trim();
 }
 
 export type BulkStatusCandidate = {

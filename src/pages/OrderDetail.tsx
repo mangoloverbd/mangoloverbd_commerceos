@@ -27,6 +27,7 @@ type Order = {
   contact_name?: string | null;
   phone?: string | null;
   address?: string | null;
+  notes?: string | null;
   status?: string | null;
   payment_method?: string | null;
   delivery_rate?: number | null;
@@ -115,6 +116,7 @@ export default function OrderDetail() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [statusPending, setStatusPending] = useState(false);
+  const [notesPending, setNotesPending] = useState(false);
   const initializedOrderId = useRef<string | null>(null);
   const initializedWithPlaceholder = useRef(false);
 
@@ -217,6 +219,28 @@ export default function OrderDetail() {
     }
   }
 
+  async function saveNotes(nextNotes: string) {
+    if (!detail || !order || !id || detailQuery.isPlaceholderData || notesPending) return;
+    if ((order.notes ?? "") === nextNotes) return;
+    setNotesPending(true);
+    try {
+      const res = await apiFetch(`/api/orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: nextNotes }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to save note");
+      const updated = (json.order || { ...order, notes: nextNotes }) as Order;
+      queryClient.setQueryData<OrderDetailResponse>([`/api/orders/${id}`], (current) => current ? { ...current, order: updated } : current);
+      toast.success("Note saved");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to save note");
+    } finally {
+      setNotesPending(false);
+    }
+  }
+
   async function save() {
     if (!detail || !order || !id || detailQuery.isPlaceholderData || saving) return;
     const originalCustomer = customerFromOrder(order);
@@ -281,7 +305,7 @@ export default function OrderDetail() {
           transition={{ duration: 0.35 }}
           className="grid min-h-0 gap-px overflow-hidden rounded-lg bg-black/[0.07] ring-1 ring-black/[0.07] xl:h-[calc(100vh-10.5rem)] xl:grid-cols-[minmax(240px,0.72fr)_minmax(320px,1fr)_minmax(340px,1.08fr)]"
         >
-          <CustomerPanel order={order} customer={customer} disabled={saving} onApply={setCustomer} onStatusChange={(next) => { void changeStatus(next); }} statusPending={statusPending} />
+          <CustomerPanel order={order} customer={customer} notes={order.notes ?? null} disabled={saving} onApply={setCustomer} onStatusChange={(next) => { void changeStatus(next); }} statusPending={statusPending} onSaveNotes={(next) => { void saveNotes(next); }} notesPending={notesPending} />
           <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
           <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={() => navigate("/")} />
         </motion.div>

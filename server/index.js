@@ -6219,11 +6219,12 @@ app.patch("/api/orders/:id", async (req, res) => {
       const fromApproved = fromStatus === "approved" || fromStatus === "confirmed";
       const toApproved = toStatus === "approved" || toStatus === "confirmed";
       const toCancelled = toStatus === "cancelled" || toStatus === "canceled";
+      const toOnHold = toStatus === "on_hold" || toStatus === "hold";
       if (toStatus === "print" && !fromApproved && fromStatus !== "print") {
         return res.status(400).json({ error: "Only Approved orders can move to Print" });
       }
-      if (fromStatus === "print" && !(toStatus === "print" || toApproved || toCancelled)) {
-        return res.status(400).json({ error: "Print orders can only move back to Approved or to Cancelled" });
+      if (fromStatus === "print" && !(toStatus === "print" || toApproved || toCancelled || toOnHold)) {
+        return res.status(400).json({ error: "Print orders can only move to Approved, On Hold, or Cancelled" });
       }
     }
     const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);

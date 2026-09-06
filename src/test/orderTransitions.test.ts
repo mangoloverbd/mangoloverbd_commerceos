@@ -3,7 +3,9 @@ import {
   canEnterPrint,
   canLeavePrint,
   courierSendBlockReason,
+  displayStatusLabel,
   isApprovedStatus,
+  isOnHoldStatus,
   isPrintStatus,
   normalizeBusinessStatus,
   planBulkStatusChange,
@@ -46,6 +48,23 @@ describe("orderTransitions", () => {
     expect(courierSendBlockReason("pending")).toBeNull();
   });
 
+  it("labels confirmed as Approved and leaves other statuses untouched", () => {
+    expect(displayStatusLabel("confirmed")).toBe("Approved");
+    expect(displayStatusLabel("Confirmed")).toBe("Approved");
+    expect(displayStatusLabel("pending")).toBe("pending");
+    expect(displayStatusLabel("print")).toBe("print");
+    expect(displayStatusLabel("on_hold")).toBe("On Hold");
+    expect(displayStatusLabel(null)).toBe("");
+  });
+
+  it("detects on-hold statuses and allows Print exit to On Hold", () => {
+    expect(isOnHoldStatus("on_hold")).toBe(true);
+    expect(isOnHoldStatus("On Hold")).toBe(true);
+    expect(isOnHoldStatus("confirmed")).toBe(false);
+    expect(canLeavePrint("on_hold")).toBe(true);
+    expect(canLeavePrint("pending")).toBe(false);
+  });
+
   it("plans bulk moves to print for approved orders only", () => {
     const orders = [
       { id: "a", status: "confirmed" },
@@ -71,6 +90,10 @@ describe("orderTransitions", () => {
     expect(planBulkStatusChange(orders, ["a"], "pending")).toEqual({
       validIds: [],
       skipped: 1,
+    });
+    expect(planBulkStatusChange(orders, ["a"], "on_hold")).toEqual({
+      validIds: ["a"],
+      skipped: 0,
     });
   });
 

@@ -1078,6 +1078,7 @@ export default function Dashboard() {
                     { id: "pending", label: "Pending" },
                     { id: "confirmed", label: "Approved" },
                     { id: "print", label: "Print" },
+                    { id: "on_hold", label: "On Hold" },
                     { id: "cancelled", label: "Cancelled" },
                   ].map((target) => (
                     <button

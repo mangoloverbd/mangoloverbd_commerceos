@@ -35,7 +35,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
-import { canEnterPrint, courierSendBlockReason, isPrintStatus } from "@/lib/orderTransitions";
+import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isPrintStatus } from "@/lib/orderTransitions";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
@@ -1097,10 +1097,10 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, se
             {orders.map((order, idx) => {
               const { primary, lines, names } = productSummary(order);
               const statusOptions = isPrintStatus(order.status)
-                ? ["print", "confirmed", "cancelled"]
+                ? ["print", "confirmed", "on_hold", "cancelled"]
                 : canEnterPrint(order.status)
-                  ? ["pending", "confirmed", "print", "cancelled"]
-                  : ["pending", "confirmed", "cancelled"];
+                  ? ["pending", "confirmed", "print", "on_hold", "cancelled"]
+                  : ["pending", "confirmed", "on_hold", "cancelled"];
               const sendBlockReason = courierSendBlockReason(order.status);
 
               return (
@@ -1293,7 +1293,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, se
                                 <OrderStatusIcon status={order.status} />
                             </span>
                             <span className="status-pill-label ml-6 whitespace-nowrap transition-all duration-500 ease-out group-hover/status:translate-x-[155%] group-hover/status:opacity-0">
-                              {order.status}
+                              {displayStatusLabel(order.status)}
                             </span>
                           </button>
                         </PopoverTrigger>
@@ -1312,7 +1312,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, se
                               >
                                 <span className="flex items-center gap-2">
                                   <OrderStatusIcon status={st} />
-                                  {st}
+                                  {displayStatusLabel(st)}
                                 </span>
                                 {order.status === st && <Check className="h-3.5 w-3.5" />}
                               </button>

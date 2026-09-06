@@ -156,6 +156,33 @@ describe("OrderDetail", () => {
     });
   });
 
+  it("saves a hold note for an on-hold order", async () => {
+    const holdDetail = { ...detail, order: { ...order, status: "on_hold", notes: "Waiting for stock" } };
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/orders/order-1" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        return response({ success: true, order: { ...holdDetail.order, notes: body.notes } });
+      }
+      if (url === "/api/orders/order-1") return response(holdDetail);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    const box = await screen.findByRole("textbox", { name: /hold note/i });
+    expect(box).toHaveValue("Waiting for stock");
+    await user.clear(box);
+    await user.type(box, "Waiting for stock, call Friday");
+    await user.click(screen.getByRole("button", { name: "Save note" }));
+
+    await waitFor(() => {
+      const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ notes: "Waiting for stock, call Friday" });
+    });
+  });
+
   it("keeps customer details read-only until Edit and supports Apply and Cancel", async () => {
     renderPage();
     expect(await screen.findByText("Ayesha Rahman")).toBeInTheDocument();

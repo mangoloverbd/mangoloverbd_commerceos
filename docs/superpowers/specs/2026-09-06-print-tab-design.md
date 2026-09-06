@@ -10,7 +10,7 @@ Add a `Print` step between `Approved` and `Processing` in the Dashboard Fulfillm
 
 1. Approved —by hand only→ Print.
 2. Print —auto on Steadfast/Pathao send→ Processing.
-3. Print can go back to Approved by hand.
+3. Print can go back to Approved or to On Hold by hand.
 4. Print can go to Cancelled by hand (courier cancel/return still wins automatically, as today).
 5. You cannot send to courier directly from Approved. You must move to Print first. This rule applies everywhere (Dashboard table + Order Detail page + any bulk send).
 6. Old Processing orders that skipped Print stay as-is (grandfathered, no backfill).
