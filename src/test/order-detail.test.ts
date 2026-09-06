@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createElement } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
@@ -130,6 +131,29 @@ describe("OrderDetail", () => {
     expect(await screen.findByRole("region", { name: "Customer and order" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Product catalog" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
+  });
+
+  it("moves the order to print from the editor status dropdown", async () => {
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/orders/order-1" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        return response({ success: true, order: { ...order, status: body.status } });
+      }
+      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /order status/i }));
+    await user.click(await screen.findByRole("option", { name: "print" }));
+
+    await waitFor(() => {
+      const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ status: "print" });
+    });
   });
 
   it("keeps customer details read-only until Edit and supports Apply and Cancel", async () => {

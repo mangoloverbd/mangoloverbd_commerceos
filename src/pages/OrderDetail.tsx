@@ -6,6 +6,7 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { Spinner } from "@/components/ui/ios-spinner";
+import { toast } from "@/components/ui/sonner";
 import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/CustomerPanel";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { CartPanel } from "@/components/order-editor/CartPanel";
@@ -113,6 +114,7 @@ export default function OrderDetail() {
   const [catalogSearch, setCatalogSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [statusPending, setStatusPending] = useState(false);
   const initializedOrderId = useRef<string | null>(null);
   const initializedWithPlaceholder = useRef(false);
 
@@ -193,6 +195,28 @@ export default function OrderDetail() {
     } : item));
   }
 
+  async function changeStatus(nextStatus: string) {
+    if (!detail || !order || !id || detailQuery.isPlaceholderData || statusPending) return;
+    if ((order.status ?? null) === nextStatus) return;
+    setStatusPending(true);
+    try {
+      const res = await apiFetch(`/api/orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to update status");
+      const updated = (json.order || { ...order, status: nextStatus }) as Order;
+      queryClient.setQueryData<OrderDetailResponse>([`/api/orders/${id}`], (current) => current ? { ...current, order: updated } : current);
+      queryClient.setQueryData<Order[]>(["/api/orders"], (current) => Array.isArray(current) ? current.map((o) => o.id === id ? { ...o, status: updated.status } : o) : current);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to update status");
+    } finally {
+      setStatusPending(false);
+    }
+  }
+
   async function save() {
     if (!detail || !order || !id || detailQuery.isPlaceholderData || saving) return;
     const originalCustomer = customerFromOrder(order);
@@ -257,7 +281,7 @@ export default function OrderDetail() {
           transition={{ duration: 0.35 }}
           className="grid min-h-0 gap-px overflow-hidden rounded-lg bg-black/[0.07] ring-1 ring-black/[0.07] xl:h-[calc(100vh-10.5rem)] xl:grid-cols-[minmax(240px,0.72fr)_minmax(320px,1fr)_minmax(340px,1.08fr)]"
         >
-          <CustomerPanel order={order} customer={customer} disabled={saving} onApply={setCustomer} />
+          <CustomerPanel order={order} customer={customer} disabled={saving} onApply={setCustomer} onStatusChange={(next) => { void changeStatus(next); }} statusPending={statusPending} />
           <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
           <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={() => navigate("/")} />
         </motion.div>

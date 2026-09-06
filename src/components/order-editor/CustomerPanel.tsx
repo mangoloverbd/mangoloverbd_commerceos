@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Check, PencilSimple, X } from "@phosphor-icons/react";
+import { Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
+import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
+import { Spinner } from "@/components/ui/ios-spinner";
+import { canEnterPrint, isPrintStatus } from "@/lib/orderTransitions";
 import { formatTaka } from "@/lib/orderEditor";
 
 export type CustomerDraft = {
@@ -26,6 +29,8 @@ type CustomerPanelProps = {
   customer: CustomerDraft;
   disabled?: boolean;
   onApply: (customer: CustomerDraft) => void;
+  onStatusChange: (nextStatus: string) => void;
+  statusPending?: boolean;
 };
 
 function DetailField({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -43,9 +48,37 @@ function dateTime(value: string | null | undefined) {
 
 const inputClass = "h-10 w-full rounded-lg bg-black/[0.04] px-3 text-[13px] text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20 disabled:opacity-50";
 
-export function CustomerPanel({ order, customer, disabled = false, onApply }: CustomerPanelProps) {
+function statusOptionsFor(status: string | null | undefined): string[] {
+  if (isPrintStatus(status)) return ["print", "confirmed", "cancelled"];
+  if (canEnterPrint(status)) return ["pending", "confirmed", "print", "cancelled"];
+  return ["pending", "confirmed", "cancelled"];
+}
+
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+    if (typeof document.execCommand === "function") {
+      const area = document.createElement("textarea");
+      area.value = value;
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(area);
+      return ok;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function CustomerPanel({ order, customer, disabled = false, onApply, onStatusChange, statusPending = false }: CustomerPanelProps) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!editing) setLocal(customer);
@@ -68,6 +101,15 @@ export function CustomerPanel({ order, customer, disabled = false, onApply }: Cu
       address: local.address.trim(),
     });
     setEditing(false);
+  }
+
+  async function copyPhone() {
+    const value = customer.phone.trim();
+    if (!value || copied) return;
+    if (await copyTextToClipboard(value)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }
   }
 
   return (
@@ -97,14 +139,45 @@ export function CustomerPanel({ order, customer, disabled = false, onApply }: Cu
       ) : (
         <div className="mt-5 space-y-4">
           <DetailField label="Name" value={customer.customerName} />
-          <DetailField label="Phone" value={customer.phone} />
+          <div className="min-w-0">
+            <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Phone</p>
+            <p className="mt-1 flex items-center gap-2 text-[13px] text-black">
+              <span className="break-words">{customer.phone || "—"}</span>
+              {customer.phone.trim() && (
+                <button
+                  type="button"
+                  aria-label={copied ? "Phone number copied" : "Copy phone number"}
+                  onClick={() => { void copyPhone(); }}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-black/45 transition hover:bg-black/[0.06] hover:text-black"
+                >
+                  {copied ? <Check weight="light" size={15} /> : <Copy weight="light" size={15} />}
+                </button>
+              )}
+            </p>
+          </div>
           <DetailField label="Delivery address" value={customer.address} />
         </div>
       )}
 
       <div className="my-6 h-px bg-black/[0.07]" />
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-        <DetailField label="Status" value={order.status} />
+        <div className="min-w-0">
+          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Status</p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <BuiSelect
+              aria-label="Order status"
+              selectedKey={order.status ?? null}
+              onSelectionChange={(key) => onStatusChange(String(key))}
+              isDisabled={disabled || statusPending}
+              triggerClassName="h-9 capitalize"
+            >
+              {statusOptionsFor(order.status).map((st) => (
+                <BuiSelectItem key={st} id={st} textValue={st}>{st}</BuiSelectItem>
+              ))}
+            </BuiSelect>
+            {statusPending && <Spinner size="sm" className="shrink-0 text-black/40" />}
+          </div>
+        </div>
         <DetailField label="Payment" value={order.payment_method} />
         <DetailField label="Order total" value={formatTaka(order.price)} />
         <DetailField label="Delivery fee" value={formatTaka(order.delivery_rate)} />
