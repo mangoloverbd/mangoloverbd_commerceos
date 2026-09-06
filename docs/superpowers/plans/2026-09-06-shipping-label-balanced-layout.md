@@ -28,7 +28,7 @@
 - Consumes: `buildShippingLabelHtml(orders, businessName?)`
 - Produces: unchanged `ShippingLabelHtmlResult` with Balanced stack markup
 
-- [ ] **Step 1: Write failing layout assertions**
+- [x] **Step 1: Write failing layout assertions**
 
 Replace the Recipient-first assertions with:
 
@@ -42,11 +42,11 @@ expect(result.html).not.toContain('class="cod-box"');
 expect(result.html).not.toContain("DELIVER TO");
 ```
 
-- [ ] **Step 2: Verify the focused test fails**
+- [x] **Step 2: Verify the focused test fails**
 
 Run `npm test -- src/test/shippingLabelPrinter.test.ts` and confirm the failure is caused by the old Recipient-first markup.
 
-- [ ] **Step 3: Implement the Balanced stack markup and CSS**
+- [x] **Step 3: Implement the Balanced stack markup and CSS**
 
 Replace the customer block with:
 
@@ -68,14 +68,14 @@ Replace the customer block with:
 
 Use a two-column grid for `.shipment-meta`, a solid lower rule, 18px bold phone text, and a solid upper rule for `.recipient-address`. Remove `.cod-box` and `.deliver-to` styles while preserving escaped values.
 
-- [ ] **Step 4: Verify the focused test passes**
+- [x] **Step 4: Verify the focused test passes**
 
 Run `npm test -- src/test/shippingLabelPrinter.test.ts`.
 
-- [ ] **Step 5: Verify the repository**
+- [x] **Step 5: Verify the repository**
 
 Run `npm test`, `npm run lint`, `npm run build`, and `git diff --check`.
 
-- [ ] **Step 6: Review and commit**
+- [x] **Step 6: Review and commit**
 
 Confirm only the Balanced stack plan, template, and tests changed, then commit with `feat: balance shipping label recipient details`.
