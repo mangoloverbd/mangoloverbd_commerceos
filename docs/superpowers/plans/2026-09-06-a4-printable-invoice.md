@@ -57,6 +57,7 @@ Run `npm test -- src/test/invoicePrinter.test.ts` and `git diff --check`, then c
 
 **Files:**
 - Create: `src/test/invoiceActionWiring.test.ts`
+- Create: `src/utils/inboxOrderPrintMapper.ts`
 - Modify: `src/components/OrdersTable.tsx`
 - Modify: `src/pages/InboxOrders.tsx`
 - Modify: `src/test/shippingLabelPrinter.test.ts`
@@ -64,7 +65,7 @@ Run `npm test -- src/test/invoicePrinter.test.ts` and `git diff --check`, then c
 **Interfaces:**
 - Consumes: `printInvoice()` from Task 1
 - Consumes: `printShippingLabels()` from `src/utils/shippingLabelPrinter.ts`
-- Produces: exported `toInvoiceOrder()` mapping with structured printable items
+- Produces: `toInvoiceOrder()` in `src/utils/inboxOrderPrintMapper.ts` with structured printable items
 
 - [x] **Step 1: Write failing wiring and mapping tests**
 
@@ -97,14 +98,14 @@ Run `npm test -- src/test/invoiceActionWiring.test.ts src/test/shippingLabelPrin
 **Interfaces:**
 - Removes: unused direct dependencies `jspdf` and `jspdf-autotable`
 
-- [ ] **Step 1: Remove dependencies**
+- [x] **Step 1: Remove dependencies**
 
 Run `npm uninstall jspdf jspdf-autotable` after confirming no source imports remain.
 
-- [ ] **Step 2: Run complete verification**
+- [x] **Step 2: Run complete verification**
 
 Run `npm test`, `npm run lint`, `npm run build`, and `git diff --check`.
 
-- [ ] **Step 3: Review and commit**
+- [x] **Step 3: Review and commit**
 
 Review the complete branch against `main`, then commit dependency changes as `chore: remove obsolete invoice PDF dependencies`.

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildInvoiceHtml,
+  printInvoice,
   type InvoiceOrder,
 } from "@/utils/invoiceGenerator";
 
@@ -119,5 +120,31 @@ describe("A4 invoice HTML", () => {
     expect(html).toContain('<td class="quantity">2</td>');
     expect(html).toContain('<td class="product">Chia Seed</td>');
     expect(html).toContain('<td class="weight">—</td>');
+  });
+
+  it("removes its iframe and throws when print document initialization fails", () => {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    const iframeDocument = iframe.contentDocument;
+    if (!iframeDocument) throw new Error("Test iframe document was unavailable");
+
+    const createElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation((tagName) =>
+      tagName === "iframe" ? iframe : createElement(tagName),
+    );
+    const appendChild = document.body.appendChild.bind(document.body);
+    const appendChildSpy = vi.spyOn(document.body, "appendChild").mockImplementation((node) =>
+      node === iframe ? iframe : appendChild(node),
+    );
+    const openSpy = vi.spyOn(iframeDocument, "open").mockImplementation(() => {
+      throw new Error("open failed");
+    });
+
+    expect(() => printInvoice([makeOrder()])).toThrow("Unable to prepare invoices for printing");
+    expect(document.body.contains(iframe)).toBe(false);
+
+    openSpy.mockRestore();
+    appendChildSpy.mockRestore();
+    createElementSpy.mockRestore();
   });
 });

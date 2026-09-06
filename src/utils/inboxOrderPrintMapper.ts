@@ -26,7 +26,7 @@ const parseInboxNotes = (notes: string) => {
   const address = notes?.match(/Address:\s*([^\n]+)/i)?.[1]?.trim() || "";
   const orderNote = (notes || "")
     .split(/\r?\n/)
-    .filter((line) => !/^\s*(?:Phone|Address):/i.test(line))
+    .filter((line) => !/^\s*(?:Phone|Address|Source):/i.test(line))
     .join("\n")
     .trim();
   return { phone, address, orderNote };
@@ -41,6 +41,8 @@ export function toInvoiceOrder(
 ): InvoiceOrder {
   const { phone, address, orderNote } = parseInboxNotes(order.notes);
   const items = order.items || [];
+  const deliveryFee = Number(order.delivery_rate || 0);
+  const grandTotal = Number(order.total_price || 0);
 
   return {
     id: order.id,
@@ -50,7 +52,7 @@ export function toInvoiceOrder(
     address: address || null,
     product: itemsToProduct(items),
     quantity: items.reduce((total, item) => total + (item.quantity || 1), 0),
-    price: order.total_price,
+    price: Math.max(0, grandTotal - deliveryFee),
     status: order.status,
     created_at: order.created_at,
     delivery_rate: order.delivery_rate ?? null,

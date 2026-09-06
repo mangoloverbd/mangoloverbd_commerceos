@@ -314,21 +314,31 @@ export function printInvoice(orders: InvoiceOrder[], businessName?: string) {
   document.body.appendChild(iframe);
 
   const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!iframeDoc) {
-    document.body.removeChild(iframe);
+  const iframeWindow = iframe.contentWindow;
+  const removeIframe = () => {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+  };
+
+  if (!iframeDoc || !iframeWindow || typeof iframeWindow.print !== "function") {
+    removeIframe();
     throw new Error("Unable to prepare invoices for printing");
   }
 
-  iframeDoc.open();
-  iframeDoc.write(buildInvoiceHtml(orders, businessName));
-  iframeDoc.close();
+  try {
+    iframeDoc.open();
+    iframeDoc.write(buildInvoiceHtml(orders, businessName));
+    iframeDoc.close();
+  } catch {
+    removeIframe();
+    throw new Error("Unable to prepare invoices for printing");
+  }
 
   void waitForImages(iframeDoc).then(() => {
     window.setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
+      iframeWindow.focus();
+      iframeWindow.print();
       window.setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        removeIframe();
       }, 5000);
     }, 150);
   });
