@@ -138,19 +138,21 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
 
   return `
     <section class="shipping-label">
-      <header class="brand-header">
-        <img src="/mango-lover-print-logo.png" alt="${escapeHtml(businessName)}" />
-      </header>
-      <div class="barcode-wrap">${barcodeSvg(cn)}</div>
-      <div class="cn"><span>CN:</span> ${escapeHtml(cn)}</div>
-      <div class="recipient-details">
-        <div class="shipment-meta">
-          <div class="meta-field"><span>ORDER</span><strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></div>
-          <div class="meta-field"><span>COD</span><strong>${formatCod(order)}</strong></div>
+      <div class="label-summary">
+        <header class="brand-header">
+          <img src="/mango-lover-print-logo.png" alt="${escapeHtml(businessName)}" />
+        </header>
+        <div class="barcode-wrap">${barcodeSvg(cn)}</div>
+        <div class="cn"><span>CN:</span> ${escapeHtml(cn)}</div>
+        <div class="recipient-details">
+          <div class="shipment-meta">
+            <div class="meta-field"><span>ORDER</span><strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></div>
+            <div class="meta-field"><span>COD</span><strong>${formatCod(order)}</strong></div>
+          </div>
+          <div class="customer-label">CUSTOMER</div>
+          <div class="recipient-contact ${contactClass}">${escapeHtml(customerName)} - ${escapeHtml(phone)}</div>
+          <div class="recipient-address"><div class="address-label">ADDRESS</div><div>${address}</div></div>
         </div>
-        <div class="customer-label">CUSTOMER</div>
-        <div class="recipient-contact ${contactClass}">${escapeHtml(customerName)} - ${escapeHtml(phone)}</div>
-        <div class="recipient-address"><div class="address-label">ADDRESS</div><div>${address}</div></div>
       </div>
       <table>
         <thead>
@@ -201,28 +203,30 @@ export function buildShippingLabelHtml(
               flex-direction: column;
             }
             .shipping-label:last-child { page-break-after: auto; break-after: auto; }
-            .brand-header { height: 0.42in; display: flex; align-items: center; justify-content: center; padding: 0.015in 0.16in; }
-            .brand-header img { display: block; max-width: 2.24in; max-height: 0.34in; filter: grayscale(1) brightness(0); }
-            .barcode-wrap { height: 0.57in; display: flex; align-items: center; justify-content: center; padding: 0.015in 0.08in 0; }
-            .barcode { display: block; width: 100%; height: 0.52in; }
-            .cn { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 0.045in 0; text-align: center; font-size: 18px; line-height: 1; font-weight: 800; letter-spacing: 0.6px; }
-            .cn span { font-size: 15px; }
-            .recipient-details { padding: 0.055in 0.025in 0.06in; border-bottom: 1px solid #000; }
-            .shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.08in; padding-bottom: 0.05in; border-bottom: 1px solid #000; }
+            .label-summary { min-height: 1.58in; flex: 0 0 auto; }
+            .brand-header { height: 0.25in; display: flex; align-items: center; justify-content: center; padding: 0.01in 0.16in; }
+            .brand-header img { display: block; max-width: 2.04in; max-height: 0.22in; filter: grayscale(1) brightness(0); }
+            .barcode-wrap { height: 0.32in; display: flex; align-items: center; justify-content: center; padding: 0.008in 0.08in 0; }
+            .barcode { display: block; width: 100%; height: 0.29in; }
+            .cn { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 0.018in 0; text-align: center; font-size: 14px; line-height: 1; font-weight: 800; letter-spacing: 0.5px; }
+            .cn span { font-size: 12px; }
+            .recipient-details { padding: 0.025in 0.025in 0.03in; border-bottom: 1px solid #000; }
+            .shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.08in; padding-bottom: 0.025in; border-bottom: 1px solid #000; }
             .meta-field { min-width: 0; }
-            .meta-field span, .customer-label, .address-label { display: block; font-size: 6.5px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
-            .meta-field strong { display: block; margin-top: 0.025in; font-size: 13px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }
-            .customer-label { margin-top: 0.05in; }
-            .recipient-contact { margin-top: 0.035in; line-height: 1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.015em; white-space: nowrap; }
+            .meta-field span, .customer-label, .address-label { display: block; font-size: 6px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
+            .meta-field strong { display: block; margin-top: 0.012in; font-size: 11px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }
+            .customer-label { margin-top: 0.025in; }
+            .recipient-contact { margin-top: 0.015in; line-height: 1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.015em; white-space: nowrap; }
             .contact-size-normal { font-size: 15px; }
             .contact-size-compact { font-size: 13px; }
             .contact-size-small { font-size: 11px; }
             .contact-size-tight { font-size: 9px; }
-            .recipient-address { margin-top: 0.055in; padding-top: 0.045in; border-top: 1px solid #000; font-size: 10px; line-height: 1.22; overflow-wrap: anywhere; }
-            .address-label { margin-bottom: 0.03in; }
-            table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.045in; font-size: 7.3px; line-height: 1.1; }
-            th, td { border: 1px solid #000; padding: 0.026in 0.02in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
-            th { background: #000; color: #fff; text-transform: uppercase; font-size: 6.7px; letter-spacing: 0.25px; }
+            .recipient-address { margin-top: 0.025in; padding-top: 0.02in; border-top: 1px solid #000; font-size: 8.5px; line-height: 1.12; overflow-wrap: anywhere; }
+            .address-label { margin-bottom: 0.015in; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.035in; font-size: 7.1px; line-height: 1.08; }
+            th, td { border: 1px solid #000; padding: 0.022in 0.018in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+            th { background: #000; color: #fff; text-transform: uppercase; font-size: 6.5px; letter-spacing: 0.25px; }
+            tbody tr { height: 0.29in; }
             th:nth-child(1) { width: 46%; }
             th:nth-child(2) { width: 38%; }
             th:nth-child(3) { width: 16%; }

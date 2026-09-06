@@ -27,15 +27,15 @@
 - Consumes: `buildShippingLabelHtml(orders, businessName?)`
 - Produces: unchanged `ShippingLabelHtmlResult` with compact summary and table CSS
 
-- [ ] **Step 1: Write failing capacity tests**
+- [x] **Step 1: Write failing capacity tests**
 
 Generate an order with five structured items and assert all five rows render. Assert `.label-summary` wraps the top content and its CSS includes `min-height: 1.58in`. Assert product rows use `height: 0.29in`.
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run `npm test -- src/test/shippingLabelPrinter.test.ts`; expect failure because `.label-summary` and row-height allocation do not exist.
 
-- [ ] **Step 3: Implement compact summary and table sizing**
+- [x] **Step 3: Implement compact summary and table sizing**
 
 Wrap the header, barcode, CN, and recipient details in:
 
@@ -45,11 +45,11 @@ Wrap the header, barcode, CN, and recipient details in:
 
 Add `.label-summary { min-height: 1.58in; flex: 0 0 auto; }`. Reduce the logo area to 0.25in, barcode area to 0.32in, barcode SVG to 0.29in, CN type to 14px, and summary padding/gaps proportionally. Set product rows to 0.29in with compact 7.1px table type.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run `npm test -- src/test/shippingLabelPrinter.test.ts`.
 
-- [ ] **Step 5: Verify, review, and commit**
+- [x] **Step 5: Verify, review, and commit**
 
 Run `npm test`, `npm run lint`, `npm run build`, and `git diff --check`; review the diff and commit as `feat: fit five products on shipping labels`.
 
