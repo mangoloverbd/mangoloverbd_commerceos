@@ -174,6 +174,8 @@ interface OrdersTableProps {
   loading: boolean;
   onStatusUpdate: (orderId: string, newStatus: string) => void;
   onOrderUpdate?: (updatedOrder: Order) => void;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
 function SearchRiskIcon({ className }: { className?: string }) {
@@ -512,7 +514,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   );
 }
 
-export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: OrdersTableProps) {
+export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, selectedIds: controlledSelectedIds, onSelectionChange }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const prefetchOrder = (orderId: string) => queryClient.prefetchQuery({
@@ -531,7 +533,13 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [sendingPathaoIds, setSendingPathaoIds] = useState<Set<string>>(new Set());
   const [checkingFraudIds, setCheckingFraudIds] = useState<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIds = controlledSelectedIds ?? internalSelectedIds;
+  const setSelectedIds = (next: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    const resolved = typeof next === "function" ? (next as (prev: Set<string>) => Set<string>)(selectedIds) : next;
+    if (onSelectionChange) onSelectionChange(resolved);
+    else setInternalSelectedIds(resolved);
+  };
   const [isBulkChecking, setIsBulkChecking] = useState(false);
   const [isDeletingOrders, setIsDeletingOrders] = useState(false);
   const warehouseNames = Object.fromEntries(warehouses.map((warehouse) => [warehouse.id, warehouse.name]));
@@ -1044,6 +1052,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
             <TableHead className="w-10 py-3 pl-4 h-auto">
               <div
                 onClick={toggleSelectAll}
+                data-testid="checkbox-orders-all"
                 className={cn(
                   "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200",
                   selectedIds.size === orders.length && orders.length > 0
@@ -1112,6 +1121,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
                   <TableCell className="w-10 py-3 pl-4">
                     <div
                       data-row-interactive="true"
+                      data-testid={`checkbox-order-${order.id}`}
                       onClick={() => toggleSelectOrder(order.id)}
                       className={cn(
                         "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200",

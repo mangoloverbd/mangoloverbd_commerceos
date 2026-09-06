@@ -6,6 +6,7 @@ import {
   isApprovedStatus,
   isPrintStatus,
   normalizeBusinessStatus,
+  planBulkStatusChange,
 } from "@/lib/orderTransitions";
 
 describe("orderTransitions", () => {
@@ -43,5 +44,45 @@ describe("orderTransitions", () => {
     expect(courierSendBlockReason("confirmed")).toBe("Move to Print first");
     expect(courierSendBlockReason("print")).toBeNull();
     expect(courierSendBlockReason("pending")).toBeNull();
+  });
+
+  it("plans bulk moves to print for approved orders only", () => {
+    const orders = [
+      { id: "a", status: "confirmed" },
+      { id: "b", status: "pending" },
+      { id: "c", status: "print" },
+    ];
+    expect(planBulkStatusChange(orders, ["a", "b", "c", "missing"], "print")).toEqual({
+      validIds: ["a"],
+      skipped: 3,
+    });
+  });
+
+  it("plans bulk moves out of print to approved or cancelled only", () => {
+    const orders = [
+      { id: "a", status: "print" },
+      { id: "b", status: "print" },
+      { id: "c", status: "pending" },
+    ];
+    expect(planBulkStatusChange(orders, ["a", "b"], "confirmed")).toEqual({
+      validIds: ["a", "b"],
+      skipped: 0,
+    });
+    expect(planBulkStatusChange(orders, ["a"], "pending")).toEqual({
+      validIds: [],
+      skipped: 1,
+    });
+  });
+
+  it("plans bulk moves for unrestricted targets and skips same-status orders", () => {
+    const orders = [
+      { id: "a", status: "pending" },
+      { id: "b", status: "confirmed" },
+      { id: "c", status: "cancelled" },
+    ];
+    expect(planBulkStatusChange(orders, ["a", "b", "c"], "cancelled")).toEqual({
+      validIds: ["a", "b"],
+      skipped: 1,
+    });
   });
 });

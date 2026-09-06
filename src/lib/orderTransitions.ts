@@ -34,3 +34,41 @@ export function courierSendBlockReason(status: string | null | undefined): strin
   if (isApprovedStatus(status)) return "Move to Print first";
   return null;
 }
+
+export type BulkStatusCandidate = {
+  id: string;
+  status?: string | null;
+};
+
+export function planBulkStatusChange(
+  orders: BulkStatusCandidate[],
+  ids: Iterable<string>,
+  target: string,
+): { validIds: string[]; skipped: number } {
+  const normalizedTarget = normalizeBusinessStatus(target);
+  const byId = new Map(orders.map((order) => [order.id, order]));
+  const validIds: string[] = [];
+  let skipped = 0;
+  for (const id of ids) {
+    const order = byId.get(id);
+    if (!order) {
+      skipped += 1;
+      continue;
+    }
+    if (normalizeBusinessStatus(order.status) === normalizedTarget) {
+      skipped += 1;
+      continue;
+    }
+    if (normalizedTarget === "print") {
+      if (!canEnterPrint(order.status)) {
+        skipped += 1;
+        continue;
+      }
+    } else if (isPrintStatus(order.status) && !canLeavePrint(normalizedTarget)) {
+      skipped += 1;
+      continue;
+    }
+    validIds.push(id);
+  }
+  return { validIds, skipped };
+}

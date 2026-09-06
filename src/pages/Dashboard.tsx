@@ -30,6 +30,11 @@ import { TextEffect } from "@/components/ui/text-effect";
 import { MetricNumberFlow } from "@/components/ui/number-flow";
 import { TextShimmer } from "@/components/ui/text-shimmer";
 import { PopButton } from "@/components/ui/pop-button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import PixelRipple from "@/components/ui/pixel-ripple";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
@@ -38,6 +43,7 @@ import {
   filterOrdersByStatus,
   type OrderStatusFilter,
 } from "@/lib/orderStatusFilters";
+import { planBulkStatusChange } from "@/lib/orderTransitions";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 
 function toYMD(d: Date): string {
@@ -408,7 +414,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(() => !queryClient.getQueryData<Order[]>(["/api/orders"]));
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
-  const [checkingFraud, setCheckingFraud] = useState(false);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
@@ -600,26 +607,43 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, [dateRange, fetchAnalytics]);
 
-  const checkFraud = async () => {
-    setCheckingFraud(true);
+  const applyBulkStatus = async (target: string, targetLabel: string) => {
+    if (bulkUpdating) return;
+    const { validIds, skipped } = planBulkStatusChange(orders, selectedOrderIds, target);
+    if (validIds.length === 0) {
+      toast.error(skipped > 0 ? `Selected orders can't move to ${targetLabel}` : "Select orders first");
+      return;
+    }
+    setBulkUpdating(true);
+    let moved = 0;
+    let failed = 0;
     try {
-      const res = await apiFetch("/api/check-fraud", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Fraud check failed");
-      await fetchOrders();
-      toast.custom(() => (
-        <DarkToast className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-blue-500/15 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4 h-4 text-blue-400" />
-          </div>
-          <div>
-            <p className="text-[13px] font-medium text-white">{data?.successful ?? 0} verified</p>
-            <p className="text-[11px] text-white/50">of {data?.checked ?? 0} checked</p>
-          </div>
-        </DarkToast>
-      ), { fit: true });
-    } catch { toast.error("Fraud check failed"); }
-    finally { setCheckingFraud(false); }
+      for (const orderId of validIds) {
+        try {
+          const res = await apiFetch(`/api/orders/${orderId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: target }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Failed to update status");
+          if (data?.order) handleOrderUpdate(data.order);
+          else handleStatusUpdate(orderId, target);
+          moved += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      const skippedTotal = skipped + failed;
+      if (moved > 0) {
+        toast.success(`${moved} order${moved === 1 ? "" : "s"} moved to ${targetLabel}${skippedTotal > 0 ? `, ${skippedTotal} skipped` : ""}`);
+        setSelectedOrderIds(new Set());
+      } else {
+        toast.error(`No orders moved to ${targetLabel}`);
+      }
+    } finally {
+      setBulkUpdating(false);
+    }
   };
 
   const handleStatusUpdate = (orderId: string, newStatus: string) => {
@@ -1022,7 +1046,7 @@ export default function Dashboard() {
               color="yellow"
               size="sm"
               onClick={() => setCreateOrderOpen(true)}
-              disabled={checkingFraud || autoSyncing}
+              disabled={bulkUpdating || autoSyncing}
               className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black"
               data-testid="button-create-order"
             >
@@ -1030,17 +1054,39 @@ export default function Dashboard() {
               Create Order
             </PopButton>
 
-            <PopButton
-              color="sky"
-              size="sm"
-              onClick={checkFraud}
-              disabled={checkingFraud}
-              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
-              data-testid="button-check-fraud"
-            >
-              {checkingFraud ? <Spinner size="sm" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-              Verify All
-            </PopButton>
+            <Popover>
+              <PopoverTrigger asChild>
+                <PopButton
+                  color="sky"
+                  size="sm"
+                  disabled={bulkUpdating || selectedOrderIds.size === 0}
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  data-testid="button-bulk-status"
+                >
+                  {bulkUpdating ? <Spinner size="sm" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Update Status
+                </PopButton>
+              </PopoverTrigger>
+              <PopoverContent data-testid="bulk-status-menu" className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="end">
+                <div className="flex flex-col gap-1">
+                  {[
+                    { id: "pending", label: "Pending" },
+                    { id: "confirmed", label: "Approved" },
+                    { id: "print", label: "Print" },
+                    { id: "cancelled", label: "Cancelled" },
+                  ].map((target) => (
+                    <button
+                      key={target.id}
+                      onClick={() => void applyBulkStatus(target.id, target.label)}
+                      disabled={bulkUpdating}
+                      className="flex h-9 w-full items-center rounded-xl border border-transparent px-3 text-left text-xs font-medium capitalize transition-all text-foreground hover:border-black/10 hover:bg-black/[0.04] disabled:opacity-40"
+                    >
+                      {target.label}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
@@ -1060,6 +1106,8 @@ export default function Dashboard() {
           loading={loading}
           onStatusUpdate={handleStatusUpdate}
           onOrderUpdate={handleOrderUpdate}
+          selectedIds={selectedOrderIds}
+          onSelectionChange={setSelectedOrderIds}
         />
 
         <OrderTablePagination
