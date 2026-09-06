@@ -3,6 +3,7 @@ export const ORDER_STATUS_FILTERS = [
   "pending",
   "on_hold",
   "approved",
+  "print",
   "processing",
   "ready_to_ship",
   "in_transit",
@@ -76,6 +77,8 @@ export function classifyOrderStatus(order: StatusFilterOrder): OperationalOrderS
   if ([business, fulfillment, courier].some((value) => TRANSIT_STATES.has(value))) return "in_transit";
   if ([business, fulfillment, courier].some((value) => HOLD_STATES.has(value))) return "on_hold";
 
+  if (business === "print") return "print";
+
   if (
     business === "processing" ||
     (order.sent_to_courier === true && (!courier || PROCESSING_STATES.has(courier)))
@@ -103,6 +106,7 @@ export function countOrdersByStatus(orders: StatusFilterOrder[]): Record<OrderSt
     pending: 0,
     on_hold: 0,
     approved: 0,
+    print: 0,
     processing: 0,
     ready_to_ship: 0,
     in_transit: 0,
