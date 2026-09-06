@@ -90,8 +90,11 @@ describe("shipping label HTML", () => {
       '<div class="meta-field"><span>COD</span><strong>৳1,580</strong></div>',
     );
     expect(result.html).toContain('<div class="customer-label">CUSTOMER</div>');
-    expect(result.html).toContain('<div class="recipient-name">Rahim Uddin</div>');
-    expect(result.html).toContain('<div class="recipient-phone">01700 000000</div>');
+    expect(result.html).toContain(
+      '<div class="recipient-contact contact-size-normal">Rahim Uddin - 01700 000000</div>',
+    );
+    expect(result.html).not.toContain('class="recipient-name"');
+    expect(result.html).not.toContain('class="recipient-phone"');
     expect(result.html).toContain(
       '<div class="recipient-address"><div class="address-label">ADDRESS</div><div>Dhaka</div></div>',
     );
@@ -117,6 +120,22 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("<rect");
   });
 
+  it.each([
+    [18, "contact-size-compact"],
+    [26, "contact-size-small"],
+    [34, "contact-size-tight"],
+  ])("uses an adaptive contact size for a %i-character customer name", (nameLength, sizeClass) => {
+    const customerName = "A".repeat(nameLength);
+    const result = buildShippingLabelHtml([makeOrder({ customer_name: customerName })]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected printable label HTML");
+
+    expect(result.html).toContain(
+      `<div class="recipient-contact ${sizeClass}">${customerName} - 01700 000000</div>`,
+    );
+  });
+
   it("leaves phone values unchanged unless they are exactly 11 digits", () => {
     const result = buildShippingLabelHtml([
       makeOrder({ phone: "+8801700000000" }),
@@ -126,7 +145,7 @@ describe("shipping label HTML", () => {
     if (!result.ok) throw new Error("Expected printable label HTML");
 
     expect(result.html).toContain(
-      '<div class="recipient-phone">+8801700000000</div>',
+      '<div class="recipient-contact contact-size-normal">Rahim Uddin - +8801700000000</div>',
     );
   });
 

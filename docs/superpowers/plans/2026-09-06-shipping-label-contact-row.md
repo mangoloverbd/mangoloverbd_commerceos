@@ -26,7 +26,7 @@
 - Consumes: `buildShippingLabelHtml(orders, businessName?)`
 - Produces: unchanged `ShippingLabelHtmlResult` with `.recipient-contact` markup
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Assert normal values render as:
 
@@ -40,11 +40,11 @@ expect(result.html).not.toContain('class="recipient-phone"');
 
 Add generated-HTML cases for lengths above 32, 40, and 48 characters and assert `contact-size-compact`, `contact-size-small`, and `contact-size-tight` respectively.
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run `npm test -- src/test/shippingLabelPrinter.test.ts`; expect failures because name and phone still use separate elements.
 
-- [ ] **Step 3: Implement size selection and markup**
+- [x] **Step 3: Implement size selection and markup**
 
 Add:
 
@@ -61,10 +61,10 @@ Build the display value from the raw fallback-aware name and formatted phone, ca
 
 Replace the separate CSS rules with a bold no-wrap contact row and the four specified font sizes.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run `npm test -- src/test/shippingLabelPrinter.test.ts`.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run `npm test`, `npm run lint`, `npm run build`, and `git diff --check`; then commit as `feat: combine shipping label contact details`.
