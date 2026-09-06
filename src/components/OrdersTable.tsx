@@ -859,56 +859,12 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate }: 
     const selectedOrders = orders.filter((o) => selectedIds.has(o.id));
     if (selectedOrders.length === 0) return;
 
-    // Show loading toast
-    const toastId = toast.custom((t) => (
-      <DarkToast className="flex items-center gap-4">
-        <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-          <Spinner size="lg" className="text-white" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Processing</span>
-          <span className="text-sm font-bold text-white">Generating Invoices...</span>
-        </div>
-      </DarkToast>
-    ), { duration: Infinity, fit: true }); // Keep open until done
-
     try {
-      // Small delay to ensure UI renders before heavy PDF gen blocks thread
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Dynamically imported so jsPDF stays out of the dashboard's initial bundle
-      const { generateInvoice } = await import("@/utils/invoiceGenerator");
-      await generateInvoice(selectedOrders, orgName);
-
-      toast.dismiss(toastId);
-      toast.custom((t) => (
-        <DarkToast className="flex items-center gap-4">
-          <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center shrink-0">
-            <FileText className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Complete</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-sm font-bold text-white">{selectedOrders.length} Invoices</span>
-              <span className="text-xs text-white/60 font-medium">Generated</span>
-            </div>
-          </div>
-        </DarkToast>
-      ), { fit: true });
+      const { printInvoice } = await import("@/utils/invoiceGenerator");
+      printInvoice(selectedOrders, orgName);
     } catch (error) {
-      console.error("Invoice generation failed:", error);
-      toast.dismiss(toastId);
-      toast.custom((t) => (
-        <DarkToast className="flex items-center gap-4">
-          <div className="h-10 w-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-400" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Error</span>
-            <span className="text-sm font-bold text-white">Failed to generate PDF</span>
-          </div>
-        </DarkToast>
-      ), { fit: true });
+      console.error("Invoice printing failed:", error);
+      toast.error("Failed to prepare invoices for printing");
     }
   };
 
