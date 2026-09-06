@@ -182,6 +182,25 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("page-break-after: always");
   });
 
+  it("reserves about forty percent for the summary and fits five product rows", () => {
+    const items = Array.from({ length: 5 }, (_, index) => ({
+      product_name: `পণ্য ${index + 1} | Product ${index + 1}`,
+      variant_name: "500 g pouch",
+      quantity: 1,
+    }));
+    const result = buildShippingLabelHtml([makeOrder({ items })]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected printable label HTML");
+
+    expect(result.html).toContain('<div class="label-summary">');
+    expect(result.html).toContain(
+      ".label-summary { min-height: 1.58in; flex: 0 0 auto; }",
+    );
+    expect(result.html).toContain("tbody tr { height: 0.29in; }");
+    expect(result.html.match(/<td class="product">পণ্য \d \| Product \d<\/td>/g)).toHaveLength(5);
+  });
+
   it("falls back to legacy merchandise fields", () => {
     const result = buildShippingLabelHtml([
       makeOrder({ items: [], product: "3x Dried Mango", quantity: 3 }),

@@ -44,6 +44,14 @@ The label uses each order item's selected variant label as its Weight value. Thi
 
 Legacy orders without structured order items fall back to the existing product description and order quantity. Unknown variants display an em dash in the Weight column.
 
+## Vertical Space Allocation
+
+- Keep the logo, barcode, CN, Order/COD, customer contact row, and address together in a compact summary block with a typical minimum height of 1.58 inches, approximately 40% of the 4-inch label.
+- Compress the summary's vertical gaps, logo, and barcode while preserving barcode scanability and full recipient information. The summary may grow slightly for a wrapping address rather than clipping it.
+- Start the product table immediately after the summary and make the remaining label height available to it.
+- Use compact table typography and approximately 0.29-inch product rows so an order containing up to five normal product entries, including wrapped bilingual names, fits within one label.
+- Do not split one order across multiple labels or change the one-order-per-page rule.
+
 ## Validation and Errors
 
 - If any selected order lacks both a tracking code and consignment ID, printing is stopped before opening the browser print dialog.
