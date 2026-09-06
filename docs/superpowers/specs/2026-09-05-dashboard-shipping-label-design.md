@@ -31,9 +31,10 @@ Use the approved **Balanced stack** layout for the customer-details section. Thi
 1. Start with two equal-width columns. The left column contains a small uppercase `ORDER` label above the bold `#<number>` value. The right column contains a small uppercase `COD` label above the bold `৳<amount>` value.
 2. Separate the two-column metadata row from the customer stack with one thin solid rule. Do not use dashed separators in this section.
 3. Add a small uppercase `CUSTOMER` eyebrow below the rule.
-4. Show the customer name below the eyebrow in bold uppercase text. Keep it prominent without making it larger than the phone number.
-5. Show the phone number directly below the name as the most prominent value in the customer stack. Group an 11-digit Bangladeshi number as five digits followed by six digits for readability, without changing its value.
-6. Separate the address with one thin solid rule. Add a small uppercase `ADDRESS` label, then show the full-width address with enough line height to support wrapping.
+4. Show the customer name and phone number together in one bold, no-wrap contact row: `<UPPERCASE NAME> - <PHONE>`.
+5. Use a normal contact-row size of 15px, slightly smaller than the previous separate name and phone lines. Group an 11-digit Bangladeshi number as five digits followed by six digits for readability, without changing its value.
+6. Select a smaller contact-row class from the combined display-text length so longer names remain on one line: 13px above 32 characters, 11px above 40 characters, and 9px above 48 characters.
+7. Separate the address with one thin solid rule. Add a small uppercase `ADDRESS` label, then show the full-width address with enough line height to support wrapping.
 
 The balanced stack uses compact labels to make each value immediately recognizable. It does not use an outlined COD box or a `DELIVER TO` eyebrow.
 

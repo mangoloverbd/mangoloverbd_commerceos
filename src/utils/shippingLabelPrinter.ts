@@ -63,6 +63,13 @@ const formatShippingPhone = (phone: string) => {
   return /^\d{11}$/.test(value) ? `${value.slice(0, 5)} ${value.slice(5)}` : value;
 };
 
+const contactSizeClass = (length: number) => {
+  if (length > 48) return "contact-size-tight";
+  if (length > 40) return "contact-size-small";
+  if (length > 32) return "contact-size-compact";
+  return "contact-size-normal";
+};
+
 const orderNumberText = (orderNumber: string) => orderNumber.replace(/^#/, "");
 
 export function getShippingLabelCn(order: ShippingLabelOrder): string | null {
@@ -124,8 +131,9 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
         <td class="quantity">${item.quantity}</td>
       </tr>`)
     .join("");
-  const customerName = escapeHtml(order.customer_name || "Customer");
-  const phone = escapeHtml(order.phone ? formatShippingPhone(order.phone) : "—");
+  const customerName = order.customer_name || "Customer";
+  const phone = order.phone ? formatShippingPhone(order.phone) : "—";
+  const contactClass = contactSizeClass(Array.from(`${customerName} - ${phone}`).length);
   const address = escapeHtml(order.address ? cleanAddress(order.address) : "—");
 
   return `
@@ -141,8 +149,7 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
           <div class="meta-field"><span>COD</span><strong>${formatCod(order)}</strong></div>
         </div>
         <div class="customer-label">CUSTOMER</div>
-        <div class="recipient-name">${customerName}</div>
-        <div class="recipient-phone">${phone}</div>
+        <div class="recipient-contact ${contactClass}">${escapeHtml(customerName)} - ${escapeHtml(phone)}</div>
         <div class="recipient-address"><div class="address-label">ADDRESS</div><div>${address}</div></div>
       </div>
       <table>
@@ -206,8 +213,11 @@ export function buildShippingLabelHtml(
             .meta-field span, .customer-label, .address-label { display: block; font-size: 6.5px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
             .meta-field strong { display: block; margin-top: 0.025in; font-size: 13px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }
             .customer-label { margin-top: 0.05in; }
-            .recipient-name { margin-top: 0.025in; font-size: 17px; line-height: 1.05; font-weight: 800; text-transform: uppercase; overflow-wrap: anywhere; }
-            .recipient-phone { margin-top: 0.035in; font-size: 18px; line-height: 1; font-weight: 800; letter-spacing: 0.04em; }
+            .recipient-contact { margin-top: 0.035in; line-height: 1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.015em; white-space: nowrap; }
+            .contact-size-normal { font-size: 15px; }
+            .contact-size-compact { font-size: 13px; }
+            .contact-size-small { font-size: 11px; }
+            .contact-size-tight { font-size: 9px; }
             .recipient-address { margin-top: 0.055in; padding-top: 0.045in; border-top: 1px solid #000; font-size: 10px; line-height: 1.22; overflow-wrap: anywhere; }
             .address-label { margin-bottom: 0.03in; }
             table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.045in; font-size: 7.3px; line-height: 1.1; }
