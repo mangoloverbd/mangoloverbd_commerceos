@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { toInvoiceOrder } from "@/pages/InboxOrders";
+import { toInvoiceOrder } from "@/utils/inboxOrderPrintMapper";
 
 describe("invoice and shipping-label action wiring", () => {
   it("prints A4 invoices and keeps shipping stickers as the Print action", () => {

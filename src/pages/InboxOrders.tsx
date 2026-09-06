@@ -26,6 +26,7 @@ import {
 } from "@phosphor-icons/react";
 import { AlertTriangle, HelpCircle, ShieldAlert, ShieldCheck as LucideShieldCheck } from "lucide-react";
 import { printInvoice } from "@/utils/invoiceGenerator";
+import { toInvoiceOrder } from "@/utils/inboxOrderPrintMapper";
 import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
@@ -51,48 +52,10 @@ interface InboxOrder {
   delivery_rate?: number | null;
 }
 
-function parseNotes(notes: string): { phone: string; address: string; orderNote: string } {
+function parseNotes(notes: string): { phone: string; address: string } {
   const phone = notes?.match(/Phone:\s*([^,\n]+)/i)?.[1]?.trim() || "";
   const address = notes?.match(/Address:\s*([^\n]+)/i)?.[1]?.trim() || "";
-  const orderNote = (notes || "")
-    .split(/\r?\n/)
-    .filter((line) => !/^\s*(?:Phone|Address):/i.test(line))
-    .join("\n")
-    .trim();
-  return { phone, address, orderNote };
-}
-
-function itemsToProduct(items: InboxOrder["items"]): string {
-  return (items || []).map((i) => `${i.quantity}x ${i.product}`).join(", ");
-}
-
-export function toInvoiceOrder(o: InboxOrder, variantLabels: Record<string, string> = {}) {
-  const { phone, address, orderNote } = parseNotes(o.notes);
-  const items = o.items || [];
-  const totalQty = items.reduce((a, i) => a + (i.quantity || 1), 0);
-  return {
-    id: o.id,
-    order_number: `IO-${o.id.slice(-6).toUpperCase()}`,
-    customer_name: o.contact_name || o.contact_id || "Customer",
-    phone: phone || null,
-    address: address || null,
-    product: itemsToProduct(items),
-    quantity: totalQty,
-    price: o.total_price,
-    status: o.status,
-    created_at: o.created_at,
-    delivery_rate: o.delivery_rate ?? null,
-    courier_status: o.courier_status || null,
-    consignment_id: o.consignment_id || null,
-    tracking_code: o.tracking_code || null,
-    courier_message: o.courier_message || null,
-    notes: orderNote || null,
-    items: items.map((item) => ({
-      product_name: item.product || "Item",
-      variant_name: item.variant_id ? variantLabels[item.variant_id] || null : null,
-      quantity: item.quantity || 1,
-    })),
-  };
+  return { phone, address };
 }
 
 const PLATFORM_ICONS: Record<string, React.ElementType> = {
