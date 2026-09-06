@@ -610,6 +610,11 @@ function normalizeBdPhone(phone) {
   return clean;
 }
 
+// Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
+function normalizeBusinessStatus(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
 function parseFraudShieldError(status, body) {
   let message = body;
   try {
@@ -6207,6 +6212,20 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
+    // Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
+    if (update.status !== undefined) {
+      const fromStatus = normalizeBusinessStatus(orderCheck.status);
+      const toStatus = normalizeBusinessStatus(update.status);
+      const fromApproved = fromStatus === "approved" || fromStatus === "confirmed";
+      const toApproved = toStatus === "approved" || toStatus === "confirmed";
+      const toCancelled = toStatus === "cancelled" || toStatus === "canceled";
+      if (toStatus === "print" && !fromApproved) {
+        return res.status(400).json({ error: "Only Approved orders can move to Print" });
+      }
+      if (fromStatus === "print" && !(toStatus === "print" || toApproved || toCancelled)) {
+        return res.status(400).json({ error: "Print orders can only move back to Approved or to Cancelled" });
+      }
+    }
     const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
     if (updErr) throw updErr;
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
@@ -6259,6 +6278,11 @@ app.post("/api/send-to-courier", async (req, res) => {
     if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
     if (order.sent_to_courier) return res.status(400).json({ error: "Order already sent to courier", consignment_id: order.consignment_id });
 
+    const sendBusinessStatus = normalizeBusinessStatus(order.status);
+    if (sendBusinessStatus === "approved" || sendBusinessStatus === "confirmed") {
+      return res.status(400).json({ error: "Move to Print first before sending to courier" });
+    }
+
     const cleanedPhone = normalizeBdPhone(order.phone || "");
     if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
@@ -6290,6 +6314,7 @@ app.post("/api/send-to-courier", async (req, res) => {
 
     const consignment = sfData.consignment;
     await supabase.from("orders").update({
+      status: "processing",
       sent_to_courier: true,
       consignment_id: String(consignment.consignment_id),
       tracking_code: consignment.tracking_code,
@@ -6325,6 +6350,11 @@ app.post("/api/send-to-pathao", async (req, res) => {
 
     const { data: order, error: fetchError } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
+
+    const sendBusinessStatus = normalizeBusinessStatus(order.status);
+    if (sendBusinessStatus === "approved" || sendBusinessStatus === "confirmed") {
+      return res.status(400).json({ error: "Move to Print first before sending to courier" });
+    }
 
     const cleanedPhone = normalizeBdPhone(order.phone || "");
     if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
@@ -6362,6 +6392,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
     const consignmentId = consignment?.consignment_id ? String(consignment.consignment_id) : null;
     const deliveryFee = consignment?.delivery_fee != null ? Number(consignment.delivery_fee) : null;
     await supabase.from("orders").update({
+      status: "processing",
       sent_to_courier: true,
       consignment_id: consignmentId,
       tracking_code: consignmentId,
