@@ -8,6 +8,7 @@ const counts = {
   pending: 707,
   on_hold: 0,
   approved: 102,
+  print: 0,
   processing: 0,
   ready_to_ship: 57432,
   in_transit: 2,
@@ -25,7 +26,8 @@ describe("OrderStatusSegmentedControl", () => {
     expect(screen.getByRole("radio", { name: /Ready To Ship.*57,432/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /In-Transit.*2/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Cancelled.*30,676/ })).toBeInTheDocument();
-    expect(screen.getAllByRole("radio")).toHaveLength(10);
+    expect(screen.getByRole("radio", { name: /Print.*0/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(11);
   });
 
   it("reports the selected status", async () => {
@@ -42,7 +44,7 @@ describe("OrderStatusSegmentedControl", () => {
     render(<OrderStatusSegmentedControl counts={counts} value="all" onChange={vi.fn()} loading />);
 
     expect(screen.getByRole("radio", { name: /All Orders.*loading/ })).toBeInTheDocument();
-    expect(screen.getAllByText("—")).toHaveLength(10);
+    expect(screen.getAllByText("—")).toHaveLength(11);
   });
 
   it("uses a full-width gray tray with neutral count text", () => {
@@ -51,7 +53,7 @@ describe("OrderStatusSegmentedControl", () => {
     expect(screen.getByTestId("order-status-scroll-container")).toHaveClass("w-full");
     expect(screen.getByTestId("order-status-control")).toHaveClass(
       "xl:grid",
-      "xl:grid-cols-10",
+      "xl:grid-cols-11",
       "xl:w-full",
       "rounded-xl",
       "bg-black/[0.045]",

@@ -29,6 +29,10 @@ const STATUS_PRESENTATION: Record<OrderStatusFilter, StatusPresentation> = {
     label: "Approved",
     dotClassName: "bg-sky-500",
   },
+  print: {
+    label: "Print",
+    dotClassName: "bg-lime-500",
+  },
   processing: {
     label: "Processing",
     dotClassName: "bg-violet-500",
@@ -81,7 +85,7 @@ export function OrderStatusSegmentedControl({
           const selected = [...keys][0];
           if (selected) onChange(String(selected) as OrderStatusFilter);
         }}
-        className="w-max min-w-full rounded-xl bg-black/[0.045] p-1 ring-1 ring-black/[0.025] xl:grid xl:w-full xl:grid-cols-10"
+        className="w-max min-w-full rounded-xl bg-black/[0.045] p-1 ring-1 ring-black/[0.025] xl:grid xl:w-full xl:grid-cols-11"
       >
         {ORDER_STATUS_FILTERS.map((status) => {
           const presentation = STATUS_PRESENTATION[status];
