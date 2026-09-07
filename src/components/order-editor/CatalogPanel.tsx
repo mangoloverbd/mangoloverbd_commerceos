@@ -35,10 +35,10 @@ export function CatalogPanel({ products, search, loading, error, canEdit, locked
         <h2 className="text-[15px] font-medium text-black">{filtered.length} product{filtered.length === 1 ? "" : "s"}</h2>
       </div>
       {locked && <p className="mt-4 rounded-lg bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-800">Editing is locked after courier dispatch.</p>}
-      <label className="relative mt-3 block">
+      <label className="relative mx-3 mt-3 block">
         <span className="sr-only">Search products</span>
         <MagnifyingGlass weight="light" size={19} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black/35" />
-        <input type="search" aria-label="Search products" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search name, slug, or variant" className="h-12 w-full rounded-xl bg-black/[0.04] pl-11 pr-4 text-[14px] outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
+        <input type="search" aria-label="Search products" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search name, slug, or variant" className="h-12 w-full rounded-full bg-black/[0.04] pl-11 pr-4 text-[14px] outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
       </label>
 
       <div data-testid="catalog-scroll-region" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-auto pr-1.5 [scrollbar-gutter:stable] [scrollbar-width:thin]">
