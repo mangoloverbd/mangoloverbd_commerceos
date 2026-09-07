@@ -30,18 +30,16 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/ios-spinner";
-
-interface Product {
-  id: string;
-  name: string;
-  selling_price: number | null;
-  image_url?: string | null;
-  images?: { url: string }[];
-}
+import { Switch } from "@/components/base/switch/switch";
+import { catalogImage, variantLabel, type CatalogProduct, type CatalogVariant } from "@/lib/orderEditor";
 
 interface Line {
   id: string;
   name: string;
+  productId: string | null;
+  variantId: string | null;
+  variantName: string | null;
+  variants: CatalogVariant[];
   unitPrice: number;
   quantity: number;
   image?: string | null;
@@ -63,19 +61,7 @@ const PAYMENT_METHODS = [
   { value: "card", label: "Card" },
 ];
 
-const DHAKA_KEYWORDS = [
-  "dhaka", "dhanmondi", "gulshan", "banani", "mirpur", "mohammadpur",
-  "uttara", "badda", "khilgaon", "motijheel", "paltan", "farmgate",
-  "shahbagh", "new market", "azampur", "kurmitola", "tejgaon",
-];
-
-function determineDeliveryCharge(address: string): { charge: number; type: "inside_dhaka" | "outside_dhaka" } {
-  const isInsideDhaka = DHAKA_KEYWORDS.some((k) => address.toLowerCase().includes(k));
-  return {
-    charge: isInsideDhaka ? 80 : 120,
-    type: isInsideDhaka ? "inside_dhaka" : "outside_dhaka",
-  };
-}
+const DEFAULT_DELIVERY_FEE = 100;
 
 export default function OrderCreatorModal({
   open,
@@ -95,23 +81,21 @@ export default function OrderCreatorModal({
   const [address, setAddress] = useState("");
 
   const [lines, setLines] = useState<Line[]>([]);
-  const [deliveryCharge, setDeliveryCharge] = useState(0);
-  const [deliveryType, setDeliveryType] = useState<"inside_dhaka" | "outside_dhaka">("inside_dhaka");
-  const [deliveryTouched, setDeliveryTouched] = useState(false);
+  const [deliveryOn, setDeliveryOn] = useState(true);
   const [discount, setDiscount] = useState(0);
   const [advance, setAdvance] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [notes, setNotes] = useState("");
   const [runFraudCheck, setRunFraudCheck] = useState(false);
 
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [addProductId, setAddProductId] = useState("");
 
   useEffect(() => {
     if (!open) return;
     apiFetch("/api/products")
       .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data) => setProducts(data?.products || []))
+      .then((data) => setProducts((data?.products || []).map((product: CatalogProduct) => ({ ...product, variants: product.variants || [] }))))
       .catch(() => {});
   }, [open]);
 
@@ -121,6 +105,7 @@ export default function OrderCreatorModal({
     () => lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0),
     [lines],
   );
+  const deliveryCharge = deliveryOn ? DEFAULT_DELIVERY_FEE : 0;
   const total = subtotal + deliveryCharge - discount;
 
   const reset = () => {
@@ -129,9 +114,7 @@ export default function OrderCreatorModal({
     setPhone("");
     setAddress("");
     setLines([]);
-    setDeliveryCharge(0);
-    setDeliveryType("inside_dhaka");
-    setDeliveryTouched(false);
+    setDeliveryOn(true);
     setDiscount(0);
     setAdvance(0);
     setPaymentMethod("cod");
@@ -142,11 +125,6 @@ export default function OrderCreatorModal({
 
   const applyAddress = (value: string) => {
     setAddress(value);
-    if (!deliveryTouched && value.trim()) {
-      const { charge, type } = determineDeliveryCharge(value);
-      setDeliveryCharge(charge);
-      setDeliveryType(type);
-    }
   };
 
   const extractOrder = async () => {
@@ -174,7 +152,16 @@ export default function OrderCreatorModal({
       setPhone(order.phone || "");
       applyAddress(order.address || "");
       setLines([
-        { id: crypto.randomUUID(), name: order.product || "", unitPrice: order.price || 0, quantity: order.quantity || 1 },
+        {
+          id: crypto.randomUUID(),
+          name: order.product || "",
+          productId: null,
+          variantId: null,
+          variantName: null,
+          variants: [],
+          unitPrice: order.price || 0,
+          quantity: order.quantity || 1,
+        },
       ]);
       toast.success("Order details extracted!");
     } catch (error) {
@@ -194,9 +181,13 @@ export default function OrderCreatorModal({
       {
         id: crypto.randomUUID(),
         name: product.name,
+        productId: product.id,
+        variantId: null,
+        variantName: null,
+        variants: product.variants,
         unitPrice: product.selling_price ?? 0,
         quantity: 1,
-        image: product.image_url || product.images?.[0]?.url || null,
+        image: catalogImage(product),
       },
     ]);
     setAddProductId("");
@@ -204,6 +195,28 @@ export default function OrderCreatorModal({
 
   const updateLine = (lineId: string, patch: Partial<Line>) => {
     setLines((prev) => prev.map((l) => (l.id === lineId ? { ...l, ...patch } : l)));
+  };
+
+  const updateLineVariant = (lineId: string, variantId: string) => {
+    setLines((prev) => prev.map((line) => {
+      if (line.id !== lineId) return line;
+      const variant = line.variants.find((item) => item.id === variantId);
+      const product = line.productId ? products.find((item) => item.id === line.productId) : null;
+      if (!variant || !product) {
+        return {
+          ...line,
+          variantId: null,
+          variantName: null,
+          unitPrice: product?.selling_price ?? line.unitPrice,
+        };
+      }
+      return {
+        ...line,
+        variantId: variant.id,
+        variantName: variantLabel(variant.attributes),
+        unitPrice: (product.selling_price ?? 0) + (variant.price_adjustment || 0),
+      };
+    }));
   };
 
   const updateLineQty = (lineId: string, delta: number) => {
@@ -225,6 +238,11 @@ export default function OrderCreatorModal({
       toast.error("Add at least one product");
       return;
     }
+    const missingVariant = lines.find((line) => line.productId && line.variants.length > 0 && !line.variantId);
+    if (missingVariant) {
+      toast.error(`Select a variant for ${missingVariant.name}`);
+      return;
+    }
 
     setCreating(true);
     try {
@@ -239,7 +257,10 @@ export default function OrderCreatorModal({
           quantity: lines.reduce((s, l) => s + l.quantity, 0),
           price: subtotal - discount,
           items: lines.map((line) => ({
+            product_id: line.productId,
+            variant_id: line.variantId,
             product_name: line.name,
+            variant_name: line.variantName,
             unit_price: line.unitPrice,
             quantity: line.quantity,
           })),
@@ -403,12 +424,31 @@ export default function OrderCreatorModal({
                       className="h-9 w-9 shrink-0 rounded-lg object-cover"
                     />
                   )}
-                  <input
-                    value={line.name}
-                    onChange={(e) => updateLine(line.id, { name: e.target.value })}
-                    placeholder="Product"
-                    className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-black/30"
-                  />
+                  {line.productId ? (
+                    <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{line.name}</div>
+                  ) : (
+                    <input
+                      value={line.name}
+                      onChange={(e) => updateLine(line.id, { name: e.target.value })}
+                      placeholder="Product"
+                      className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-black/30"
+                    />
+                  )}
+                  {line.productId && line.variants.length > 0 && (
+                    <select
+                      aria-label={`Variant for ${line.name}`}
+                      value={line.variantId || ""}
+                      onChange={(e) => updateLineVariant(line.id, e.target.value)}
+                      className="max-w-[140px] rounded-lg bg-black/[0.04] px-2 py-1 text-xs text-foreground outline-none"
+                    >
+                      <option value="">Select variant</option>
+                      {line.variants.map((variant) => (
+                        <option key={variant.id} value={variant.id}>
+                          {variantLabel(variant.attributes) || "Default variant"}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     type="number"
                     value={line.unitPrice}
@@ -453,7 +493,7 @@ export default function OrderCreatorModal({
                     value: p.id,
                     label: p.name,
                     price: p.selling_price ?? 0,
-                    image: p.image_url || p.images?.[0]?.url || null,
+                    image: catalogImage(p),
                   }))}
                   value={addProductId}
                   onValueChange={addProductLine}
@@ -475,22 +515,17 @@ export default function OrderCreatorModal({
             <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
               <div className="flex items-center gap-2">
                 <Truck className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs text-foreground">
-                  Delivery
-                  <span className="ml-1.5 text-muted-foreground">
-                    ({deliveryType === "inside_dhaka" ? "Inside Dhaka" : "Outside Dhaka"})
-                  </span>
-                </span>
+                <span className="text-xs text-foreground">Delivery</span>
               </div>
-              <input
-                type="number"
-                value={deliveryCharge}
-                onChange={(e) => {
-                  setDeliveryTouched(true);
-                  setDeliveryCharge(Number(e.target.value) || 0);
-                }}
-                className="w-20 bg-transparent text-right text-sm font-medium text-foreground outline-none"
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-foreground">{deliveryCharge > 0 ? `৳${deliveryCharge}` : "Free"}</span>
+                <Switch
+                  size="sm"
+                  aria-label="Toggle delivery charge"
+                  isSelected={deliveryOn}
+                  onChange={setDeliveryOn}
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
