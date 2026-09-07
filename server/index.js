@@ -25,6 +25,11 @@ import {
   matchVariantIdFromText,
   variantLabel,
 } from "./variantMatching.js";
+import {
+  buildLegacyOrderItems,
+  mergeResolvedOrderItems,
+  parseLegacyProductLines,
+} from "./orderItemParsing.js";
 import { buildCustomers, summarizeCustomers } from "./customers.js";
 import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
@@ -5284,7 +5289,17 @@ app.get("/api/orders", async (req, res) => {
       list.push(item);
       itemsByOrder.set(item.order_id, list);
     }
-    const orders = allOrders.map((order) => ({ ...order, items: itemsByOrder.get(order.id) || [] }));
+    const orders = allOrders.map((order) => {
+      const storedItems = itemsByOrder.get(order.id);
+      if (storedItems?.length) return { ...order, items: storedItems };
+
+      const legacyItems = parseLegacyProductLines(order.product, order.quantity).map((line) => ({
+        product_name: line.productName,
+        variant_name: null,
+        quantity: line.quantity,
+      }));
+      return { ...order, items: legacyItems };
+    });
 
     console.log(`[Orders] total=${allOrders.length}`);
     return res.json({ orders });
@@ -5324,6 +5339,31 @@ function isOrderDispatched(order) {
 
 function variantDisplay(attributes) {
   return Object.values(attributes || {}).filter(Boolean).join(" · ") || null;
+}
+
+async function getCourierOrderItems(supabase, orgId, order) {
+  const { data, error } = await supabase
+    .from("order_items")
+    .select("product_name, variant_name, quantity")
+    .eq("order_id", order.id)
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  if (data?.length) return data;
+  return parseLegacyProductLines(order.product, order.quantity).map((line) => ({
+    product_name: line.productName,
+    variant_name: null,
+    quantity: line.quantity,
+  }));
+}
+
+function formatCourierItems(items) {
+  return items.map((item) => {
+    const variantName = readableVariantName(item.variant_name);
+    const variant = variantName ? ` (${variantName})` : "";
+    return `${item.quantity || 1}x ${item.product_name}${variant}`;
+  }).join(", ") || "N/A";
 }
 
 async function enrichOrderItems(supabase, orgId, items) {
@@ -5419,37 +5459,34 @@ app.get("/api/orders/:id", async (req, res) => {
 
     const storedItems = items || [];
     const fallbackQuantity = Math.max(1, Number(order.quantity) || 1);
-    let displayItems = storedItems.length > 0
-      ? storedItems
-      : order.product
-        ? [{
-            id: `legacy-${order.id}`,
-            product_id: null,
-            variant_id: null,
-            product_name: order.product,
-            variant_name: null,
-            unit_price: (Number(order.price) || 0) / fallbackQuantity,
-            discount_type: null,
-            discount_value: 0,
-            unit_discount: 0,
-            quantity: fallbackQuantity,
-          }]
-        : [];
-    if (storedItems.length === 0 && displayItems.length > 0) {
-      const routing = await resolveOrderRouting(supabase, orgId, [{
-        productName: order.product,
-        quantity: fallbackQuantity,
-      }]);
-      const matchedItem = routing.resolvedItems[0];
-      if (matchedItem?.catalogMatchComplete) {
-        displayItems = displayItems.map((item) => ({
-          ...item,
-          product_id: matchedItem.productId,
-          variant_id: matchedItem.variantId || null,
-          product_name: matchedItem.productName,
-          inventory_reserved: false,
-        }));
-      }
+    const useLegacyFallback = storedItems.length === 0;
+    let displayItems = useLegacyFallback
+      ? buildLegacyOrderItems({
+          orderId: order.id,
+          productText: order.product,
+          fallbackQuantity,
+          price: order.price,
+          discount: order.discount,
+        })
+      : storedItems;
+    if (useLegacyFallback && displayItems.length > 0) {
+      const routing = await resolveOrderRouting(supabase, orgId, displayItems.map((item) => ({
+        productName: item.product_name,
+        quantity: item.quantity,
+      })));
+      displayItems = displayItems.map((item, index) => {
+        const matchedItem = routing.resolvedItems[index];
+        if (matchedItem?.catalogMatchComplete) {
+          return {
+            ...item,
+            product_id: matchedItem.productId,
+            variant_id: matchedItem.variantId || null,
+            product_name: matchedItem.productName,
+            inventory_reserved: false,
+          };
+        }
+        return item;
+      });
     }
     const enrichedItems = await enrichOrderItems(supabase, orgId, displayItems);
     return res.json({ order, items: enrichedItems, canEditItems: !isOrderDispatched(order) });
@@ -5695,10 +5732,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
        row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
 
-    const routingItems = [];
-    if (typeof row.product === "string" && row.product.trim()) {
-      routingItems.push({ productName: row.product.trim(), quantity: Number(row.quantity) || 1 });
-    }
+    const routingItems = parseLegacyProductLines(row.product, row.quantity);
     const routing = await resolveOrderRouting(supabase, orgId, routingItems);
     row.warehouse_id = routing.warehouseId;
     row.warehouse_auto = true;
@@ -5713,21 +5747,21 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     if (error) throw error;
 
     let persistedOrder = data;
-    const linkedItem = routing.resolvedItems.length === 1 &&
-      routing.resolvedItems[0].catalogMatchComplete
-      ? routing.resolvedItems[0]
-      : null;
-    if (linkedItem) {
+    const linkedItems = routing.resolvedItems.length > 0 &&
+      routing.resolvedItems.every((item) => item.catalogMatchComplete)
+      ? mergeResolvedOrderItems(routing.resolvedItems)
+      : [];
+    if (linkedItems.length > 0) {
       const { error: itemError } = await supabase.rpc("replace_order_items", {
         p_org_id: orgId,
         p_order_id: data.id,
-        p_items: [{
-          productId: linkedItem.productId,
-          variantId: linkedItem.variantId || null,
-          quantity: linkedItem.quantity,
+        p_items: linkedItems.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId || null,
+          quantity: item.quantity,
           discountType: null,
           discountValue: 0,
-        }],
+        })),
       });
       if (itemError) {
         const { error: cleanupError } = await supabase
@@ -6305,6 +6339,7 @@ app.post("/api/send-to-courier", async (req, res) => {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
+    const courierItems = await getCourierOrderItems(supabase, orgId, order);
     const invoice = `ORD-${(order.order_number || order.id.slice(-8)).replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase()}`;
     const payload = {
       invoice,
@@ -6312,7 +6347,7 @@ app.post("/api/send-to-courier", async (req, res) => {
       recipient_phone: cleanedPhone,
       recipient_address: order.address || "No address provided",
       cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
-      note: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
+      note: formatCourierItems(courierItems),
     };
 
     const sfRes = await fetch("https://portal.packzy.com/api/v1/create_order", {
@@ -6378,6 +6413,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
       return res.status(400).json({ error: "Invalid phone number. Must be 11 digits starting with 01." });
     }
 
+    const courierItems = await getCourierOrderItems(supabase, orgId, order);
     const accessToken = await getPathaoToken(orgId);
     const pathaoPayload = {
       store_id: parseInt(storeId),
@@ -6387,8 +6423,8 @@ app.post("/api/send-to-pathao", async (req, res) => {
       recipient_address: order.address || "No address provided",
       delivery_type: 48,
       item_type: 2,
-      special_instruction: order.product ? `${order.quantity || 1}x ${order.product}` : "N/A",
-      item_quantity: order.quantity || 1,
+      special_instruction: formatCourierItems(courierItems),
+      item_quantity: courierItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0),
       item_weight: 0.5,
       amount_to_collect: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
     };

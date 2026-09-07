@@ -8,6 +8,7 @@ import OrderDetail from "@/pages/OrderDetail";
 import { OrdersTable, type Order } from "@/components/OrdersTable";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { buildLegacyOrderItems } from "../../server/orderItemParsing.js";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api", () => ({ apiFetch }));
@@ -377,6 +378,37 @@ describe("OrderDetail", () => {
     await waitFor(() => expect(screen.getByTestId("order-detail-animated-content")).toHaveStyle({ opacity: "1" }));
   });
 
+  it("renders both products from a multi-item storefront order", async () => {
+    const legacyOrder = {
+      ...order,
+      product: "Premium Mango, Honey Jar",
+      price: 750,
+      discount: 50,
+    };
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") {
+        return response({
+          ...detail,
+          order: legacyOrder,
+          items: buildLegacyOrderItems({
+            orderId: legacyOrder.id,
+            productText: legacyOrder.product,
+            fallbackQuantity: legacyOrder.quantity,
+            price: legacyOrder.price,
+            discount: legacyOrder.discount,
+          }),
+        });
+      }
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+
+    renderPage();
+    const cart = await screen.findByRole("region", { name: "Order cart" });
+    expect(within(cart).getByText("Premium Mango")).toBeInTheDocument();
+    expect(within(cart).getByText("Honey Jar")).toBeInTheDocument();
+  });
+
   it("adds a product and variant, edits quantity, and removes a line", async () => {
     renderPage();
     fireEvent.change(await screen.findByRole("searchbox", { name: "Search products" }), { target: { value: "500g" } });
@@ -663,5 +695,28 @@ describe("OrderDetail", () => {
 
     fireEvent.click(screen.getByText("Ayesha Rahman"));
     expect(await screen.findByText("Order destination")).toBeInTheDocument();
+  });
+
+  it("shows plus-separated legacy cart lines in the dashboard table", () => {
+    const tableOrder = {
+      ...order,
+      product: "Cart Checkout - 1x Premium Mango + 1x Honey Jar",
+      quantity: 2,
+      items: undefined,
+    };
+    render(createElement(
+      QueryClientProvider,
+      { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+      createElement(TooltipProvider, null,
+        createElement(MemoryRouter, { initialEntries: ["/"] },
+          createElement(Routes, null,
+            createElement(Route, { path: "/", element: createElement(OrdersTable, { orders: [tableOrder], loading: false, onStatusUpdate: vi.fn() }) }),
+          ),
+        ),
+      ),
+    ));
+
+    expect(screen.getByText("Premium Mango")).toBeInTheDocument();
+    expect(screen.getByText("Honey Jar")).toBeInTheDocument();
   });
 });

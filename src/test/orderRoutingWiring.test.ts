@@ -144,6 +144,16 @@ describe("order routing wiring", () => {
     expect(checkout).toContain(".update({ stock_quantity: Math.max(0, variantMap[item.variantId].stock_quantity - item.quantity) })");
   });
 
+  it("exposes separate legacy product lines in the dashboard order list", () => {
+    const ordersList = sectionBetween(
+      'app.get("/api/orders"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(ordersList).toContain("parseLegacyProductLines(order.product, order.quantity)");
+    expect(ordersList).toContain("product_name: line.productName");
+  });
+
   it("stores the same immutable snapshot during manual dashboard order creation", () => {
     const manualCreate = sectionBetween(
       'app.post("/api/orders"',
@@ -167,7 +177,7 @@ describe("order routing wiring", () => {
     );
 
     expect(webhook).toContain("const routing = await resolveOrderRouting(supabase, orgId, routingItems);");
-    expect(webhook).toContain("productName: row.product");
+    expect(webhook).toContain("parseLegacyProductLines(row.product, row.quantity)");
     expect(webhook).toContain("row.warehouse_id = routing.warehouseId;");
     expect(webhook).toContain("row.warehouse_auto = true;");
     expect(webhook).toContain("row.weight_kg = routing.weightKg;");
@@ -199,6 +209,41 @@ describe("order routing wiring", () => {
     expect(webhook).toContain('sendBulkSms(orgId, "confirmation", persistedOrder)');
     expect(webhook).toContain("order_id: persistedOrder.order_number");
     expect(webhook).toContain("order: persistedOrder");
+  });
+
+  it("persists every complete legacy storefront product line", () => {
+    const webhook = sectionBetween(
+      'app.post("/api/custom-orders/webhook"',
+      "// ─── Live Visitor Tracking",
+    );
+
+    expect(webhook).toContain("parseLegacyProductLines(row.product, row.quantity)");
+    expect(webhook).toContain("routing.resolvedItems.length > 0");
+    expect(webhook).toContain("routing.resolvedItems.every((item) => item.catalogMatchComplete)");
+    expect(webhook).toContain("mergeResolvedOrderItems(routing.resolvedItems)");
+    expect(webhook).toContain("p_items: linkedItems.map((item) => ({");
+  });
+
+  it("splits legacy multi-product order details into separate fallback lines", () => {
+    const detail = sectionBetween(
+      'app.get("/api/orders/:id"',
+      'app.patch("/api/orders/:id/items"',
+    );
+
+    expect(detail).toContain("buildLegacyOrderItems({");
+    expect(detail).toContain("discount: order.discount");
+    expect(detail).toContain("routing.resolvedItems[index]");
+  });
+
+  it("uses stored or parsed item lines for courier descriptions and quantities", () => {
+    const courierRoutes = sectionBetween(
+      'app.post("/api/send-to-courier"',
+      'app.post("/api/inbox-orders/send-to-courier"',
+    );
+
+    expect(courierRoutes).toContain("getCourierOrderItems(supabase, orgId, order)");
+    expect(courierRoutes).toContain("formatCourierItems(courierItems)");
+    expect(courierRoutes).toContain("item_quantity: courierItems.reduce");
   });
 
   it("stores the same immutable snapshot during social inbox capture", () => {

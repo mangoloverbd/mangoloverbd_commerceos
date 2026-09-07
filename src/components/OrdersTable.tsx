@@ -45,10 +45,29 @@ import { downloadOrderExcel } from "@/lib/orderExcelExport";
 
 function splitProductLines(product: string | null): string[] {
   if (!product) return [];
-  return product
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+
+  const lines: string[] = [];
+  let current = "";
+  let parenthesesDepth = 0;
+  for (let index = 0; index < product.length; index += 1) {
+    const character = product[index];
+    if (character === "(") parenthesesDepth += 1;
+    if (character === ")") parenthesesDepth = Math.max(0, parenthesesDepth - 1);
+
+    const plusSeparator = character === "+" &&
+      /\s/.test(product[index - 1] || "") &&
+      /\s/.test(product[index + 1] || "");
+    if ((character === "," || plusSeparator) && parenthesesDepth === 0) {
+      if (current.trim()) lines.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim()) lines.push(current.trim());
+  return lines.map((line, index) => index === 0
+    ? line.replace(/^cart checkout\s*-\s*/i, "")
+    : line);
 }
 
 function OrderStatusIcon({ status }: { status: string }) {

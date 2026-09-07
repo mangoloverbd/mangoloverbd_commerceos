@@ -325,6 +325,7 @@ describe("order item schema", () => {
 
 describe("order item API contract", () => {
   const source = readFileSync(join(root, "server/index.js"), "utf8");
+  const legacyItemSource = readFileSync(join(root, "server/orderItemParsing.js"), "utf8");
 
   it("does not lock orders from courier status alone", () => {
     const start = source.indexOf("function isOrderDispatched");
@@ -366,9 +367,10 @@ describe("order item API contract", () => {
   it("returns explicit zero discount fields for synthesized legacy rows", () => {
     const start = source.indexOf('app.get("/api/orders/:id"');
     const route = source.slice(start, source.indexOf("\n});", start));
-    expect(route).toContain("discount_type: null");
-    expect(route).toContain("discount_value: 0");
-    expect(route).toContain("unit_discount: 0");
+    expect(route).toContain("buildLegacyOrderItems({");
+    expect(legacyItemSource).toContain("discount_type: null");
+    expect(legacyItemSource).toContain("discount_value: 0");
+    expect(legacyItemSource).toContain("unit_discount: 0");
   });
 
   it("keeps undisbursed legacy orders editable", () => {
