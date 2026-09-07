@@ -137,7 +137,7 @@ describe("OrderDetail", () => {
     renderPage();
 
     expect(await screen.findByTestId("order-editor-toolbar")).toHaveClass("sticky");
-    expect(await screen.findByTestId("order-editor-workspace")).toHaveClass("items-start");
+    expect(await screen.findByTestId("order-editor-workspace")).toHaveClass("items-start", "xl:h-[100vh]");
 
     const catalog = screen.getByRole("region", { name: "Product catalog" });
     expect(catalog).not.toHaveClass("overflow-y-auto");
