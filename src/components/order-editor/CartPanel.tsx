@@ -1,9 +1,11 @@
 import { Minus, Package, Plus, Trash } from "@phosphor-icons/react";
+import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { Switch } from "@/components/base/switch/switch";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CartDiscountEditor } from "./CartDiscountEditor";
 import { DiscountEditor } from "./DiscountEditor";
 import { calculateUnitDiscount, formatTaka, roundTaka, type CartTotals, type DiscountType, type OrderEditorItem } from "@/lib/orderEditor";
+import { displayStatusLabel, isOnHoldStatus, statusOptionsFor } from "@/lib/orderTransitions";
 
 type CartPanelProps = {
   items: OrderEditorItem[];
@@ -16,6 +18,10 @@ type CartPanelProps = {
   overallDiscountType: DiscountType | null;
   overallDiscountValue: number;
   deliveryOn: boolean;
+  status: string | null | undefined;
+  onStatusChange: (status: string) => void;
+  notes: string;
+  onNotesChange: (notes: string) => void;
   onToggleDelivery: (enabled: boolean) => void;
   onOverallDiscount: (discountType: DiscountType, discountValue: number) => void;
   onRemoveOverallDiscount: () => void;
@@ -26,7 +32,7 @@ type CartPanelProps = {
   onCancel: () => void;
 };
 
-export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel }: CartPanelProps) {
+export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel }: CartPanelProps) {
   const overallBase = roundTaka(totals.grossSubtotal - totals.itemDiscount);
   return (
     <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
@@ -60,7 +66,36 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
         <div className="mb-1"><CartDiscountEditor base={overallBase} discountType={overallDiscountType} discountValue={overallDiscountValue} disabled={!canEdit} onApply={onOverallDiscount} onRemove={onRemoveOverallDiscount} /></div>
         <dl className="space-y-1 text-[12px] leading-snug"><div className="flex justify-between"><dt className="text-black/45">Subtotal</dt><dd className="font-mono tabular-nums">{formatTaka(totals.grossSubtotal)}</dd></div>{totals.itemDiscount > 0 && <div className="flex justify-between"><dt className="text-black/45">Item discounts</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</dd></div>}{totals.legacyDiscount > 0 && <div className="flex justify-between"><dt className="text-black/45">Order discount</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</dd></div>}<div className="flex items-center justify-between"><dt className="text-black/45">Delivery</dt><dd className="flex items-center gap-2"><span className="font-mono tabular-nums">{totals.deliveryFee > 0 ? formatTaka(totals.deliveryFee) : "Free"}</span><Switch size="sm" aria-label="Toggle delivery charge" isSelected={deliveryOn} onChange={onToggleDelivery} isDisabled={!canEdit} /></dd></div><div className="flex items-baseline justify-between border-t border-black/[0.07] pt-2"><dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-black/55">Final total</dt><dd className="font-mono text-[17px] tabular-nums">{formatTaka(totals.finalTotal)}</dd></div></dl>
         {error && <p role="alert" className="mt-1.5 text-[12px] text-red-600">{error}</p>}
-        <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-1.5"><button type="button" onClick={onSave} disabled={saving || saveDisabled} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-35">{saving && <Spinner size="sm" />}{saving ? "Saving…" : "Save changes"}</button><button type="button" onClick={onCancel} disabled={saving} className="h-9 rounded-lg px-2.5 text-[12px] text-black/50 hover:bg-black/[0.05] disabled:opacity-35">Cancel</button></div>
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
+          <BuiSelect
+            aria-label="Order status"
+            selectedKey={status ?? null}
+            onSelectionChange={(key) => onStatusChange(String(key))}
+            isDisabled={saving || saveDisabled}
+            triggerClassName="h-9 min-w-0 capitalize text-[13px]"
+          >
+            {statusOptionsFor(status).map((st) => (
+              <BuiSelectItem key={st} id={st} textValue={displayStatusLabel(st)}>{displayStatusLabel(st)}</BuiSelectItem>
+            ))}
+          </BuiSelect>
+          <button type="button" onClick={onSave} disabled={saving || saveDisabled} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-35">{saving && <Spinner size="sm" />}{saving ? "Saving…" : "Save changes"}</button>
+          <button type="button" onClick={onCancel} disabled={saving} className="h-9 rounded-lg px-2.5 text-[12px] text-black/50 hover:bg-black/[0.05] disabled:opacity-35">Cancel</button>
+          {isOnHoldStatus(status) && (
+            <label className="col-span-3 mt-1 block" htmlFor="hold-note">
+              <span className="sr-only">Hold note</span>
+              <textarea
+                id="hold-note"
+                aria-label="Hold note"
+                value={notes}
+                onChange={(event) => onNotesChange(event.target.value)}
+                disabled={saving || saveDisabled}
+                rows={2}
+                placeholder="Why is this order on hold?"
+                className="h-16 w-full resize-none rounded-lg bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20 disabled:opacity-50"
+              />
+            </label>
+          )}
+        </div>
       </div>
     </section>
   );

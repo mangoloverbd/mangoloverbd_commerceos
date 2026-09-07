@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import OrderDetail from "@/pages/OrderDetail";
-import { OrdersTable } from "@/components/OrdersTable";
+import { OrdersTable, type Order } from "@/components/OrdersTable";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -144,7 +144,7 @@ describe("OrderDetail", () => {
     expect(within(catalog).getByTestId("catalog-scroll-region")).toHaveClass("overflow-y-auto");
   });
 
-  it("moves the order to print from the editor status dropdown", async () => {
+  it("stages the order status in the cart and saves before returning to the order table", async () => {
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders/order-1" && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body));
@@ -157,17 +157,51 @@ describe("OrderDetail", () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole("button", { name: /order status/i }));
+    const cart = await screen.findByRole("region", { name: "Order cart" });
+    expect(within(cart).getByRole("button", { name: /order status/i })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Customer and order" })).queryByRole("button", { name: /order status/i })).not.toBeInTheDocument();
+    await user.click(within(cart).getByRole("button", { name: /order status/i }));
     await user.click(await screen.findByRole("option", { name: "print" }));
+
+    expect(apiFetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
       expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ status: "print" });
     });
+    expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
   });
 
-  it("saves a hold note for an on-hold order", async () => {
+  it("saves an on-hold status and its compact note together", async () => {
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/orders/order-1" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        return response({ success: true, order: { ...order, ...body } });
+      }
+      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    const { queryClient } = renderPage("order-1", [order]);
+    const user = userEvent.setup();
+
+    const cart = await screen.findByRole("region", { name: "Order cart" });
+    await user.click(within(cart).getByRole("button", { name: /order status/i }));
+    await user.click(await screen.findByRole("option", { name: "On Hold" }));
+    await user.type(within(cart).getByRole("textbox", { name: "Hold note" }), "Waiting for stock");
+    await user.click(within(cart).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ status: "on_hold", notes: "Waiting for stock" });
+    });
+    expect(queryClient.getQueryData<Order[]>(["/api/orders"])?.[0]).toMatchObject({ status: "on_hold", notes: "Waiting for stock" });
+  });
+
+  it("saves an edited hold note with the main changes button", async () => {
     const holdDetail = { ...detail, order: { ...order, status: "on_hold", notes: "Waiting for stock" } };
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders/order-1" && init?.method === "PATCH") {
@@ -185,13 +219,14 @@ describe("OrderDetail", () => {
     expect(box).toHaveValue("Waiting for stock");
     await user.clear(box);
     await user.type(box, "Waiting for stock, call Friday");
-    await user.click(screen.getByRole("button", { name: "Save note" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
       expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ notes: "Waiting for stock, call Friday" });
     });
+    expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
   });
 
   it("keeps customer details read-only until Edit and supports Apply and Cancel", async () => {
@@ -373,8 +408,7 @@ describe("OrderDetail", () => {
     const saveCall = apiFetch.mock.calls.find(([, init]) => init?.method === "PATCH");
     expect(JSON.parse(saveCall[1].body)).toEqual({ items: [{ productId: "product-1", variantId: null, quantity: 2, discountType: null, discountValue: 0 }] });
     resolveSave(response(savedDetail));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Save changes/i })).not.toBeDisabled());
-    expect(screen.getByText("Updated Mango")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Orders dashboard")).toBeInTheDocument());
     expect(queryClient.getQueryData(["/api/orders/order-1"])).toEqual(savedDetail);
   });
 
@@ -397,7 +431,7 @@ describe("OrderDetail", () => {
     expect(apiFetch.mock.calls.some(([url, init]) => url === "/api/orders/order-1/items" && init?.method === "PATCH")).toBe(false);
     const discountCall = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
     expect(JSON.parse(discountCall[1].body)).toEqual({ discount: 50 });
-    expect(await screen.findByText("Order discount")).toBeInTheDocument();
+    expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
   });
 
   it("shows the customer's last orders with date and status, excluding the current order", async () => {
@@ -423,10 +457,9 @@ describe("OrderDetail", () => {
     expect(within(latestRow).getByText(/Sep 1, 2026/)).toBeInTheDocument();
   });
 
-  it("toggles the delivery charge off and saves free delivery", async () => {
-    const freeDeliveryOrder = { ...order, delivery_rate: 0 };
+  it("keeps the delivery toggle synchronized while switching on and off", async () => {
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/orders/order-1" && init?.method === "PATCH") return response({ success: true, order: freeDeliveryOrder });
+      if (url === "/api/orders/order-1" && init?.method === "PATCH") return response({ success: true, order });
       if (url === "/api/orders/order-1") return response(detail);
       if (url === "/api/products") return response(products);
       throw new Error(`Unexpected API request: ${url}`);
@@ -436,13 +469,47 @@ describe("OrderDetail", () => {
     const deliverySwitch = screen.getByRole("switch", { name: "Toggle delivery charge" });
     expect(deliverySwitch).toBeChecked();
     fireEvent.click(deliverySwitch);
-    expect(await screen.findByText("Free")).toBeInTheDocument();
+    expect(deliverySwitch).not.toBeChecked();
+    fireEvent.click(deliverySwitch);
+    expect(deliverySwitch).toBeChecked();
+    fireEvent.click(deliverySwitch);
+    expect(deliverySwitch).not.toBeChecked();
+  });
+
+  it("initializes the delivery toggle from a saved free-delivery order", async () => {
+    const freeDeliveryDetail = { ...detail, order: { ...order, delivery_rate: 0 } };
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") return response(freeDeliveryDetail);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+
+    expect(await screen.findByRole("switch", { name: "Toggle delivery charge" })).not.toBeChecked();
+  });
+
+  it("restores the flat delivery fee when free delivery is switched back on", async () => {
+    const freeDeliveryDetail = { ...detail, order: { ...order, delivery_rate: 0 } };
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/orders/order-1" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        return response({ success: true, order: { ...freeDeliveryDetail.order, ...body } });
+      }
+      if (url === "/api/orders/order-1") return response(freeDeliveryDetail);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+    const deliverySwitch = await screen.findByRole("switch", { name: "Toggle delivery charge" });
+    fireEvent.click(deliverySwitch);
+    expect(await screen.findByText("৳100")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() => expect(apiFetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
-    expect(apiFetch.mock.calls.some(([url, init]) => url === "/api/orders/order-1/items" && init?.method === "PATCH")).toBe(false);
-    const deliveryCall = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
-    expect(JSON.parse(deliveryCall[1].body)).toEqual({ delivery_rate: 0 });
+    await waitFor(() => {
+      const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ delivery_rate: 100 });
+    });
   });
 
   it("does not overwrite an edited draft when detail data refetches", async () => {
@@ -523,6 +590,7 @@ describe("OrderDetail", () => {
     expect(screen.getByRole("button", { name: "Add Premium Mango to cart" })).toBeDisabled();
     expect(within(screen.getByTestId("order-item-item-1")).getByRole("spinbutton")).toBeDisabled();
     expect(within(screen.getByTestId("order-item-item-1")).getByRole("button", { name: "Remove Premium Mango" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /order status/i })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: /Save changes/i })).not.toBeDisabled();
   });
 
