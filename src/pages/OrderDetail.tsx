@@ -13,6 +13,7 @@ import { CartPanel } from "@/components/order-editor/CartPanel";
 import {
   calculateCartTotals,
   calculateUnitDiscount,
+  roundTaka,
   upsertCartItem,
   type CatalogProduct,
   type CatalogVariant,
@@ -106,6 +107,19 @@ function cartsMatch(left: OrderEditorItem[], right: OrderEditorItem[]) {
   return JSON.stringify(itemIntent(left)) === JSON.stringify(itemIntent(right));
 }
 
+function phoneKey(phone: string | null | undefined): string {
+  const digits = (phone || "").replace(/\D/g, "");
+  return digits.length > 11 ? digits.slice(-11) : digits;
+}
+
+function legacyDiscountOf(orderDiscount: unknown, items: Array<Pick<OrderEditorItem, "unit_discount" | "quantity">>) {
+  const represented = items.reduce(
+    (sum, item) => sum + (Number(item.unit_discount) || 0) * (Number(item.quantity) || 0),
+    0,
+  );
+  return Math.max(0, (Number(orderDiscount) || 0) - represented);
+}
+
 export default function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -115,6 +129,9 @@ export default function OrderDetail() {
   const [catalogSearch, setCatalogSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [overallType, setOverallType] = useState<DiscountType | null>(null);
+  const [overallValue, setOverallValue] = useState(0);
+  const [deliveryOn, setDeliveryOn] = useState(true);
   const [statusPending, setStatusPending] = useState(false);
   const [notesPending, setNotesPending] = useState(false);
   const initializedOrderId = useRef<string | null>(null);
@@ -153,12 +170,28 @@ export default function OrderDetail() {
     },
   });
 
+  const historyQuery = useQuery<Order[]>({
+    queryKey: ["/api/orders"],
+    staleTime: 30_000,
+    enabled: Boolean(id),
+    queryFn: async () => {
+      const res = await apiFetch("/api/orders");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to load orders");
+      return ((json as { orders?: Order[] }).orders || []) as Order[];
+    },
+  });
+
   useEffect(() => {
     if (!detailQuery.data || !id) return;
     const shouldInitialize = initializedOrderId.current !== id || (initializedWithPlaceholder.current && !detailQuery.isPlaceholderData);
     if (!shouldInitialize) return;
     setDraft(detailQuery.data.items.map((item, index) => normalizedItem(item, index, id)));
     setCustomer(customerFromOrder(detailQuery.data.order));
+    const legacy = legacyDiscountOf(detailQuery.data.order.discount, detailQuery.data.items);
+    setOverallType(legacy > 0 ? "fixed" : null);
+    setOverallValue(legacy > 0 ? legacy : 0);
+    setDeliveryOn(true);
     initializedOrderId.current = id;
     initializedWithPlaceholder.current = detailQuery.isPlaceholderData;
   }, [detailQuery.data, detailQuery.isPlaceholderData, id]);
@@ -167,18 +200,31 @@ export default function OrderDetail() {
   const order = detail?.order;
   const legacyDiscount = useMemo(() => {
     if (!detail) return 0;
-    const representedDiscount = detail.items.reduce(
-      (sum, item) => sum + (Number(item.unit_discount) || 0) * (Number(item.quantity) || 0),
-      0,
-    );
-    return Math.max(0, (Number(detail.order.discount) || 0) - representedDiscount);
+    return legacyDiscountOf(detail.order.discount, detail.items);
   }, [detail]);
+  const draftBase = useMemo(() => {
+    const withoutOverall = calculateCartTotals(draft, 0, 0);
+    return roundTaka(withoutOverall.grossSubtotal - withoutOverall.itemDiscount);
+  }, [draft]);
+  const overallAmount = calculateUnitDiscount(draftBase, overallType, overallValue);
+  const deliveryFee = deliveryOn ? Number(order?.delivery_rate) || 0 : 0;
   const totals = useMemo(
-    () => calculateCartTotals(draft, Number(order?.delivery_rate) || 0, legacyDiscount),
-    [draft, legacyDiscount, order?.delivery_rate],
+    () => calculateCartTotals(draft, deliveryFee, overallAmount),
+    [draft, deliveryFee, overallAmount],
   );
+  const overallChanged = overallAmount !== legacyDiscount;
+  const deliveryChanged = deliveryFee !== (Number(order?.delivery_rate) || 0);
   const canEditCart = Boolean(detail && !detailQuery.isPlaceholderData && detail.canEditItems);
   const cartLocked = Boolean(detail && !detailQuery.isPlaceholderData && !detail.canEditItems);
+  const history = useMemo(() => {
+    const all = historyQuery.data || [];
+    const key = phoneKey(order?.phone);
+    const name = (order?.customer_name || order?.contact_name || "").trim().toLowerCase();
+    return all
+      .filter((o) => o.id !== id && (key ? phoneKey(o.phone) === key : Boolean(name) && (o.customer_name || o.contact_name || "").trim().toLowerCase() === name))
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+      .slice(0, 5);
+  }, [historyQuery.data, id, order?.phone, order?.customer_name, order?.contact_name]);
 
   function addCatalogItem(product: CatalogProduct, variant?: CatalogVariant) {
     setDraft((items) => upsertCartItem(items, product, variant));
@@ -246,6 +292,7 @@ export default function OrderDetail() {
     const originalCustomer = customerFromOrder(order);
     const detailsChanged = JSON.stringify(customer) !== JSON.stringify(originalCustomer);
     const cartChanged = !cartsMatch(draft, detail.items);
+    if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged) return;
     if (cartChanged && draft.some((item) => !item.product_id && !item.variant_id)) {
       setSaveError("Remove or replace detached legacy items before saving cart changes");
       return;
@@ -255,6 +302,7 @@ export default function OrderDetail() {
     setSaveError("");
     try {
       let currentOrder = order;
+      let currentItems = detail.items;
       if (detailsChanged) {
         const detailsRes = await apiFetch(`/api/orders/${id}`, {
           method: "PATCH",
@@ -268,21 +316,49 @@ export default function OrderDetail() {
         const detailsJson = await detailsRes.json().catch(() => ({}));
         if (!detailsRes.ok) throw new Error(detailsJson.error || "Failed to save customer details");
         currentOrder = detailsJson.order;
-        queryClient.setQueryData<OrderDetailResponse>([`/api/orders/${id}`], (current) => current ? { ...current, order: currentOrder } : current);
       }
 
-      if (!cartChanged) return;
-      const res = await apiFetch(`/api/orders/${id}/items`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: itemIntent(draft) }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Failed to save order items");
-      const savedDetail = json as OrderDetailResponse;
-      queryClient.setQueryData([`/api/orders/${id}`], savedDetail);
-      setDraft(savedDetail.items.map((item, index) => normalizedItem(item, index, id)));
-      setCustomer(customerFromOrder(savedDetail.order));
+      if (cartChanged) {
+        const res = await apiFetch(`/api/orders/${id}/items`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: itemIntent(draft) }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || "Failed to save order items");
+        const savedDetail = json as OrderDetailResponse;
+        currentOrder = savedDetail.order;
+        currentItems = savedDetail.items;
+      }
+
+      if (overallChanged || deliveryChanged) {
+        const orderPatch: { discount?: number; delivery_rate?: number } = {};
+        if (overallChanged) {
+          const itemTotal = currentItems.reduce(
+            (sum, item) => sum + (Number(item.unit_discount) || 0) * (Number(item.quantity) || 0),
+            0,
+          );
+          const desired = roundTaka(itemTotal + overallAmount);
+          if (desired !== Number(currentOrder.discount || 0)) orderPatch.discount = desired;
+        }
+        if (deliveryChanged && deliveryFee !== Number(currentOrder.delivery_rate || 0)) {
+          orderPatch.delivery_rate = deliveryFee;
+        }
+        if (Object.keys(orderPatch).length > 0) {
+          const totalsRes = await apiFetch(`/api/orders/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(orderPatch),
+          });
+          const totalsJson = await totalsRes.json().catch(() => ({}));
+          if (!totalsRes.ok) throw new Error(totalsJson.error || "Failed to save order totals");
+          currentOrder = totalsJson.order;
+        }
+      }
+
+      queryClient.setQueryData<OrderDetailResponse>([`/api/orders/${id}`], (current) => current ? { ...current, order: currentOrder, items: currentItems } : current);
+      setDraft(currentItems.map((item, index) => normalizedItem(item, index, id)));
+      setCustomer(customerFromOrder(currentOrder));
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : "Failed to save order changes");
     } finally {
@@ -291,10 +367,10 @@ export default function OrderDetail() {
   }
 
   return (
-    <div className="min-h-full space-y-5 bg-[#FAFAF8] p-1 lg:p-2">
-      <div className="flex items-center gap-3">
+    <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-4 pb-4 pt-1 lg:px-5 lg:pt-2">
+      <div className="flex items-center gap-3 py-1">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={() => navigate("/")} />
-        <div className="flex items-baseline gap-2"><h1 className="text-[22px] font-light tracking-tight text-black">Order editor</h1><span className="text-[22px] font-light tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
+        <div className="flex items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
       </div>
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={() => navigate("/")} className="mt-2 text-[13px] text-black/50 underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
@@ -303,11 +379,13 @@ export default function OrderDetail() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="grid min-h-0 gap-px overflow-hidden rounded-lg bg-black/[0.07] ring-1 ring-black/[0.07] xl:h-[calc(100vh-10.5rem)] xl:grid-cols-[minmax(240px,0.72fr)_minmax(320px,1fr)_minmax(340px,1.08fr)]"
+          className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]"
         >
-          <CustomerPanel order={order} customer={customer} notes={order.notes ?? null} disabled={saving} onApply={setCustomer} onStatusChange={(next) => { void changeStatus(next); }} statusPending={statusPending} onSaveNotes={(next) => { void saveNotes(next); }} notesPending={notesPending} />
-          <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
-          <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={() => navigate("/")} />
+          <CustomerPanel order={order} customer={customer} notes={order.notes ?? null} disabled={saving} history={history} historyLoading={historyQuery.isPending} onApply={setCustomer} onStatusChange={(next) => { void changeStatus(next); }} statusPending={statusPending} onSaveNotes={(next) => { void saveNotes(next); }} notesPending={notesPending} />
+          <div className="grid min-h-0 grid-cols-1 gap-px bg-black/[0.07] xl:h-[calc(100dvh-60px)] xl:min-h-[560px] xl:grid-cols-2">
+            <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
+            <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={() => navigate("/")} />
+          </div>
         </motion.div>
       )}
     </div>

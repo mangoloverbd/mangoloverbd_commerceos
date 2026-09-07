@@ -6187,7 +6187,7 @@ app.patch("/api/orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "customer_name", "phone", "address", "warehouse_id", "weight_kg"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
     if (update.customer_name !== undefined && (typeof update.customer_name !== "string" || !update.customer_name.trim())) {
@@ -6212,6 +6212,22 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
+    if (update.discount !== undefined) {
+      const discountValue = Number(update.discount);
+      if (!Number.isFinite(discountValue) || discountValue < 0) {
+        return res.status(400).json({ error: "Discount must be a non-negative number" });
+      }
+      update.discount = Math.round((discountValue + Number.EPSILON) * 100) / 100;
+      if (update.price === undefined) {
+        const { data: lines, error: linesError } = await supabase.from("order_items").select("unit_price, quantity").eq("order_id", req.params.id).eq("org_id", orgId);
+        if (linesError) throw linesError;
+        const gross = (lines || []).reduce((sum, line) => sum + Number(line.unit_price || 0) * Number(line.quantity || 0), 0);
+        if (update.discount > gross) {
+          return res.status(400).json({ error: "Discount cannot exceed merchandise subtotal" });
+        }
+        update.price = Math.round(((gross - update.discount) + Number.EPSILON) * 100) / 100;
+      }
+    }
     // Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
     if (update.status !== undefined) {
       const fromStatus = normalizeBusinessStatus(orderCheck.status);

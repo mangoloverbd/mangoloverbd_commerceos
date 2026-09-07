@@ -185,18 +185,18 @@ describe("OrderDetail", () => {
 
   it("keeps customer details read-only until Edit and supports Apply and Cancel", async () => {
     renderPage();
-    expect(await screen.findByText("Ayesha Rahman")).toBeInTheDocument();
+    expect(await screen.findAllByText("Ayesha Rahman")).toHaveLength(2);
     expect(screen.queryByLabelText("Customer name")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit customer" }));
     fireEvent.change(screen.getByLabelText("Customer name"), { target: { value: "Nusrat Jahan" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel customer edit" }));
-    expect(screen.getByText("Ayesha Rahman")).toBeInTheDocument();
+    expect(await screen.findAllByText("Ayesha Rahman")).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit customer" }));
     fireEvent.change(screen.getByLabelText("Customer name"), { target: { value: "Nusrat Jahan" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply customer changes" }));
-    expect(screen.getByText("Nusrat Jahan")).toBeInTheDocument();
+    expect(await screen.findAllByText("Nusrat Jahan")).toHaveLength(2);
   });
 
   it("filters the catalog by slug and variant and increments duplicate cart items", async () => {
@@ -296,7 +296,7 @@ describe("OrderDetail", () => {
     });
     renderPage("order-1", [{ ...order, items: [{ product_id: "product-1", product_name: "Premium Mango", variant_name: '{"size":"1 kg"}', unit_price: 500, quantity: 1 }] }]);
     expect(screen.queryByTestId("order-detail-loading")).not.toBeInTheDocument();
-    expect(screen.getByText("Ayesha Rahman")).toBeInTheDocument();
+    expect(screen.getAllByText("Ayesha Rahman")).toHaveLength(2);
     expect(screen.getByRole("region", { name: "Customer and order" })).toBeInTheDocument();
     expect(screen.queryByText(/Editing is locked after courier dispatch/i)).not.toBeInTheDocument();
   });
@@ -320,7 +320,7 @@ describe("OrderDetail", () => {
 
   it("renders the order summary and current line items", async () => {
     renderPage();
-    expect(await screen.findByText("Ayesha Rahman")).toBeInTheDocument();
+    expect(await screen.findAllByText("Ayesha Rahman")).toHaveLength(2);
     expect(screen.getByText("#ML-1001")).toBeInTheDocument();
     expect(screen.getByText("Dhanmondi, Dhaka")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Order cart" })).getByText("Premium Mango")).toBeInTheDocument();
@@ -365,6 +365,73 @@ describe("OrderDetail", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Save changes/i })).not.toBeDisabled());
     expect(screen.getByText("Updated Mango")).toBeInTheDocument();
     expect(queryClient.getQueryData(["/api/orders/order-1"])).toEqual(savedDetail);
+  });
+
+  it("saves an overall cart discount without touching items", async () => {
+    const discountedOrder = { ...order, discount: 50, price: 450 };
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/orders/order-1" && init?.method === "PATCH") return response({ success: true, order: discountedOrder });
+      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+    await screen.findByTestId("order-item-item-1");
+    fireEvent.click(screen.getByRole("button", { name: "Add cart discount" }));
+    fireEvent.change(screen.getByLabelText("Cart discount value"), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply cart discount" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(apiFetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
+    expect(apiFetch.mock.calls.some(([url, init]) => url === "/api/orders/order-1/items" && init?.method === "PATCH")).toBe(false);
+    const discountCall = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
+    expect(JSON.parse(discountCall[1].body)).toEqual({ discount: 50 });
+    expect(await screen.findByText("Order discount")).toBeInTheDocument();
+  });
+
+  it("shows the customer's last orders with date and status, excluding the current order", async () => {
+    const historyOrders = [
+      { ...order, id: "order-0", order_number: "ML-1000", status: "print", price: 450, created_at: "2026-08-20T10:00:00Z" },
+      { ...order, id: "order-2", order_number: "ML-1002", status: "confirmed", price: 300, created_at: "2026-09-01T10:00:00Z" },
+      { ...order, id: "other", order_number: "ML-999", phone: "01999999999", customer_name: "Someone Else", contact_name: "Someone Else" },
+    ];
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/orders") return response({ orders: historyOrders });
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+    expect(await screen.findByText("Last orders")).toBeInTheDocument();
+    expect(screen.getByText("ML-1002")).toBeInTheDocument();
+    expect(screen.getByText("ML-1000")).toBeInTheDocument();
+    expect(screen.queryByText("ML-999")).not.toBeInTheDocument();
+    expect(screen.getAllByText("#ML-1001")).toHaveLength(1);
+    const latestRow = screen.getByText("ML-1002").closest("li");
+    expect(within(latestRow).getByText("Approved")).toBeInTheDocument();
+    expect(within(latestRow).getByText(/Sep 1, 2026/)).toBeInTheDocument();
+  });
+
+  it("toggles the delivery charge off and saves free delivery", async () => {
+    const freeDeliveryOrder = { ...order, delivery_rate: 0 };
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/orders/order-1" && init?.method === "PATCH") return response({ success: true, order: freeDeliveryOrder });
+      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+    await screen.findByTestId("order-item-item-1");
+    const deliverySwitch = screen.getByRole("switch", { name: "Toggle delivery charge" });
+    expect(deliverySwitch).toBeChecked();
+    fireEvent.click(deliverySwitch);
+    expect(await screen.findByText("Free")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(apiFetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
+    expect(apiFetch.mock.calls.some(([url, init]) => url === "/api/orders/order-1/items" && init?.method === "PATCH")).toBe(false);
+    const deliveryCall = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
+    expect(JSON.parse(deliveryCall[1].body)).toEqual({ delivery_rate: 0 });
   });
 
   it("does not overwrite an edited draft when detail data refetches", async () => {
@@ -412,7 +479,7 @@ describe("OrderDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Insufficient stock");
-    expect(screen.getByText("Nusrat Jahan")).toBeInTheDocument();
+    expect(await screen.findAllByText("Nusrat Jahan")).toHaveLength(2);
     expect(within(line).getByRole("spinbutton")).toHaveValue(2);
   });
 
@@ -457,14 +524,14 @@ describe("OrderDetail", () => {
       throw new Error(`Unexpected API request: ${url}`);
     });
     renderPage();
-    await screen.findByText("Ayesha Rahman");
+    await screen.findAllByText("Ayesha Rahman");
     fireEvent.click(screen.getByRole("button", { name: "Edit customer" }));
     fireEvent.change(screen.getByLabelText("Customer name"), { target: { value: "Nusrat Jahan" } });
     fireEvent.change(screen.getByLabelText("Phone"), { target: { value: "01822222222" } });
     fireEvent.change(screen.getByLabelText("Delivery address"), { target: { value: "Gulshan, Dhaka" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply customer changes" }));
     fireEvent.click(screen.getByRole("button", { name: /Save changes/i }));
-    await waitFor(() => expect(screen.getByText("Nusrat Jahan")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("Nusrat Jahan")).toHaveLength(2));
     const updateCall = apiFetch.mock.calls.find(([, init]) => init?.method === "PATCH" && String(init?.body).includes("customer_name"));
     expect(JSON.parse(updateCall[1].body)).toEqual({ customer_name: "Nusrat Jahan", phone: "01822222222", address: "Gulshan, Dhaka" });
   });

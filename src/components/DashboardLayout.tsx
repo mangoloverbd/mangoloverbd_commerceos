@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { HeaderAlerts } from "./HeaderAlerts";
@@ -53,12 +53,17 @@ export function DashboardLayout() {
     const location = useLocation();
 
     const displayName = orgName || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Account";
+    const mainRef = useRef<HTMLElement>(null);
     const initials = displayName
         .split(" ")
         .map((w: string) => w[0])
         .join("")
         .toUpperCase()
         .slice(0, 2);
+
+    useEffect(() => {
+        mainRef.current?.scrollTo({ top: 0 });
+    }, [location.pathname]);
 
     useEffect(() => {
         if (isLoading) return;
@@ -139,7 +144,7 @@ export function DashboardLayout() {
                             </DropdownMenu>
                         </div>
                     </header>
-                    <main className="mx-3 mb-3 min-w-0 flex-1 overflow-auto rounded-[18px] border border-black/10 bg-[#f3f3f3] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                    <main ref={mainRef} className="mx-3 mb-3 min-w-0 flex-1 overflow-auto rounded-[18px] border border-black/10 bg-[#f3f3f3] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                         <Outlet />
                     </main>
                 </SidebarInset>
