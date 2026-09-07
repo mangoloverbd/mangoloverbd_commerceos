@@ -406,7 +406,7 @@ export default function OrderCreatorModal({
           </div>
 
           {/* Line items */}
-          <div className="max-h-[42vh] min-h-0 space-y-2 overflow-y-auto rounded-2xl border border-black/10 bg-black/[0.02] p-3">
+          <div className="max-h-[42vh] min-h-0 space-y-2 overflow-y-auto overflow-x-hidden rounded-2xl border border-black/10 bg-black/[0.02] p-3">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Products</label>
               <span className="text-[11px] font-medium text-muted-foreground">
@@ -416,72 +416,79 @@ export default function OrderCreatorModal({
 
             <div className="space-y-2">
               {lines.map((line) => (
-                <div key={line.id} className="flex items-center gap-2 rounded-xl bg-black/[0.045] px-3 py-2">
-                  {line.image && (
-                    <img
-                      src={line.image}
-                      alt=""
-                      className="h-9 w-9 shrink-0 rounded-lg object-cover"
-                    />
-                  )}
-                  {line.productId ? (
-                    <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{line.name}</div>
-                  ) : (
+                <div key={line.id} className="min-w-0 space-y-2 rounded-xl bg-black/[0.045] px-3 py-2">
+                  {/* Row 1: image + name (wraps to 2 lines) + remove */}
+                  <div className="flex min-w-0 items-start gap-2">
+                    {line.image && (
+                      <img
+                        src={line.image}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                      />
+                    )}
+                    {line.productId ? (
+                      <div className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">{line.name}</div>
+                    ) : (
+                      <input
+                        value={line.name}
+                        onChange={(e) => updateLine(line.id, { name: e.target.value })}
+                        placeholder="Product"
+                        className="h-6 min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-black/30"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeLine(line.id)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-red-50"
+                    >
+                      <X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-400" />
+                    </button>
+                  </div>
+                  {/* Row 2: variant + price + qty + line total — wraps, never forces horizontal scroll */}
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 pl-0 sm:pl-11">
+                    {line.productId && line.variants.length > 0 && (
+                      <select
+                        aria-label={`Variant for ${line.name}`}
+                        value={line.variantId || ""}
+                        onChange={(e) => updateLineVariant(line.id, e.target.value)}
+                        className="h-7 min-w-0 max-w-full flex-1 basis-28 truncate rounded-lg bg-black/[0.04] px-2 text-xs text-foreground outline-none"
+                      >
+                        <option value="">Select variant</option>
+                        {line.variants.map((variant) => (
+                          <option key={variant.id} value={variant.id}>
+                            {variantLabel(variant.attributes) || "Default variant"}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <input
-                      value={line.name}
-                      onChange={(e) => updateLine(line.id, { name: e.target.value })}
-                      placeholder="Product"
-                      className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-black/30"
+                      type="number"
+                      value={line.unitPrice}
+                      onChange={(e) => updateLine(line.id, { unitPrice: Number(e.target.value) || 0 })}
+                      aria-label={`Unit price for ${line.name}`}
+                      className="h-7 w-20 shrink-0 rounded-md bg-transparent px-1 text-right text-sm text-muted-foreground outline-none focus:bg-black/[0.04]"
                     />
-                  )}
-                  {line.productId && line.variants.length > 0 && (
-                    <select
-                      aria-label={`Variant for ${line.name}`}
-                      value={line.variantId || ""}
-                      onChange={(e) => updateLineVariant(line.id, e.target.value)}
-                      className="max-w-[140px] rounded-lg bg-black/[0.04] px-2 py-1 text-xs text-foreground outline-none"
-                    >
-                      <option value="">Select variant</option>
-                      {line.variants.map((variant) => (
-                        <option key={variant.id} value={variant.id}>
-                          {variantLabel(variant.attributes) || "Default variant"}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <input
-                    type="number"
-                    value={line.unitPrice}
-                    onChange={(e) => updateLine(line.id, { unitPrice: Number(e.target.value) || 0 })}
-                    className="w-20 bg-transparent text-right text-sm text-muted-foreground outline-none"
-                  />
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => updateLineQty(line.id, -1)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10"
-                    >
-                      <Minus className="h-3 w-3 text-foreground" />
-                    </button>
-                    <span className="w-5 text-center text-sm font-semibold text-foreground">{line.quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => updateLineQty(line.id, 1)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10"
-                    >
-                      <Plus className="h-3 w-3 text-foreground" />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => updateLineQty(line.id, -1)}
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10"
+                      >
+                        <Minus className="h-3 w-3 text-foreground" />
+                      </button>
+                      <span className="w-5 text-center text-sm font-semibold text-foreground">{line.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateLineQty(line.id, 1)}
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10"
+                      >
+                        <Plus className="h-3 w-3 text-foreground" />
+                      </button>
+                    </div>
+                    <div className="ml-auto w-auto min-w-16 shrink-0 text-right text-sm font-semibold text-foreground">
+                      ৳{(line.unitPrice * line.quantity).toLocaleString()}
+                    </div>
                   </div>
-                  <div className="w-16 shrink-0 text-right text-sm font-semibold text-foreground">
-                    ৳{(line.unitPrice * line.quantity).toLocaleString()}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeLine(line.id)}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-red-50"
-                  >
-                    <X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-400" />
-                  </button>
                 </div>
               ))}
             </div>
