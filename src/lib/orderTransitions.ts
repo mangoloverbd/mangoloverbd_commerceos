@@ -48,6 +48,12 @@ export function displayStatusLabel(status: string | null | undefined): string {
   return (status || "").trim();
 }
 
+export function statusOptionsFor(status: string | null | undefined): string[] {
+  if (isPrintStatus(status)) return ["print", "confirmed", "on_hold", "cancelled"];
+  if (canEnterPrint(status)) return ["pending", "confirmed", "print", "on_hold", "cancelled"];
+  return ["pending", "confirmed", "on_hold", "cancelled"];
+}
+
 export type BulkStatusCandidate = {
   id: string;
   status?: string | null;

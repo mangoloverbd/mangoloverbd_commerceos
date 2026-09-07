@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
-import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
-import { Spinner } from "@/components/ui/ios-spinner";
-import { canEnterPrint, displayStatusLabel, isOnHoldStatus, isPrintStatus, normalizeBusinessStatus } from "@/lib/orderTransitions";
+import { normalizeBusinessStatus } from "@/lib/orderTransitions";
 import { formatTaka } from "@/lib/orderEditor";
 
 export type CustomerDraft = {
@@ -35,15 +33,10 @@ type CustomerOrder = {
 type CustomerPanelProps = {
   order: CustomerOrder;
   customer: CustomerDraft;
-  notes: string | null;
   disabled?: boolean;
   history?: HistoryEntry[];
   historyLoading?: boolean;
   onApply: (customer: CustomerDraft) => void;
-  onStatusChange: (nextStatus: string) => void;
-  statusPending?: boolean;
-  onSaveNotes: (notes: string) => void;
-  notesPending?: boolean;
 };
 
 function DetailField({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -95,12 +88,6 @@ function historyStatusPill(status: string | null | undefined): string {
 
 const inputClass = "h-12 w-full rounded-lg bg-black/[0.04] px-3.5 text-[14px] text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20 disabled:opacity-50";
 
-function statusOptionsFor(status: string | null | undefined): string[] {
-  if (isPrintStatus(status)) return ["print", "confirmed", "on_hold", "cancelled"];
-  if (canEnterPrint(status)) return ["pending", "confirmed", "print", "on_hold", "cancelled"];
-  return ["pending", "confirmed", "on_hold", "cancelled"];
-}
-
 async function copyTextToClipboard(value: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
@@ -122,15 +109,10 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
   }
 }
 
-export function CustomerPanel({ order, customer, notes, disabled = false, history = [], historyLoading = false, onApply, onStatusChange, statusPending = false, onSaveNotes, notesPending = false }: CustomerPanelProps) {
+export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onApply }: CustomerPanelProps) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
   const [copied, setCopied] = useState(false);
-  const [noteDraft, setNoteDraft] = useState(notes ?? "");
-
-  useEffect(() => {
-    setNoteDraft(notes ?? "");
-  }, [notes]);
 
   useEffect(() => {
     if (!editing) setLocal(customer);
@@ -249,51 +231,6 @@ export function CustomerPanel({ order, customer, notes, disabled = false, histor
 
       <div className="mb-4 mt-4 h-px bg-black/[0.07]" />
       <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="min-w-0">
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Status</p>
-          <div className="mt-2 flex items-center gap-2">
-            <BuiSelect
-              aria-label="Order status"
-              selectedKey={order.status ?? null}
-              onSelectionChange={(key) => onStatusChange(String(key))}
-              isDisabled={disabled || statusPending}
-              triggerClassName="h-9 capitalize text-[13px]"
-            >
-              {statusOptionsFor(order.status).map((st) => (
-                <BuiSelectItem key={st} id={st} textValue={displayStatusLabel(st)}>{displayStatusLabel(st)}</BuiSelectItem>
-              ))}
-            </BuiSelect>
-            {statusPending && <Spinner size="sm" className="shrink-0 text-black/40" />}
-          </div>
-        </div>
-        {isOnHoldStatus(order.status) && (
-          <div className="min-w-0 sm:col-span-2">
-            <label className="block text-[8px] font-medium uppercase tracking-[0.3em] text-black/40" htmlFor="hold-note">
-              Hold note
-            </label>
-            <textarea
-              id="hold-note"
-              aria-label="Hold note"
-              value={noteDraft}
-              onChange={(event) => setNoteDraft(event.target.value)}
-              disabled={disabled || notesPending}
-              rows={4}
-              placeholder="Why is this order on hold?"
-              className={`${inputClass} mt-2 h-auto min-h-24 py-2.5 normal-case tracking-normal`}
-            />
-            <div className="mt-2.5 flex items-center gap-2">
-              <button
-                type="button"
-                aria-label="Save note"
-                onClick={() => onSaveNotes(noteDraft.trim())}
-                disabled={disabled || notesPending || noteDraft.trim() === (notes ?? "").trim()}
-                className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-[13px] text-white disabled:opacity-40"
-              >
-                {notesPending ? <Spinner size="sm" /> : <Check weight="light" size={16} />} Save note
-              </button>
-            </div>
-          </div>
-        )}
         <DetailField label="Payment" value={order.payment_method} />
         <DetailField label="Order total" value={formatTaka(order.price)} />
         <DetailField label="Delivery fee" value={formatTaka(order.delivery_rate)} />
