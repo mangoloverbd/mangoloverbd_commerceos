@@ -29,7 +29,7 @@ export function CatalogPanel({ products, search, loading, error, canEdit, locked
   const filtered = products.filter((product) => matchesCatalogSearch(product, search));
 
   return (
-    <section aria-label="Product catalog" className="flex max-h-[78vh] min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:max-h-none">
+    <section aria-label="Product catalog" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Product catalog</p>
         <h2 className="text-[15px] font-medium text-black">{filtered.length} product{filtered.length === 1 ? "" : "s"}</h2>
@@ -41,7 +41,7 @@ export function CatalogPanel({ products, search, loading, error, canEdit, locked
         <input type="search" aria-label="Search products" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search name, slug, or variant" className="h-12 w-full rounded-xl bg-black/[0.04] pl-11 pr-4 text-[14px] outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
       </label>
 
-      <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1.5 [scrollbar-width:thin]">
+      <div data-testid="catalog-scroll-region" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-auto pr-1.5 [scrollbar-gutter:stable] [scrollbar-width:thin]">
         {loading ? <p className="py-12 text-center text-[13px] text-black/45">Loading catalog…</p> : error ? (
           <div className="grid place-items-center gap-3 py-12 text-center">
             <WarningCircle weight="light" size={24} className="text-red-500" />
@@ -59,13 +59,13 @@ export function CatalogPanel({ products, search, loading, error, canEdit, locked
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-[16px] font-medium text-black">{product.name}</h3>
                   {product.slug && <p className="mt-1 truncate font-mono text-[11px] text-black/35">{product.slug}</p>}
-                  {product.variants.length === 0 && <div className="mt-2.5 flex items-center justify-between gap-2"><div><p className="font-mono text-[14px] tabular-nums">{formatTaka(product.selling_price)}</p><p className="mt-0.5 text-[11px] text-black/40">{product.weight_kg ? `${product.weight_kg} kg · ` : ""}{stockLabel(product.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name} to cart`} onClick={() => onAdd(product)} disabled={!canEdit || product.stock_quantity <= 0} className="grid h-11 w-11 place-items-center rounded-xl bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={18} /></button></div>}
+                  {product.variants.length === 0 && <div className="mt-2.5 flex items-center justify-between gap-2"><div><p className="font-mono text-[14px] tabular-nums">{formatTaka(product.selling_price)}</p><p className="mt-0.5 text-[11px] text-black/40">{product.weight_kg ? `${product.weight_kg} kg · ` : ""}{stockLabel(product.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name} to cart`} onClick={() => onAdd(product)} disabled={!canEdit || product.stock_quantity <= 0} className="grid h-11 w-11 place-items-center rounded-full bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={18} /></button></div>}
                 </div>
               </div>
               {product.variants.length > 0 && <div className="mt-4 space-y-3 border-t border-black/[0.06] pt-4">{product.variants.map((variant) => {
                 const label = variantLabel(variant.attributes);
                 const price = (product.selling_price || 0) + (variant.price_adjustment || 0);
-                return <div key={variant.id} className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-[14px] text-black">{label || "Default variant"}</p><p className="mt-1 text-[11px] text-black/40">{formatTaka(price)}{variant.weight_kg ? ` · ${variant.weight_kg} kg` : ""} · {stockLabel(variant.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name}, ${label || "Default variant"} to cart`} onClick={() => onAdd(product, variant)} disabled={!canEdit || variant.stock_quantity <= 0} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={17} /></button></div>;
+                return <div key={variant.id} className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-[14px] text-black">{label || "Default variant"}</p><p className="mt-1 text-[11px] text-black/40">{formatTaka(price)}{variant.weight_kg ? ` · ${variant.weight_kg} kg` : ""} · {stockLabel(variant.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name}, ${label || "Default variant"} to cart`} onClick={() => onAdd(product, variant)} disabled={!canEdit || variant.stock_quantity <= 0} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={17} /></button></div>;
               })}</div>}
             </article>
           );

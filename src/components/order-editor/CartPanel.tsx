@@ -29,10 +29,10 @@ type CartPanelProps = {
 export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel }: CartPanelProps) {
   const overallBase = roundTaka(totals.grossSubtotal - totals.itemDiscount);
   return (
-    <section aria-label="Order cart" className="flex max-h-[78vh] min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:max-h-none">
+    <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
       <div className="flex items-baseline justify-between gap-3"><p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Order cart</p><h2 className="text-[15px] font-medium text-black">{totals.quantity} item{totals.quantity === 1 ? "" : "s"}</h2></div>
       {locked && <p className="mt-4 rounded-lg bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-800">Editing is locked after courier dispatch.</p>}
-      <div className="mt-3 min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
+      <div className="mt-3 min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-auto pr-1 [scrollbar-gutter:stable] [scrollbar-width:thin]">
         {items.length === 0 ? <div className="grid place-items-center gap-2 py-14 text-center"><Package weight="light" size={26} className="text-black/20" /><p className="text-[13px] text-black/45">Your cart is empty.</p></div> : items.map((item) => {
           const name = item.product_name || "Legacy item";
           const unitDiscount = calculateUnitDiscount(item.unit_price, item.discount_type, item.discount_value);

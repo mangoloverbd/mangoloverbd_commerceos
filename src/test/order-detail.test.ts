@@ -133,6 +133,17 @@ describe("OrderDetail", () => {
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
   });
 
+  it("keeps the editor toolbar visible and limits inner scrolling to the catalog list", async () => {
+    renderPage();
+
+    expect(await screen.findByTestId("order-editor-toolbar")).toHaveClass("sticky");
+    expect(await screen.findByTestId("order-editor-workspace")).toHaveClass("items-start");
+
+    const catalog = screen.getByRole("region", { name: "Product catalog" });
+    expect(catalog).not.toHaveClass("overflow-y-auto");
+    expect(within(catalog).getByTestId("catalog-scroll-region")).toHaveClass("overflow-y-auto");
+  });
+
   it("moves the order to print from the editor status dropdown", async () => {
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders/order-1" && init?.method === "PATCH") {
