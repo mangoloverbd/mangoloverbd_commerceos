@@ -375,6 +375,7 @@ export default function OrderDetail() {
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={() => navigate("/")} className="mt-2 text-[13px] text-black/50 underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
         <motion.div
+          key={id}
           data-testid="order-detail-animated-content"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { HeaderAlerts } from "./HeaderAlerts";
@@ -61,8 +61,9 @@ export function DashboardLayout() {
         .toUpperCase()
         .slice(0, 2);
 
-    useEffect(() => {
-        mainRef.current?.scrollTo({ top: 0 });
+    useLayoutEffect(() => {
+        window.scrollTo(0, 0);
+        mainRef.current?.scrollTo?.({ top: 0 });
     }, [location.pathname]);
 
     useEffect(() => {
