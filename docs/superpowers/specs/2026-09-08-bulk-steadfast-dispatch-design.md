@@ -19,6 +19,8 @@ Allow the merchant to select multiple orders in the Dashboard `Print` tab and se
 
 The bulk action is shown only while the `Print` filter is active. It operates on selected rows, not every order in the tab. The existing single-order Steadfast action remains unchanged.
 
+When the Print filter is active, the selection action bar contains exactly: `Selection`, `Send to Steadfast`, `Invoice`, `Print`, `Excel`, `Delete`, and `Clear`. The `Fraud Check` action is not shown in this Print-tab selection bar.
+
 ## Steadfast request contract
 
 The Merchant-Suite backend calls:
