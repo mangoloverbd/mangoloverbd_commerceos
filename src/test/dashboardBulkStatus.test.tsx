@@ -59,10 +59,13 @@ function baseOrder(overrides: Record<string, unknown>) {
   };
 }
 
-const orders = [
+const baseOrders = [
   baseOrder({ id: "pending-1", shopify_order_id: 1, order_number: "#101", status: "pending" }),
   baseOrder({ id: "approved-1", shopify_order_id: 2, order_number: "#102", status: "confirmed" }),
 ];
+let orders = baseOrders;
+
+let bulkResponse: unknown = null;
 
 function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body };
@@ -88,9 +91,12 @@ describe("dashboard bulk status button", () => {
     toastSuccess.mockClear();
     toastError.mockClear();
     apiFetch.mockReset();
+    orders = baseOrders;
+    bulkResponse = null;
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders" && !init?.method) return jsonResponse({ orders });
       if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url === "/api/send-to-courier/bulk") return jsonResponse(bulkResponse || { success: true, processed: 0, failed: 0, succeeded: [], failures: [] });
       if (url.startsWith("/api/analytics")) {
         return jsonResponse({
           revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
@@ -155,5 +161,68 @@ describe("dashboard bulk status button", () => {
     await user.click(screen.getByRole("button", { name: "Update Status" }));
     expect(await screen.findByTestId("bulk-status-menu")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update Status" }).innerHTML).toContain("rotate-180");
+  });
+
+  it("shows only the requested actions in the Print selection bar", async () => {
+    const user = userEvent.setup();
+    orders = [...baseOrders, baseOrder({ id: "print-1", shopify_order_id: 3, order_number: "#103", status: "print" })];
+    renderDashboard();
+
+    await user.click(await screen.findByRole("radio", { name: /Print.*1/ }));
+    await user.click(screen.getByTestId("checkbox-order-print-1"));
+
+    expect(screen.getByTestId("button-bulk-send-steadfast")).toBeInTheDocument();
+    expect(screen.queryByTestId("button-bulk-fraud-check")).not.toBeInTheDocument();
+    expect(screen.getByTestId("button-generate-invoice")).toBeInTheDocument();
+    expect(screen.getByTestId("button-print-invoice")).toBeInTheDocument();
+    expect(screen.getByTestId("button-delete-orders")).toBeInTheDocument();
+    expect(screen.getByTestId("button-clear-selection")).toBeInTheDocument();
+  });
+
+  it("sends selected Print orders through Steadfast bulk dispatch", async () => {
+    const user = userEvent.setup();
+    orders = [...baseOrders, baseOrder({ id: "print-1", shopify_order_id: 3, order_number: "#103", status: "print" })];
+    const printOrder = orders[2];
+    bulkResponse = {
+      success: true,
+      processed: 1,
+      failed: 0,
+      succeeded: [{ orderId: printOrder.id, orderNumber: printOrder.order_number, order: { ...printOrder, status: "processing", sent_to_courier: true } }],
+      failures: [],
+    };
+    renderDashboard();
+
+    await user.click(await screen.findByRole("radio", { name: /Print.*1/ }));
+    await user.click(screen.getByTestId("checkbox-order-print-1"));
+    await user.click(screen.getByTestId("button-bulk-send-steadfast"));
+
+    await waitFor(() => {
+      const calls = apiFetch.mock.calls.filter(([url, init]) => url === "/api/send-to-courier/bulk" && init?.method === "POST");
+      expect(calls).toHaveLength(1);
+      expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ orderIds: ["print-1"] });
+    });
+    expect(await screen.findByRole("radio", { name: /Print.*0/ })).toBeInTheDocument();
+    expect(await screen.findByRole("radio", { name: /Processing.*1/ })).toBeInTheDocument();
+    expect(screen.queryByTestId("button-bulk-send-steadfast")).not.toBeInTheDocument();
+  });
+
+  it("keeps failed Print orders selected and reports their failures", async () => {
+    const user = userEvent.setup();
+    orders = [...baseOrders, baseOrder({ id: "print-1", shopify_order_id: 3, order_number: "#103", status: "print" })];
+    bulkResponse = {
+      success: false,
+      processed: 0,
+      failed: 1,
+      succeeded: [],
+      failures: [{ orderId: "print-1", orderNumber: "#103", reason: "Invalid phone number" }],
+    };
+    renderDashboard();
+
+    await user.click(await screen.findByRole("radio", { name: /Print.*1/ }));
+    await user.click(screen.getByTestId("checkbox-order-print-1"));
+    await user.click(screen.getByTestId("button-bulk-send-steadfast"));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringContaining("#103")));
+    expect(screen.getByTestId("checkbox-order-print-1")).toHaveClass("bg-[#0285F7]");
   });
 });

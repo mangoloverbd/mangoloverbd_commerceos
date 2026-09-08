@@ -25,4 +25,20 @@ describe("print status wiring", () => {
     expect(ordersTableSource).toContain("courierSendBlockReason(order.status)");
     expect(ordersTableSource).toContain("{sendBlockReason}");
   });
+
+  it("wires the authenticated Steadfast bulk contract", () => {
+    const server = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
+
+    expect(server).toContain('app.post("/api/send-to-courier/bulk"');
+    expect(server).toContain("getUser(getToken(req))");
+    expect(server).toContain("rawOrderIds.length > 500");
+    expect(server).toContain("orderIds.length > 500");
+    expect(server).toContain("/create_order/bulk-order");
+    expect(server).toContain("data: JSON.stringify(");
+    expect(server).toContain("normalizeBdPhone");
+    expect(server).toContain("item_description");
+    expect(server).toContain('.in("id", orderIds)');
+    expect(server).toContain('.eq("org_id", orgId)');
+    expect(server).toContain('sendBulkSms(orgId, "dispatch", updated)');
+  });
 });

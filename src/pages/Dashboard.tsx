@@ -1109,9 +1109,11 @@ export default function Dashboard() {
         {/* Table */}
         <OrdersTable
           orders={visibleOrders}
+          selectionOrders={orders}
           loading={loading}
           onStatusUpdate={handleStatusUpdate}
           onOrderUpdate={handleOrderUpdate}
+          isPrintView={statusFilter === "print"}
           selectedIds={selectedOrderIds}
           onSelectionChange={setSelectedOrderIds}
         />
