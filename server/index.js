@@ -47,6 +47,13 @@ import {
   getProductImageVariantPaths,
 } from "./productImages.js";
 import { buildProductCacheUrls, purgeProductCacheUrls } from "./productCache.js";
+import {
+  STOREFRONT_SEO_REFRESH_SETTING,
+  enqueueStorefrontSeoRefresh,
+  isAuthorizedCronRequest,
+  parseStorefrontSeoRefreshJob,
+  reconcileStorefrontSeoRefresh,
+} from "./storefrontSeoRefresh.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -2417,6 +2424,19 @@ const MERCHANT_SUITE_PUBLIC_URL = (process.env.MERCHANT_SUITE_PUBLIC_URL || proc
 // Fallback single project id (if you're not using auto-provision and just point
 // at one shared storefront project). Auto-provision overrides this per-merchant.
 const VERCEL_PROJECT_ID_FALLBACK = process.env.VERCEL_PROJECT_ID || "";
+const SEO_BUILD_PRODUCT_FIELDS = new Set([
+  "name",
+  "description",
+  "selling_price",
+  "slug",
+  "published",
+  "image_url",
+]);
+const STOREFRONT_SEO_REFRESH_TIMEOUT_MS = 10_000;
+const STOREFRONT_SEO_REFRESH_KEY_PATTERN = new RegExp(
+  `^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):${STOREFRONT_SEO_REFRESH_SETTING}$`,
+  "i",
+);
 
 function vercelTeamQuery() {
   return STOREFRONT_VERCEL_TEAM_ID ? `?teamId=${STOREFRONT_VERCEL_TEAM_ID}` : "";
@@ -2443,6 +2463,181 @@ async function getStorefrontProjectId(orgId) {
 async function saveStorefrontProjectId(orgId, projectId) {
   await saveSettings({ [`${orgId}:storefront_vercel_project_id`]: projectId });
 }
+
+async function saveStorefrontSeoRefreshJob(orgId, job) {
+  await saveOrgSettings(orgId, {
+    [STOREFRONT_SEO_REFRESH_SETTING]: JSON.stringify(job),
+  });
+}
+
+async function clearStorefrontSeoRefreshJob(orgId) {
+  // Keep the org-scoped setting interface in one place while marking a completed
+  // job as absent. The retry scanner skips this explicit empty state.
+  await saveOrgSettings(orgId, { [STOREFRONT_SEO_REFRESH_SETTING]: "null" });
+}
+
+async function getStorefrontSeoDeploymentConfig(orgId) {
+  if (!VERCEL_ACCESS_TOKEN || !STOREFRONT_GIT_REPO) {
+    throw new Error("Storefront deployment is not configured");
+  }
+
+  const projectId = await getStorefrontProjectId(orgId);
+  if (!projectId) {
+    throw new Error("Storefront project is not configured");
+  }
+
+  const projectResponse = await vercelApi(`/v9/projects/${encodeURIComponent(projectId)}`, {
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+  });
+  if (!projectResponse.ok) {
+    throw new Error(`Storefront project lookup failed (${projectResponse.status})`);
+  }
+  const project = await projectResponse.json();
+  if (typeof project?.name !== "string" || !project.name) {
+    throw new Error("Storefront project name is unavailable");
+  }
+
+  const githubResponse = await fetch(`https://api.github.com/repos/${STOREFRONT_GIT_REPO}`, {
+    headers: { Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+  });
+  if (!githubResponse.ok) {
+    throw new Error(`Storefront repository lookup failed (${githubResponse.status})`);
+  }
+  const repository = await githubResponse.json();
+  const repositoryId = Number(repository?.id);
+  if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0) {
+    throw new Error("Storefront repository ID is unavailable");
+  }
+
+  return { projectName: project.name, repositoryId };
+}
+
+async function submitStorefrontSeoDeployment(orgId) {
+  const { projectName, repositoryId } = await getStorefrontSeoDeploymentConfig(orgId);
+  const response = await vercelApi("/v13/deployments?skipAutoDetectionConfirmation=1", {
+    method: "POST",
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+    body: JSON.stringify({
+      name: projectName,
+      target: "production",
+      gitSource: {
+        type: "github",
+        repo: STOREFRONT_GIT_REPO,
+        repoId: repositoryId,
+        ref: "main",
+      },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Storefront deployment request failed (${response.status})`);
+  }
+
+  const deployment = await response.json();
+  if (typeof deployment?.id !== "string" || !deployment.id) {
+    throw new Error("Storefront deployment did not return an ID");
+  }
+
+  return { id: deployment.id };
+}
+
+async function getStorefrontSeoDeployment(deploymentId) {
+  const response = await vercelApi(`/v13/deployments/${encodeURIComponent(deploymentId)}`, {
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`Storefront deployment status failed (${response.status})`);
+  }
+  return response.json();
+}
+
+async function requestStorefrontSeoRefresh(orgId, reason) {
+  try {
+    const settings = await getOrgSettings(orgId, [STOREFRONT_SEO_REFRESH_SETTING]);
+    const job = await enqueueStorefrontSeoRefresh({
+      existingJob: settings[STOREFRONT_SEO_REFRESH_SETTING] || null,
+      saveJob: (nextJob) => saveStorefrontSeoRefreshJob(orgId, nextJob),
+      submitDeployment: () => submitStorefrontSeoDeployment(orgId),
+      now: new Date(),
+      createRequestId: crypto.randomUUID,
+    });
+    if (job.status === "queued") {
+      console.warn(`[storefront-seo] queued retry after ${reason}`);
+    }
+    return job;
+  } catch {
+    // Product writes are authoritative even if Vercel is unavailable. A later
+    // normal edit or the cron can recover when the queued setting was saved.
+    console.warn(`[storefront-seo] could not queue refresh after ${reason}`);
+    return null;
+  }
+}
+
+async function retryPendingStorefrontSeoRefreshes() {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select("key, value")
+    .like("key", `%:${STOREFRONT_SEO_REFRESH_SETTING}`);
+  if (error) throw error;
+
+  let processed = 0;
+  let pending = 0;
+  for (const row of data || []) {
+    const keyMatch = STOREFRONT_SEO_REFRESH_KEY_PATTERN.exec(row.key || "");
+    const orgId = keyMatch?.[1] || null;
+    if (!orgId || !row.value || row.value === "null") continue;
+
+    try {
+      const job = parseStorefrontSeoRefreshJob(row.value);
+      if (!job) {
+        await requestStorefrontSeoRefresh(orgId, "malformed retry job");
+        processed += 1;
+        pending += 1;
+        continue;
+      }
+
+      const result = await reconcileStorefrontSeoRefresh({
+        job,
+        getDeployment: getStorefrontSeoDeployment,
+        submitDeployment: () => submitStorefrontSeoDeployment(orgId),
+        now: new Date(),
+      });
+      processed += 1;
+
+      if (result.action === "clear") {
+        await clearStorefrontSeoRefreshJob(orgId);
+      } else if (result.job) {
+        await saveStorefrontSeoRefreshJob(orgId, result.job);
+        pending += 1;
+      } else {
+        await requestStorefrontSeoRefresh(orgId, "invalid retry job");
+        pending += 1;
+      }
+    } catch {
+      // Keep the durable row intact for the next daily retry and never expose
+      // Vercel details or credentials through the cron response.
+      console.warn("[storefront-seo] retry attempt failed");
+      pending += 1;
+    }
+  }
+
+  return { processed, pending };
+}
+
+app.get("/api/internal/storefront-seo-refresh", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const result = await retryPendingStorefrontSeoRefreshes();
+    return res.json({ ok: true, processed: result.processed, pending: result.pending });
+  } catch {
+    console.warn("[storefront-seo] retry scan failed");
+    return res.status(500).json({ error: "Could not refresh storefront SEO deployments" });
+  }
+});
 
 // Apex (<=2 labels, or 3 with a 2-3 char TLD like co.uk) → A record; else CNAME.
 function dnsRecordFor(domain) {
@@ -10446,6 +10641,9 @@ app.post("/api/products/save", async (req, res) => {
     purgeProductCache(orgId, null, { listChanged: true, warm: true }).catch((err) => {
       console.warn("[products/save] public catalog cache purge failed:", err.message);
     });
+    if ((data || []).some((product) => product.published)) {
+      await requestStorefrontSeoRefresh(orgId, "published product import");
+    }
 
     return res.json({ saved: data.length, variants_saved: variantRows.length, products: data });
   } catch (e) {
@@ -10868,6 +11066,10 @@ app.patch("/api/products/:id", async (req, res) => {
         warm: !isUnpublishing,
       }).catch(() => {});
     }
+    const hasSeoBuildField = changedFields.some((field) => SEO_BUILD_PRODUCT_FIELDS.has(field));
+    if (hasSeoBuildField && (data.published || isUnpublishing)) {
+      await requestStorefrontSeoRefresh(orgId, "product SEO metadata change");
+    }
 
     // Regenerate embedding if image_url changed
     if (update.image_url && data.image_url) {
@@ -10894,7 +11096,7 @@ app.delete("/api/products/:id", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, slug")
+      .select("id, slug, published")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -10911,6 +11113,9 @@ app.delete("/api/products/:id", async (req, res) => {
     // List changed + detail stale: purge with warm:false (warming an
     // unpublished 404 would pollute the edge with a negative entry).
     purgeProductCache(orgId, product, { listChanged: true, warm: false }).catch(() => {});
+    if (product.published) {
+      await requestStorefrontSeoRefresh(orgId, "published product deletion");
+    }
     const paths = (images || []).flatMap((image) => getProductImagePathsForCleanup(image.storage_path));
     if (paths.length) {
       await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove(paths);
@@ -10940,6 +11145,9 @@ app.post("/api/products/publish-all", async (req, res) => {
     if (error) throw error;
 
     purgeProductCache(orgId, null, { listChanged: true, warm: true }).catch(() => {});
+    if ((data || []).length > 0) {
+      await requestStorefrontSeoRefresh(orgId, "publish all");
+    }
 
     return res.json({ success: true, published: (data || []).length });
   } catch (e) {
@@ -10959,7 +11167,7 @@ app.post("/api/products/:id/images", async (req, res) => {
 
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, name, slug")
+      .select("id, name, slug, published")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -11067,6 +11275,9 @@ app.post("/api/products/:id/images", async (req, res) => {
     }
 
     purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
+    if (product.published && inserted.some((image) => image.is_primary)) {
+      await requestStorefrontSeoRefresh(orgId, "primary product image upload");
+    }
 
     return res.json({ images: inserted });
   } catch (e) {
@@ -11086,7 +11297,7 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
 
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, slug")
+      .select("id, slug, published")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -11095,7 +11306,7 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
 
     const { data: existing, error: existingError } = await supabase
       .from("product_images")
-      .select("id, image_url")
+      .select("id, image_url, is_primary")
       .eq("product_id", productId)
       .eq("org_id", orgId);
     if (existingError) throw existingError;
@@ -11115,11 +11326,15 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
       if (error) throw error;
     }
 
+    const previousPrimary = (existing || []).find((image) => image.is_primary);
     const primary = (existing || []).find((image) => image.id === imageIds[0]);
     if (primary) {
       await supabase.from("products").update({ image_url: primary.image_url }).eq("id", productId).eq("org_id", orgId);
     }
     purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
+    if (product.published && primary && primary.id !== previousPrimary?.id) {
+      await requestStorefrontSeoRefresh(orgId, "primary product image reorder");
+    }
     const imagesMap = await loadProductImagesMap(supabase, orgId, [productId]);
     return res.json({ images: imagesMap[productId] || [] });
   } catch (e) {
@@ -11136,7 +11351,7 @@ app.delete("/api/products/:id/images/:imageId", async (req, res) => {
     const productId = req.params.id;
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, slug")
+      .select("id, slug, published")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -11182,6 +11397,9 @@ app.delete("/api/products/:id/images/:imageId", async (req, res) => {
     }
 
     purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
+    if (product.published && image.is_primary) {
+      await requestStorefrontSeoRefresh(orgId, "primary product image deletion");
+    }
 
     return res.json({ success: true });
   } catch (e) {
