@@ -201,11 +201,21 @@ interface OrderItemSummary {
 
 interface OrdersTableProps {
   orders: Order[];
+  selectionOrders?: Order[];
   loading: boolean;
   onStatusUpdate: (orderId: string, newStatus: string) => void;
   onOrderUpdate?: (updatedOrder: Order) => void;
+  isPrintView?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
+}
+
+interface BulkSteadfastResponse {
+  success: boolean;
+  processed: number;
+  failed: number;
+  succeeded: Array<{ orderId: string; orderNumber: string; order: Order }>;
+  failures: Array<{ orderId: string | null; orderNumber: string | null; reason: string }>;
 }
 
 function SearchRiskIcon({ className }: { className?: string }) {
@@ -544,7 +554,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   );
 }
 
-export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, selectedIds: controlledSelectedIds, onSelectionChange }: OrdersTableProps) {
+export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, selectedIds: controlledSelectedIds, onSelectionChange }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const prefetchOrder = (orderId: string) => queryClient.prefetchQuery({
@@ -571,6 +581,7 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, se
     else setInternalSelectedIds(resolved);
   };
   const [isBulkChecking, setIsBulkChecking] = useState(false);
+  const [isBulkSendingSteadfast, setIsBulkSendingSteadfast] = useState(false);
   const [isDeletingOrders, setIsDeletingOrders] = useState(false);
   const warehouseNames = Object.fromEntries(warehouses.map((warehouse) => [warehouse.id, warehouse.name]));
 
@@ -872,6 +883,54 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, se
       setSelectedIds(new Set());
     } finally {
       setIsBulkChecking(false);
+    }
+  };
+
+  const bulkSelectionOrders = selectionOrders ?? orders;
+  const selectedPrintOrders = bulkSelectionOrders.filter(
+    (order) => selectedIds.has(order.id) && isPrintStatus(order.status) && !order.sent_to_courier,
+  );
+
+  const handleBulkSendToSteadfast = async () => {
+    if (selectedPrintOrders.length === 0 || isBulkSendingSteadfast) return;
+
+    setIsBulkSendingSteadfast(true);
+    try {
+      const response = await apiFetch("/api/send-to-courier/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: selectedPrintOrders.map((order) => order.id) }),
+      });
+      const data = await response.json().catch(() => ({})) as Partial<BulkSteadfastResponse> & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Failed to send orders to Steadfast");
+
+      const succeeded = Array.isArray(data.succeeded) ? data.succeeded : [];
+      const failures = Array.isArray(data.failures) ? data.failures : [];
+      succeeded.forEach((result) => {
+        if (result?.order && onOrderUpdate) onOrderUpdate(result.order);
+      });
+
+      const succeededIds = new Set(succeeded.map((result) => result.orderId));
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+        succeededIds.forEach((id) => next.delete(id));
+        return next;
+      });
+
+      if (succeeded.length > 0) {
+        toast.success(`${succeeded.length} order${succeeded.length === 1 ? "" : "s"} sent to Steadfast`);
+      }
+      if (failures.length > 0) {
+        const details = failures
+          .map((failure) => `${failure.orderNumber || failure.orderId || "Unknown order"}: ${failure.reason}`)
+          .join("; ");
+        toast.error(`${failures.length} order${failures.length === 1 ? "" : "s"} failed: ${details}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to send orders to Steadfast";
+      toast.error(message);
+    } finally {
+      setIsBulkSendingSteadfast(false);
     }
   };
 
@@ -1430,18 +1489,31 @@ export function OrdersTable({ orders, loading, onStatusUpdate, onOrderUpdate, se
               {/* Actions */}
               <div className="flex items-center px-3 gap-0.5">
 
-                {/* Fraud Check */}
-                <button
-                  onClick={handleBulkFraudCheck}
-                  disabled={isBulkChecking}
-                  className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all disabled:opacity-30"
-                  data-testid="button-bulk-fraud-check"
-                >
-                  {isBulkChecking
-                    ? <Spinner size="sm" />
-                    : <ShieldCheck className="h-3 w-3" />}
-                  Fraud Check
-                </button>
+                {isPrintView && selectedPrintOrders.length > 0 && (
+                  <button
+                    onClick={() => void handleBulkSendToSteadfast()}
+                    disabled={isBulkSendingSteadfast}
+                    className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all disabled:opacity-30"
+                    data-testid="button-bulk-send-steadfast"
+                  >
+                    {isBulkSendingSteadfast ? <Spinner size="sm" /> : <SteadfastLogo className="h-3.5 w-auto" />}
+                    Send to Steadfast
+                  </button>
+                )}
+
+                {!isPrintView && (
+                  <button
+                    onClick={handleBulkFraudCheck}
+                    disabled={isBulkChecking}
+                    className="flex items-center gap-1.5 h-8 px-3 text-[9px] font-medium tracking-[0.18em] uppercase text-black hover:text-black hover:bg-black/[0.03] transition-all disabled:opacity-30"
+                    data-testid="button-bulk-fraud-check"
+                  >
+                    {isBulkChecking
+                      ? <Spinner size="sm" />
+                      : <ShieldCheck className="h-3 w-3" />}
+                    Fraud Check
+                  </button>
+                )}
 
                 {/* Invoice */}
                 <button

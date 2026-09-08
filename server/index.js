@@ -6310,6 +6310,148 @@ app.delete("/api/orders", async (req, res) => {
   }
 });
 
+app.post("/api/send-to-courier/bulk", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const rawOrderIds = req.body?.orderIds;
+    if (!Array.isArray(rawOrderIds) || rawOrderIds.some((id) => typeof id !== "string" || !id.trim())) {
+      return res.status(400).json({ error: "orderIds array of non-empty strings is required" });
+    }
+    if (rawOrderIds.length > 500) return res.status(400).json({ error: "A maximum of 500 orders can be sent at once" });
+    const orderIds = [...new Set(rawOrderIds.map((id) => id.trim()))];
+    if (orderIds.length === 0) return res.status(400).json({ error: "At least one order ID is required" });
+    if (orderIds.length > 500) return res.status(400).json({ error: "A maximum of 500 orders can be sent at once" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
+    const apiKey = cfg["steadfast_api_key"];
+    const secretKey = cfg["steadfast_secret_key"];
+    if (!apiKey || !secretKey) {
+      return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
+    }
+
+    const { data: orders, error: fetchError } = await supabase
+      .from("orders")
+      .select("*")
+      .in("id", orderIds)
+      .eq("org_id", orgId);
+    if (fetchError) throw fetchError;
+
+    const failures = [];
+    const succeeded = [];
+    const ordersById = new Map((orders || []).map((order) => [order.id, order]));
+    for (const orderId of orderIds) {
+      if (!ordersById.has(orderId)) {
+        failures.push({ orderId, orderNumber: null, reason: "Order not found" });
+      }
+    }
+
+    const prepared = [];
+    for (const order of orders || []) {
+      const orderNumber = order.order_number || order.id;
+      if (normalizeBusinessStatus(order.status) !== "print") {
+        failures.push({ orderId: order.id, orderNumber, reason: "Only Print orders can be sent to Steadfast" });
+        continue;
+      }
+      if (isOrderDispatched(order)) {
+        failures.push({ orderId: order.id, orderNumber, reason: "Order already sent to courier" });
+        continue;
+      }
+
+      const cleanedPhone = normalizeBdPhone(order.phone || "");
+      if (cleanedPhone === null || cleanedPhone.length !== 11 || !cleanedPhone.startsWith("01")) {
+        failures.push({ orderId: order.id, orderNumber, reason: "Invalid phone number. Must be 11 digits starting with 01." });
+        continue;
+      }
+
+      try {
+        const courierItems = await getCourierOrderItems(supabase, orgId, order);
+        const invoice = `ORD-${(order.order_number || order.id.slice(-8)).replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase()}`;
+        prepared.push({
+          order,
+          invoice,
+          payload: {
+            invoice,
+            recipient_name: (order.customer_name || "Customer").slice(0, 100),
+            recipient_phone: cleanedPhone,
+            recipient_address: (order.address || "No address provided").slice(0, 250),
+            cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
+            note: order.notes || undefined,
+            item_description: formatCourierItems(courierItems),
+          },
+        });
+      } catch (error) {
+        failures.push({ orderId: order.id, orderNumber, reason: error.message || "Could not prepare order items" });
+      }
+    }
+
+    const invoiceCounts = new Map();
+    for (const item of prepared) invoiceCounts.set(item.invoice, (invoiceCounts.get(item.invoice) || 0) + 1);
+    const eligible = prepared.filter((item) => {
+      if (invoiceCounts.get(item.invoice) === 1) return true;
+      failures.push({ orderId: item.order.id, orderNumber: item.order.order_number || item.order.id, reason: "Duplicate invoice number" });
+      return false;
+    });
+
+    if (eligible.length > 0) {
+      const sfRes = await fetch("https://portal.packzy.com/api/v1/create_order/bulk-order", {
+        method: "POST",
+        headers: { "Api-Key": apiKey, "Secret-Key": secretKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ data: JSON.stringify(eligible.map((item) => item.payload)) }),
+      });
+      const sfData = await sfRes.json().catch(() => null);
+      const resultRows = Array.isArray(sfData) ? sfData : sfData?.data;
+      if (!sfRes.ok || !Array.isArray(resultRows)) {
+        const message = sfData?.message || "Steadfast bulk order request failed";
+        return res.status(502).json({ error: message });
+      }
+
+      const resultsByInvoice = new Map(resultRows.map((result) => [result.invoice, result]));
+      for (const item of eligible) {
+        const result = resultsByInvoice.get(item.invoice);
+        if (!result || result.status !== "success" || !result.consignment_id || !result.tracking_code) {
+          failures.push({
+            orderId: item.order.id,
+            orderNumber: item.order.order_number || item.order.id,
+            reason: result?.message || "Steadfast rejected the order",
+          });
+          continue;
+        }
+
+        const { data: updated, error: updateError } = await supabase.from("orders").update({
+          status: "processing",
+          sent_to_courier: true,
+          consignment_id: String(result.consignment_id),
+          tracking_code: result.tracking_code,
+          courier_status: "in_review",
+          courier_message: "Sent to Steadfast successfully",
+          courier_name: "steadfast",
+        }).eq("id", item.order.id).eq("org_id", orgId).select("*").single();
+        if (updateError || !updated) {
+          failures.push({ orderId: item.order.id, orderNumber: item.order.order_number || item.order.id, reason: "Courier accepted order but local save failed" });
+          continue;
+        }
+
+        succeeded.push({ orderId: item.order.id, orderNumber: item.order.order_number || item.order.id, order: updated });
+        sendBulkSms(orgId, "dispatch", updated).catch(console.error);
+      }
+    }
+
+    return res.json({
+      success: failures.length === 0,
+      processed: succeeded.length,
+      failed: failures.length,
+      succeeded,
+      failures,
+    });
+  } catch (e) {
+    return sendError(res, e);
+  }
+});
+
 app.post("/api/send-to-courier", async (req, res) => {
   try {
     const { orderId } = req.body;
