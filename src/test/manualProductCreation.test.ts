@@ -36,4 +36,33 @@ describe("manual product creation", () => {
     expect(serverSource).toContain("cog: v.cog != null ? parseFloat(v.cog) : 0");
     expect(serverSource).toContain("stock_quantity: Math.max(0, parseInt(v.stock_quantity, 10) || 0)");
   });
+
+  it("invalidates the public catalog after importing products", () => {
+    const saveRoute = serverSource.slice(
+      serverSource.indexOf('app.post("/api/products/save"'),
+      serverSource.indexOf('app.post("/api/products/crawl"'),
+    );
+
+    expect(saveRoute).toContain("purgeProductCache(orgId, null, { listChanged: true");
+  });
+
+  it("does not allow Vercel to serve a stale public catalog", () => {
+    const publicCatalogSource = serverSource.slice(
+      serverSource.indexOf("async function handlePublicStorefrontProducts"),
+      serverSource.indexOf("// ─── Public Storefront Config", serverSource.indexOf("async function handlePublicStorefrontProducts")),
+    );
+
+    expect(publicCatalogSource).toContain('cacheControl: "no-store"');
+    expect(publicCatalogSource).not.toContain("stale-while-revalidate");
+  });
+
+  it("builds catalog ETags from the complete public product payload", () => {
+    const etagSource = serverSource.slice(
+      serverSource.indexOf("function catalogEtag"),
+      serverSource.indexOf("function inventoryEtag"),
+    );
+
+    expect(etagSource).toContain("JSON.stringify(products)");
+    expect(etagSource).not.toContain("products.map((product) =>");
+  });
 });
