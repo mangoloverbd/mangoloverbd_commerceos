@@ -9771,24 +9771,10 @@ function computeEtag(fingerprint) {
   return "W/\"" + crypto.createHash("sha1").update(fingerprint).digest("base64url").slice(0, 16) + "\"";
 }
 
-// Weak ETag keyed on every public field whose image or catalog updates must
-// invalidate a browser's conditional request.
+// Weak ETag keyed on the complete public payload so edits to any storefront
+// field invalidate a browser's conditional request.
 function catalogEtag(products) {
-  const fp = JSON.stringify(
-    products.map((product) => ({
-      id: product.id,
-      slug: product.slug,
-      price: product.price,
-      compare_at_price: product.compare_at_price,
-      image_url: product.image_url,
-      image_urls: product.image_urls,
-      images: product.images,
-      variants: product.variants?.map((variant) => ({
-        id: variant.id,
-        price: variant.price,
-      })),
-    })),
-  );
+  const fp = JSON.stringify(products);
   return computeEtag(fp);
 }
 
@@ -9921,7 +9907,7 @@ async function handlePublicStorefrontProducts(req, res) {
     const products = await loadPublicProducts(req.params.storefrontId);
     if (respondCached(res, {
       etag: catalogEtag(products),
-      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.storefrontId),
     })) return;
     return res.json({ products });
@@ -9936,7 +9922,7 @@ async function handlePublicStorefrontProductDetail(req, res) {
     if (!product) return res.status(404).json({ error: "Product not found" });
     if (respondCached(res, {
       etag: catalogEtag([product]),
-      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.storefrontId, [product.id]),
     })) return;
     return res.json({ product });
@@ -10206,7 +10192,7 @@ async function handlePublicHandleProducts(req, res) {
     const products = await loadPublicProducts(orgId);
     if (respondCached(res, {
       etag: catalogEtag(products),
-      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.handle),
     })) return;
     return res.json({ products });
@@ -10223,7 +10209,7 @@ async function handlePublicHandleProductDetail(req, res) {
     if (!product) return res.status(404).json({ error: "not_found" });
     if (respondCached(res, {
       etag: catalogEtag([product]),
-      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.handle, [product.id]),
     })) return;
     return res.json({ product });
@@ -10453,6 +10439,13 @@ app.post("/api/products/save", async (req, res) => {
         }).catch((err) => console.warn(`[Embedding] generation failed for ${product.id}:`, err.message));
       }
     }
+
+    // An import changes catalog membership just like publishing or deleting a
+    // product. Invalidate the public list after the database write so a cached
+    // storefront response cannot hide newly imported products on refresh.
+    purgeProductCache(orgId, null, { listChanged: true, warm: true }).catch((err) => {
+      console.warn("[products/save] public catalog cache purge failed:", err.message);
+    });
 
     return res.json({ saved: data.length, variants_saved: variantRows.length, products: data });
   } catch (e) {
