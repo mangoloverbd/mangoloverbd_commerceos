@@ -246,6 +246,38 @@ describe("order routing wiring", () => {
     expect(courierRoutes).toContain("item_quantity: courierItems.reduce");
   });
 
+  it("formats plain and JSON variant names without throwing", () => {
+    const helperStart = source.indexOf("function readableVariantName");
+    const helperEnd = source.indexOf("function formatCourierItems", helperStart);
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+    expect(helperEnd).toBeGreaterThan(helperStart);
+
+    const helperSource = source.slice(helperStart, helperEnd);
+    const readableVariantName = new Function(
+      `${helperSource}; return readableVariantName;`,
+    )() as (value: unknown) => string | null;
+
+    expect(readableVariantName("5 kg")).toBe("5 kg");
+    expect(readableVariantName('{"size":"5 kg","color":"Green"}')).toBe("5 kg · Green");
+    expect(readableVariantName({ size: "5 kg", color: "Green" })).toBe("5 kg · Green");
+    expect(readableVariantName("   ")).toBeNull();
+    expect(readableVariantName('{"size":"5 kg"')).toBe('{"size":"5 kg"');
+  });
+
+  it("uses the shared formatted item description in both Steadfast routes", () => {
+    const bulkRoute = sectionBetween(
+      'app.post("/api/send-to-courier/bulk"',
+      'app.post("/api/send-to-courier"',
+    );
+    const singleRoute = sectionBetween(
+      'app.post("/api/send-to-courier"',
+      'app.post("/api/send-to-pathao"',
+    );
+
+    expect(bulkRoute).toContain("formatCourierItems(courierItems)");
+    expect(singleRoute).toContain("formatCourierItems(courierItems)");
+  });
+
   it("stores the same immutable snapshot during social inbox capture", () => {
     const socialCapture = sectionBetween(
       "async function saveMetaInboxOrder",
