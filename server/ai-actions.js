@@ -376,7 +376,7 @@ export function buildRecommendation(tool, args, ctx = {}) {
 // ── executeAiAction: the single dispatcher the /apply route calls ──
 // helpers = { saveProductStock, getUniqueProductSlug, purgeProductCache,
 //             generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
-//             sendBulkSms, getOrgSettings }
+//             sendBulkSms, requestStorefrontSeoRefresh, getOrgSettings }
 // All queries filter by orgId. Throws if the target row is missing in this org.
 
 export async function executeAiAction({ supabase, orgId, userId, tool, args, helpers = {} }) {
@@ -407,6 +407,11 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       const isUnpublishing = update.published === false;
       if (!onlyStock && (after.published || isUnpublishing)) {
         helpers.purgeProductCache(orgId, { id: after.id, slug: after.slug }, { listChanged: update.published !== undefined, warm: !isUnpublishing }).catch(() => {});
+      }
+      const hasSeoBuildField = ["name", "description", "selling_price", "published", "image_url"]
+        .some((field) => Object.hasOwn(update, field));
+      if (hasSeoBuildField && (after.published || isUnpublishing)) {
+        await helpers.requestStorefrontSeoRefresh?.(orgId, "published product metadata change");
       }
       if (update.image_url && after.image_url) {
         helpers.generateProductEmbedding(after.image_url).then(({ embedding, description }) => {
@@ -552,7 +557,10 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
         if (vErr) throw vErr;
         variants = vData;
       }
-      if (args.published === true) helpers.purgeProductCache(orgId, { id: product.id, slug: product.slug }, { listChanged: true, warm: true }).catch(() => {});
+      if (args.published === true) {
+        helpers.purgeProductCache(orgId, { id: product.id, slug: product.slug }, { listChanged: true, warm: true }).catch(() => {});
+        await helpers.requestStorefrontSeoRefresh?.(orgId, "published product creation");
+      }
       return { before: null, after: { product, variants } };
     }
 

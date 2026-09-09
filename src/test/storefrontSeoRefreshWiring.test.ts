@@ -19,9 +19,28 @@ describe("storefront SEO refresh wiring", () => {
     expect(source).toContain('from "./storefrontSeoRefresh.js"');
     expect(source).toContain("requestStorefrontSeoRefresh");
     expect(source).toContain("retryPendingStorefrontSeoRefreshes");
+    expect(source).toContain("queueStorefrontSeoRefresh");
+    expect(source).toContain("processStorefrontSeoRefresh");
     expect(source).toContain("STOREFRONT_SEO_REFRESH_TIMEOUT_MS = 10_000");
     expect(source).toContain("AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS)");
     expect(source).toContain("SEO_BUILD_PRODUCT_FIELDS");
+  });
+
+  it("persists and advances refresh jobs with compare-and-set writes", () => {
+    const refresh = handlerFor("async function readStorefrontSeoRefreshJob", "async function getStorefrontSeoDeploymentConfig");
+
+    expect(refresh).toContain("compareAndSetStorefrontSeoRefreshJob");
+    expect(refresh).toContain('.eq("value", expectedValue)');
+    expect(refresh).toContain("claimStorefrontSeoRefreshLease");
+    expect(refresh).toContain("releaseStorefrontSeoRefreshLease");
+    const request = handlerFor("async function requestStorefrontSeoRefresh", "async function retryPendingStorefrontSeoRefreshes");
+    expect(request).toContain("void processPendingStorefrontSeoRefresh");
+  });
+
+  it("keeps a missing Vercel deployment distinguishable from transient status errors", () => {
+    const deploymentStatus = handlerFor("async function getStorefrontSeoDeployment(deploymentId)", "async function processPendingStorefrontSeoRefresh");
+
+    expect(deploymentStatus).toContain("error.status = response.status");
   });
 
   it("queues a refresh only after successful SEO-relevant product writes", () => {
@@ -60,6 +79,12 @@ describe("storefront SEO refresh wiring", () => {
     expect(handlerFor('app.delete("/api/products/:id/variants/:variantId"', 'async function ensureAppSettingsTable')).not.toContain(
       "requestStorefrontSeoRefresh",
     );
+  });
+
+  it("passes SEO refresh scheduling into Order Chat product mutations", () => {
+    const apply = handlerFor('app.post("/api/order-chat/apply"', 'app.post("/api/order-chat/answer"');
+
+    expect(apply).toContain("requestStorefrontSeoRefresh");
   });
 
   it("protects the retry route with the Vercel cron secret before reading settings", () => {
