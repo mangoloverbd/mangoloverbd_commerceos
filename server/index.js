@@ -5536,6 +5536,24 @@ function variantDisplay(attributes) {
   return Object.values(attributes || {}).filter(Boolean).join(" · ") || null;
 }
 
+function readableVariantName(value) {
+  if (value && typeof value === "object") return variantDisplay(value);
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object") return variantDisplay(parsed);
+    if (typeof parsed === "string") return parsed.trim() || null;
+    if (parsed === null) return null;
+    return String(parsed);
+  } catch {
+    return trimmed;
+  }
+}
+
 async function getCourierOrderItems(supabase, orgId, order) {
   const { data, error } = await supabase
     .from("order_items")

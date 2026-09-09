@@ -247,7 +247,7 @@ describe("order routing wiring", () => {
   });
 
   it("formats plain and JSON variant names without throwing", () => {
-    const helperStart = source.indexOf("function readableVariantName");
+    const helperStart = source.indexOf("function variantDisplay");
     const helperEnd = source.indexOf("function formatCourierItems", helperStart);
     expect(helperStart).toBeGreaterThanOrEqual(0);
     expect(helperEnd).toBeGreaterThan(helperStart);
