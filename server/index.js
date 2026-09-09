@@ -6592,7 +6592,7 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
             recipient_phone: cleanedPhone,
             recipient_address: (order.address || "No address provided").slice(0, 250),
             cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
-            note: order.notes || undefined,
+            note: order.notes || "",
             item_description: formatCourierItems(courierItems),
           },
         });
