@@ -278,6 +278,16 @@ describe("order routing wiring", () => {
     expect(singleRoute).toContain("formatCourierItems(courierItems)");
   });
 
+  it("always sends a note field in the Steadfast bulk payload", () => {
+    const bulkRoute = sectionBetween(
+      'app.post("/api/send-to-courier/bulk"',
+      'app.post("/api/send-to-courier"',
+    );
+
+    expect(bulkRoute).toContain('note: order.notes || ""');
+    expect(bulkRoute).not.toContain("note: order.notes || undefined");
+  });
+
   it("stores the same immutable snapshot during social inbox capture", () => {
     const socialCapture = sectionBetween(
       "async function saveMetaInboxOrder",
