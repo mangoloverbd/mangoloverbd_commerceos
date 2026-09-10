@@ -48,6 +48,8 @@ import {
 } from "@/lib/orderStatusFilters";
 import { planBulkStatusChange } from "@/lib/orderTransitions";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobilePnlLayout, type MobilePnlMetric } from "@/components/MobilePnlLayout";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -274,6 +276,7 @@ const FinanceMetric = memo(function FinanceMetric({
   prefix = "৳",
   data,
   trend,
+  mobileSolid = false,
 }: {
   label: string;
   loading: boolean;
@@ -282,6 +285,7 @@ const FinanceMetric = memo(function FinanceMetric({
   prefix?: string;
   data: { label: string; value: number }[];
   trend?: number | null;
+  mobileSolid?: boolean;
   seed?: number;
   tone?: "blue" | "green" | "red" | "amber" | "neutral";
   color?: string;
@@ -296,7 +300,7 @@ const FinanceMetric = memo(function FinanceMetric({
     <div
       className="flex-1 min-w-[140px]"
       style={{
-        background: "#EBEBE8",
+        background: mobileSolid ? "#FFFFFF" : "#EBEBE8",
         borderRadius: "8px",
         padding: "2px 2px 0",
         border: "1px solid #f2f2f2",
@@ -447,6 +451,7 @@ export default function Dashboard() {
   const [orderPage, setOrderPage] = useState(0);
   const { isAdmin, loading: roleLoading } = useUserRole();
   const liveVisitors = useLiveVisitors();
+  const isMobile = useIsMobile();
 
   const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false) => {
     if (!silent) setAnalyticsLoading(true);
@@ -821,7 +826,8 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Metric cards grid */}
+          {/* Desktop metric cards grid. Keep this branch unchanged for desktop. */}
+          <div data-testid="desktop-pnl" className="hidden md:block">
           <div className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3">
             <FinanceMetric
               label="Revenue"
@@ -865,6 +871,82 @@ export default function Dashboard() {
               seed={75}
             />
           </div>
+          </div>
+
+          <MobilePnlLayout
+            metrics={[
+              { key: "revenue", label: "Revenue" },
+              { key: "net-profit", label: "Net Profit" },
+              { key: "ad-spend", label: "Ad Spend" },
+              { key: "shipping", label: "Shipping" },
+              { key: "cog", label: "Cost of Goods" },
+            ] satisfies MobilePnlMetric[]}
+            renderMetric={(metric) => {
+              switch (metric.key) {
+                case "revenue":
+                  return (
+                    <FinanceMetric
+                      label={metric.label}
+                      loading={analyticsLoading}
+                      amount={analytics?.revenue ?? 0}
+                      data={metricSparklines.revenue}
+                      trend={trends.revenue}
+                      mobileSolid
+                      seed={11}
+                    />
+                  );
+                case "net-profit":
+                  return (
+                    <FinanceMetric
+                      label={metric.label}
+                      loading={analyticsLoading}
+                      amount={analytics?.profit != null ? Math.abs(analytics.profit) : null}
+                      prefix={analytics?.profit != null && analytics.profit < 0 ? "−৳" : "৳"}
+                      data={metricSparklines.profit}
+                      trend={trends.profit}
+                      mobileSolid
+                      seed={75}
+                    />
+                  );
+                case "ad-spend":
+                  return (
+                    <FinanceMetric
+                      label={metric.label}
+                      loading={analyticsLoading}
+                      amount={analytics?.adSpend ?? null}
+                      data={metricSparklines.adSpend}
+                      trend={trends.adSpend}
+                      mobileSolid
+                      seed={27}
+                    />
+                  );
+                case "shipping":
+                  return (
+                    <FinanceMetric
+                      label={metric.label}
+                      loading={analyticsLoading}
+                      amount={analytics?.shipping ?? 0}
+                      data={metricSparklines.shipping}
+                      trend={trends.shipping}
+                      mobileSolid
+                      seed={43}
+                    />
+                  );
+                case "cog":
+                  return (
+                    <FinanceMetric
+                      label={metric.label}
+                      loading={analyticsLoading}
+                      amount={analytics?.totalCog ?? 0}
+                      data={metricSparklines.cog}
+                      trend={trends.cog}
+                      mobileSolid
+                      seed={59}
+                    />
+                  );
+              }
+            }}
+          />
         </div>
 
         {/* Globe — large, anchored to the right edge and bleeding off the
@@ -889,11 +971,11 @@ export default function Dashboard() {
           </div>
 
           <div className="hidden md:block" />
-        <div className="text-center relative z-10">
+        <div className="text-center relative z-10 max-md:px-3">
           <TextShimmer
             as="h2"
             duration={3}
-            className="text-5xl font-bold"
+            className="text-5xl font-bold max-md:text-3xl"
           >
             {`${getDhakaGreeting()}!`}
           </TextShimmer>
@@ -945,8 +1027,8 @@ export default function Dashboard() {
         className="relative z-10 overflow-hidden rounded-xl border border-black/10 bg-white"
       >
         {/* Toolbar */}
-        <div data-testid="dashboard-order-toolbar" className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2.5">
+        <div data-testid="dashboard-order-toolbar" className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 max-md:px-3 lg:flex-row lg:items-center lg:justify-between">
+           <div className="flex flex-wrap items-center gap-2.5 max-md:w-full max-md:justify-between">
             <TextEffect
               as="span"
               per="word"
@@ -1004,29 +1086,41 @@ export default function Dashboard() {
               >
                 {`${filteredOrders.length} orders`}
               </TextEffect>
-            )}
-          </div>
+             )}
+             {isMobile && (
+               <OrderRowsPerPageSelect
+                 pageSize={orderPageSize}
+                 onPageSizeChange={(nextPageSize) => {
+                   setOrderPageSize(nextPageSize);
+                   setOrderPage(0);
+                 }}
+                 ariaLabel="Rows per page for dashboard orders"
+               />
+             )}
+           </div>
 
-          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
+            <div className="relative max-md:w-full">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder="Search name, phone, order or courier ID…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
+                className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20 max-md:w-full"
                 data-testid="input-search-orders"
               />
             </div>
 
-            <OrderRowsPerPageSelect
-              pageSize={orderPageSize}
-              onPageSizeChange={(nextPageSize) => {
-                setOrderPageSize(nextPageSize);
-                setOrderPage(0);
-              }}
-              ariaLabel="Rows per page for dashboard orders"
-            />
+             {!isMobile && (
+               <OrderRowsPerPageSelect
+                 pageSize={orderPageSize}
+                 onPageSizeChange={(nextPageSize) => {
+                   setOrderPageSize(nextPageSize);
+                   setOrderPage(0);
+                 }}
+                 ariaLabel="Rows per page for dashboard orders"
+               />
+             )}
 
             <Select
               aria-label="Filter orders by warehouse"
@@ -1046,7 +1140,7 @@ export default function Dashboard() {
               size="sm"
               onClick={() => setCreateOrderOpen(true)}
               disabled={bulkUpdating || autoSyncing}
-              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black"
+              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black max-md:w-full max-md:justify-center"
               data-testid="button-create-order"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -1059,7 +1153,7 @@ export default function Dashboard() {
                   color="sky"
                   size="sm"
                   disabled={bulkUpdating || selectedOrderIds.size === 0}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
                   data-testid="button-bulk-status"
                 >
                   {bulkUpdating ? <Spinner size="sm" /> : <UpdateStatusIcon className="h-3.5 w-3.5" />}

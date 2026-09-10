@@ -15,6 +15,7 @@ import {
 import { ChevronSortDown } from "@/components/foundations/icons/chevrons";
 import { cx } from "@/utils/cx";
 import type { Customer, Source } from "@/pages/Customers";
+import { MobileCustomerCards } from "@/components/MobileCustomerCards";
 
 const sourceLabels: Record<Source, string> = {
   custom_website: "Custom Website",
@@ -138,6 +139,11 @@ export function CustomerDataTable({
   }, [customers, sortDescriptor]);
 
   return (
+    <>
+      <div className="md:hidden">
+        <MobileCustomerCards customers={sorted} onSelect={onSelect} />
+      </div>
+      <div className="hidden md:block">
     <Table
       aria-label="Customers"
       selectionMode="none"
@@ -221,5 +227,7 @@ export function CustomerDataTable({
             ))}
       </TableBody>
     </Table>
+      </div>
+    </>
   );
 }

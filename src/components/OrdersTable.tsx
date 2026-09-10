@@ -42,6 +42,8 @@ import { PopButton } from "@/components/ui/pop-button";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { downloadOrderExcel } from "@/lib/orderExcelExport";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileOrderCards } from "@/components/MobileOrderCards";
 
 function splitProductLines(product: string | null): string[] {
   if (!product) return [];
@@ -557,6 +559,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
 export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, selectedIds: controlledSelectedIds, onSelectionChange }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const prefetchOrder = (orderId: string) => queryClient.prefetchQuery({
     queryKey: [`/api/orders/${orderId}`],
     staleTime: 30_000,
@@ -1130,6 +1133,33 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         <Package className="w-12 h-12 text-black mx-auto mb-4" />
         <p className="text-[10px] text-black tracking-[0.2em] font-bold uppercase">No records found</p>
       </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <MobileOrderCards
+        orders={orders}
+        loading={loading}
+        selectedIds={selectedIds}
+        onToggleSelection={toggleSelectOrder}
+        onToggleSelectAll={toggleSelectAll}
+        onOpenOrder={(orderId) => navigate(`/orders/${orderId}`)}
+        renderActions={(order) => (
+          <div className="flex flex-wrap gap-2">
+            {!order.fraud_checked && (
+              <button type="button" onClick={() => handleCheckFraud(order)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black/65">
+                Check fraud
+              </button>
+            )}
+            {!order.sent_to_courier && (
+              <button type="button" onClick={() => handleSendToCourier(order)} className="min-h-10 rounded-xl border border-amber-300 bg-amber-50 px-3 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                Send courier
+              </button>
+            )}
+          </div>
+        )}
+      />
     );
   }
 

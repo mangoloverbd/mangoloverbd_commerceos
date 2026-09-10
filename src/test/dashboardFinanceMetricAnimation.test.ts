@@ -96,6 +96,8 @@ describe("dashboard P&L metric animation", () => {
     expect(financeMetricSource).toContain('padding: "2px 2px 0"');
     expect(financeMetricSource).toContain('padding: "13px 14px 15px"');
     expect(financeMetricSource).toContain('className="m-0 text-[22px] font-bold leading-none text-[#1A1A1A] tabular-nums tracking-tight"');
+    expect(financeMetricSource).toContain('mobileSolid?: boolean');
+    expect(financeMetricSource).toContain('background: mobileSolid ? "#FFFFFF" : "#EBEBE8"');
     expect(source).toContain('className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3"');
   });
 });

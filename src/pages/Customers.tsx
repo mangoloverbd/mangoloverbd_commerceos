@@ -13,7 +13,7 @@ import { CustomerDataTable } from "@/components/CustomerDataTable";
 
 type Source = "shopify" | "custom_website" | "manual" | "facebook" | "instagram" | "whatsapp" | "social_inbox";
 
-type Customer = {
+export type Customer = {
   id: string;
   name: string;
   phone: string;
@@ -331,7 +331,7 @@ export default function Customers() {
   }
 
   return (
-    <div className="min-h-full space-y-6 bg-white p-1 lg:p-2">
+    <div className="min-h-full space-y-6 bg-white p-1 max-md:p-2 lg:p-2">
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
