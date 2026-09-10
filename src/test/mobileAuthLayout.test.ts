@@ -17,4 +17,9 @@ describe("mobile auth layout", () => {
     expect(source).toContain("max-md:mb-7");
     expect(source).toContain("max-md:h-12");
   });
+
+  it("does not render the account-switching footer", () => {
+    expect(source).not.toContain("Don't have an account yet?");
+    expect(source).not.toContain("Already have an account?");
+  });
 });

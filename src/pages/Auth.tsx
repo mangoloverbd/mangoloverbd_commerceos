@@ -403,29 +403,7 @@ export default function Auth() {
                   )}
                 </div>
 
-                {/* Footer */}
-                 <div className="mt-8 max-md:mt-6 text-center">
-                  <p className="text-[13px] text-black/45">
-                    {mode === "signin" ? (
-                      <>
-                        Don't have an account yet?{" "}
-                        <span className="text-black/30 mx-0.5">-</span>{" "}
-                        <button type="button" onClick={() => switchMode("signup")} className="text-black font-semibold underline hover:text-black/70 transition-colors duration-200">
-                          Create account
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        Already have an account?{" "}
-                        <span className="text-black/30 mx-0.5">-</span>{" "}
-                        <button type="button" onClick={() => switchMode("signin")} className="text-black font-semibold underline hover:text-black/70 transition-colors duration-200">
-                          Sign in
-                        </button>
-                      </>
-                    )}
-                  </p>
-                </div>
-              </motion.div>
+               </motion.div>
             )}
           </AnimatePresence>
         </div>
