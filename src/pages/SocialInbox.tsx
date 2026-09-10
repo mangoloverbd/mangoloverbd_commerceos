@@ -312,7 +312,7 @@ export default function SocialInbox({ platform }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-3 bg-white p-1 lg:p-2">
+    <div className="flex h-full flex-col gap-3 bg-white p-1 lg:p-2 max-md:min-w-0 max-md:overflow-hidden">
       {/* ── Header + stat cards ─────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 6 }}
@@ -472,7 +472,8 @@ export default function SocialInbox({ platform }: Props) {
               <div className="flex h-[58px] shrink-0 items-center gap-3 border-b border-black/[0.06] px-4">
                 <button
                   onClick={() => setMobileView("list")}
-                  className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground md:hidden"
+                  aria-label="Back to conversations"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground md:hidden"
                 >
                   <ArrowLeft size={14} />
                 </button>
@@ -558,7 +559,7 @@ export default function SocialInbox({ platform }: Props) {
               </div>
 
               {/* Composer */}
-              <div className="shrink-0 border-t border-black/[0.06] px-4 pb-4 pt-3">
+              <div className="shrink-0 border-t border-black/[0.06] px-4 pb-4 pt-3 max-md:pb-20">
                 {pausedAi ? (
                   <div className="relative rounded-2xl bg-black/[0.04] focus-within:bg-black/[0.06] transition-all">
                     <textarea
