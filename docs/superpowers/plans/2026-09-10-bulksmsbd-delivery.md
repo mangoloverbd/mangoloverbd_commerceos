@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Make automated BulkSMSBD messages deliver reliably from Merchant Suite.
+**Goal:** Make automated BulkSMSBD confirmation and dispatch messages deliver reliably from Merchant Suite.
 
 **Architecture:** Keep the existing org-scoped settings and SMS triggers. Add a BulkSMSBD-specific phone formatter that converts the internally validated `01XXXXXXXXX` format to the gateway-required `8801XXXXXXXXX` format. Await the gateway request and classify its JSON `response_code`, accepting only `202` as submission success while preserving order-operation success when SMS itself fails.
 
@@ -15,6 +15,7 @@
 - BulkSMSBD response code `202` is the only successful submission response.
 - SMS failures must be observable but must not roll back a successfully-created or dispatched order.
 - Do not change Supabase schema or settings key names.
+- A confirmation SMS is sent only when an order first transitions into Approved or Confirmed.
 
 ---
 
@@ -36,6 +37,7 @@
 - [x] Replace fire-and-forget fetch handling with an awaited request and safe response parsing.
 - [x] Log a success only for response code `202`; log the gateway response code/message for failures without including credentials.
 - [x] Keep the helper defensive: missing settings, template, or invalid phone return without calling the gateway; gateway failures are caught and do not throw into order routes.
+- [x] Await the helper from confirmation and dispatch triggers, and trigger confirmation when the authenticated order patch changes a non-approved order to Approved or Confirmed without resending on later edits.
 - [x] Run the focused test and confirm it passes.
 
 ## Task 3: Verify
