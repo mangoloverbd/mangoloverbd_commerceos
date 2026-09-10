@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.2.0] - 2026-09-10
+
+### Changed
+
+- Keep orders sent to Steadfast in Print with their consignment IDs until they are manually moved to Processing.
+
 ## [0.0.1.1] - 2026-09-08
 
 ### Fixed
