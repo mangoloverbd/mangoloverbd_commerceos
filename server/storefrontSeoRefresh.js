@@ -137,23 +137,77 @@ export function parseStorefrontSeoRefreshJob(value) {
   };
 }
 
-export async function enqueueStorefrontSeoRefresh({
-  existingJob,
-  saveJob,
-  submitDeployment,
+export async function queueStorefrontSeoRefresh({
+  readJob,
+  compareAndSetJob,
   now,
   createRequestId,
 }) {
-  // A later product edit intentionally replaces any older request. Every
-  // deployment builds from the current public catalog, so no per-edit payload
-  // has to be retained in the durable job.
-  void parseStorefrontSeoRefreshJob(existingJob);
-  const queued = createQueuedJob(now, createRequestId);
-  await saveJob(queued);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const existingJob = await readJob();
+    const queued = createQueuedJob(now, createRequestId);
 
-  const result = await submitRefreshJob(queued, submitDeployment, now);
-  await saveJob(result.job);
-  return result.job;
+    // A later product edit intentionally replaces any older request. The
+    // conditional write means an older worker can never overwrite it after an
+    // external deployment request completes.
+    if (await compareAndSetJob(existingJob, queued)) {
+      return queued;
+    }
+  }
+
+  throw new Error("Could not queue storefront SEO refresh");
+}
+
+export async function processStorefrontSeoRefresh({
+  rawJob,
+  readJob,
+  claim,
+  release,
+  compareAndSetJob,
+  clearJob,
+  getDeployment,
+  submitDeployment,
+  now,
+}) {
+  const job = parseStorefrontSeoRefreshJob(rawJob);
+  if (!job) {
+    return { action: "invalid" };
+  }
+
+  if (!await claim(job.requestId)) {
+    return { action: "busy", job };
+  }
+
+  try {
+    // A new mutation may have arrived while this worker was waiting for its
+    // lease. Do not submit a deployment for an obsolete request.
+    if (await readJob() !== rawJob) {
+      return { action: "superseded", job };
+    }
+
+    const result = await reconcileStorefrontSeoRefresh({
+      job,
+      getDeployment,
+      submitDeployment,
+      now,
+    });
+
+    if (result.action === "clear") {
+      return await clearJob(rawJob)
+        ? { action: "clear", job }
+        : { action: "superseded", job };
+    }
+
+    if (!result.job) {
+      return { action: "invalid" };
+    }
+
+    return await compareAndSetJob(rawJob, result.job)
+      ? { action: result.action, job: result.job }
+      : { action: "superseded", job };
+  } finally {
+    await release(job.requestId);
+  }
 }
 
 export async function reconcileStorefrontSeoRefresh({
@@ -176,6 +230,10 @@ export async function reconcileStorefrontSeoRefresh({
     const deployment = await getDeployment(parsed.deploymentId);
     readyState = typeof deployment?.readyState === "string" ? deployment.readyState.toUpperCase() : "";
   } catch (error) {
+    if (error && typeof error === "object" && error.status === 404) {
+      return submitRefreshJob(parsed, submitDeployment, now);
+    }
+
     return {
       action: "persist",
       job: { ...parsed, lastError: safeErrorMessage(error) },

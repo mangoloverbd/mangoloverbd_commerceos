@@ -41,6 +41,7 @@ describe("order chat AI mutations (source inspection)", () => {
     expect(applySrc).toMatch(/role\s*!==\s*["']admin["']/);
     expect(applySrc).toContain("AI_ACTION_TOOLS");
     expect(applySrc).toContain("executeAiAction");
+    expect(applySrc).toContain("requestStorefrontSeoRefresh");
     expect(applySrc).toContain("ai_action_log");
   });
 

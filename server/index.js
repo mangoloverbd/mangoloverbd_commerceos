@@ -49,10 +49,10 @@ import {
 import { buildProductCacheUrls, purgeProductCacheUrls } from "./productCache.js";
 import {
   STOREFRONT_SEO_REFRESH_SETTING,
-  enqueueStorefrontSeoRefresh,
   isAuthorizedCronRequest,
   parseStorefrontSeoRefreshJob,
-  reconcileStorefrontSeoRefresh,
+  processStorefrontSeoRefresh,
+  queueStorefrontSeoRefresh,
 } from "./storefrontSeoRefresh.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
@@ -2433,6 +2433,8 @@ const SEO_BUILD_PRODUCT_FIELDS = new Set([
   "image_url",
 ]);
 const STOREFRONT_SEO_REFRESH_TIMEOUT_MS = 10_000;
+const STOREFRONT_SEO_REFRESH_LEASE_SETTING = `${STOREFRONT_SEO_REFRESH_SETTING}_lease`;
+const STOREFRONT_SEO_REFRESH_LEASE_MS = 60_000;
 const STOREFRONT_SEO_REFRESH_KEY_PATTERN = new RegExp(
   `^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):${STOREFRONT_SEO_REFRESH_SETTING}$`,
   "i",
@@ -2464,16 +2466,123 @@ async function saveStorefrontProjectId(orgId, projectId) {
   await saveSettings({ [`${orgId}:storefront_vercel_project_id`]: projectId });
 }
 
-async function saveStorefrontSeoRefreshJob(orgId, job) {
-  await saveOrgSettings(orgId, {
-    [STOREFRONT_SEO_REFRESH_SETTING]: JSON.stringify(job),
-  });
+function storefrontSeoRefreshSettingKey(orgId, setting) {
+  return orgSettingKey(orgId, setting);
 }
 
-async function clearStorefrontSeoRefreshJob(orgId) {
-  // Keep the org-scoped setting interface in one place while marking a completed
-  // job as absent. The retry scanner skips this explicit empty state.
-  await saveOrgSettings(orgId, { [STOREFRONT_SEO_REFRESH_SETTING]: "null" });
+async function readStorefrontSeoRefreshSetting(orgId, setting) {
+  const { data, error } = await getServiceSupabase()
+    .from("app_settings")
+    .select("value")
+    .eq("key", storefrontSeoRefreshSettingKey(orgId, setting))
+    .maybeSingle();
+  if (error) throw error;
+  return data?.value ?? null;
+}
+
+async function readStorefrontSeoRefreshJob(orgId) {
+  return readStorefrontSeoRefreshSetting(orgId, STOREFRONT_SEO_REFRESH_SETTING);
+}
+
+async function compareAndSetStorefrontSeoRefreshValue(orgId, setting, expectedValue, nextValue) {
+  const supabase = getServiceSupabase();
+  const key = storefrontSeoRefreshSettingKey(orgId, setting);
+  const updatedAt = new Date().toISOString();
+
+  if (expectedValue === null) {
+    const { error } = await supabase
+      .from("app_settings")
+      .insert({ key, value: nextValue, updated_at: updatedAt });
+    if (error?.code === "23505") return false;
+    if (error) throw error;
+    return true;
+  }
+
+  const { data, error } = await supabase
+    .from("app_settings")
+    .update({ value: nextValue, updated_at: updatedAt })
+    .eq("key", key)
+    .eq("value", expectedValue)
+    .select("key");
+  if (error) throw error;
+  return (data || []).length > 0;
+}
+
+async function compareAndSetStorefrontSeoRefreshJob(orgId, expectedValue, job) {
+  return compareAndSetStorefrontSeoRefreshValue(
+    orgId,
+    STOREFRONT_SEO_REFRESH_SETTING,
+    expectedValue,
+    JSON.stringify(job),
+  );
+}
+
+async function clearStorefrontSeoRefreshJob(orgId, expectedValue) {
+  return compareAndSetStorefrontSeoRefreshValue(
+    orgId,
+    STOREFRONT_SEO_REFRESH_SETTING,
+    expectedValue,
+    "null",
+  );
+}
+
+function parseStorefrontSeoRefreshLease(value) {
+  if (typeof value !== "string") return null;
+
+  try {
+    const lease = JSON.parse(value);
+    if (lease?.version !== 1
+      || typeof lease.requestId !== "string"
+      || !lease.requestId
+      || typeof lease.claimedAt !== "string"
+      || !Number.isFinite(Date.parse(lease.claimedAt))) {
+      return null;
+    }
+    return lease;
+  } catch {
+    return null;
+  }
+}
+
+async function claimStorefrontSeoRefreshLease(orgId, requestId) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const existingValue = await readStorefrontSeoRefreshSetting(orgId, STOREFRONT_SEO_REFRESH_LEASE_SETTING);
+    const existingLease = parseStorefrontSeoRefreshLease(existingValue);
+    const claimedAt = Date.parse(existingLease?.claimedAt || "");
+    const leaseIsActive = existingLease
+      && Number.isFinite(claimedAt)
+      && Date.now() - claimedAt < STOREFRONT_SEO_REFRESH_LEASE_MS;
+    if (leaseIsActive) return false;
+
+    const nextLease = JSON.stringify({
+      version: 1,
+      requestId,
+      claimedAt: new Date().toISOString(),
+    });
+    if (await compareAndSetStorefrontSeoRefreshValue(
+      orgId,
+      STOREFRONT_SEO_REFRESH_LEASE_SETTING,
+      existingValue,
+      nextLease,
+    )) {
+      return true;
+    }
+  }
+
+  throw new Error("Could not claim storefront SEO refresh lease");
+}
+
+async function releaseStorefrontSeoRefreshLease(orgId, requestId) {
+  const existingValue = await readStorefrontSeoRefreshSetting(orgId, STOREFRONT_SEO_REFRESH_LEASE_SETTING);
+  const existingLease = parseStorefrontSeoRefreshLease(existingValue);
+  if (!existingLease || existingLease.requestId !== requestId) return false;
+
+  return compareAndSetStorefrontSeoRefreshValue(
+    orgId,
+    STOREFRONT_SEO_REFRESH_LEASE_SETTING,
+    existingValue,
+    "null",
+  );
 }
 
 async function getStorefrontSeoDeploymentConfig(orgId) {
@@ -2546,28 +2655,69 @@ async function getStorefrontSeoDeployment(deploymentId) {
     signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
   });
   if (!response.ok) {
-    throw new Error(`Storefront deployment status failed (${response.status})`);
+    const error = new Error(`Storefront deployment status failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
 
+async function processPendingStorefrontSeoRefresh(orgId, rawJob) {
+  if (!rawJob || rawJob === "null") {
+    return { action: "empty" };
+  }
+
+  const parsedJob = parseStorefrontSeoRefreshJob(rawJob);
+  if (!parsedJob) {
+    return { action: "invalid" };
+  }
+
+  const result = await processStorefrontSeoRefresh({
+    rawJob,
+    readJob: () => readStorefrontSeoRefreshJob(orgId),
+    claim: (requestId) => claimStorefrontSeoRefreshLease(orgId, requestId),
+    release: (requestId) => releaseStorefrontSeoRefreshLease(orgId, requestId),
+    compareAndSetJob: (expectedValue, job) => compareAndSetStorefrontSeoRefreshJob(orgId, expectedValue, job),
+    clearJob: (expectedValue) => clearStorefrontSeoRefreshJob(orgId, expectedValue),
+    getDeployment: getStorefrontSeoDeployment,
+    submitDeployment: () => submitStorefrontSeoDeployment(orgId),
+    now: new Date(),
+  });
+
+  // An edit that arrives while this worker owns the lease remains queued. Start
+  // it immediately after release instead of letting the daily cron be its first
+  // chance to submit.
+  const latestRawJob = await readStorefrontSeoRefreshJob(orgId);
+  const latestJob = parseStorefrontSeoRefreshJob(latestRawJob);
+  if (latestJob && latestJob.requestId !== parsedJob.requestId) {
+    void processPendingStorefrontSeoRefresh(orgId, latestRawJob).catch(() => {
+      console.warn("[storefront-seo] follow-up refresh attempt failed");
+    });
+  }
+
+  return result;
+}
+
 async function requestStorefrontSeoRefresh(orgId, reason) {
   try {
-    const settings = await getOrgSettings(orgId, [STOREFRONT_SEO_REFRESH_SETTING]);
-    const job = await enqueueStorefrontSeoRefresh({
-      existingJob: settings[STOREFRONT_SEO_REFRESH_SETTING] || null,
-      saveJob: (nextJob) => saveStorefrontSeoRefreshJob(orgId, nextJob),
-      submitDeployment: () => submitStorefrontSeoDeployment(orgId),
+    const job = await queueStorefrontSeoRefresh({
+      readJob: () => readStorefrontSeoRefreshJob(orgId),
+      compareAndSetJob: (expectedValue, nextJob) => (
+        compareAndSetStorefrontSeoRefreshJob(orgId, expectedValue, nextJob)
+      ),
       now: new Date(),
       createRequestId: crypto.randomUUID,
     });
-    if (job.status === "queued") {
+
+    // Product writes wait only for the durable outbox write above. The Vercel
+    // lookup and deployment request run after the response path can continue.
+    void processPendingStorefrontSeoRefresh(orgId, JSON.stringify(job)).catch(() => {
       console.warn(`[storefront-seo] queued retry after ${reason}`);
-    }
+    });
     return job;
   } catch {
-    // Product writes are authoritative even if Vercel is unavailable. A later
-    // normal edit or the cron can recover when the queued setting was saved.
+    // Product writes are authoritative even if the outbox is temporarily
+    // unavailable. No Vercel call is made unless the queued job was durable.
     console.warn(`[storefront-seo] could not queue refresh after ${reason}`);
     return null;
   }
@@ -2597,23 +2747,10 @@ async function retryPendingStorefrontSeoRefreshes() {
         continue;
       }
 
-      const result = await reconcileStorefrontSeoRefresh({
-        job,
-        getDeployment: getStorefrontSeoDeployment,
-        submitDeployment: () => submitStorefrontSeoDeployment(orgId),
-        now: new Date(),
-      });
+      const result = await processPendingStorefrontSeoRefresh(orgId, row.value);
       processed += 1;
 
-      if (result.action === "clear") {
-        await clearStorefrontSeoRefreshJob(orgId);
-      } else if (result.job) {
-        await saveStorefrontSeoRefreshJob(orgId, result.job);
-        pending += 1;
-      } else {
-        await requestStorefrontSeoRefresh(orgId, "invalid retry job");
-        pending += 1;
-      }
+      if (result.action !== "clear" && result.action !== "empty") pending += 1;
     } catch {
       // Keep the durable row intact for the next daily retry and never expose
       // Vercel details or credentials through the cron response.
@@ -4954,7 +5091,8 @@ app.post("/api/order-chat/apply", rateLimitAI, async (req, res) => {
     const helpers = {
       saveProductStock, getUniqueProductSlug, purgeProductCache,
       generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
-      sendBulkSms, getOrgSettings: (k, keys) => getOrgSettings(k, keys),
+      sendBulkSms, requestStorefrontSeoRefresh,
+      getOrgSettings: (k, keys) => getOrgSettings(k, keys),
     };
     const { before, after } = await executeAiAction({ supabase, orgId, userId: user.id, tool, args, helpers });
     await supabase.from("ai_action_log").insert({
