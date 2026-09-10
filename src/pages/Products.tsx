@@ -41,6 +41,7 @@ import {
   productPriceDisplayLines,
   productPriceSortValue,
 } from "./products/shared";
+import { MobileProductCards } from "@/components/MobileProductCards";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 // Apple-style: pure white surfaces, SF-system font stack, razor-thin borders,
@@ -656,7 +657,26 @@ function ProductsDataTable({ products, warehouses, isAdmin, isLoading, onAddProd
           </button>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        <div className="md:hidden">
+          <MobileProductCards
+            products={table.getRowModel().rows.map((row) => row.original)}
+            selectedProductIds={selectedProductIds}
+            onToggleSelection={(id) => setSelectedProductIds((current) => {
+              const next = new Set(current);
+              if (next.has(id)) next.delete(id); else next.add(id);
+              return next;
+            })}
+            onEditProduct={onEditProduct}
+            renderActions={(product) => (
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => onEditProduct(product.id)} className="min-h-10 rounded-xl bg-black px-3 text-[10px] font-semibold uppercase tracking-wide text-white">Edit product</button>
+                {isAdmin && <button type="button" onClick={() => draftMutation.mutate(product.id)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black/65">Move to draft</button>}
+              </div>
+            )}
+          />
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full caption-bottom text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
@@ -697,6 +717,7 @@ function ProductsDataTable({ products, warehouses, isAdmin, isLoading, onAddProd
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Pagination + legend */}

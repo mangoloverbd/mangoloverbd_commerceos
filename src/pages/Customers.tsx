@@ -13,7 +13,7 @@ import { CustomerDataTable } from "@/components/CustomerDataTable";
 
 type Source = "shopify" | "custom_website" | "manual" | "facebook" | "instagram" | "whatsapp" | "social_inbox";
 
-type Customer = {
+export type Customer = {
   id: string;
   name: string;
   phone: string;
