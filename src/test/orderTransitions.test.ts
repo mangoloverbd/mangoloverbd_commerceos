@@ -9,6 +9,7 @@ import {
   isPrintStatus,
   normalizeBusinessStatus,
   planBulkStatusChange,
+  statusOptionsFor,
 } from "@/lib/orderTransitions";
 
 describe("orderTransitions", () => {
@@ -40,6 +41,7 @@ describe("orderTransitions", () => {
     expect(canLeavePrint("processing")).toBe(true);
     expect(canLeavePrint("pending")).toBe(false);
     expect(canLeavePrint("print")).toBe(true);
+    expect(statusOptionsFor("print")).toEqual(["print", "confirmed", "processing", "on_hold", "cancelled"]);
   });
 
   it("blocks courier send from Approved with a clear reason", () => {
