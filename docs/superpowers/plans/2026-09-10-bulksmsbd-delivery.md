@@ -1,6 +1,6 @@
 # BulkSMSBD Delivery Fix Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make automated BulkSMSBD messages deliver reliably from Merchant Suite.
 
@@ -23,8 +23,8 @@
 **Files:**
 - Modify: `src/test/sendBulkSms.test.ts`
 
-- [ ] Add tests that assert the server source contains a BulkSMSBD `880` phone conversion, awaits the gateway response, and checks `response_code === 202` rather than logging every response as successful.
-- [ ] Run `npm test -- src/test/sendBulkSms.test.ts` and confirm the new assertions fail against the current helper.
+- [x] Add tests that assert the server source contains a BulkSMSBD `880` phone conversion, awaits the gateway response, and checks `response_code === 202` rather than logging every response as successful.
+- [x] Run `npm test -- src/test/sendBulkSms.test.ts` and confirm the new assertions fail against the current helper.
 
 ## Task 2: Fix the SMS helper
 
@@ -32,15 +32,15 @@
 - Modify: `server/index.js:758-807`
 - Modify: `src/test/sendBulkSms.test.ts`
 
-- [ ] Convert the existing validated local phone to `880${phone.slice(1)}` only inside `sendBulkSms`.
-- [ ] Replace fire-and-forget fetch handling with an awaited request and safe response parsing.
-- [ ] Log a success only for response code `202`; log the gateway response code/message for failures without including credentials.
-- [ ] Keep the helper defensive: missing settings, template, or invalid phone return without calling the gateway; gateway failures are caught and do not throw into order routes.
-- [ ] Run the focused test and confirm it passes.
+- [x] Convert the existing validated local phone to `880${phone.slice(1)}` only inside `sendBulkSms`.
+- [x] Replace fire-and-forget fetch handling with an awaited request and safe response parsing.
+- [x] Log a success only for response code `202`; log the gateway response code/message for failures without including credentials.
+- [x] Keep the helper defensive: missing settings, template, or invalid phone return without calling the gateway; gateway failures are caught and do not throw into order routes.
+- [x] Run the focused test and confirm it passes.
 
 ## Task 3: Verify
 
-- [ ] Run `npm test`.
-- [ ] Run `npm run lint && npm run build`.
-- [ ] Run `git diff --check` and confirm no secret values were added.
-- [ ] Commit the implementation and tests with `fix: make BulkSMSBD delivery reliable`.
+- [x] Run `npm test`.
+- [x] Run `npm run lint && npm run build`.
+- [x] Run `git diff --check` and confirm no secret values were added.
+- [x] Commit the implementation and tests with `fix: make BulkSMSBD delivery reliable`.
