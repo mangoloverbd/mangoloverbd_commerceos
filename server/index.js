@@ -6624,8 +6624,8 @@ app.patch("/api/orders/:id", async (req, res) => {
       if (toStatus === "print" && !fromApproved && fromStatus !== "print") {
         return res.status(400).json({ error: "Only Approved orders can move to Print" });
       }
-      if (fromStatus === "print" && !(toStatus === "print" || toApproved || toCancelled || toOnHold)) {
-        return res.status(400).json({ error: "Print orders can only move to Approved, On Hold, or Cancelled" });
+      if (fromStatus === "print" && !(toStatus === "print" || toStatus === "processing" || toApproved || toCancelled || toOnHold)) {
+        return res.status(400).json({ error: "Print orders can only move to Processing, Approved, On Hold, or Cancelled" });
       }
     }
     const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
@@ -6773,7 +6773,7 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
         }
 
         const { data: updated, error: updateError } = await supabase.from("orders").update({
-          status: "processing",
+          status: "print",
           sent_to_courier: true,
           consignment_id: String(result.consignment_id),
           tracking_code: result.tracking_code,
@@ -6859,7 +6859,7 @@ app.post("/api/send-to-courier", async (req, res) => {
 
     const consignment = sfData.consignment;
     await supabase.from("orders").update({
-      status: "processing",
+      status: "print",
       sent_to_courier: true,
       consignment_id: String(consignment.consignment_id),
       tracking_code: consignment.tracking_code,
