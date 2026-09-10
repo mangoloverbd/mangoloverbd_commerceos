@@ -36,6 +36,7 @@ create or replace function public.next_ml_order_number()
 returns text
 language sql
 volatile
+set search_path = ''
 as $$
   select 'ML-' || nextval('public.orders_order_number_seq')::text;
 $$;

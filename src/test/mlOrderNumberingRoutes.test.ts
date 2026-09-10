@@ -29,7 +29,7 @@ describe("canonical ML order-number routes", () => {
     for (const route of [manual, webhook, storefront]) {
       expect(route).toContain("await getNextManualOrderNumber(orgId)");
     }
-    expect(manual).not.toMatch(/\"order_number\"/);
+    expect(manual).not.toMatch(/"order_number"/);
     expect(source).not.toContain("#M${await getNextManualOrderSeq(orgId)}");
     expect(source).not.toContain("#S${orderSeq}");
     expect(source).not.toContain("#${await getNextManualOrderSeq(orgId)}");
