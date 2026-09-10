@@ -44,6 +44,14 @@ describe("sendBulkSms Helper and Courier Dispatch SMS Trigger", () => {
     expect(serverSource).toContain("response.ok && responseCode === 202");
   });
 
+  it("supports independent confirmation and dispatch template switches", () => {
+    expect(serverSource).toContain('`${orgId}:bulksms_confirmation_enabled`');
+    expect(serverSource).toContain('`${orgId}:bulksms_dispatch_enabled`');
+    expect(serverSource).toContain('type === "confirmation"');
+    expect(serverSource).toContain('type === "dispatch"');
+    expect(serverSource).toContain('templateEnabled === "false"');
+  });
+
   it("waits for SMS submission before completing order-triggering routes", () => {
     expect(serverSource).toContain('await sendBulkSms(orgId, "confirmation", persistedOrder);');
     expect(courierRouteSource).toContain('await sendBulkSms(orgId, "dispatch", updated);');
