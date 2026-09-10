@@ -762,11 +762,20 @@ async function sendBulkSms(orgId, type, order) {
       `${orgId}:bulksms_api_key`,
       `${orgId}:bulksms_sender_id`,
       `${orgId}:bulksms_confirmation_template`,
-      `${orgId}:bulksms_dispatch_template`
+      `${orgId}:bulksms_dispatch_template`,
+      `${orgId}:bulksms_confirmation_enabled`,
+      `${orgId}:bulksms_dispatch_enabled`
     ];
     const settings = await getSettings(keys);
     
     if (settings[`${orgId}:bulksms_enabled`] !== "true") return;
+
+    const templateEnabled = type === "confirmation"
+      ? settings[`${orgId}:bulksms_confirmation_enabled`]
+      : type === "dispatch"
+        ? settings[`${orgId}:bulksms_dispatch_enabled`]
+        : "false";
+    if (templateEnabled === "false") return;
     
     const apiKey = String(settings[`${orgId}:bulksms_api_key`] || "").trim();
     const senderId = String(settings[`${orgId}:bulksms_sender_id`] || "").trim();
