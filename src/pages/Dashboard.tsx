@@ -894,11 +894,11 @@ export default function Dashboard() {
           </div>
 
           <div className="hidden md:block" />
-        <div className="text-center relative z-10">
+        <div className="text-center relative z-10 max-md:px-3">
           <TextShimmer
             as="h2"
             duration={3}
-            className="text-5xl font-bold"
+            className="text-5xl font-bold max-md:text-3xl"
           >
             {`${getDhakaGreeting()}!`}
           </TextShimmer>
@@ -950,7 +950,7 @@ export default function Dashboard() {
         className="relative z-10 overflow-hidden rounded-xl border border-black/10 bg-white"
       >
         {/* Toolbar */}
-        <div data-testid="dashboard-order-toolbar" className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div data-testid="dashboard-order-toolbar" className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 max-md:px-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2.5">
             <TextEffect
               as="span"
@@ -1012,14 +1012,14 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
+            <div className="relative max-md:w-full">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder="Search orders…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20"
+                className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20 max-md:w-full"
                 data-testid="input-search-orders"
               />
             </div>
@@ -1051,7 +1051,7 @@ export default function Dashboard() {
               size="sm"
               onClick={() => setCreateOrderOpen(true)}
               disabled={bulkUpdating || autoSyncing}
-              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black"
+              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black max-md:w-full max-md:justify-center"
               data-testid="button-create-order"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -1064,7 +1064,7 @@ export default function Dashboard() {
                   color="sky"
                   size="sm"
                   disabled={bulkUpdating || selectedOrderIds.size === 0}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal"
+                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
                   data-testid="button-bulk-status"
                 >
                   {bulkUpdating ? <Spinner size="sm" /> : <UpdateStatusIcon className="h-3.5 w-3.5" />}

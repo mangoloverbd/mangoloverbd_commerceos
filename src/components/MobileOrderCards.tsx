@@ -97,6 +97,7 @@ export function MobileOrderCards({
       {orders.map((order) => {
         const orderLabel = `#${String(order.order_number).replace(/^#+/, "")}`;
         const selected = selectedIds.has(order.id);
+        const actions = renderActions(order);
         return (
           <article key={order.id} className={cn("rounded-2xl border bg-white p-4 transition-colors", selected ? "border-blue-300 bg-blue-50/30" : "border-black/[0.08]")}>
             <div className="flex items-start gap-3">
@@ -131,7 +132,7 @@ export function MobileOrderCards({
               <span className="text-[10px] text-black/45">{order.sent_to_courier ? (order.courier_status || "Sent to courier") : "Not dispatched"}</span>
             </div>
 
-            {renderActions(order) && <div className="mt-3 border-t border-black/[0.06] pt-3">{renderActions(order)}</div>}
+            {actions && <div className="mt-3 border-t border-black/[0.06] pt-3">{actions}</div>}
             <button type="button" onClick={() => onOpenOrder(order.id)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-black/80" aria-label={`Open order ${orderLabel}`}>
               Open order <ArrowRight weight="light" size={16} />
             </button>

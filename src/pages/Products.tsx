@@ -557,9 +557,9 @@ function ProductsDataTable({ products, warehouses, isAdmin, isLoading, onAddProd
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-white">
+    <div className="overflow-hidden rounded-2xl bg-white max-md:rounded-none">
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 border-b border-[color:var(--color-separator-border)] px-5 py-4">
+      <div className="flex flex-col gap-3 border-b border-[color:var(--color-separator-border)] px-5 py-4 max-md:px-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <PackageSearch className="h-4 w-4 text-black/60" />
@@ -859,7 +859,7 @@ export default function Products() {
 
   return (
     <div className="min-h-full" style={{ fontFamily: SYS }}>
-      <div className="min-h-full space-y-5 bg-white p-1 lg:p-2">
+      <div className="min-h-full space-y-5 bg-white p-1 max-md:p-2 lg:p-2">
 
         {/* ── Stats bar ── */}
         <motion.div
