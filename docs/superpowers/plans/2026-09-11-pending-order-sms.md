@@ -23,25 +23,25 @@
 **Files:**
 - Modify: `src/test/sendBulkSms.test.ts`
 
-- [ ] Assert `POST /api/orders` awaits the confirmation helper after order/item persistence.
-- [ ] Assert the storefront webhook awaits confirmation on creation.
-- [ ] Assert `saveMetaInboxOrder` sends confirmation for the inserted pending Social Inbox order using its stored phone.
-- [ ] Assert `PATCH /api/orders/:id` does not send confirmation on an Approved/Confirmed transition.
-- [ ] Run `npm test -- src/test/sendBulkSms.test.ts` and confirm the new assertions fail against the current source.
+- [x] Assert `POST /api/orders` awaits the confirmation helper after order/item persistence.
+- [x] Assert the storefront webhook awaits confirmation on creation.
+- [x] Assert `saveMetaInboxOrder` sends confirmation for the inserted pending Social Inbox order using its stored phone.
+- [x] Assert `PATCH /api/orders/:id` does not send confirmation on an Approved/Confirmed transition.
+- [x] Run `npm test -- src/test/sendBulkSms.test.ts` and confirm the new assertions fail against the current source.
 
 ## Task 2: Implement pending-order confirmation
 
 **Files:**
 - Modify: `server/index.js`
 
-- [ ] Await `sendBulkSms(orgId, "confirmation", data)` in `POST /api/orders` after item persistence succeeds.
-- [ ] Preserve the already-awaited storefront webhook call.
-- [ ] Add a small phone extraction helper for `social_inbox_orders.notes`, then await confirmation after `saveMetaInboxOrder` inserts a new order; skip duplicates.
-- [ ] Remove `shouldSendConfirmationSms` and the confirmation call from `PATCH /api/orders/:id`.
-- [ ] Run the focused regression test and confirm it passes.
+- [x] Await `sendBulkSms(orgId, "confirmation", data)` in `POST /api/orders` after item persistence succeeds.
+- [x] Preserve the already-awaited storefront webhook call.
+- [x] Normalize the Social Inbox phone before insertion, then await confirmation after `saveMetaInboxOrder` inserts a new order; skip duplicates.
+- [x] Remove `shouldSendConfirmationSms` and the confirmation call from `PATCH /api/orders/:id`.
+- [x] Run the focused regression test and confirm it passes.
 
 ## Task 3: Verify
 
-- [ ] Run the full Vitest suite with the repository's stable hook timeout if needed.
-- [ ] Run `npm run lint` and `npm run build`.
-- [ ] Run `git diff --check` and review the final diff for org guards and secret exposure.
+- [x] Run the full Vitest suite with the repository's stable hook timeout if needed.
+- [x] Run `npm run lint` and `npm run build`.
+- [x] Run `git diff --check` and review the final diff for org guards and secret exposure.

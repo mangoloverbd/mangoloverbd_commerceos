@@ -6524,6 +6524,7 @@ app.post("/api/orders", async (req, res) => {
         throw itemsError;
       }
     }
+    await sendBulkSms(orgId, "confirmation", data);
     return res.status(201).json({ success: true, order: data });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -6578,13 +6579,11 @@ app.patch("/api/orders/:id", async (req, res) => {
       }
     }
     // Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
-    let shouldSendConfirmationSms = false;
     if (update.status !== undefined) {
       const fromStatus = normalizeBusinessStatus(orderCheck.status);
       const toStatus = normalizeBusinessStatus(update.status);
       const fromApproved = fromStatus === "approved" || fromStatus === "confirmed";
       const toApproved = toStatus === "approved" || toStatus === "confirmed";
-      shouldSendConfirmationSms = toApproved && !fromApproved;
       const toCancelled = toStatus === "cancelled" || toStatus === "canceled";
       const toOnHold = toStatus === "on_hold" || toStatus === "hold";
       if (toStatus === "print" && !fromApproved && fromStatus !== "print") {
@@ -6597,9 +6596,6 @@ app.patch("/api/orders/:id", async (req, res) => {
     const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
     if (updErr) throw updErr;
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
-    if (data && shouldSendConfirmationSms) {
-      await sendBulkSms(orgId, "confirmation", data);
-    }
     return res.json({ success: true, order: data });
   } catch (e) {
     return sendError(res, e);
@@ -8185,7 +8181,8 @@ Or when customer wants to cancel:
 async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName, order }) {
   // Deduplicate: same phone in this conversation within 5 min = duplicate
   const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const phone = normalizeBdPhone(order.phone) || order.phone;
+  const inboxSmsPhone = normalizeBdPhone(order.phone);
+  const phone = inboxSmsPhone || order.phone;
   const { data: existingOrders } = await supabase
     .from("social_inbox_orders")
     .select("id, notes")
@@ -8251,6 +8248,17 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
   if (error) {
     console.error("[Meta AI] saveInboxOrder failed:", error.message);
     return null;
+  }
+
+  if (inboxSmsPhone) {
+    await sendBulkSms(orgId, "confirmation", {
+      ...data,
+      customer_name: data.contact_name,
+      phone: inboxSmsPhone,
+      order_number: data.id,
+      price: data.total_price,
+      delivery_rate: data.delivery_rate,
+    });
   }
 
   // Clear the order_fields notepad so a new order can start fresh in this conversation
