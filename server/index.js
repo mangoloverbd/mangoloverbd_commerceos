@@ -762,14 +762,23 @@ async function sendBulkSms(orgId, type, order) {
       `${orgId}:bulksms_api_key`,
       `${orgId}:bulksms_sender_id`,
       `${orgId}:bulksms_confirmation_template`,
-      `${orgId}:bulksms_dispatch_template`
+      `${orgId}:bulksms_dispatch_template`,
+      `${orgId}:bulksms_confirmation_enabled`,
+      `${orgId}:bulksms_dispatch_enabled`
     ];
     const settings = await getSettings(keys);
     
     if (settings[`${orgId}:bulksms_enabled`] !== "true") return;
+
+    const templateEnabled = type === "confirmation"
+      ? settings[`${orgId}:bulksms_confirmation_enabled`]
+      : type === "dispatch"
+        ? settings[`${orgId}:bulksms_dispatch_enabled`]
+        : "false";
+    if (templateEnabled === "false") return;
     
-    const apiKey = settings[`${orgId}:bulksms_api_key`];
-    const senderId = settings[`${orgId}:bulksms_sender_id`];
+    const apiKey = String(settings[`${orgId}:bulksms_api_key`] || "").trim();
+    const senderId = String(settings[`${orgId}:bulksms_sender_id`] || "").trim();
     if (!apiKey || !senderId) return;
 
     let template = "";
@@ -783,6 +792,7 @@ async function sendBulkSms(orgId, type, order) {
     
     const phone = normalizeBdPhone(order.phone);
     if (!phone) return;
+    const bulkSmsPhone = `880${phone.slice(1)}`;
 
     let message = template
       .replace(/{customer_name}/g, order.customer_name || "")
@@ -792,14 +802,20 @@ async function sendBulkSms(orgId, type, order) {
       .replace(/{courier_name}/g, order.courier_name || "")
       .replace(/{tracking_code}/g, order.tracking_code || "");
       
-    const url = `https://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(apiKey)}&type=text&number=${encodeURIComponent(phone)}&senderid=${encodeURIComponent(senderId)}&message=${encodeURIComponent(message)}`;
+    const url = `https://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(apiKey)}&type=text&number=${encodeURIComponent(bulkSmsPhone)}&senderid=${encodeURIComponent(senderId)}&message=${encodeURIComponent(message)}`;
 
-    // Fire and forget
-    fetch(url).then(res => res.json()).then(data => {
-      console.log(`[BulkSMS] Sent to ${phone}, Response:`, data);
-    }).catch(err => {
-      console.error(`[BulkSMS] Failed to send SMS to ${phone}:`, err);
-    });
+    const response = await fetch(url);
+    const data = await response.json().catch(() => null);
+    const responseCode = Number(data?.response_code);
+    if (response.ok && responseCode === 202) {
+      console.log(`[BulkSMS] SMS submitted to ${bulkSmsPhone}`, { responseCode });
+    } else {
+      const errorMessage = data?.error_message || data?.message || `HTTP ${response.status}`;
+      console.error(`[BulkSMS] SMS submission failed for ${bulkSmsPhone}`, {
+        responseCode: data?.response_code ?? null,
+        errorMessage,
+      });
+    }
 
   } catch (err) {
     console.error("[BulkSMS] Error in sendBulkSms:", err);
@@ -6095,8 +6111,8 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       }
     }
 
-    // Send Order Confirmation SMS in background
-    sendBulkSms(orgId, "confirmation", persistedOrder).catch(console.error);
+    // Submit Order Confirmation SMS before acknowledging the webhook.
+    await sendBulkSms(orgId, "confirmation", persistedOrder);
 
     return res.status(201).json({
       success: true,
@@ -6517,6 +6533,7 @@ app.post("/api/orders", async (req, res) => {
         throw itemsError;
       }
     }
+    await sendBulkSms(orgId, "confirmation", data);
     return res.status(201).json({ success: true, order: data });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -6744,7 +6761,8 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
         }
 
         succeeded.push({ orderId: item.order.id, orderNumber: item.order.order_number || item.order.id, order: updated });
-        sendBulkSms(orgId, "dispatch", updated).catch(console.error);
+        // Submit dispatch SMS before completing the bulk dispatch request.
+        await sendBulkSms(orgId, "dispatch", updated);
       }
     }
 
@@ -6826,9 +6844,9 @@ app.post("/api/send-to-courier", async (req, res) => {
     }).eq("id", orderId).eq("org_id", orgId);
 
     const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
-    // Send Order Dispatch SMS in background
+    // Submit Order Dispatch SMS before acknowledging the courier dispatch.
     if (updated) {
-      sendBulkSms(orgId, "dispatch", updated).catch(console.error);
+      await sendBulkSms(orgId, "dispatch", updated);
     }
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
@@ -6906,9 +6924,9 @@ app.post("/api/send-to-pathao", async (req, res) => {
     }).eq("id", orderId).eq("org_id", orgId);
 
     const { data: updated } = await supabase.from("orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
-    // Send Order Dispatch SMS in background
+    // Submit Order Dispatch SMS before acknowledging the courier dispatch.
     if (updated) {
-      sendBulkSms(orgId, "dispatch", updated).catch(console.error);
+      await sendBulkSms(orgId, "dispatch", updated);
     }
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
@@ -8172,7 +8190,8 @@ Or when customer wants to cancel:
 async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName, order }) {
   // Deduplicate: same phone in this conversation within 5 min = duplicate
   const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const phone = normalizeBdPhone(order.phone) || order.phone;
+  const inboxSmsPhone = normalizeBdPhone(order.phone);
+  const phone = inboxSmsPhone || order.phone;
   const { data: existingOrders } = await supabase
     .from("social_inbox_orders")
     .select("id, notes")
@@ -8238,6 +8257,17 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
   if (error) {
     console.error("[Meta AI] saveInboxOrder failed:", error.message);
     return null;
+  }
+
+  if (inboxSmsPhone) {
+    await sendBulkSms(orgId, "confirmation", {
+      ...data,
+      customer_name: data.contact_name,
+      phone: inboxSmsPhone,
+      order_number: data.id,
+      price: data.total_price,
+      delivery_rate: data.delivery_rate,
+    });
   }
 
   // Clear the order_fields notepad so a new order can start fresh in this conversation

@@ -7,6 +7,7 @@ import { useLiveVisitors } from "@/hooks/useLiveVisitors";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
+import { matchesOrderSearch } from "@/lib/orderSearch";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
 import {
@@ -692,15 +693,9 @@ export default function Dashboard() {
   );
 
   const filteredOrders = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    return filterOrdersByStatus(warehouseOrders, statusFilter).filter((o) => {
-      if (!q) return true;
-      return (
-        o.order_number.toLowerCase().includes(q) ||
-        (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
-        (o.phone && o.phone.toLowerCase().includes(q))
-      );
-    });
+    return filterOrdersByStatus(warehouseOrders, statusFilter).filter((order) =>
+      matchesOrderSearch(order, debouncedSearch),
+    );
   }, [debouncedSearch, statusFilter, warehouseOrders]);
 
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
@@ -1108,7 +1103,7 @@ export default function Dashboard() {
             <div className="relative max-md:w-full">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Search orders…"
+                placeholder="Search name, phone, order or courier ID…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20 max-md:w-full"

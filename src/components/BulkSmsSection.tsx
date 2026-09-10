@@ -20,6 +20,8 @@ export function BulkSmsSection() {
   const [bulkSmsSenderId, setBulkSmsSenderId] = useState("");
   const [bulkSmsConfirmationTemplate, setBulkSmsConfirmationTemplate] = useState(DEFAULT_CONFIRMATION_TEMPLATE);
   const [bulkSmsDispatchTemplate, setBulkSmsDispatchTemplate] = useState(DEFAULT_DISPATCH_TEMPLATE);
+  const [bulkSmsConfirmationEnabled, setBulkSmsConfirmationEnabled] = useState(true);
+  const [bulkSmsDispatchEnabled, setBulkSmsDispatchEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -33,6 +35,8 @@ export function BulkSmsSection() {
           setBulkSmsSenderId(data.settings["bulksms_sender_id"] || "");
           setBulkSmsConfirmationTemplate(data.settings["bulksms_confirmation_template"] || DEFAULT_CONFIRMATION_TEMPLATE);
           setBulkSmsDispatchTemplate(data.settings["bulksms_dispatch_template"] || DEFAULT_DISPATCH_TEMPLATE);
+          setBulkSmsConfirmationEnabled(data.settings["bulksms_confirmation_enabled"] !== "false");
+          setBulkSmsDispatchEnabled(data.settings["bulksms_dispatch_enabled"] !== "false");
         }
       })
       .catch(() => {
@@ -54,6 +58,8 @@ export function BulkSmsSection() {
             bulksms_sender_id: bulkSmsSenderId,
             bulksms_confirmation_template: bulkSmsConfirmationTemplate,
             bulksms_dispatch_template: bulkSmsDispatchTemplate,
+            bulksms_confirmation_enabled: bulkSmsConfirmationEnabled.toString(),
+            bulksms_dispatch_enabled: bulkSmsDispatchEnabled.toString(),
           },
         }),
       });
@@ -119,7 +125,15 @@ export function BulkSmsSection() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="block text-[11px] font-medium text-black/50">Order Confirmation Template</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="bulksms-confirmation-enabled" className="text-[11px] font-medium text-black/50">Order Confirmation Template</Label>
+                <Switch
+                  id="bulksms-confirmation-enabled"
+                  aria-label="Enable Order Confirmation SMS"
+                  checked={bulkSmsConfirmationEnabled}
+                  onCheckedChange={setBulkSmsConfirmationEnabled}
+                />
+              </div>
               <Textarea
                 value={bulkSmsConfirmationTemplate}
                 onChange={(e) => setBulkSmsConfirmationTemplate(e.target.value)}
@@ -129,7 +143,15 @@ export function BulkSmsSection() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="block text-[11px] font-medium text-black/50">Order Dispatch Template</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="bulksms-dispatch-enabled" className="text-[11px] font-medium text-black/50">Order Dispatch Template</Label>
+                <Switch
+                  id="bulksms-dispatch-enabled"
+                  aria-label="Enable Order Dispatch SMS"
+                  checked={bulkSmsDispatchEnabled}
+                  onCheckedChange={setBulkSmsDispatchEnabled}
+                />
+              </div>
               <Textarea
                 value={bulkSmsDispatchTemplate}
                 onChange={(e) => setBulkSmsDispatchTemplate(e.target.value)}

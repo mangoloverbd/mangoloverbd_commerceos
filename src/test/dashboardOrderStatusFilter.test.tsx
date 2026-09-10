@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,7 +46,8 @@ const orders = [
     phone: "01700000002", address: "Dhaka", product: "Honey", quantity: 1, price: 900,
     status: "confirmed", created_at: "2026-09-04T00:00:00.000Z", fraud_checked: true,
     fraud_data: { total_parcels: 2, total_delivered: 2, total_cancel: 0 }, delivery_rate: 60,
-    fulfillment_status: "delivered", courier_status: "delivered", sent_to_courier: true, warehouse_id: "main",
+    fulfillment_status: "delivered", courier_status: "delivered", sent_to_courier: true,
+    consignment_id: 987654, tracking_code: "stead-abc", warehouse_id: "main",
   },
   {
     id: "cancelled", shopify_order_id: 3, order_number: "#103", customer_name: "Cancelled Customer",
@@ -98,6 +99,32 @@ describe("dashboard order status filter", () => {
     expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Delivered Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Cancelled Customer");
+  });
+
+  it("searches orders by Steadfast consignment ID and tracking code", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const search = await screen.findByTestId("input-search-orders");
+    await user.type(search, "987654");
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Delivered Customer");
+      expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
+    });
+
+    await user.clear(search);
+    await user.type(search, "STEAD-ABC");
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Delivered Customer");
+      expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Cancelled Customer");
+    });
   });
 
   it("paginates the filtered dashboard orders with its saved row limit", async () => {
