@@ -13,9 +13,17 @@ describe("sendBulkSms Helper and Courier Dispatch SMS Trigger", () => {
   const pathaoRouteEnd = serverSource.indexOf('app.post("/api/pathao/refresh-status"', pathaoRouteStart);
   const pathaoRouteSource = serverSource.slice(pathaoRouteStart, pathaoRouteEnd);
 
+  const orderCreateStart = serverSource.indexOf('app.post("/api/orders"');
+  const orderCreateEnd = serverSource.indexOf('app.patch("/api/orders/:id"', orderCreateStart);
+  const orderCreateSource = serverSource.slice(orderCreateStart, orderCreateEnd);
+
   const orderPatchStart = serverSource.indexOf('app.patch("/api/orders/:id"');
   const orderPatchEnd = serverSource.indexOf('app.delete("/api/orders"', orderPatchStart);
   const orderPatchSource = serverSource.slice(orderPatchStart, orderPatchEnd);
+
+  const inboxSaveStart = serverSource.indexOf('async function saveMetaInboxOrder');
+  const inboxSaveEnd = serverSource.indexOf('// ─── Platform send helpers', inboxSaveStart);
+  const inboxSaveSource = serverSource.slice(inboxSaveStart, inboxSaveEnd);
 
   it("triggers sendBulkSms in steadfast courier dispatch", () => {
     // Assert sendBulkSms is triggered with the dispatch type and updated order in the steadfast dispatch endpoint
@@ -42,9 +50,21 @@ describe("sendBulkSms Helper and Courier Dispatch SMS Trigger", () => {
     expect(pathaoRouteSource).toContain('await sendBulkSms(orgId, "dispatch", updated);');
   });
 
-  it("sends confirmation SMS when an order first enters an approved status", () => {
-    expect(orderPatchSource).toContain("let shouldSendConfirmationSms = false;");
-    expect(orderPatchSource).toContain("shouldSendConfirmationSms = toApproved && !fromApproved;");
-    expect(orderPatchSource).toContain('await sendBulkSms(orgId, "confirmation", data);');
+  it("sends confirmation SMS after dashboard order creation completes", () => {
+    expect(orderCreateSource).toContain('await sendBulkSms(orgId, "confirmation", data);');
+    expect(orderCreateSource.indexOf('await sendBulkSms(orgId, "confirmation", data);')).toBeGreaterThan(
+      orderCreateSource.indexOf('.from("orders")'),
+    );
+  });
+
+  it("sends confirmation SMS for a newly saved Social Inbox order", () => {
+    expect(inboxSaveSource).toContain("const inboxSmsPhone = normalizeBdPhone(");
+    expect(inboxSaveSource).toContain('await sendBulkSms(orgId, "confirmation", {');
+    expect(inboxSaveSource).toContain("phone: inboxSmsPhone");
+  });
+
+  it("does not send confirmation SMS when an executive approves an order", () => {
+    expect(orderPatchSource).not.toContain("shouldSendConfirmationSms");
+    expect(orderPatchSource).not.toContain('sendBulkSms(orgId, "confirmation"');
   });
 });

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2.1] - 2026-09-11
+
+### Fixed
+
+- Send confirmation SMS when dashboard, storefront, or Social Inbox orders are created in Pending status.
+- Avoid sending a duplicate confirmation SMS when an executive approves an order.
+
 ## [0.0.2.0] - 2026-09-10
 
 ### Changed
