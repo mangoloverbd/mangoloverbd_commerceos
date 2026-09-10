@@ -18,6 +18,8 @@ describe("MobileBottomNav", () => {
   it("exposes the five mobile destinations with accessible labels", () => {
     renderNavigation();
 
+    const navigation = screen.getByRole("navigation", { name: "Mobile navigation" });
+    expect(navigation).toHaveClass("inset-x-0", "bottom-0", "backdrop-blur-xl", "md:hidden");
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/overview");
     expect(screen.getByRole("link", { name: "Orders" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Inbox" })).toHaveAttribute("href", "/inbox/facebook");
