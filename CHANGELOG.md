@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.2.2] - 2026-09-11
+
+### Added
+
+- Add independent on/off controls for order confirmation and dispatch SMS templates.
+
 ## [0.0.2.1] - 2026-09-11
 
 ### Fixed
