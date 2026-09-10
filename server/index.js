@@ -47,6 +47,13 @@ import {
   getProductImageVariantPaths,
 } from "./productImages.js";
 import { buildProductCacheUrls, purgeProductCacheUrls } from "./productCache.js";
+import {
+  STOREFRONT_SEO_REFRESH_SETTING,
+  isAuthorizedCronRequest,
+  parseStorefrontSeoRefreshJob,
+  processStorefrontSeoRefresh,
+  queueStorefrontSeoRefresh,
+} from "./storefrontSeoRefresh.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -1284,57 +1291,16 @@ async function saveOrgSettings(orgId, settings) {
   return saveSettings(scopedSettings);
 }
 
-async function getNextManualOrderSeq(orgId) {
+async function getNextManualOrderNumber(orgId) {
+  if (!isValidOrgId(orgId)) throw new Error("Invalid workspace for order number allocation");
+
   const supabase = getServiceSupabase();
-  const key = orgSettingKey(orgId, "manual_order_seq");
-  const now = new Date().toISOString();
-
-  // Ensure a counter row exists. ignoreDuplicates protects progress if another
-  // process already initialized or incremented it.
-  await supabase
-    .from("app_settings")
-    .upsert({ key, value: "0", updated_at: now }, { onConflict: "key", ignoreDuplicates: true });
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const { data: existing } = await supabase
-      .from("app_settings")
-      .select("value")
-      .eq("key", key)
-      .maybeSingle();
-
-    const currentStr = existing?.value ?? "0";
-    const highestShopifyStyleOrderNumber = await getHighestShopifyStyleOrderNumber(orgId);
-    const current = parseInt(currentStr, 10) || 0;
-    const baseline = Math.max(current, highestShopifyStyleOrderNumber, 1000);
-    const next = baseline + 1;
-
-    const { data: updated, error } = await supabase
-      .from("app_settings")
-      .update({ value: String(next), updated_at: now })
-      .eq("key", key)
-      .eq("value", currentStr)
-      .select("value");
-
-    if (error) throw error;
-    if (updated && updated.length > 0) return next;
-  }
-
-  throw new Error("Failed to allocate manual order sequence after retries");
-}
-
-async function getHighestShopifyStyleOrderNumber(orgId) {
-  const supabase = getServiceSupabase();
-  const { data, error } = await supabase
-    .from("orders")
-    .select("order_number")
-    .eq("org_id", orgId);
+  const { data, error } = await supabase.rpc("next_ml_order_number");
   if (error) throw error;
-
-  return (data || []).reduce((highest, order) => {
-    if (!/^#\d+$/.test(order.order_number || "")) return highest;
-    const orderNumber = Number(order.order_number.replace("#", ""));
-    return Number.isFinite(orderNumber) ? Math.max(highest, orderNumber) : highest;
-  }, 0);
+  if (typeof data !== "string" || !/^ML-\d+$/.test(data)) {
+    throw new Error("Invalid order number returned by allocator");
+  }
+  return data;
 }
 
 async function getProductStockMap(orgId, productIds) {
@@ -2417,6 +2383,21 @@ const MERCHANT_SUITE_PUBLIC_URL = (process.env.MERCHANT_SUITE_PUBLIC_URL || proc
 // Fallback single project id (if you're not using auto-provision and just point
 // at one shared storefront project). Auto-provision overrides this per-merchant.
 const VERCEL_PROJECT_ID_FALLBACK = process.env.VERCEL_PROJECT_ID || "";
+const SEO_BUILD_PRODUCT_FIELDS = new Set([
+  "name",
+  "description",
+  "selling_price",
+  "slug",
+  "published",
+  "image_url",
+]);
+const STOREFRONT_SEO_REFRESH_TIMEOUT_MS = 10_000;
+const STOREFRONT_SEO_REFRESH_LEASE_SETTING = `${STOREFRONT_SEO_REFRESH_SETTING}_lease`;
+const STOREFRONT_SEO_REFRESH_LEASE_MS = 60_000;
+const STOREFRONT_SEO_REFRESH_KEY_PATTERN = new RegExp(
+  `^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):${STOREFRONT_SEO_REFRESH_SETTING}$`,
+  "i",
+);
 
 function vercelTeamQuery() {
   return STOREFRONT_VERCEL_TEAM_ID ? `?teamId=${STOREFRONT_VERCEL_TEAM_ID}` : "";
@@ -2443,6 +2424,316 @@ async function getStorefrontProjectId(orgId) {
 async function saveStorefrontProjectId(orgId, projectId) {
   await saveSettings({ [`${orgId}:storefront_vercel_project_id`]: projectId });
 }
+
+function storefrontSeoRefreshSettingKey(orgId, setting) {
+  return orgSettingKey(orgId, setting);
+}
+
+async function readStorefrontSeoRefreshSetting(orgId, setting) {
+  const { data, error } = await getServiceSupabase()
+    .from("app_settings")
+    .select("value")
+    .eq("key", storefrontSeoRefreshSettingKey(orgId, setting))
+    .maybeSingle();
+  if (error) throw error;
+  return data?.value ?? null;
+}
+
+async function readStorefrontSeoRefreshJob(orgId) {
+  return readStorefrontSeoRefreshSetting(orgId, STOREFRONT_SEO_REFRESH_SETTING);
+}
+
+async function compareAndSetStorefrontSeoRefreshValue(orgId, setting, expectedValue, nextValue) {
+  const supabase = getServiceSupabase();
+  const key = storefrontSeoRefreshSettingKey(orgId, setting);
+  const updatedAt = new Date().toISOString();
+
+  if (expectedValue === null) {
+    const { error } = await supabase
+      .from("app_settings")
+      .insert({ key, value: nextValue, updated_at: updatedAt });
+    if (error?.code === "23505") return false;
+    if (error) throw error;
+    return true;
+  }
+
+  const { data, error } = await supabase
+    .from("app_settings")
+    .update({ value: nextValue, updated_at: updatedAt })
+    .eq("key", key)
+    .eq("value", expectedValue)
+    .select("key");
+  if (error) throw error;
+  return (data || []).length > 0;
+}
+
+async function compareAndSetStorefrontSeoRefreshJob(orgId, expectedValue, job) {
+  return compareAndSetStorefrontSeoRefreshValue(
+    orgId,
+    STOREFRONT_SEO_REFRESH_SETTING,
+    expectedValue,
+    JSON.stringify(job),
+  );
+}
+
+async function clearStorefrontSeoRefreshJob(orgId, expectedValue) {
+  return compareAndSetStorefrontSeoRefreshValue(
+    orgId,
+    STOREFRONT_SEO_REFRESH_SETTING,
+    expectedValue,
+    "null",
+  );
+}
+
+function parseStorefrontSeoRefreshLease(value) {
+  if (typeof value !== "string") return null;
+
+  try {
+    const lease = JSON.parse(value);
+    if (lease?.version !== 1
+      || typeof lease.requestId !== "string"
+      || !lease.requestId
+      || typeof lease.claimedAt !== "string"
+      || !Number.isFinite(Date.parse(lease.claimedAt))) {
+      return null;
+    }
+    return lease;
+  } catch {
+    return null;
+  }
+}
+
+async function claimStorefrontSeoRefreshLease(orgId, requestId) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const existingValue = await readStorefrontSeoRefreshSetting(orgId, STOREFRONT_SEO_REFRESH_LEASE_SETTING);
+    const existingLease = parseStorefrontSeoRefreshLease(existingValue);
+    const claimedAt = Date.parse(existingLease?.claimedAt || "");
+    const leaseIsActive = existingLease
+      && Number.isFinite(claimedAt)
+      && Date.now() - claimedAt < STOREFRONT_SEO_REFRESH_LEASE_MS;
+    if (leaseIsActive) return false;
+
+    const nextLease = JSON.stringify({
+      version: 1,
+      requestId,
+      claimedAt: new Date().toISOString(),
+    });
+    if (await compareAndSetStorefrontSeoRefreshValue(
+      orgId,
+      STOREFRONT_SEO_REFRESH_LEASE_SETTING,
+      existingValue,
+      nextLease,
+    )) {
+      return true;
+    }
+  }
+
+  throw new Error("Could not claim storefront SEO refresh lease");
+}
+
+async function releaseStorefrontSeoRefreshLease(orgId, requestId) {
+  const existingValue = await readStorefrontSeoRefreshSetting(orgId, STOREFRONT_SEO_REFRESH_LEASE_SETTING);
+  const existingLease = parseStorefrontSeoRefreshLease(existingValue);
+  if (!existingLease || existingLease.requestId !== requestId) return false;
+
+  return compareAndSetStorefrontSeoRefreshValue(
+    orgId,
+    STOREFRONT_SEO_REFRESH_LEASE_SETTING,
+    existingValue,
+    "null",
+  );
+}
+
+async function getStorefrontSeoDeploymentConfig(orgId) {
+  if (!VERCEL_ACCESS_TOKEN || !STOREFRONT_GIT_REPO) {
+    throw new Error("Storefront deployment is not configured");
+  }
+
+  const projectId = await getStorefrontProjectId(orgId);
+  if (!projectId) {
+    throw new Error("Storefront project is not configured");
+  }
+
+  const projectResponse = await vercelApi(`/v9/projects/${encodeURIComponent(projectId)}`, {
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+  });
+  if (!projectResponse.ok) {
+    throw new Error(`Storefront project lookup failed (${projectResponse.status})`);
+  }
+  const project = await projectResponse.json();
+  if (typeof project?.name !== "string" || !project.name) {
+    throw new Error("Storefront project name is unavailable");
+  }
+
+  const githubResponse = await fetch(`https://api.github.com/repos/${STOREFRONT_GIT_REPO}`, {
+    headers: { Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+  });
+  if (!githubResponse.ok) {
+    throw new Error(`Storefront repository lookup failed (${githubResponse.status})`);
+  }
+  const repository = await githubResponse.json();
+  const repositoryId = Number(repository?.id);
+  if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0) {
+    throw new Error("Storefront repository ID is unavailable");
+  }
+
+  return { projectName: project.name, repositoryId };
+}
+
+async function submitStorefrontSeoDeployment(orgId) {
+  const { projectName, repositoryId } = await getStorefrontSeoDeploymentConfig(orgId);
+  const response = await vercelApi("/v13/deployments?skipAutoDetectionConfirmation=1", {
+    method: "POST",
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+    body: JSON.stringify({
+      name: projectName,
+      target: "production",
+      gitSource: {
+        type: "github",
+        repo: STOREFRONT_GIT_REPO,
+        repoId: repositoryId,
+        ref: "main",
+      },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Storefront deployment request failed (${response.status})`);
+  }
+
+  const deployment = await response.json();
+  if (typeof deployment?.id !== "string" || !deployment.id) {
+    throw new Error("Storefront deployment did not return an ID");
+  }
+
+  return { id: deployment.id };
+}
+
+async function getStorefrontSeoDeployment(deploymentId) {
+  const response = await vercelApi(`/v13/deployments/${encodeURIComponent(deploymentId)}`, {
+    signal: AbortSignal.timeout(STOREFRONT_SEO_REFRESH_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    const error = new Error(`Storefront deployment status failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+async function processPendingStorefrontSeoRefresh(orgId, rawJob) {
+  if (!rawJob || rawJob === "null") {
+    return { action: "empty" };
+  }
+
+  const parsedJob = parseStorefrontSeoRefreshJob(rawJob);
+  if (!parsedJob) {
+    return { action: "invalid" };
+  }
+
+  const result = await processStorefrontSeoRefresh({
+    rawJob,
+    readJob: () => readStorefrontSeoRefreshJob(orgId),
+    claim: (requestId) => claimStorefrontSeoRefreshLease(orgId, requestId),
+    release: (requestId) => releaseStorefrontSeoRefreshLease(orgId, requestId),
+    compareAndSetJob: (expectedValue, job) => compareAndSetStorefrontSeoRefreshJob(orgId, expectedValue, job),
+    clearJob: (expectedValue) => clearStorefrontSeoRefreshJob(orgId, expectedValue),
+    getDeployment: getStorefrontSeoDeployment,
+    submitDeployment: () => submitStorefrontSeoDeployment(orgId),
+    now: new Date(),
+  });
+
+  // An edit that arrives while this worker owns the lease remains queued. Start
+  // it immediately after release instead of letting the daily cron be its first
+  // chance to submit.
+  const latestRawJob = await readStorefrontSeoRefreshJob(orgId);
+  const latestJob = parseStorefrontSeoRefreshJob(latestRawJob);
+  if (latestJob && latestJob.requestId !== parsedJob.requestId) {
+    void processPendingStorefrontSeoRefresh(orgId, latestRawJob).catch(() => {
+      console.warn("[storefront-seo] follow-up refresh attempt failed");
+    });
+  }
+
+  return result;
+}
+
+async function requestStorefrontSeoRefresh(orgId, reason) {
+  try {
+    const job = await queueStorefrontSeoRefresh({
+      readJob: () => readStorefrontSeoRefreshJob(orgId),
+      compareAndSetJob: (expectedValue, nextJob) => (
+        compareAndSetStorefrontSeoRefreshJob(orgId, expectedValue, nextJob)
+      ),
+      now: new Date(),
+      createRequestId: crypto.randomUUID,
+    });
+
+    // Product writes wait only for the durable outbox write above. The Vercel
+    // lookup and deployment request run after the response path can continue.
+    void processPendingStorefrontSeoRefresh(orgId, JSON.stringify(job)).catch(() => {
+      console.warn(`[storefront-seo] queued retry after ${reason}`);
+    });
+    return job;
+  } catch {
+    // Product writes are authoritative even if the outbox is temporarily
+    // unavailable. No Vercel call is made unless the queued job was durable.
+    console.warn(`[storefront-seo] could not queue refresh after ${reason}`);
+    return null;
+  }
+}
+
+async function retryPendingStorefrontSeoRefreshes() {
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select("key, value")
+    .like("key", `%:${STOREFRONT_SEO_REFRESH_SETTING}`);
+  if (error) throw error;
+
+  let processed = 0;
+  let pending = 0;
+  for (const row of data || []) {
+    const keyMatch = STOREFRONT_SEO_REFRESH_KEY_PATTERN.exec(row.key || "");
+    const orgId = keyMatch?.[1] || null;
+    if (!orgId || !row.value || row.value === "null") continue;
+
+    try {
+      const job = parseStorefrontSeoRefreshJob(row.value);
+      if (!job) {
+        await requestStorefrontSeoRefresh(orgId, "malformed retry job");
+        processed += 1;
+        pending += 1;
+        continue;
+      }
+
+      const result = await processPendingStorefrontSeoRefresh(orgId, row.value);
+      processed += 1;
+
+      if (result.action !== "clear" && result.action !== "empty") pending += 1;
+    } catch {
+      // Keep the durable row intact for the next daily retry and never expose
+      // Vercel details or credentials through the cron response.
+      console.warn("[storefront-seo] retry attempt failed");
+      pending += 1;
+    }
+  }
+
+  return { processed, pending };
+}
+
+app.get("/api/internal/storefront-seo-refresh", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const result = await retryPendingStorefrontSeoRefreshes();
+    return res.json({ ok: true, processed: result.processed, pending: result.pending });
+  } catch {
+    console.warn("[storefront-seo] retry scan failed");
+    return res.status(500).json({ error: "Could not refresh storefront SEO deployments" });
+  }
+});
 
 // Apex (<=2 labels, or 3 with a 2-3 char TLD like co.uk) → A record; else CNAME.
 function dnsRecordFor(domain) {
@@ -4759,7 +5050,8 @@ app.post("/api/order-chat/apply", rateLimitAI, async (req, res) => {
     const helpers = {
       saveProductStock, getUniqueProductSlug, purgeProductCache,
       generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
-      sendBulkSms, getOrgSettings: (k, keys) => getOrgSettings(k, keys),
+      sendBulkSms, requestStorefrontSeoRefresh,
+      getOrgSettings: (k, keys) => getOrgSettings(k, keys),
     };
     const { before, after } = await executeAiAction({ supabase, orgId, userId: user.id, tool, args, helpers });
     await supabase.from("ai_action_log").insert({
@@ -5341,6 +5633,24 @@ function variantDisplay(attributes) {
   return Object.values(attributes || {}).filter(Boolean).join(" · ") || null;
 }
 
+function readableVariantName(value) {
+  if (value && typeof value === "object") return variantDisplay(value);
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object") return variantDisplay(parsed);
+    if (typeof parsed === "string") return parsed.trim() || null;
+    if (parsed === null) return null;
+    return String(parsed);
+  } catch {
+    return trimmed;
+  }
+}
+
 async function getCourierOrderItems(supabase, orgId, order) {
   const { data, error } = await supabase
     .from("order_items")
@@ -5708,7 +6018,6 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
     // Validate and format incoming order data
     const allowed = [
-      "order_number",
       "customer_name",
       "phone",
       "address",
@@ -5724,8 +6033,8 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
 
-    // Force sequential order number, ignoring any provided order_id
-    row.order_number = `#${await getNextManualOrderSeq(orgId)}`;
+    // Force the canonical sequential order number, ignoring any provided order identifier.
+    row.order_number = await getNextManualOrderNumber(orgId);
 
     if (!row.status) row.status = "pending";
     if (!row.shopify_order_id) {
@@ -6152,7 +6461,6 @@ app.post("/api/orders", async (req, res) => {
     }
     const allowed = [
       "shopify_order_id",
-      "order_number",
       "customer_name",
       "phone",
       "address",
@@ -6176,7 +6484,7 @@ app.post("/api/orders", async (req, res) => {
     if (!row.shopify_order_id) {
       row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
-    if (!row.order_number) row.order_number = `#M${await getNextManualOrderSeq(orgId)}`;
+    row.order_number = await getNextManualOrderNumber(orgId);
     if (!row.status) row.status = "pending";
 
     const routingItems = orderItems.map((item) => ({
@@ -6273,8 +6581,8 @@ app.patch("/api/orders/:id", async (req, res) => {
       if (toStatus === "print" && !fromApproved && fromStatus !== "print") {
         return res.status(400).json({ error: "Only Approved orders can move to Print" });
       }
-      if (fromStatus === "print" && !(toStatus === "print" || toApproved || toCancelled || toOnHold)) {
-        return res.status(400).json({ error: "Print orders can only move to Approved, On Hold, or Cancelled" });
+      if (fromStatus === "print" && !(toStatus === "print" || toStatus === "processing" || toApproved || toCancelled || toOnHold)) {
+        return res.status(400).json({ error: "Print orders can only move to Processing, Approved, On Hold, or Cancelled" });
       }
     }
     const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
@@ -6379,7 +6687,7 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
             recipient_phone: cleanedPhone,
             recipient_address: (order.address || "No address provided").slice(0, 250),
             cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
-            note: order.notes || undefined,
+            note: order.notes || "",
             item_description: formatCourierItems(courierItems),
           },
         });
@@ -6422,7 +6730,7 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
         }
 
         const { data: updated, error: updateError } = await supabase.from("orders").update({
-          status: "processing",
+          status: "print",
           sent_to_courier: true,
           consignment_id: String(result.consignment_id),
           tracking_code: result.tracking_code,
@@ -6508,7 +6816,7 @@ app.post("/api/send-to-courier", async (req, res) => {
 
     const consignment = sfData.consignment;
     await supabase.from("orders").update({
-      status: "processing",
+      status: "print",
       sent_to_courier: true,
       consignment_id: String(consignment.consignment_id),
       tracking_code: consignment.tracking_code,
@@ -9771,24 +10079,10 @@ function computeEtag(fingerprint) {
   return "W/\"" + crypto.createHash("sha1").update(fingerprint).digest("base64url").slice(0, 16) + "\"";
 }
 
-// Weak ETag keyed on every public field whose image or catalog updates must
-// invalidate a browser's conditional request.
+// Weak ETag keyed on the complete public payload so edits to any storefront
+// field invalidate a browser's conditional request.
 function catalogEtag(products) {
-  const fp = JSON.stringify(
-    products.map((product) => ({
-      id: product.id,
-      slug: product.slug,
-      price: product.price,
-      compare_at_price: product.compare_at_price,
-      image_url: product.image_url,
-      image_urls: product.image_urls,
-      images: product.images,
-      variants: product.variants?.map((variant) => ({
-        id: variant.id,
-        price: variant.price,
-      })),
-    })),
-  );
+  const fp = JSON.stringify(products);
   return computeEtag(fp);
 }
 
@@ -9921,7 +10215,7 @@ async function handlePublicStorefrontProducts(req, res) {
     const products = await loadPublicProducts(req.params.storefrontId);
     if (respondCached(res, {
       etag: catalogEtag(products),
-      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.storefrontId),
     })) return;
     return res.json({ products });
@@ -9936,7 +10230,7 @@ async function handlePublicStorefrontProductDetail(req, res) {
     if (!product) return res.status(404).json({ error: "Product not found" });
     if (respondCached(res, {
       etag: catalogEtag([product]),
-      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.storefrontId, [product.id]),
     })) return;
     return res.json({ product });
@@ -10125,8 +10419,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const routing = await resolveOrderRouting(supabase, orgId, orderItems);
 
     // ── Insert order ─────────────────────────────────────────────────────
-    const orderSeq = await getNextManualOrderSeq(orgId);
-    const orderNumber = `#S${orderSeq}`;
+    const orderNumber = await getNextManualOrderNumber(orgId);
     const shopifyOrderId = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
 
     const orderRow = {
@@ -10206,7 +10499,7 @@ async function handlePublicHandleProducts(req, res) {
     const products = await loadPublicProducts(orgId);
     if (respondCached(res, {
       etag: catalogEtag(products),
-      cacheControl: "public, max-age=60, stale-while-revalidate=86400, s-maxage=60",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.handle),
     })) return;
     return res.json({ products });
@@ -10223,7 +10516,7 @@ async function handlePublicHandleProductDetail(req, res) {
     if (!product) return res.status(404).json({ error: "not_found" });
     if (respondCached(res, {
       etag: catalogEtag([product]),
-      cacheControl: "public, max-age=120, stale-while-revalidate=86400, s-maxage=120",
+      cacheControl: "no-store",
       cacheTag: cacheTagHeader(req.params.handle, [product.id]),
     })) return;
     return res.json({ product });
@@ -10452,6 +10745,16 @@ app.post("/api/products/save", async (req, res) => {
           }
         }).catch((err) => console.warn(`[Embedding] generation failed for ${product.id}:`, err.message));
       }
+    }
+
+    // An import changes catalog membership just like publishing or deleting a
+    // product. Invalidate the public list after the database write so a cached
+    // storefront response cannot hide newly imported products on refresh.
+    purgeProductCache(orgId, null, { listChanged: true, warm: true }).catch((err) => {
+      console.warn("[products/save] public catalog cache purge failed:", err.message);
+    });
+    if ((data || []).some((product) => product.published)) {
+      await requestStorefrontSeoRefresh(orgId, "published product import");
     }
 
     return res.json({ saved: data.length, variants_saved: variantRows.length, products: data });
@@ -10875,6 +11178,10 @@ app.patch("/api/products/:id", async (req, res) => {
         warm: !isUnpublishing,
       }).catch(() => {});
     }
+    const hasSeoBuildField = changedFields.some((field) => SEO_BUILD_PRODUCT_FIELDS.has(field));
+    if (hasSeoBuildField && (data.published || isUnpublishing)) {
+      await requestStorefrontSeoRefresh(orgId, "product SEO metadata change");
+    }
 
     // Regenerate embedding if image_url changed
     if (update.image_url && data.image_url) {
@@ -10901,7 +11208,7 @@ app.delete("/api/products/:id", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, slug")
+      .select("id, slug, published")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -10918,6 +11225,9 @@ app.delete("/api/products/:id", async (req, res) => {
     // List changed + detail stale: purge with warm:false (warming an
     // unpublished 404 would pollute the edge with a negative entry).
     purgeProductCache(orgId, product, { listChanged: true, warm: false }).catch(() => {});
+    if (product.published) {
+      await requestStorefrontSeoRefresh(orgId, "published product deletion");
+    }
     const paths = (images || []).flatMap((image) => getProductImagePathsForCleanup(image.storage_path));
     if (paths.length) {
       await supabase.storage.from(PRODUCT_IMAGES_BUCKET).remove(paths);
@@ -10947,6 +11257,9 @@ app.post("/api/products/publish-all", async (req, res) => {
     if (error) throw error;
 
     purgeProductCache(orgId, null, { listChanged: true, warm: true }).catch(() => {});
+    if ((data || []).length > 0) {
+      await requestStorefrontSeoRefresh(orgId, "publish all");
+    }
 
     return res.json({ success: true, published: (data || []).length });
   } catch (e) {
@@ -10966,7 +11279,7 @@ app.post("/api/products/:id/images", async (req, res) => {
 
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, name, slug")
+      .select("id, name, slug, published")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -11074,6 +11387,9 @@ app.post("/api/products/:id/images", async (req, res) => {
     }
 
     purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
+    if (product.published && inserted.some((image) => image.is_primary)) {
+      await requestStorefrontSeoRefresh(orgId, "primary product image upload");
+    }
 
     return res.json({ images: inserted });
   } catch (e) {
@@ -11093,7 +11409,7 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
 
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, slug")
+      .select("id, slug, published")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -11102,7 +11418,7 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
 
     const { data: existing, error: existingError } = await supabase
       .from("product_images")
-      .select("id, image_url")
+      .select("id, image_url, is_primary")
       .eq("product_id", productId)
       .eq("org_id", orgId);
     if (existingError) throw existingError;
@@ -11122,11 +11438,15 @@ app.patch("/api/products/:id/images/reorder", async (req, res) => {
       if (error) throw error;
     }
 
+    const previousPrimary = (existing || []).find((image) => image.is_primary);
     const primary = (existing || []).find((image) => image.id === imageIds[0]);
     if (primary) {
       await supabase.from("products").update({ image_url: primary.image_url }).eq("id", productId).eq("org_id", orgId);
     }
     purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
+    if (product.published && primary && primary.id !== previousPrimary?.id) {
+      await requestStorefrontSeoRefresh(orgId, "primary product image reorder");
+    }
     const imagesMap = await loadProductImagesMap(supabase, orgId, [productId]);
     return res.json({ images: imagesMap[productId] || [] });
   } catch (e) {
@@ -11143,7 +11463,7 @@ app.delete("/api/products/:id/images/:imageId", async (req, res) => {
     const productId = req.params.id;
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("id, slug")
+      .select("id, slug, published")
       .eq("id", productId)
       .eq("org_id", orgId)
       .maybeSingle();
@@ -11189,6 +11509,9 @@ app.delete("/api/products/:id/images/:imageId", async (req, res) => {
     }
 
     purgeProductCache(orgId, product, { listChanged: true }).catch(() => {});
+    if (product.published && image.is_primary) {
+      await requestStorefrontSeoRefresh(orgId, "primary product image deletion");
+    }
 
     return res.json({ success: true });
   } catch (e) {

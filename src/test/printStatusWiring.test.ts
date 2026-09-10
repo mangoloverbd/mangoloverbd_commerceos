@@ -7,12 +7,17 @@ describe("print status wiring", () => {
     const server = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
 
     expect(server).toContain("Only Approved orders can move to Print");
-    expect(server).toContain("Print orders can only move to Approved, On Hold, or Cancelled");
+    expect(server).toContain("Print orders can only move to Processing, Approved, On Hold, or Cancelled");
+    expect(server).toContain('toStatus === "processing"');
     expect(server).toContain("Move to Print first before sending to courier");
     // Both main-order courier routes gate Approved sends.
     expect(server.match(/Move to Print first before sending to courier/g)?.length).toBeGreaterThanOrEqual(2);
-    // Successful sends advance the business status so Print empties.
-    expect(server).toContain('status: "processing"');
+    const bulkRouteStart = server.indexOf('app.post("/api/send-to-courier/bulk"');
+    const singleRouteStart = server.indexOf('app.post("/api/send-to-courier"', bulkRouteStart + 1);
+    const pathaoRouteStart = server.indexOf('app.post("/api/send-to-pathao"');
+    expect(server.slice(bulkRouteStart, singleRouteStart)).toContain('status: "print"');
+    expect(server.slice(singleRouteStart, pathaoRouteStart)).toContain('status: "print"');
+    expect(server.slice(pathaoRouteStart)).toContain('status: "processing"');
   });
 
   it("wires Print moves and the Send hint in the orders table", () => {
@@ -24,6 +29,7 @@ describe("print status wiring", () => {
     expect(ordersTableSource).toContain('from "@/lib/orderTransitions"');
     expect(ordersTableSource).toContain("courierSendBlockReason(order.status)");
     expect(ordersTableSource).toContain("{sendBlockReason}");
+    expect(ordersTableSource).toContain('["print", "confirmed", "processing", "on_hold", "cancelled"]');
   });
 
   it("wires the authenticated Steadfast bulk contract", () => {

@@ -175,6 +175,72 @@ describe("executeAiAction dispatcher", () => {
     expect(purges).toEqual([["org1", { id: "p1", slug: "mango" }, { listChanged: false, warm: true }]]);
   });
 
+  it("queues a static SEO refresh after a published product metadata update", async () => {
+    const refreshes: Array<unknown[]> = [];
+    const supabase = fakeSupabase({
+      products: {
+        select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({
+          data: { id: "p1", name: "Original", slug: "mango", published: true },
+          error: null,
+        }) }) }) }),
+        update: () => ({ eq: () => ({ eq: () => ({ select: () => ({ single: async () => ({
+          data: { id: "p1", name: "Updated", slug: "mango", published: true },
+          error: null,
+        }) }) }) }) }),
+      },
+    });
+
+    await executeAiAction({
+      supabase,
+      orgId: "org1",
+      userId: "u",
+      tool: "update_product",
+      args: { product_id: "p1", fields: { name: "Updated" } },
+      helpers: {
+        purgeProductCache: () => Promise.resolve(),
+        requestStorefrontSeoRefresh: (...args: unknown[]) => {
+          refreshes.push(args);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    expect(refreshes).toEqual([["org1", "published product metadata change"]]);
+  });
+
+  it("queues a static SEO refresh after unpublishing a product", async () => {
+    const refreshes: Array<unknown[]> = [];
+    const supabase = fakeSupabase({
+      products: {
+        select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({
+          data: { id: "p1", name: "Mango", slug: "mango", published: true },
+          error: null,
+        }) }) }) }),
+        update: () => ({ eq: () => ({ eq: () => ({ select: () => ({ single: async () => ({
+          data: { id: "p1", name: "Mango", slug: "mango", published: false },
+          error: null,
+        }) }) }) }) }),
+      },
+    });
+
+    await executeAiAction({
+      supabase,
+      orgId: "org1",
+      userId: "u",
+      tool: "update_product",
+      args: { product_id: "p1", fields: { published: false } },
+      helpers: {
+        purgeProductCache: () => Promise.resolve(),
+        requestStorefrontSeoRefresh: (...args: unknown[]) => {
+          refreshes.push(args);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    expect(refreshes).toEqual([["org1", "published product metadata change"]]);
+  });
+
   it("passes a newly published product slug to cache invalidation", async () => {
     const purges: Array<unknown[]> = [];
     const supabase = fakeSupabase({
@@ -202,5 +268,35 @@ describe("executeAiAction dispatcher", () => {
     });
 
     expect(purges).toEqual([["org1", { id: "p2", slug: "new-mango" }, { listChanged: true, warm: true }]]);
+  });
+
+  it("queues a static SEO refresh after creating a published product", async () => {
+    const refreshes: Array<unknown[]> = [];
+    const supabase = fakeSupabase({
+      products: {
+        insert: () => ({ select: () => ({ single: async () => ({
+          data: { id: "p2", slug: "new-mango", name: "New Mango", published: true },
+          error: null,
+        }) }) }),
+      },
+    });
+
+    await executeAiAction({
+      supabase,
+      orgId: "org1",
+      userId: "u",
+      tool: "create_product",
+      args: { name: "New Mango", published: true, variants: [] },
+      helpers: {
+        getUniqueProductSlug: async () => "new-mango",
+        purgeProductCache: () => Promise.resolve(),
+        requestStorefrontSeoRefresh: (...args: unknown[]) => {
+          refreshes.push(args);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    expect(refreshes).toEqual([["org1", "published product creation"]]);
   });
 });

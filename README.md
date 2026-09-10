@@ -73,9 +73,10 @@ query PostHog behavior data for Order Analysis.
 
 ### Storefront product workflow
 
-Add and publish products from Merchant Suite's Products page. The public storefront reads the
-published catalog from Supabase through the Merchant Suite public API, so a newly published product
-usually appears within about 8 seconds without a storefront redeploy.
+Add and publish or import products from Merchant Suite's Products page. The public storefront reads
+the published catalog from Supabase through the Merchant Suite public API, and the catalog response
+is not stored in browser or CDN caches. A newly published or imported product appears on the next
+live storefront refresh without a storefront redeploy.
 
 The storefront also keeps a build-generated catalog snapshot for fast first paint on new devices.
 That snapshot is only an initial fallback. The live API replaces it in the background, and Supabase

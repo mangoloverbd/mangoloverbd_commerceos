@@ -150,6 +150,24 @@ describe("dashboard bulk status button", () => {
     expect(patches).toHaveLength(0);
   });
 
+  it("moves a Print order to Processing when selected manually", async () => {
+    const user = userEvent.setup();
+    orders = [...baseOrders, baseOrder({ id: "print-1", shopify_order_id: 3, order_number: "#103", status: "print" })];
+    renderDashboard();
+
+    await user.click(await screen.findByRole("radio", { name: /Print.*1/ }));
+    await user.click(screen.getByTestId("checkbox-order-print-1"));
+    await user.click(screen.getByRole("button", { name: "Update Status" }));
+    await user.click(within(screen.getByTestId("bulk-status-menu")).getByRole("button", { name: "Processing" }));
+
+    await waitFor(() => {
+      const patches = apiFetch.mock.calls.filter(([url, init]) => url === "/api/orders/print-1" && init?.method === "PATCH");
+      expect(patches).toHaveLength(1);
+      expect(JSON.parse(String(patches[0][1]?.body))).toEqual({ status: "processing" });
+    });
+    expect(toastSuccess).toHaveBeenCalledWith("1 order moved to Processing");
+  });
+
   it("shows a dropdown chevron that rotates open", async () => {
     const user = userEvent.setup();
     renderDashboard();
@@ -187,7 +205,7 @@ describe("dashboard bulk status button", () => {
       success: true,
       processed: 1,
       failed: 0,
-      succeeded: [{ orderId: printOrder.id, orderNumber: printOrder.order_number, order: { ...printOrder, status: "processing", sent_to_courier: true } }],
+      succeeded: [{ orderId: printOrder.id, orderNumber: printOrder.order_number, order: { ...printOrder, status: "print", sent_to_courier: true } }],
       failures: [],
     };
     renderDashboard();
@@ -201,9 +219,10 @@ describe("dashboard bulk status button", () => {
       expect(calls).toHaveLength(1);
       expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ orderIds: ["print-1"] });
     });
-    expect(await screen.findByRole("radio", { name: /Print.*0/ })).toBeInTheDocument();
-    expect(await screen.findByRole("radio", { name: /Processing.*1/ })).toBeInTheDocument();
-    expect(screen.queryByTestId("button-bulk-send-steadfast")).not.toBeInTheDocument();
+    expect(await screen.findByRole("radio", { name: /Print.*1/ })).toBeInTheDocument();
+    expect(await screen.findByRole("radio", { name: /Processing.*0/ })).toBeInTheDocument();
+    expect(screen.getByText(printOrder.order_number)).toBeInTheDocument();
+    expect(screen.getByTestId("button-bulk-send-steadfast")).toBeInTheDocument();
   });
 
   it("keeps failed Print orders selected and reports their failures", async () => {
