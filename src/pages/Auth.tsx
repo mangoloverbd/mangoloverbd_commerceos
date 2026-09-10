@@ -171,7 +171,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen w-full relative flex overflow-hidden bg-[#FAFAF8]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
+    <div className="min-h-screen max-md:min-h-[100svh] w-full relative flex overflow-hidden max-md:overflow-y-auto bg-[#FAFAF8]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
       {/* Left panel — testimonial */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-[#f5f5f3]">
         {/* Sparkles on left panel */}
@@ -193,7 +193,7 @@ export default function Auth() {
       </div>
 
       {/* Right panel — auth form */}
-      <div className="flex-1 flex flex-col items-center justify-center relative px-8">
+      <div className="flex-1 flex flex-col items-center justify-center relative px-8 max-md:justify-center max-md:px-4 max-md:py-8">
         <div className="absolute inset-0" />
 
         <div className="relative z-10 w-full max-w-[430px] flex flex-col items-center">
@@ -229,20 +229,20 @@ export default function Auth() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-                className="flex flex-col items-center w-full"
+                 className="flex flex-col items-center w-full"
               >
                 {/* Logo — matches sidebar header */}
-                <div className="mb-10 flex items-center gap-1">
-                  <Logo className="h-[21px] w-auto shrink-0" />
-                  <span className="text-[21px] font-bold tracking-tight text-[#111] antialiased">
+                 <div className="mb-10 max-md:mb-7 flex items-center gap-1">
+                   <Logo className="h-[21px] w-auto shrink-0 max-md:h-[19px]" />
+                   <span className="text-[21px] max-md:text-[18px] font-bold tracking-tight text-[#111] antialiased">
                     Mango Lover BD Suite
                   </span>
                 </div>
 
                 {/* Card container */}
-                <div className="w-full bg-white rounded-md border border-black/[0.06] shadow-sm p-8 sm:p-10">
+                 <div className="w-full bg-white rounded-md border border-black/[0.06] shadow-sm p-8 sm:p-10 max-md:p-5">
                   {/* Form */}
-                  <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+                   <form onSubmit={handleSubmit} className="flex flex-col gap-5 max-md:gap-4">
                     {/* Email */}
                     <div className="flex flex-col gap-2">
                       <label htmlFor="email" className="text-[13px] font-semibold text-black">
@@ -254,7 +254,7 @@ export default function Auth() {
                         placeholder="hello@domain.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full h-[44px] bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4"
+                         className="w-full h-[44px] max-md:h-12 bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4"
                         required
                       />
                     </div>
@@ -281,11 +281,11 @@ export default function Auth() {
                           type={showPassword ? "text" : "password"}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full h-[44px] bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4 pr-11"
+                           className="w-full h-[44px] max-md:h-12 bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4 pr-11"
                           required
                         />
                         <button
-                          className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-200"
+                           className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 max-md:right-2 max-md:flex max-md:h-10 max-md:w-10 max-md:items-center max-md:justify-center transition-colors duration-200"
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                         >
@@ -315,11 +315,11 @@ export default function Auth() {
                                 type={showConfirm ? "text" : "password"}
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full h-[44px] bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4 pr-11"
+                                 className="w-full h-[44px] max-md:h-12 bg-white border border-black/[0.12] rounded-lg text-[14px] text-black placeholder:text-black/35 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black/20 transition-all duration-200 px-4 pr-11"
                                 required={mode === "signup"}
                               />
                               <button
-                                className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 transition-colors duration-200"
+                                 className="text-black/30 hover:text-black/60 absolute top-1/2 -translate-y-1/2 right-4 max-md:right-2 max-md:flex max-md:h-10 max-md:w-10 max-md:items-center max-md:justify-center transition-colors duration-200"
                                 type="button"
                                 onClick={() => setShowConfirm(!showConfirm)}
                               >
@@ -362,7 +362,7 @@ export default function Auth() {
                       disabled={loading}
                       color="default"
                       size="lg"
-                      className="w-full mt-2 h-11 rounded-lg"
+                       className="w-full mt-2 h-11 max-md:h-12 rounded-lg"
                     >
                       {loading
                         ? mode === "signin" ? "Authenticating..." : "Creating..."
@@ -389,7 +389,7 @@ export default function Auth() {
                           });
                           if (error) toast.error(error.message);
                         }}
-                        className="mt-4 w-full h-11 flex items-center justify-center gap-2.5 bg-white border border-black/[0.12] rounded-lg text-[14px] font-medium text-black hover:bg-black/[0.02] transition-colors duration-200"
+                         className="mt-4 w-full h-11 max-md:h-12 flex items-center justify-center gap-2.5 bg-white border border-black/[0.12] rounded-lg text-[14px] font-medium text-black hover:bg-black/[0.02] transition-colors duration-200"
                       >
                         <svg width="18" height="18" viewBox="0 0 24 24">
                           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -404,7 +404,7 @@ export default function Auth() {
                 </div>
 
                 {/* Footer */}
-                <div className="mt-8 text-center">
+                 <div className="mt-8 max-md:mt-6 text-center">
                   <p className="text-[13px] text-black/45">
                     {mode === "signin" ? (
                       <>
