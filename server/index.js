@@ -1291,57 +1291,16 @@ async function saveOrgSettings(orgId, settings) {
   return saveSettings(scopedSettings);
 }
 
-async function getNextManualOrderSeq(orgId) {
+async function getNextManualOrderNumber(orgId) {
+  if (!isValidOrgId(orgId)) throw new Error("Invalid workspace for order number allocation");
+
   const supabase = getServiceSupabase();
-  const key = orgSettingKey(orgId, "manual_order_seq");
-  const now = new Date().toISOString();
-
-  // Ensure a counter row exists. ignoreDuplicates protects progress if another
-  // process already initialized or incremented it.
-  await supabase
-    .from("app_settings")
-    .upsert({ key, value: "0", updated_at: now }, { onConflict: "key", ignoreDuplicates: true });
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const { data: existing } = await supabase
-      .from("app_settings")
-      .select("value")
-      .eq("key", key)
-      .maybeSingle();
-
-    const currentStr = existing?.value ?? "0";
-    const highestShopifyStyleOrderNumber = await getHighestShopifyStyleOrderNumber(orgId);
-    const current = parseInt(currentStr, 10) || 0;
-    const baseline = Math.max(current, highestShopifyStyleOrderNumber, 1000);
-    const next = baseline + 1;
-
-    const { data: updated, error } = await supabase
-      .from("app_settings")
-      .update({ value: String(next), updated_at: now })
-      .eq("key", key)
-      .eq("value", currentStr)
-      .select("value");
-
-    if (error) throw error;
-    if (updated && updated.length > 0) return next;
-  }
-
-  throw new Error("Failed to allocate manual order sequence after retries");
-}
-
-async function getHighestShopifyStyleOrderNumber(orgId) {
-  const supabase = getServiceSupabase();
-  const { data, error } = await supabase
-    .from("orders")
-    .select("order_number")
-    .eq("org_id", orgId);
+  const { data, error } = await supabase.rpc("next_ml_order_number");
   if (error) throw error;
-
-  return (data || []).reduce((highest, order) => {
-    if (!/^#\d+$/.test(order.order_number || "")) return highest;
-    const orderNumber = Number(order.order_number.replace("#", ""));
-    return Number.isFinite(orderNumber) ? Math.max(highest, orderNumber) : highest;
-  }, 0);
+  if (typeof data !== "string" || !/^ML-\d+$/.test(data)) {
+    throw new Error("Invalid order number returned by allocator");
+  }
+  return data;
 }
 
 async function getProductStockMap(orgId, productIds) {
@@ -6059,7 +6018,6 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
     // Validate and format incoming order data
     const allowed = [
-      "order_number",
       "customer_name",
       "phone",
       "address",
@@ -6075,8 +6033,8 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
 
-    // Force sequential order number, ignoring any provided order_id
-    row.order_number = `#${await getNextManualOrderSeq(orgId)}`;
+    // Force the canonical sequential order number, ignoring any provided order identifier.
+    row.order_number = await getNextManualOrderNumber(orgId);
 
     if (!row.status) row.status = "pending";
     if (!row.shopify_order_id) {
@@ -6503,7 +6461,6 @@ app.post("/api/orders", async (req, res) => {
     }
     const allowed = [
       "shopify_order_id",
-      "order_number",
       "customer_name",
       "phone",
       "address",
@@ -6527,7 +6484,7 @@ app.post("/api/orders", async (req, res) => {
     if (!row.shopify_order_id) {
       row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
-    if (!row.order_number) row.order_number = `#M${await getNextManualOrderSeq(orgId)}`;
+    row.order_number = await getNextManualOrderNumber(orgId);
     if (!row.status) row.status = "pending";
 
     const routingItems = orderItems.map((item) => ({
@@ -10462,8 +10419,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const routing = await resolveOrderRouting(supabase, orgId, orderItems);
 
     // ── Insert order ─────────────────────────────────────────────────────
-    const orderSeq = await getNextManualOrderSeq(orgId);
-    const orderNumber = `#S${orderSeq}`;
+    const orderNumber = await getNextManualOrderNumber(orgId);
     const shopifyOrderId = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
 
     const orderRow = {
