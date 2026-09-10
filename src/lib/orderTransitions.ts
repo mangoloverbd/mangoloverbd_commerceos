@@ -29,6 +29,7 @@ export function canLeavePrint(toStatus: string | null | undefined): boolean {
   const normalized = normalizeBusinessStatus(toStatus);
   return (
     normalized === "print" ||
+    normalized === "processing" ||
     normalized === "approved" ||
     normalized === "confirmed" ||
     normalized === "cancelled" ||

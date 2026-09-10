@@ -1175,7 +1175,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
             {orders.map((order, idx) => {
               const { primary, lines, names } = productSummary(order);
               const statusOptions = isPrintStatus(order.status)
-                ? ["print", "confirmed", "on_hold", "cancelled"]
+                ? ["print", "confirmed", "processing", "on_hold", "cancelled"]
                 : canEnterPrint(order.status)
                   ? ["pending", "confirmed", "print", "on_hold", "cancelled"]
                   : ["pending", "confirmed", "on_hold", "cancelled"];
