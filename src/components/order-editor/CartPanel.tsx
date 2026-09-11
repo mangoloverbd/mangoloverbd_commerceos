@@ -30,9 +30,10 @@ type CartPanelProps = {
   onDiscount: (id: string, discountType: DiscountType | null, discountValue: number) => void;
   onSave: () => void;
   onCancel: () => void;
+  hideOrderSections?: boolean;
 };
 
-export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel }: CartPanelProps) {
+export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false }: CartPanelProps) {
   const overallBase = roundTaka(totals.grossSubtotal - totals.itemDiscount);
   return (
     <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
@@ -54,7 +55,7 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
               </div>
               {isLegacy && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">Remove or replace this detached legacy item before saving cart changes.</p>}
               <div className="mt-3 flex items-end justify-between gap-3 border-t border-black/[0.06] pt-3">
-                <div><div className="flex items-baseline gap-2"><span className="font-mono text-[13px] tabular-nums text-black">{formatTaka(netUnit)}</span>{unitDiscount > 0 && <span className="font-mono text-[10px] tabular-nums text-black/35 line-through">{formatTaka(item.unit_price)}</span>}</div><DiscountEditor item={item} disabled={!canEdit || isLegacy} onApply={(type, value) => onDiscount(item.id, type, value)} onRemove={() => onDiscount(item.id, null, 0)} /></div>
+                <div><div className="flex items-baseline gap-2"><span className="font-mono text-[13px] tabular-nums text-black">{formatTaka(netUnit)}</span>{unitDiscount > 0 && <span className="font-mono text-[10px] tabular-nums text-black/35 line-through">{formatTaka(item.unit_price)}</span>}</div>{!hideOrderSections && <DiscountEditor item={item} disabled={!canEdit || isLegacy} onApply={(type, value) => onDiscount(item.id, type, value)} onRemove={() => onDiscount(item.id, null, 0)} />}</div>
                 <div className="flex items-center rounded-lg bg-black/[0.04] p-1"><button type="button" aria-label={`Decrease ${name} quantity`} onClick={() => onQuantity(item.id, Math.max(1, item.quantity - 1))} disabled={!canEdit || item.quantity <= 1} className="grid h-7 w-7 place-items-center rounded-md text-black/45 disabled:opacity-20"><Minus weight="light" size={13} /></button><input aria-label={`Quantity for ${name}`} type="number" min={1} max={maxQuantity} value={item.quantity} onChange={(event) => onQuantity(item.id, Math.max(1, Math.min(maxQuantity ?? Number.MAX_SAFE_INTEGER, Number.parseInt(event.target.value, 10) || 1)))} disabled={!canEdit} className="h-7 w-10 bg-transparent text-center font-mono text-[12px] outline-none disabled:opacity-40" /><button type="button" aria-label={`Increase ${name} quantity`} onClick={() => onQuantity(item.id, item.quantity + 1)} disabled={!canEdit || (maxQuantity != null && item.quantity >= maxQuantity)} className="grid h-7 w-7 place-items-center rounded-md text-black/45 disabled:opacity-20"><Plus weight="light" size={13} /></button></div>
               </div>
               <p className="mt-2 text-right font-mono text-[11px] tabular-nums text-black/55">Line total {formatTaka(netUnit * item.quantity)}</p>
@@ -63,10 +64,11 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
         })}
       </div>
       <div className="sticky bottom-0 mt-2 border-t border-black/[0.08] bg-[#FAFAF8] pt-2">
-        <div className="mb-1"><CartDiscountEditor base={overallBase} discountType={overallDiscountType} discountValue={overallDiscountValue} disabled={!canEdit} onApply={onOverallDiscount} onRemove={onRemoveOverallDiscount} /></div>
+        {!hideOrderSections && <div className="mb-1"><CartDiscountEditor base={overallBase} discountType={overallDiscountType} discountValue={overallDiscountValue} disabled={!canEdit} onApply={onOverallDiscount} onRemove={onRemoveOverallDiscount} /></div>}
         <dl className="space-y-1 text-[12px] leading-snug"><div className="flex justify-between"><dt className="text-black/45">Subtotal</dt><dd className="font-mono tabular-nums">{formatTaka(totals.grossSubtotal)}</dd></div>{totals.itemDiscount > 0 && <div className="flex justify-between"><dt className="text-black/45">Item discounts</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</dd></div>}{totals.legacyDiscount > 0 && <div className="flex justify-between"><dt className="text-black/45">Order discount</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</dd></div>}<div className="flex items-center justify-between"><dt className="text-black/45">Delivery</dt><dd className="flex items-center gap-2"><span className="font-mono tabular-nums">{totals.deliveryFee > 0 ? formatTaka(totals.deliveryFee) : "Free"}</span><Switch size="sm" aria-label="Toggle delivery charge" isSelected={deliveryOn} onChange={onToggleDelivery} isDisabled={!canEdit} /></dd></div><div className="flex items-baseline justify-between border-t border-black/[0.07] pt-2"><dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-black/55">Final total</dt><dd className="font-mono text-[17px] tabular-nums">{formatTaka(totals.finalTotal)}</dd></div></dl>
         {error && <p role="alert" className="mt-1.5 text-[12px] text-red-600">{error}</p>}
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
+          {!hideOrderSections && (
           <BuiSelect
             aria-label="Order status"
             selectedKey={status ?? null}
@@ -78,9 +80,10 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
               <BuiSelectItem key={st} id={st} textValue={displayStatusLabel(st)}>{displayStatusLabel(st)}</BuiSelectItem>
             ))}
           </BuiSelect>
+          )}
           <button type="button" onClick={onSave} disabled={saving || saveDisabled} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-35">{saving && <Spinner size="sm" />}{saving ? "Saving…" : "Save changes"}</button>
           <button type="button" onClick={onCancel} disabled={saving} className="h-9 rounded-lg px-2.5 text-[12px] text-black/50 hover:bg-black/[0.05] disabled:opacity-35">Cancel</button>
-          {isOnHoldStatus(status) && (
+          {!hideOrderSections && isOnHoldStatus(status) && (
             <label className="col-span-3 mt-1 block" htmlFor="hold-note">
               <span className="sr-only">Hold note</span>
               <textarea

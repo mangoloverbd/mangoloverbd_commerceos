@@ -171,4 +171,65 @@ describe("AbandonedCheckoutQueue", () => {
     await user.click(approved);
     expect(onConvert).toHaveBeenCalledWith(checkout, "approved");
   });
+
+  it("supports selection and opens the detail page on row click", async () => {
+    const user = userEvent.setup();
+    const onToggleSelect = vi.fn();
+    const onSelectAll = vi.fn();
+    const onOpenCheckout = vi.fn();
+    render(
+      <AbandonedCheckoutQueue
+        checkouts={[checkout]}
+        loading={false}
+        error={null}
+        actionInFlightId={null}
+        onAction={vi.fn()}
+        selectedIds={new Set()}
+        onToggleSelect={onToggleSelect}
+        onSelectAll={onSelectAll}
+        onOpenCheckout={onOpenCheckout}
+      />,
+    );
+
+    await user.click(screen.getByTestId(`checkbox-abandoned-${checkout.id}`));
+    expect(onToggleSelect).toHaveBeenCalledWith(checkout.id);
+    expect(onOpenCheckout).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId("checkbox-abandoned-all"));
+    expect(onSelectAll).toHaveBeenCalled();
+
+    await user.click(screen.getByText("Farzana Akter"));
+    expect(onOpenCheckout).toHaveBeenCalledWith(checkout.id);
+  });
+
+  it("marks selected rows", () => {
+    render(
+      <AbandonedCheckoutQueue
+        checkouts={[checkout]}
+        loading={false}
+        error={null}
+        actionInFlightId={null}
+        onAction={vi.fn()}
+        selectedIds={new Set([checkout.id])}
+      />,
+    );
+    expect(screen.getByTestId(`checkbox-abandoned-${checkout.id}`)).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("exposes accessible names for the selection checkboxes", () => {
+    render(
+      <AbandonedCheckoutQueue
+        checkouts={[checkout]}
+        loading={false}
+        error={null}
+        actionInFlightId={null}
+        onAction={vi.fn()}
+        selectedIds={new Set()}
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: "Select all checkouts" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: `Select checkout for ${checkout.customer_name}` }),
+    ).toHaveAttribute("data-testid", `checkbox-abandoned-${checkout.id}`);
+  });
 });
