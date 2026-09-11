@@ -256,3 +256,27 @@ export function buildRecoveredPatch(now = new Date()) {
     resolution: "ordered",
   };
 }
+
+const STAFF_EDIT_KEYS = new Set(["customerName", "phone", "address", "items", "deliveryRate"]);
+
+export function parseAbandonedCheckoutStaffEdit(body) {
+  if (!isRecord(body) || !hasOnlyKeys(body, STAFF_EDIT_KEYS)) invalidCapture();
+
+  const phone = normalizeBdPhone(body.phone);
+  if (!phone) invalidCapture();
+
+  const cart = parseCart(body.items);
+  const deliveryRate = boundedMoney(body.deliveryRate);
+  const subtotal = Math.round(cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0) * 100) / 100;
+  if (subtotal > MAX_MONEY) invalidCapture();
+
+  return {
+    customer_name: optionalString(body.customerName, 120),
+    phone,
+    address: optionalString(body.address, 500),
+    cart,
+    subtotal,
+    delivery_rate: deliveryRate,
+    total: Math.round((subtotal + deliveryRate) * 100) / 100,
+  };
+}
