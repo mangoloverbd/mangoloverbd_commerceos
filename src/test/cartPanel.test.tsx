@@ -95,3 +95,77 @@ describe("CartPanel order status", () => {
     expect(onNotesChange).toHaveBeenLastCalledWith("Waiting for stock");
   });
 });
+
+describe("CartPanel draft mode", () => {
+  it("hides status, notes, and discount editors when hideOrderSections is set", () => {
+    render(
+      <CartPanel
+        items={[]}
+        totals={totals}
+        canEdit
+        locked={false}
+        saving={false}
+        status={null}
+        onStatusChange={vi.fn()}
+        notes=""
+        onNotesChange={vi.fn()}
+        overallDiscountType={null}
+        overallDiscountValue={0}
+        deliveryOn
+        onToggleDelivery={vi.fn()}
+        onOverallDiscount={vi.fn()}
+        onRemoveOverallDiscount={vi.fn()}
+        onQuantity={vi.fn()}
+        onRemove={vi.fn()}
+        onDiscount={vi.fn()}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        hideOrderSections
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /order status/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Hold note" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cart discount/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
+  });
+
+  it("hides hold note and per-line discount editors in draft mode for an on-hold cart", () => {
+    render(
+      <CartPanel
+        items={[{ id: "line-1", product_id: "p-1", variant_id: null, product_name: "Langra Mango", variant_name: null, unit_price: 500, discount_type: null, discount_value: 0, unit_discount: 0, quantity: 1 }]}
+        totals={totals}
+        canEdit
+        locked={false}
+        saving={false}
+        status="on_hold"
+        onStatusChange={vi.fn()}
+        notes="Existing note"
+        onNotesChange={vi.fn()}
+        overallDiscountType={null}
+        overallDiscountValue={0}
+        deliveryOn
+        onToggleDelivery={vi.fn()}
+        onOverallDiscount={vi.fn()}
+        onRemoveOverallDiscount={vi.fn()}
+        onQuantity={vi.fn()}
+        onRemove={vi.fn()}
+        onDiscount={vi.fn()}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        hideOrderSections
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /order status/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Hold note" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /discount to langra mango/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cart discount/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
+  });
+
+  it("keeps status and notes visible by default", () => {
+    renderCart("confirmed");
+    expect(screen.getByRole("button", { name: /order status/i })).toBeInTheDocument();
+  });
+});
