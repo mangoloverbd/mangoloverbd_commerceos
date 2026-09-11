@@ -1204,6 +1204,7 @@ export default function Dashboard() {
           onStatusUpdate={handleStatusUpdate}
           onOrderUpdate={handleOrderUpdate}
           isPrintView={statusFilter === "print"}
+          showRiskColumn={false}
           selectedIds={selectedOrderIds}
           onSelectionChange={setSelectedOrderIds}
         />
