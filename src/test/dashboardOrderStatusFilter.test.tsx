@@ -27,8 +27,9 @@ vi.mock("recharts", () => ({
 }));
 vi.mock("@/components/OrderCreatorModal", () => ({ default: () => null }));
 vi.mock("@/components/OrdersTable", () => ({
-  OrdersTable: ({ orders }: { orders: Array<{ id: string; customer_name: string }> }) => (
+  OrdersTable: ({ orders, showRiskColumn = true }: { orders: Array<{ id: string; customer_name: string }>; showRiskColumn?: boolean }) => (
     <div data-testid="dashboard-orders">
+      <span data-testid="dashboard-risk-column">{showRiskColumn ? "visible" : "hidden"}</span>
       {orders.map((order) => <span key={order.id}>{order.customer_name}</span>)}
     </div>
   ),
@@ -99,6 +100,17 @@ describe("dashboard order status filter", () => {
       }
       return jsonResponse({ updated: 0 });
     });
+  });
+
+  it("hides the Risk column in the Dashboard orders table", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><Dashboard /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("dashboard-risk-column")).toHaveTextContent("hidden");
   });
 
   it("filters the fulfillment queue when a status summary is selected", async () => {

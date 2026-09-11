@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.2.3] - 2026-09-11
+
+### Changed
+
+- Hide the Risk column on the Dashboard orders table while preserving it elsewhere.
+
 ## [0.0.2.2] - 2026-09-11
 
 ### Added
