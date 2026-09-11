@@ -71,4 +71,15 @@ describe("computeAbandonedCheckoutTotals", () => {
   it("returns zeros for an empty cart", () => {
     expect(computeAbandonedCheckoutTotals([], 60)).toEqual({ subtotal: 0, total: 60 });
   });
+
+  it("treats a non-finite delivery rate as zero", () => {
+    expect(computeAbandonedCheckoutTotals(
+      [{ productName: "Sundarbans Honey", variantName: "1 kg", quantity: 2, unitPrice: 750 }],
+      NaN,
+    )).toEqual({ subtotal: 1500, total: 1500 });
+    expect(computeAbandonedCheckoutTotals(
+      [{ productName: "Sundarbans Honey", variantName: "1 kg", quantity: 2, unitPrice: 750 }],
+      Infinity,
+    )).toEqual({ subtotal: 1500, total: 1500 });
+  });
 });

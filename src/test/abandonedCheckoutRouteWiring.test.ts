@@ -128,4 +128,28 @@ describe("abandoned checkout route wiring", () => {
     expect(convert).toContain("abandoned_checkout_id");
     expect(convert).toContain("buildRecoveredPatch");
   });
+
+  it("bounds convert overrides like capture and rounds the order subtotal", () => {
+    const convert = routeSection(
+      'app.post("/api/abandoned-checkouts/:id/convert"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(convert).toContain("normalizeAbandonedCheckoutConvertOverrides");
+    expect(convert).toContain("Invalid customer name or address");
+    expect(convert).toContain('return res.status(400).json({ error: "Invalid customer name or address" })');
+    expect(convert).toContain("?? draft.customer_name");
+    expect(convert).toContain("?? draft.address");
+    expect(convert).toContain("Math.round(");
+    expect(convert).toContain("* 100) / 100");
+  });
+
+  it("reads the staff action defensively before validating the body shape", () => {
+    const queuePatch = routeSection(
+      'app.patch("/api/abandoned-checkouts/:id"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(queuePatch).toContain("req.body?.action");
+  });
 });

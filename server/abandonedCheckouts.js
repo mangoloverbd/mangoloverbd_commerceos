@@ -280,3 +280,13 @@ export function parseAbandonedCheckoutStaffEdit(body) {
     total: Math.round((subtotal + deliveryRate) * 100) / 100,
   };
 }
+
+// Convert-dialog overrides share the capture bounds for contact fields
+// (name max 120, address max 500). Blank or missing values normalize to null
+// so the caller falls back to the draft; overlong or non-string values throw.
+export function normalizeAbandonedCheckoutConvertOverrides(customerName, address) {
+  return {
+    customerName: optionalString(customerName, 120),
+    address: optionalString(address, 500),
+  };
+}

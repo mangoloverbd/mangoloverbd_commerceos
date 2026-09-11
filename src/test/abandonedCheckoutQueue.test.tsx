@@ -142,4 +142,33 @@ describe("AbandonedCheckoutQueue", () => {
     await user.click(screen.getByRole("button", { name: "Copy address" }));
     expect(clipboardWriteText).toHaveBeenCalledWith("House 1, Road 2, Dhaka");
   });
+
+  it("labels move-to actions by destination while keeping the visible status text", async () => {
+    const user = userEvent.setup();
+    const onConvert = vi.fn();
+    render(
+      <AbandonedCheckoutQueue
+        checkouts={[checkout]}
+        loading={false}
+        error={null}
+        actionInFlightId={null}
+        onAction={vi.fn()}
+        onConvert={onConvert}
+      />,
+    );
+
+    const pending = screen.getByRole("button", { name: "Move to pending" });
+    const onHold = screen.getByRole("button", { name: "Move to on hold" });
+    const approved = screen.getByRole("button", { name: "Move to approved" });
+    expect(pending).toHaveTextContent("Pending");
+    expect(onHold).toHaveTextContent("On Hold");
+    expect(approved).toHaveTextContent("Approved");
+
+    await user.click(pending);
+    expect(onConvert).toHaveBeenCalledWith(checkout, "pending");
+    await user.click(onHold);
+    expect(onConvert).toHaveBeenCalledWith(checkout, "on_hold");
+    await user.click(approved);
+    expect(onConvert).toHaveBeenCalledWith(checkout, "approved");
+  });
 });

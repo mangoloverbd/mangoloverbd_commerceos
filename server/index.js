@@ -66,6 +66,7 @@ import {
   canAcceptBrowserCapture,
   hashAbandonedCheckoutDraftKey,
   isAbandonedCheckoutDraftKey,
+  normalizeAbandonedCheckoutConvertOverrides,
   normalizeBdPhone,
   parseAbandonedCheckoutCapture,
   parseAbandonedCheckoutStaffEdit,
@@ -5788,7 +5789,7 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
     if (!isAbandonedCheckoutDraftKey(req.params.id)) {
       return res.status(400).json({ error: "Invalid checkout ID" });
     }
-    const hasAction = req.body.action !== undefined;
+    const hasAction = req.body?.action !== undefined;
     if (hasAction) {
       if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
         || Object.keys(req.body).some((key) => key !== "action")) {
@@ -5903,12 +5904,17 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       return res.status(409).json({ error: "Checkout has no items to convert" });
     }
 
-    const customerName = typeof req.body?.customer_name === "string" && req.body.customer_name.trim()
-      ? req.body.customer_name.trim()
-      : draft.customer_name;
-    const address = typeof req.body?.address === "string" && req.body.address.trim()
-      ? req.body.address.trim()
-      : draft.address;
+    let convertOverrides;
+    try {
+      convertOverrides = normalizeAbandonedCheckoutConvertOverrides(
+        req.body?.customer_name,
+        req.body?.address,
+      );
+    } catch {
+      return res.status(400).json({ error: "Invalid customer name or address" });
+    }
+    const customerName = convertOverrides.customerName ?? draft.customer_name;
+    const address = convertOverrides.address ?? draft.address;
     const phone = normalizeBdPhone(draft.phone);
     if (!phone) return res.status(409).json({ error: "Checkout phone is no longer valid" });
 
@@ -5921,7 +5927,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       unit_price: item.unitPrice,
       quantity: item.quantity,
     }));
-    const subtotal = draft.cart.reduce((sum, item) => sum + Number(item.unitPrice) * Number(item.quantity), 0);
+    const subtotal = Math.round(draft.cart.reduce((sum, item) => sum + Number(item.unitPrice) * Number(item.quantity), 0) * 100) / 100;
     const routing = await resolveOrderRouting(
       supabase,
       orgId,

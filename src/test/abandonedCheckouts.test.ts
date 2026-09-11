@@ -9,6 +9,7 @@ import {
   canAcceptBrowserCapture,
   canTransitionAbandonedCheckout,
   hashAbandonedCheckoutDraftKey,
+  normalizeAbandonedCheckoutConvertOverrides,
   parseAbandonedCheckoutCapture,
   parseAbandonedCheckoutStaffEdit,
 } from "../../server/abandonedCheckouts.js";
@@ -218,5 +219,28 @@ describe("abandoned checkout staff edit parsing", () => {
       ...validEdit,
       items: [{ productName: "Honey", variantName: null, quantity: 1, unitPrice: -5 }],
     })).toThrow(AbandonedCheckoutValidationError);
+  });
+});
+
+describe("abandoned checkout convert override normalization", () => {
+  it("trims overrides within the capture bounds", () => {
+    expect(normalizeAbandonedCheckoutConvertOverrides("  Rahim Uddin  ", " House 1, Dhaka "))
+      .toEqual({ customerName: "Rahim Uddin", address: "House 1, Dhaka" });
+  });
+
+  it("falls back to the draft when overrides are missing or blank", () => {
+    expect(normalizeAbandonedCheckoutConvertOverrides(undefined, undefined))
+      .toEqual({ customerName: null, address: null });
+    expect(normalizeAbandonedCheckoutConvertOverrides("   ", ""))
+      .toEqual({ customerName: null, address: null });
+  });
+
+  it("rejects overlong or non-string overrides like capture validation", () => {
+    expect(() => normalizeAbandonedCheckoutConvertOverrides("n".repeat(121), "Dhaka"))
+      .toThrow(AbandonedCheckoutValidationError);
+    expect(() => normalizeAbandonedCheckoutConvertOverrides("Rahim", "a".repeat(501)))
+      .toThrow(AbandonedCheckoutValidationError);
+    expect(() => normalizeAbandonedCheckoutConvertOverrides(42, "Dhaka"))
+      .toThrow(AbandonedCheckoutValidationError);
   });
 });

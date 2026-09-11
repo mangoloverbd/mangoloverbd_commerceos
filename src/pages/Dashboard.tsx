@@ -848,7 +848,11 @@ export default function Dashboard() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.order) {
-        if (res.status === 409) {
+        if (res.status === 404) {
+          toast.error("Checkout is no longer active");
+          await fetchAbandonedCheckouts(true);
+          setConvertTarget(null);
+        } else if (res.status === 409) {
           toast.error("Checkout changed before it could be converted");
           await fetchAbandonedCheckouts(true);
           setConvertTarget(null);

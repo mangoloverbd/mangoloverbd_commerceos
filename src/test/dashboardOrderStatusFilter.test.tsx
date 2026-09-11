@@ -356,7 +356,7 @@ describe("dashboard order status filter", () => {
 
       await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
       expect(await screen.findByText("Abandoned Customer")).toBeInTheDocument();
-      await user.click(await screen.findByRole("button", { name: "Pending" }));
+      await user.click(await screen.findByRole("button", { name: "Move to pending" }));
       await user.click(await screen.findByRole("button", { name: /convert to pending/i }));
 
       await waitFor(() => {
@@ -378,6 +378,63 @@ describe("dashboard order status filter", () => {
       expect(successSpy).toHaveBeenCalledWith(expect.stringContaining("#104"));
     } finally {
       successSpy.mockRestore();
+    }
+  });
+
+  it("closes the convert dialog and refreshes the queue when the draft is gone", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("@/components/ui/sonner");
+    const errorSpy = vi.spyOn(toast, "error");
+    try {
+      apiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+        if (url === "/api/orders") return jsonResponse({ orders });
+        if (url === "/api/abandoned-checkouts") {
+          return jsonResponse({ checkouts: abandonedCheckouts, activeCount: 1 });
+        }
+        if (
+          url === `/api/abandoned-checkouts/${abandonedCheckouts[0].id}/convert` &&
+          options?.method === "POST"
+        ) {
+          return {
+            ok: false,
+            status: 404,
+            json: async () => ({ error: "Checkout is no longer active" }),
+          };
+        }
+        if (url === "/api/products") return jsonResponse({ products: [] });
+        if (url.startsWith("/api/analytics")) {
+          return jsonResponse({
+            revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+            profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+          });
+        }
+        return jsonResponse({ updated: 0 });
+      });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <Dashboard />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
+      expect(await screen.findByText("Abandoned Customer")).toBeInTheDocument();
+      await user.click(await screen.findByRole("button", { name: "Move to pending" }));
+      await user.click(await screen.findByRole("button", { name: /convert to pending/i }));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith("Checkout is no longer active");
+      });
+      expect(
+        apiFetch.mock.calls.filter((call) => call[0] === "/api/abandoned-checkouts").length,
+      ).toBeGreaterThan(1);
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    } finally {
+      errorSpy.mockRestore();
     }
   });
 });

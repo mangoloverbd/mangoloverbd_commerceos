@@ -106,5 +106,6 @@ export function computeAbandonedCheckoutTotals(
 ) {
   const round = (value: number) => Math.round(value * 100) / 100;
   const subtotal = round(cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0));
-  return { subtotal, total: round(subtotal + deliveryRate) };
+  const rate = Number.isFinite(deliveryRate) ? deliveryRate : 0;
+  return { subtotal, total: round(subtotal + rate) };
 }

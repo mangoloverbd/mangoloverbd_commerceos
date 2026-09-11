@@ -38,7 +38,7 @@ updates alongside the existing `contacted` / `dismissed` actions, guarded by
 the same bounds as capture validation (bounded item count, string lengths,
 quantities, prices, totals; unknown fields rejected). Only `open` and
 `contacted` drafts are editable. Edits to a resolved draft (recovered,
-dismissed, expired) are rejected with a 409 and the queue refreshes the row
+dismissed, expired) return 404 and the queue refreshes the row
 out. All staff routes keep `getToken` / `getUser` auth and the resolved Mango
 Lover BD `org_id` filter, including a draft-ownership check before any update.
 

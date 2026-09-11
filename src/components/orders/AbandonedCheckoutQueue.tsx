@@ -244,7 +244,7 @@ export function AbandonedCheckoutQueue({
                 </button>
                 <button
                   type="button"
-                  aria-label="Pending"
+                  aria-label="Move to pending"
                   onClick={() => onConvert(checkout, "pending")}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                 >
@@ -252,7 +252,7 @@ export function AbandonedCheckoutQueue({
                 </button>
                 <button
                   type="button"
-                  aria-label="On Hold"
+                  aria-label="Move to on hold"
                   onClick={() => onConvert(checkout, "on_hold")}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                 >
@@ -260,7 +260,7 @@ export function AbandonedCheckoutQueue({
                 </button>
                 <button
                   type="button"
-                  aria-label="Approved"
+                  aria-label="Move to approved"
                   onClick={() => onConvert(checkout, "approved")}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                 >
