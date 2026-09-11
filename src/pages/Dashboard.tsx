@@ -1,4 +1,5 @@
 import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -463,7 +464,11 @@ export default function Dashboard() {
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
-  const [fulfillmentTab, setFulfillmentTab] = useState<FulfillmentQueueTab>("all");
+  const location = useLocation();
+  const initialFulfillmentTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
+  const [fulfillmentTab, setFulfillmentTab] = useState<FulfillmentQueueTab>(
+    initialFulfillmentTab === "abandoned" ? "abandoned" : "all",
+  );
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
