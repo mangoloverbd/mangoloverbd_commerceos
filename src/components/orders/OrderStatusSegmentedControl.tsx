@@ -20,7 +20,7 @@ const STATUS_PRESENTATION: Record<FulfillmentQueueTab, StatusPresentation> = {
     dotClassName: "bg-black/60",
   },
   abandoned: {
-    label: "Abandoned Carts",
+    label: "Abandoned",
     dotClassName: "bg-rose-400",
   },
   pending: {
