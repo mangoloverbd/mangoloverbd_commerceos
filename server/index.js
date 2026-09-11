@@ -5848,6 +5848,151 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
   }
 });
 
+async function resolveAbandonedCatalogIds(supabase, orgId, cart) {
+  const { data: products, error } = await supabase
+    .from("products")
+    .select("id, name")
+    .eq("org_id", orgId);
+  if (error) throw error;
+  const byName = new Map(
+    (products || []).map((product) => [String(product.name || "").trim().toLowerCase(), product.id]),
+  );
+  return Promise.all(cart.map(async (item) => {
+    const productId = byName.get(String(item.productName || "").trim().toLowerCase()) || null;
+    let variantId = null;
+    if (productId && item.variantName) {
+      const { data: candidates, error: variantError } = await supabase
+        .from("product_variants")
+        .select("id, attributes")
+        .eq("org_id", orgId)
+        .eq("product_id", productId);
+      if (variantError) throw variantError;
+      variantId = matchVariantId({ label: item.variantName, variants: candidates || [] });
+    }
+    return { productId, variantId };
+  }));
+}
+
+app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!isAbandonedCheckoutDraftKey(req.params.id)) {
+      return res.status(400).json({ error: "Invalid checkout ID" });
+    }
+    const status = req.body?.status;
+    if (status !== "pending" && status !== "on_hold" && status !== "approved") {
+      return res.status(400).json({ error: "Invalid target status" });
+    }
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const now = new Date();
+    const { data: draft, error: draftError } = await supabase
+      .from("abandoned_checkouts")
+      .select(ABANDONED_CHECKOUT_DASHBOARD_FIELDS)
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+      .gt("expires_at", now.toISOString())
+      .maybeSingle();
+    if (draftError) throw draftError;
+    if (!draft) return res.status(404).json({ error: "Checkout is no longer active" });
+    if (!Array.isArray(draft.cart) || draft.cart.length === 0) {
+      return res.status(409).json({ error: "Checkout has no items to convert" });
+    }
+
+    const customerName = typeof req.body?.customer_name === "string" && req.body.customer_name.trim()
+      ? req.body.customer_name.trim()
+      : draft.customer_name;
+    const address = typeof req.body?.address === "string" && req.body.address.trim()
+      ? req.body.address.trim()
+      : draft.address;
+    const phone = normalizeBdPhone(draft.phone);
+    if (!phone) return res.status(409).json({ error: "Checkout phone is no longer valid" });
+
+    const catalogIds = await resolveAbandonedCatalogIds(supabase, orgId, draft.cart);
+    const orderItems = draft.cart.map((item, index) => ({
+      product_id: catalogIds[index].productId,
+      variant_id: catalogIds[index].variantId,
+      product_name: item.productName,
+      variant_name: item.variantName,
+      unit_price: item.unitPrice,
+      quantity: item.quantity,
+    }));
+    const subtotal = draft.cart.reduce((sum, item) => sum + Number(item.unitPrice) * Number(item.quantity), 0);
+    const routing = await resolveOrderRouting(
+      supabase,
+      orgId,
+      orderItems.map((item) => ({
+        productId: item.product_id || undefined,
+        variantId: item.variant_id || undefined,
+        productName: item.product_name,
+        quantity: item.quantity,
+      })),
+    );
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        org_id: orgId,
+        shopify_order_id: -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000),
+        order_number: await getNextManualOrderNumber(orgId),
+        customer_name: customerName,
+        phone,
+        address,
+        product: draft.cart.map((item) => item.productName).join(", "),
+        quantity: draft.cart.reduce((sum, item) => sum + Number(item.quantity), 0),
+        price: subtotal,
+        delivery_rate: draft.delivery_rate,
+        status,
+        fraud_checked: false,
+        fulfillment_status: "unfulfilled",
+        warehouse_id: routing.warehouseId,
+        warehouse_auto: true,
+        weight_kg: routing.weightKg,
+        abandoned_checkout_id: draft.id,
+      })
+      .select("*")
+      .single();
+    if (orderError) throw orderError;
+
+    const { error: itemsError } = await supabase.from("order_items").insert(
+      orderItems.map((item) => ({ ...item, org_id: orgId, order_id: order.id })),
+    );
+    if (itemsError) {
+      await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
+      throw itemsError;
+    }
+
+    // Fail closed: only a still-active draft may be recovered. If a concurrent
+    // action resolved it first, roll the created order back and report 409 so
+    // exactly one order can ever come out of a draft.
+    const { data: recovered, error: recoveryError } = await supabase
+      .from("abandoned_checkouts")
+      .update(buildRecoveredPatch(now))
+      .eq("id", draft.id)
+      .eq("org_id", orgId)
+      .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+      .gt("expires_at", now.toISOString())
+      .select("id")
+      .maybeSingle();
+    if (recoveryError) throw recoveryError;
+    if (!recovered) {
+      await supabase.from("order_items").delete().eq("order_id", order.id).eq("org_id", orgId);
+      await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
+      return res.status(409).json({ error: "Checkout changed before it could be converted" });
+    }
+
+    await sendBulkSms(orgId, "confirmation", order);
+    return res.status(201).json({ order });
+  } catch {
+    console.warn("[AbandonedCheckout] staff convert failed");
+    return res.status(500).json({ error: "Could not convert abandoned checkout" });
+  }
+});
+
 app.get("/api/orders/recent-notifications", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));

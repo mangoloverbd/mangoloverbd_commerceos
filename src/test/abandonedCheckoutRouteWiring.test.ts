@@ -103,4 +103,29 @@ describe("abandoned checkout route wiring", () => {
       webhook.indexOf("recoverCapturedCheckoutForOrder"),
     );
   });
+
+  it("converts active drafts into orders exactly once", () => {
+    const convert = routeSection(
+      'app.post("/api/abandoned-checkouts/:id/convert"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(source).toContain("async function resolveAbandonedCatalogIds");
+    expect(convert).toContain("getToken(req)");
+    expect(convert).toContain("getUser(token)");
+    expect(convert).toContain('return res.status(401).json({ error: "Unauthorized" })');
+    expect(convert).toContain("isAbandonedCheckoutDraftKey(req.params.id)");
+    expect(convert).toContain('"pending"');
+    expect(convert).toContain('"on_hold"');
+    expect(convert).toContain('"approved"');
+    expect(convert).toContain("Invalid target status");
+    expect(convert).toContain('.eq("org_id", orgId)');
+    expect(convert).toContain("ACTIVE_ABANDONED_CHECKOUT_STATUSES");
+    expect(convert).toContain('.gt("expires_at", now.toISOString())');
+    expect(convert).toContain("resolveOrderRouting");
+    expect(convert).toContain("getNextManualOrderNumber");
+    expect(convert).toContain("sendBulkSms");
+    expect(convert).toContain("abandoned_checkout_id");
+    expect(convert).toContain("buildRecoveredPatch");
+  });
 });
