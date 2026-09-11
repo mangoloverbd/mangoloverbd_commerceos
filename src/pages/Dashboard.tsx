@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,6 +52,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import PixelRipple from "@/components/ui/pixel-ripple";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
@@ -159,6 +169,14 @@ interface Order {
 
 function fmtBDT(n: number) {
   return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 0 });
+}
+
+class AbandonedCheckoutActionError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
 }
 
 // Module-level P&L snapshot so the metric cards survive navigation. Going to
@@ -460,11 +478,16 @@ export default function Dashboard() {
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [selectedAbandonedIds, setSelectedAbandonedIds] = useState<Set<string>>(new Set());
+  const [bulkAbandonedRunning, setBulkAbandonedRunning] = useState(false);
+  const [abandonedBulkMenuOpen, setAbandonedBulkMenuOpen] = useState(false);
+  const [bulkDismissCount, setBulkDismissCount] = useState(0);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const location = useLocation();
+  const navigate = useNavigate();
   const initialFulfillmentTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
   const [fulfillmentTab, setFulfillmentTab] = useState<FulfillmentQueueTab>(
     initialFulfillmentTab === "abandoned" ? "abandoned" : "all",
@@ -759,32 +782,63 @@ export default function Dashboard() {
     });
   };
 
+  const runAbandonedContacted = async (checkoutId: string): Promise<AbandonedCheckout> => {
+    const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "contacted" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.checkout) {
+      throw new AbandonedCheckoutActionError("Could not update abandoned checkout", res.status);
+    }
+
+    const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
+      || { checkouts: abandonedCheckouts, activeCount: abandonedActiveCount };
+    const checkouts = cached.checkouts.map((checkout) => checkout.id === checkoutId ? data.checkout as AbandonedCheckout : checkout);
+    const response: AbandonedCheckoutResponse = { checkouts, activeCount: cached.activeCount };
+    queryClient.setQueryData(["/api/abandoned-checkouts"], response);
+    setAbandonedCheckouts(checkouts);
+    setAbandonedActiveCount(cached.activeCount);
+    return data.checkout as AbandonedCheckout;
+  };
+
+  const runAbandonedDismissed = async (checkoutId: string): Promise<AbandonedCheckout> => {
+    const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "dismissed" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.checkout) {
+      throw new AbandonedCheckoutActionError("Could not update abandoned checkout", res.status);
+    }
+
+    const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
+      || { checkouts: abandonedCheckouts, activeCount: abandonedActiveCount };
+    const existed = cached.checkouts.some((checkout) => checkout.id === checkoutId);
+    const checkouts = cached.checkouts.filter((checkout) => checkout.id !== checkoutId);
+    const activeCount = existed
+      ? Math.max(0, cached.activeCount - 1)
+      : cached.activeCount;
+    const response: AbandonedCheckoutResponse = { checkouts, activeCount };
+    queryClient.setQueryData(["/api/abandoned-checkouts"], response);
+    setAbandonedCheckouts(checkouts);
+    setAbandonedActiveCount(activeCount);
+    return data.checkout as AbandonedCheckout;
+  };
+
   const updateAbandonedCheckout = async (checkoutId: string, action: "contacted" | "dismissed") => {
     if (abandonedActionInFlightId) return;
     setAbandonedActionInFlightId(checkoutId);
     try {
-      const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.checkout) throw new Error("Could not update abandoned checkout");
-
-      const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
-        || { checkouts: abandonedCheckouts, activeCount: abandonedActiveCount };
-      const existed = cached.checkouts.some((checkout) => checkout.id === checkoutId);
-      const checkouts = action === "dismissed"
-        ? cached.checkouts.filter((checkout) => checkout.id !== checkoutId)
-        : cached.checkouts.map((checkout) => checkout.id === checkoutId ? data.checkout as AbandonedCheckout : checkout);
-      const activeCount = action === "dismissed" && existed
-        ? Math.max(0, cached.activeCount - 1)
-        : cached.activeCount;
-      const response: AbandonedCheckoutResponse = { checkouts, activeCount };
-      queryClient.setQueryData(["/api/abandoned-checkouts"], response);
-      setAbandonedCheckouts(checkouts);
-      setAbandonedActiveCount(activeCount);
-      toast.success(action === "contacted" ? "Checkout marked as contacted" : "Checkout dismissed");
+      if (action === "contacted") {
+        await runAbandonedContacted(checkoutId);
+        toast.success("Checkout marked as contacted");
+      } else {
+        await runAbandonedDismissed(checkoutId);
+        toast.success("Checkout dismissed");
+      }
     } catch {
       toast.error("Could not update abandoned checkout");
     } finally {
@@ -832,6 +886,39 @@ export default function Dashboard() {
     }
   };
 
+  const runAbandonedConvert = async (
+    checkoutId: string,
+    status: AbandonedCheckoutConvertStatus,
+    overrides: AbandonedCheckoutConvertOverrides,
+  ): Promise<{ order_number: string }> => {
+    const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}/convert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status,
+        customer_name: overrides.customer_name,
+        address: overrides.address,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.order) {
+      throw new AbandonedCheckoutActionError("Could not convert checkout", res.status);
+    }
+
+    const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
+      || { checkouts: abandonedCheckouts, activeCount: abandonedActiveCount };
+    const existed = cached.checkouts.some((checkout) => checkout.id === checkoutId);
+    const checkouts = cached.checkouts.filter((checkout) => checkout.id !== checkoutId);
+    const activeCount = existed
+      ? Math.max(0, cached.activeCount - 1)
+      : cached.activeCount;
+    const response: AbandonedCheckoutResponse = { checkouts, activeCount };
+    queryClient.setQueryData(["/api/abandoned-checkouts"], response);
+    setAbandonedCheckouts(checkouts);
+    setAbandonedActiveCount(activeCount);
+    return data.order as { order_number: string };
+  };
+
   const convertAbandonedCheckout = async (
     checkoutId: string,
     status: AbandonedCheckoutConvertStatus,
@@ -842,51 +929,96 @@ export default function Dashboard() {
     setConvertSaving(true);
     setConvertError(null);
     try {
-      const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}/convert`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status,
-          customer_name: overrides.customer_name,
-          address: overrides.address,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.order) {
-        if (res.status === 404) {
-          toast.error("Checkout is no longer active");
-          await fetchAbandonedCheckouts(true);
-          setConvertTarget(null);
-        } else if (res.status === 409) {
-          toast.error("Checkout changed before it could be converted");
-          await fetchAbandonedCheckouts(true);
-          setConvertTarget(null);
-        } else {
-          setConvertError("Could not convert checkout");
-        }
-        return;
-      }
-
-      const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
-        || { checkouts: abandonedCheckouts, activeCount: abandonedActiveCount };
-      const existed = cached.checkouts.some((checkout) => checkout.id === checkoutId);
-      const checkouts = cached.checkouts.filter((checkout) => checkout.id !== checkoutId);
-      const activeCount = existed
-        ? Math.max(0, cached.activeCount - 1)
-        : cached.activeCount;
-      const response: AbandonedCheckoutResponse = { checkouts, activeCount };
-      queryClient.setQueryData(["/api/abandoned-checkouts"], response);
-      setAbandonedCheckouts(checkouts);
-      setAbandonedActiveCount(activeCount);
+      const order = await runAbandonedConvert(checkoutId, status, overrides);
       setConvertTarget(null);
       await queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       await fetchOrders();
-      toast.success(`Order ${data.order.order_number} created`);
-    } catch {
-      setConvertError("Could not convert checkout");
+      toast.success(`Order ${order.order_number} created`);
+    } catch (err) {
+      const statusCode = err instanceof AbandonedCheckoutActionError ? err.status : undefined;
+      if (statusCode === 404) {
+        toast.error("Checkout is no longer active");
+        await fetchAbandonedCheckouts(true);
+        setConvertTarget(null);
+      } else if (statusCode === 409) {
+        toast.error("Checkout changed before it could be converted");
+        await fetchAbandonedCheckouts(true);
+        setConvertTarget(null);
+      } else {
+        setConvertError("Could not convert checkout");
+      }
     } finally {
       setConvertSaving(false);
       setAbandonedActionInFlightId(null);
+    }
+  };
+
+  const applyBulkAbandoned = async (target: string) => {
+    if (bulkAbandonedRunning || selectedAbandonedIds.size === 0) return;
+    if (target === "dismiss") {
+      setAbandonedBulkMenuOpen(false);
+      setBulkDismissCount(selectedAbandonedIds.size);
+      return;
+    }
+    setAbandonedBulkMenuOpen(false);
+    setBulkAbandonedRunning(true);
+    const ids = filteredAbandonedCheckouts
+      .filter((checkout) => selectedAbandonedIds.has(checkout.id))
+      .map((checkout) => checkout.id);
+    let succeeded = 0;
+    const failed: string[] = [];
+    try {
+      for (const checkoutId of ids) {
+        try {
+          if (target === "contacted") {
+            await runAbandonedContacted(checkoutId);
+          } else {
+            await runAbandonedConvert(checkoutId, target as "pending" | "on_hold" | "approved", {});
+          }
+          succeeded += 1;
+        } catch {
+          failed.push(checkoutId);
+        }
+      }
+      if (target === "contacted") {
+        toast.success(succeeded === 1 ? "1 checkout marked as contacted" : `${succeeded} checkouts marked as contacted`);
+      } else {
+        const statusLabel = target === "on_hold" ? "On Hold" : target === "approved" ? "Approved" : "Pending";
+        toast.success(succeeded === 1 ? `1 order moved to ${statusLabel}` : `${succeeded} orders moved to ${statusLabel}`);
+      }
+      if (failed.length > 0) toast.error(`${failed.length} failed — kept selected`);
+      setSelectedAbandonedIds(new Set(failed));
+      void fetchAbandonedCheckouts(true);
+      if (target !== "contacted") void fetchOrders();
+    } finally {
+      setBulkAbandonedRunning(false);
+    }
+  };
+
+  const confirmBulkDismiss = async () => {
+    if (bulkAbandonedRunning) return;
+    setBulkAbandonedRunning(true);
+    const ids = filteredAbandonedCheckouts
+      .filter((checkout) => selectedAbandonedIds.has(checkout.id))
+      .map((checkout) => checkout.id);
+    let succeeded = 0;
+    const failed: string[] = [];
+    try {
+      for (const checkoutId of ids) {
+        try {
+          await runAbandonedDismissed(checkoutId);
+          succeeded += 1;
+        } catch {
+          failed.push(checkoutId);
+        }
+      }
+      toast.success(succeeded === 1 ? "1 checkout dismissed" : `${succeeded} checkouts dismissed`);
+      if (failed.length > 0) toast.error(`${failed.length} failed — kept selected`);
+      setSelectedAbandonedIds(new Set(failed));
+      setBulkDismissCount(0);
+      void fetchAbandonedCheckouts(true);
+    } finally {
+      setBulkAbandonedRunning(false);
     }
   };
 
@@ -1402,6 +1534,43 @@ export default function Dashboard() {
               </Popover>
               </>
             )}
+            {isAbandonedQueue && (
+              <Popover open={abandonedBulkMenuOpen} onOpenChange={setAbandonedBulkMenuOpen}>
+                <PopoverTrigger asChild>
+                  <PopButton
+                    color="sky"
+                    size="sm"
+                    disabled={bulkAbandonedRunning || selectedAbandonedIds.size === 0}
+                    className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
+                    data-testid="button-bulk-abandoned-status"
+                  >
+                    {bulkAbandonedRunning ? <Spinner size="sm" /> : <UpdateStatusIcon className="h-3.5 w-3.5" />}
+                    Update Status
+                    <CaretDown weight="bold" className={cn("h-3 w-3 transition-transform duration-200", abandonedBulkMenuOpen && "rotate-180")} />
+                  </PopButton>
+                </PopoverTrigger>
+                <PopoverContent data-testid="bulk-abandoned-status-menu" className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="end">
+                  <div className="flex flex-col gap-1">
+                    {[
+                      { id: "contacted", label: "Mark contacted" },
+                      { id: "pending", label: "Pending" },
+                      { id: "on_hold", label: "On Hold" },
+                      { id: "approved", label: "Approved" },
+                      { id: "dismiss", label: "Dismiss" },
+                    ].map((target) => (
+                      <button
+                        key={target.id}
+                        onClick={() => void applyBulkAbandoned(target.id)}
+                        disabled={bulkAbandonedRunning}
+                        className="flex h-9 w-full items-center rounded-xl border border-transparent px-3 text-left text-xs font-medium capitalize transition-all text-foreground hover:border-black/10 hover:bg-black/[0.04] disabled:opacity-40"
+                      >
+                        {target.label}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         </div>
 
@@ -1413,6 +1582,7 @@ export default function Dashboard() {
           onChange={(nextTab) => {
             setFulfillmentTab(nextTab);
             setOrderPage(0);
+            setSelectedAbandonedIds(new Set());
             if (nextTab === "abandoned") setSelectedOrderIds(new Set());
           }}
         />
@@ -1433,6 +1603,19 @@ export default function Dashboard() {
               setConvertTarget({ checkout, status });
             }}
             onRetry={() => void fetchAbandonedCheckouts()}
+            selectedIds={selectedAbandonedIds}
+            onToggleSelect={(checkoutId) => setSelectedAbandonedIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(checkoutId)) next.delete(checkoutId);
+              else next.add(checkoutId);
+              return next;
+            })}
+            onSelectAll={() => setSelectedAbandonedIds((prev) => (
+              prev.size === filteredAbandonedCheckouts.length && filteredAbandonedCheckouts.length > 0
+                ? new Set()
+                : new Set(filteredAbandonedCheckouts.map((checkout) => checkout.id))
+            ))}
+            onOpenCheckout={(checkoutId) => navigate(`/abandoned/${checkoutId}`)}
           />
         ) : (
           <>
@@ -1493,6 +1676,22 @@ export default function Dashboard() {
           }
         />
       )}
+      <AlertDialog open={bulkDismissCount > 0} onOpenChange={(open) => { if (!open && !bulkAbandonedRunning) setBulkDismissCount(0); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dismiss {bulkDismissCount} checkouts?</AlertDialogTitle>
+            <AlertDialogDescription>Dismiss {bulkDismissCount} checkouts? This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep checkouts</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void confirmBulkDismiss()}
+            >
+              Dismiss checkouts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </div>
   );
 }

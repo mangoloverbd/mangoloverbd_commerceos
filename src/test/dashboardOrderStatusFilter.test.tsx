@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -434,6 +434,152 @@ describe("dashboard order status filter", () => {
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       });
     } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("bulk-marks abandoned checkouts as contacted with the toolbar button", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("@/components/ui/sonner");
+    const successSpy = vi.spyOn(toast, "success");
+    const drafts = [
+      { ...abandonedCheckouts[0], id: "bulk-draft-1", customer_name: "Bulk Customer One" },
+      {
+        ...abandonedCheckouts[0],
+        id: "bulk-draft-2",
+        customer_name: "Bulk Customer Two",
+        phone: "01798765432",
+      },
+    ];
+    try {
+      apiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+        if (url === "/api/orders") return jsonResponse({ orders });
+        if (url === "/api/abandoned-checkouts") {
+          return jsonResponse({ checkouts: drafts, activeCount: drafts.length });
+        }
+        const patchTarget = drafts.find((draft) => url === `/api/abandoned-checkouts/${draft.id}`);
+        if (patchTarget && options?.method === "PATCH") {
+          return jsonResponse({ checkout: { ...patchTarget, status: "contacted" } });
+        }
+        if (url === "/api/products") return jsonResponse({ products: [] });
+        if (url.startsWith("/api/analytics")) {
+          return jsonResponse({
+            revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+            profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+          });
+        }
+        return jsonResponse({ updated: 0 });
+      });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <Dashboard />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      await user.click(await screen.findByRole("radio", { name: /^Abandoned:/ }));
+      expect(await screen.findByText("Bulk Customer One")).toBeInTheDocument();
+      await user.click(screen.getByTestId("checkbox-abandoned-bulk-draft-1"));
+      await user.click(screen.getByTestId("checkbox-abandoned-bulk-draft-2"));
+      await user.click(screen.getByTestId("button-bulk-abandoned-status"));
+      const menu = await screen.findByTestId("bulk-abandoned-status-menu");
+      await user.click(within(menu).getByRole("button", { name: "Mark contacted" }));
+
+      await waitFor(() => {
+        for (const draft of drafts) {
+          expect(apiFetch).toHaveBeenCalledWith(`/api/abandoned-checkouts/${draft.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "contacted" }),
+          });
+        }
+      });
+      await waitFor(() => {
+        expect(successSpy).toHaveBeenCalledWith("2 checkouts marked as contacted");
+      });
+    } finally {
+      successSpy.mockRestore();
+    }
+  });
+
+  it("bulk-converts abandoned checkouts and keeps failures selected", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("@/components/ui/sonner");
+    const successSpy = vi.spyOn(toast, "success");
+    const errorSpy = vi.spyOn(toast, "error");
+    const drafts = [
+      { ...abandonedCheckouts[0], id: "bulk-draft-1", customer_name: "Bulk Customer One" },
+      {
+        ...abandonedCheckouts[0],
+        id: "bulk-draft-2",
+        customer_name: "Bulk Customer Two",
+        phone: "01798765432",
+      },
+    ];
+    const converted = new Set<string>();
+    try {
+      apiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+        if (url === "/api/orders") return jsonResponse({ orders });
+        if (url === "/api/abandoned-checkouts") {
+          const remaining = drafts.filter((draft) => !converted.has(draft.id));
+          return jsonResponse({ checkouts: remaining, activeCount: remaining.length });
+        }
+        for (const draft of drafts) {
+          if (url === `/api/abandoned-checkouts/${draft.id}/convert` && options?.method === "POST") {
+            if (draft.id === "bulk-draft-1") {
+              converted.add(draft.id);
+              return {
+                ok: true,
+                status: 201,
+                json: async () => ({ order: { id: "order-9", order_number: "#109" } }),
+              };
+            }
+            return {
+              ok: false,
+              status: 409,
+              json: async () => ({ error: "Checkout changed before it could be converted" }),
+            };
+          }
+        }
+        if (url === "/api/products") return jsonResponse({ products: [] });
+        if (url.startsWith("/api/analytics")) {
+          return jsonResponse({
+            revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+            profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+          });
+        }
+        return jsonResponse({ updated: 0 });
+      });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <Dashboard />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      await user.click(await screen.findByRole("radio", { name: /^Abandoned:/ }));
+      expect(await screen.findByText("Bulk Customer One")).toBeInTheDocument();
+      await user.click(screen.getByTestId("checkbox-abandoned-bulk-draft-1"));
+      await user.click(screen.getByTestId("checkbox-abandoned-bulk-draft-2"));
+      await user.click(screen.getByTestId("button-bulk-abandoned-status"));
+      const menu = await screen.findByTestId("bulk-abandoned-status-menu");
+      await user.click(within(menu).getByRole("button", { name: "Pending" }));
+
+      await waitFor(() => {
+        expect(successSpy).toHaveBeenCalledWith("1 order moved to Pending");
+        expect(errorSpy).toHaveBeenCalledWith("1 failed — kept selected");
+      });
+      await waitFor(() => {
+        expect(screen.queryByText("Bulk Customer One")).not.toBeInTheDocument();
+      });
+      expect(screen.getByText("Bulk Customer Two")).toBeInTheDocument();
+      expect(screen.getByTestId("checkbox-abandoned-bulk-draft-2")).toHaveAttribute("aria-checked", "true");
+    } finally {
+      successSpy.mockRestore();
       errorSpy.mockRestore();
     }
   });
