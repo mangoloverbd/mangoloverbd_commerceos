@@ -18,12 +18,12 @@ const counts = {
 };
 
 describe("OrderStatusSegmentedControl", () => {
-  it("renders Abandoned Carts immediately after All Orders without adding it to order status counts", () => {
+  it("renders Abandoned immediately after All Orders without adding it to order status counts", () => {
     render(<OrderStatusSegmentedControl counts={counts} abandonedCount={15} value="all" onChange={vi.fn()} />);
 
     expect(screen.getByRole("radiogroup", { name: "Filter orders by status" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /All Orders.*127,939/ })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: /Abandoned Carts.*15/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /^Abandoned:.*15/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Ready To Ship.*57,432/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /In-Transit.*2/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Cancelled.*30,676/ })).toBeInTheDocument();
@@ -31,7 +31,7 @@ describe("OrderStatusSegmentedControl", () => {
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(12);
     expect(radios[0]).toHaveAccessibleName(/All Orders/);
-    expect(radios[1]).toHaveAccessibleName(/Abandoned Carts/);
+    expect(radios[1]).toHaveAccessibleName(/^Abandoned:/);
   });
 
   it("reports the selected status", async () => {

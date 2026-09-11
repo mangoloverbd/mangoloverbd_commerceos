@@ -147,7 +147,7 @@ describe("dashboard order status filter", () => {
     );
 
     expect(await screen.findByRole("radio", { name: /All Orders.*3/ })).toBeInTheDocument();
-    const abandonedTab = await screen.findByRole("radio", { name: /Abandoned Carts.*1/ });
+    const abandonedTab = await screen.findByRole("radio", { name: /^Abandoned:.*1/ });
     await user.click(abandonedTab);
 
     expect(await screen.findByTestId("abandoned-checkout-queue")).toHaveTextContent("Abandoned Customer");
@@ -167,7 +167,7 @@ describe("dashboard order status filter", () => {
       </QueryClientProvider>,
     );
 
-    await user.click(await screen.findByRole("radio", { name: /Abandoned Carts.*1/ }));
+    await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
     await user.click(await screen.findByRole("button", { name: "Mark as contacted" }));
 
     await waitFor(() => {
