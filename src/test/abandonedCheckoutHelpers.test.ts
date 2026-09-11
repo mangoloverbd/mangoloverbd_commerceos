@@ -5,6 +5,7 @@ import {
   abandonedCheckoutSourceLabel,
   abandonedCheckoutTelHref,
   abandonedCheckoutWhatsAppHref,
+  computeAbandonedCheckoutTotals,
   matchesAbandonedCheckoutSearch,
   type AbandonedCheckout,
 } from "@/lib/abandonedCheckouts";
@@ -53,5 +54,32 @@ describe("abandoned checkout dashboard helpers", () => {
   it("does not generate a contact target for an invalid or scrubbed number", () => {
     expect(abandonedCheckoutTelHref(null)).toBeNull();
     expect(abandonedCheckoutWhatsAppHref("0181234567")).toBeNull();
+  });
+});
+
+describe("computeAbandonedCheckoutTotals", () => {
+  it("sums lines and adds delivery", () => {
+    expect(computeAbandonedCheckoutTotals(
+      [
+        { productName: "Sundarbans Honey", variantName: "1 kg", quantity: 2, unitPrice: 750 },
+        { productName: "Kalojira", variantName: null, quantity: 1, unitPrice: 450 },
+      ],
+      100,
+    )).toEqual({ subtotal: 1950, total: 2050 });
+  });
+
+  it("returns zeros for an empty cart", () => {
+    expect(computeAbandonedCheckoutTotals([], 60)).toEqual({ subtotal: 0, total: 60 });
+  });
+
+  it("treats a non-finite delivery rate as zero", () => {
+    expect(computeAbandonedCheckoutTotals(
+      [{ productName: "Sundarbans Honey", variantName: "1 kg", quantity: 2, unitPrice: 750 }],
+      NaN,
+    )).toEqual({ subtotal: 1500, total: 1500 });
+    expect(computeAbandonedCheckoutTotals(
+      [{ productName: "Sundarbans Honey", variantName: "1 kg", quantity: 2, unitPrice: 750 }],
+      Infinity,
+    )).toEqual({ subtotal: 1500, total: 1500 });
   });
 });

@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import {
   Check,
   ClipboardText,
+  Copy,
+  Pencil,
   Phone,
   Trash,
   WhatsappLogo,
@@ -35,6 +37,8 @@ export type AbandonedCheckoutQueueProps = {
   error: string | null;
   actionInFlightId: string | null;
   onAction: (checkoutId: string, action: AbandonedCheckoutAction) => void | Promise<void>;
+  onEdit?: (checkout: AbandonedCheckout) => void;
+  onConvert?: (checkout: AbandonedCheckout, status: "pending" | "on_hold" | "approved") => void;
   onRetry?: () => void;
 };
 
@@ -55,6 +59,8 @@ export function AbandonedCheckoutQueue({
   error,
   actionInFlightId,
   onAction,
+  onEdit = () => {},
+  onConvert = () => {},
   onRetry,
 }: AbandonedCheckoutQueueProps) {
   const [dismissTarget, setDismissTarget] = useState<AbandonedCheckout | null>(null);
@@ -67,6 +73,16 @@ export function AbandonedCheckoutQueue({
       setCopyStatus("Checkout summary copied");
     } catch {
       setCopyStatus("Could not copy checkout summary");
+    }
+  };
+
+  const copyField = async (value: string, label: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(value);
+      setCopyStatus(`${label} copied`);
+    } catch {
+      setCopyStatus(`Could not copy ${label.toLowerCase()}`);
     }
   };
 
@@ -141,7 +157,36 @@ export function AbandonedCheckoutQueue({
                   <span className="font-medium tabular-nums text-black/70">{formatEstimatedTotal(checkout.total)}</span>
                 </div>
                 <p className="mt-3 text-xs leading-5 text-black/70">{abandonedCheckoutCartSummary(checkout.cart)}</p>
-                {checkout.address && <p className="mt-1 text-xs leading-5 text-black/45">{checkout.address}</p>}
+                {checkout.phone && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-black/70">
+                    <span className="tabular-nums">{checkout.phone}</span>
+                    <button
+                      type="button"
+                      aria-label="Copy phone number"
+                      onClick={() => {
+                        if (checkout.phone) void copyField(checkout.phone, "Phone number");
+                      }}
+                      className="inline-flex items-center rounded-md p-1 text-black/40 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                    >
+                      <Copy size={13} weight="light" aria-hidden />
+                    </button>
+                  </p>
+                )}
+                {checkout.address && (
+                  <p className="mt-1 text-xs leading-5 text-black/45">
+                    {checkout.address}{" "}
+                    <button
+                      type="button"
+                      aria-label="Copy address"
+                      onClick={() => {
+                        if (checkout.address) void copyField(checkout.address, "Address");
+                      }}
+                      className="inline-flex items-center rounded-md p-1 align-middle text-black/40 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                    >
+                      <Copy size={13} weight="light" aria-hidden />
+                    </button>
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
@@ -188,6 +233,39 @@ export function AbandonedCheckoutQueue({
                     Contacted
                   </button>
                 )}
+                <button
+                  type="button"
+                  aria-label="Edit checkout"
+                  onClick={() => onEdit(checkout)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                >
+                  <Pencil size={15} weight="light" aria-hidden />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move to pending"
+                  onClick={() => onConvert(checkout, "pending")}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                >
+                  Pending
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move to on hold"
+                  onClick={() => onConvert(checkout, "on_hold")}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                >
+                  On Hold
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move to approved"
+                  onClick={() => onConvert(checkout, "approved")}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                >
+                  Approved
+                </button>
                 <button
                   type="button"
                   aria-label="Dismiss checkout"

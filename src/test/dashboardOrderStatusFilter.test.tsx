@@ -260,4 +260,181 @@ describe("dashboard order status filter", () => {
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Dashboard Customer 1");
     expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Dashboard Customer 21");
   });
+
+  it("saves abandoned checkout edits through the PATCH route", async () => {
+    const user = userEvent.setup();
+    const updatedDraft = { ...abandonedCheckouts[0], customer_name: "Rahim Uddin" };
+    apiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (url === "/api/orders") return jsonResponse({ orders });
+      if (url === "/api/abandoned-checkouts") {
+        return jsonResponse({ checkouts: abandonedCheckouts, activeCount: 1 });
+      }
+      if (url === `/api/abandoned-checkouts/${abandonedCheckouts[0].id}` && options?.method === "PATCH") {
+        return jsonResponse({ checkout: updatedDraft });
+      }
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url.startsWith("/api/analytics")) {
+        return jsonResponse({
+          revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+          profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+        });
+      }
+      return jsonResponse({ updated: 0 });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
+    await user.click(await screen.findByRole("button", { name: "Edit checkout" }));
+
+    const nameField = await screen.findByLabelText(/customer name/i);
+    await user.clear(nameField);
+    await user.type(nameField, "Rahim Uddin");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        `/api/abandoned-checkouts/${abandonedCheckouts[0].id}`,
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    const patchCall = apiFetch.mock.calls.find(
+      (call) =>
+        call[0] === `/api/abandoned-checkouts/${abandonedCheckouts[0].id}` &&
+        (call[1] as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(patchCall).toBeDefined();
+    const patchBody = JSON.parse(String((patchCall?.[1] as RequestInit).body));
+    expect(patchBody).not.toHaveProperty("action");
+    expect(patchBody).toMatchObject({ customerName: "Rahim Uddin" });
+    expect(await screen.findByText("Rahim Uddin")).toBeInTheDocument();
+  });
+
+  it("converts an abandoned checkout into a pending order", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("@/components/ui/sonner");
+    const successSpy = vi.spyOn(toast, "success");
+    try {
+      apiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+        if (url === "/api/orders") return jsonResponse({ orders });
+        if (url === "/api/abandoned-checkouts") {
+          return jsonResponse({ checkouts: abandonedCheckouts, activeCount: 1 });
+        }
+        if (
+          url === `/api/abandoned-checkouts/${abandonedCheckouts[0].id}/convert` &&
+          options?.method === "POST"
+        ) {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({ order: { id: "order-1", order_number: "#104" } }),
+          };
+        }
+        if (url === "/api/products") return jsonResponse({ products: [] });
+        if (url.startsWith("/api/analytics")) {
+          return jsonResponse({
+            revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+            profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+          });
+        }
+        return jsonResponse({ updated: 0 });
+      });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <Dashboard />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
+      expect(await screen.findByText("Abandoned Customer")).toBeInTheDocument();
+      await user.click(await screen.findByRole("button", { name: "Move to pending" }));
+      await user.click(await screen.findByRole("button", { name: /convert to pending/i }));
+
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledWith(
+          `/api/abandoned-checkouts/${abandonedCheckouts[0].id}/convert`,
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({
+              status: "pending",
+              customer_name: "Abandoned Customer",
+              address: "House 1, Road 2, Dhaka",
+            }),
+          }),
+        );
+      });
+      await waitFor(() => {
+        expect(screen.queryByText("Abandoned Customer")).not.toBeInTheDocument();
+      });
+      expect(successSpy).toHaveBeenCalledWith(expect.stringContaining("#104"));
+    } finally {
+      successSpy.mockRestore();
+    }
+  });
+
+  it("closes the convert dialog and refreshes the queue when the draft is gone", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("@/components/ui/sonner");
+    const errorSpy = vi.spyOn(toast, "error");
+    try {
+      apiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+        if (url === "/api/orders") return jsonResponse({ orders });
+        if (url === "/api/abandoned-checkouts") {
+          return jsonResponse({ checkouts: abandonedCheckouts, activeCount: 1 });
+        }
+        if (
+          url === `/api/abandoned-checkouts/${abandonedCheckouts[0].id}/convert` &&
+          options?.method === "POST"
+        ) {
+          return {
+            ok: false,
+            status: 404,
+            json: async () => ({ error: "Checkout is no longer active" }),
+          };
+        }
+        if (url === "/api/products") return jsonResponse({ products: [] });
+        if (url.startsWith("/api/analytics")) {
+          return jsonResponse({
+            revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+            profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+          });
+        }
+        return jsonResponse({ updated: 0 });
+      });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <Dashboard />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
+      expect(await screen.findByText("Abandoned Customer")).toBeInTheDocument();
+      await user.click(await screen.findByRole("button", { name: "Move to pending" }));
+      await user.click(await screen.findByRole("button", { name: /convert to pending/i }));
+
+      await waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith("Checkout is no longer active");
+      });
+      expect(
+        apiFetch.mock.calls.filter((call) => call[0] === "/api/abandoned-checkouts").length,
+      ).toBeGreaterThan(1);
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });

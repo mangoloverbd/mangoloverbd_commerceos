@@ -66,6 +66,22 @@ describe("abandoned checkout route wiring", () => {
     expect(queuePatch).toContain("isAbandonedCheckoutDraftKey(req.params.id)");
   });
 
+  it("accepts staff field edits alongside contact/dismiss actions", () => {
+    const queuePatch = routeSection(
+      'app.patch("/api/abandoned-checkouts/:id"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(queuePatch).toContain("parseAbandonedCheckoutStaffEdit");
+    expect(queuePatch).toContain("Invalid checkout edits");
+    expect(queuePatch).toContain("hasAction");
+    expect(queuePatch).toContain('key !== "action"');
+    expect(queuePatch).toContain('.eq("status", current.status)');
+    expect(
+      queuePatch.indexOf('.in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)'),
+    ).toBeLessThan(queuePatch.indexOf("parseAbandonedCheckoutStaffEdit"));
+  });
+
   it("persists a draft-key hash on normal orders and recovers only after the durable order path", () => {
     const webhook = routeSection(
       'app.post("/api/custom-orders/webhook"',
@@ -86,5 +102,54 @@ describe("abandoned checkout route wiring", () => {
     expect(webhook.indexOf('rpc("replace_order_items"')).toBeLessThan(
       webhook.indexOf("recoverCapturedCheckoutForOrder"),
     );
+  });
+
+  it("converts active drafts into orders exactly once", () => {
+    const convert = routeSection(
+      'app.post("/api/abandoned-checkouts/:id/convert"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(source).toContain("async function resolveAbandonedCatalogIds");
+    expect(convert).toContain("getToken(req)");
+    expect(convert).toContain("getUser(token)");
+    expect(convert).toContain('return res.status(401).json({ error: "Unauthorized" })');
+    expect(convert).toContain("isAbandonedCheckoutDraftKey(req.params.id)");
+    expect(convert).toContain('"pending"');
+    expect(convert).toContain('"on_hold"');
+    expect(convert).toContain('"approved"');
+    expect(convert).toContain("Invalid target status");
+    expect(convert).toContain('.eq("org_id", orgId)');
+    expect(convert).toContain("ACTIVE_ABANDONED_CHECKOUT_STATUSES");
+    expect(convert).toContain('.gt("expires_at", now.toISOString())');
+    expect(convert).toContain("resolveOrderRouting");
+    expect(convert).toContain("getNextManualOrderNumber");
+    expect(convert).toContain("sendBulkSms");
+    expect(convert).toContain("abandoned_checkout_id");
+    expect(convert).toContain("buildRecoveredPatch");
+  });
+
+  it("bounds convert overrides like capture and rounds the order subtotal", () => {
+    const convert = routeSection(
+      'app.post("/api/abandoned-checkouts/:id/convert"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(convert).toContain("normalizeAbandonedCheckoutConvertOverrides");
+    expect(convert).toContain("Invalid customer name or address");
+    expect(convert).toContain('return res.status(400).json({ error: "Invalid customer name or address" })');
+    expect(convert).toContain("?? draft.customer_name");
+    expect(convert).toContain("?? draft.address");
+    expect(convert).toContain("Math.round(");
+    expect(convert).toContain("* 100) / 100");
+  });
+
+  it("reads the staff action defensively before validating the body shape", () => {
+    const queuePatch = routeSection(
+      'app.patch("/api/abandoned-checkouts/:id"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(queuePatch).toContain("req.body?.action");
   });
 });

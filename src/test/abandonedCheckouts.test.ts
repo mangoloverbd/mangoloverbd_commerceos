@@ -9,7 +9,9 @@ import {
   canAcceptBrowserCapture,
   canTransitionAbandonedCheckout,
   hashAbandonedCheckoutDraftKey,
+  normalizeAbandonedCheckoutConvertOverrides,
   parseAbandonedCheckoutCapture,
+  parseAbandonedCheckoutStaffEdit,
 } from "../../server/abandonedCheckouts.js";
 
 const draftKey = "7cb13b8e-b576-4faa-b238-cc8b73059772";
@@ -178,5 +180,67 @@ describe("abandoned checkout lifecycle", () => {
       resolution: "dismissed",
     });
     expect(buildStaffActionPatch("dismissed", "contacted", now)).toBeNull();
+  });
+});
+
+const validEdit = {
+  customerName: "Farzana Akter",
+  phone: "+880 1712-345678",
+  address: "House 1, Road 2, Dhaka",
+  items: [{ productName: "Sundarbans Honey", variantName: "1 kg", quantity: 2, unitPrice: 750 }],
+  deliveryRate: 100,
+};
+
+describe("abandoned checkout staff edit parsing", () => {
+  it("normalizes contact fields and recomputes totals from items", () => {
+    expect(parseAbandonedCheckoutStaffEdit(validEdit)).toEqual({
+      customer_name: "Farzana Akter",
+      phone: "01712345678",
+      address: "House 1, Road 2, Dhaka",
+      cart: [{ productName: "Sundarbans Honey", variantName: "1 kg", quantity: 2, unitPrice: 750 }],
+      subtotal: 1500,
+      delivery_rate: 100,
+      total: 1600,
+    });
+  });
+
+  it("rejects unknown keys, bad phones, empty carts, and out-of-range lines", () => {
+    expect(() => parseAbandonedCheckoutStaffEdit({ ...validEdit, orgId: "x" }))
+      .toThrow(AbandonedCheckoutValidationError);
+    expect(() => parseAbandonedCheckoutStaffEdit({ ...validEdit, phone: "123" }))
+      .toThrow(AbandonedCheckoutValidationError);
+    expect(() => parseAbandonedCheckoutStaffEdit({ ...validEdit, items: [] }))
+      .toThrow(AbandonedCheckoutValidationError);
+    expect(() => parseAbandonedCheckoutStaffEdit({
+      ...validEdit,
+      items: [{ productName: "Honey", variantName: null, quantity: 0, unitPrice: 750 }],
+    })).toThrow(AbandonedCheckoutValidationError);
+    expect(() => parseAbandonedCheckoutStaffEdit({
+      ...validEdit,
+      items: [{ productName: "Honey", variantName: null, quantity: 1, unitPrice: -5 }],
+    })).toThrow(AbandonedCheckoutValidationError);
+  });
+});
+
+describe("abandoned checkout convert override normalization", () => {
+  it("trims overrides within the capture bounds", () => {
+    expect(normalizeAbandonedCheckoutConvertOverrides("  Rahim Uddin  ", " House 1, Dhaka "))
+      .toEqual({ customerName: "Rahim Uddin", address: "House 1, Dhaka" });
+  });
+
+  it("falls back to the draft when overrides are missing or blank", () => {
+    expect(normalizeAbandonedCheckoutConvertOverrides(undefined, undefined))
+      .toEqual({ customerName: null, address: null });
+    expect(normalizeAbandonedCheckoutConvertOverrides("   ", ""))
+      .toEqual({ customerName: null, address: null });
+  });
+
+  it("rejects overlong or non-string overrides like capture validation", () => {
+    expect(() => normalizeAbandonedCheckoutConvertOverrides("n".repeat(121), "Dhaka"))
+      .toThrow(AbandonedCheckoutValidationError);
+    expect(() => normalizeAbandonedCheckoutConvertOverrides("Rahim", "a".repeat(501)))
+      .toThrow(AbandonedCheckoutValidationError);
+    expect(() => normalizeAbandonedCheckoutConvertOverrides(42, "Dhaka"))
+      .toThrow(AbandonedCheckoutValidationError);
   });
 });
