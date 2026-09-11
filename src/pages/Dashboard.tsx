@@ -14,7 +14,11 @@ import {
   OrderRowsPerPageSelect,
   OrderTablePagination,
 } from "@/components/orders/OrderTablePagination";
-import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegmentedControl";
+import {
+  OrderStatusSegmentedControl,
+  type FulfillmentQueueTab,
+} from "@/components/orders/OrderStatusSegmentedControl";
+import { AbandonedCheckoutQueue } from "@/components/orders/AbandonedCheckoutQueue";
 import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import {
@@ -50,6 +54,11 @@ import { planBulkStatusChange } from "@/lib/orderTransitions";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobilePnlLayout, type MobilePnlMetric } from "@/components/MobilePnlLayout";
+import {
+  matchesAbandonedCheckoutSearch,
+  type AbandonedCheckout,
+  type AbandonedCheckoutResponse,
+} from "@/lib/abandonedCheckouts";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -419,6 +428,16 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const [orders, setOrders] = useState<Order[]>(() => queryClient.getQueryData<Order[]>(["/api/orders"]) || []);
   const [loading, setLoading] = useState(() => !queryClient.getQueryData<Order[]>(["/api/orders"]));
+  const cachedAbandonedResponse = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"]);
+  const [abandonedCheckouts, setAbandonedCheckouts] = useState<AbandonedCheckout[]>(
+    () => cachedAbandonedResponse?.checkouts || [],
+  );
+  const [abandonedActiveCount, setAbandonedActiveCount] = useState(
+    () => cachedAbandonedResponse?.activeCount ?? cachedAbandonedResponse?.checkouts.length ?? 0,
+  );
+  const [abandonedLoading, setAbandonedLoading] = useState(() => !cachedAbandonedResponse);
+  const [abandonedError, setAbandonedError] = useState<string | null>(null);
+  const [abandonedActionInFlightId, setAbandonedActionInFlightId] = useState<string | null>(null);
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
@@ -426,7 +445,7 @@ export default function Dashboard() {
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
+  const [fulfillmentTab, setFulfillmentTab] = useState<FulfillmentQueueTab>("all");
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
@@ -536,12 +555,38 @@ export default function Dashboard() {
     } finally { setLoading(false); }
   }, [queryClient]);
 
+  const fetchAbandonedCheckouts = useCallback(async (silent = false) => {
+    if (!silent) setAbandonedLoading(true);
+    try {
+      const res = await apiFetch("/api/abandoned-checkouts");
+      const data: Partial<AbandonedCheckoutResponse> = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("Failed to load abandoned checkouts");
+
+      const checkouts = Array.isArray(data.checkouts) ? data.checkouts : [];
+      const activeCount = typeof data.activeCount === "number" ? data.activeCount : checkouts.length;
+      const response: AbandonedCheckoutResponse = { checkouts, activeCount };
+      queryClient.setQueryData(["/api/abandoned-checkouts"], response);
+      setAbandonedCheckouts(checkouts);
+      setAbandonedActiveCount(activeCount);
+      setAbandonedError(null);
+    } catch {
+      setAbandonedError("Could not load abandoned checkouts");
+    } finally {
+      if (!silent) setAbandonedLoading(false);
+    }
+  }, [queryClient]);
+
   // Rehydrate user-scoped cached data. On a route remount this preserves the
   // existing P&L section instead of replacing it with skeletons.
   useEffect(() => {
     const cachedOrders = queryClient.getQueryData<Order[]>(["/api/orders"]);
+    const cachedAbandoned = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"]);
     const cached = cachedSnapshotFor(dateRange, user?.id);
     setOrders(cachedOrders || []);
+    setAbandonedCheckouts(cachedAbandoned?.checkouts || []);
+    setAbandonedActiveCount(cachedAbandoned?.activeCount ?? cachedAbandoned?.checkouts.length ?? 0);
+    setAbandonedLoading(!cachedAbandoned);
+    setAbandonedError(null);
     setAnalytics(cached?.analytics ?? null);
     setPrevAnalytics(cached?.prev ?? null);
     setLoading(!cachedOrders);
@@ -608,6 +653,15 @@ export default function Dashboard() {
     const intervalId = setInterval(() => fetchOrders(), 30000);
     return () => clearInterval(intervalId);
   }, [user?.id, roleLoading, fetchOrders, fetchAnalytics, todayRange]);
+
+  // Checkout drafts are intentionally fetched and cached independently from
+  // real orders so recovery work never changes fulfillment counts or P&L.
+  useEffect(() => {
+    if (!user?.id || roleLoading) return;
+    void fetchAbandonedCheckouts();
+    const intervalId = setInterval(() => void fetchAbandonedCheckouts(true), 30000);
+    return () => clearInterval(intervalId);
+  }, [fetchAbandonedCheckouts, roleLoading, user?.id]);
 
   // Silent analytics tick keeps the selected range's metric values and mini
   // bars current without flashing the skeleton loader.
@@ -682,6 +736,41 @@ export default function Dashboard() {
     });
   };
 
+  const updateAbandonedCheckout = async (checkoutId: string, action: "contacted" | "dismissed") => {
+    if (abandonedActionInFlightId) return;
+    setAbandonedActionInFlightId(checkoutId);
+    try {
+      const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.checkout) throw new Error("Could not update abandoned checkout");
+
+      const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
+        || { checkouts: abandonedCheckouts, activeCount: abandonedActiveCount };
+      const existed = cached.checkouts.some((checkout) => checkout.id === checkoutId);
+      const checkouts = action === "dismissed"
+        ? cached.checkouts.filter((checkout) => checkout.id !== checkoutId)
+        : cached.checkouts.map((checkout) => checkout.id === checkoutId ? data.checkout as AbandonedCheckout : checkout);
+      const activeCount = action === "dismissed" && existed
+        ? Math.max(0, cached.activeCount - 1)
+        : cached.activeCount;
+      const response: AbandonedCheckoutResponse = { checkouts, activeCount };
+      queryClient.setQueryData(["/api/abandoned-checkouts"], response);
+      setAbandonedCheckouts(checkouts);
+      setAbandonedActiveCount(activeCount);
+      toast.success(action === "contacted" ? "Checkout marked as contacted" : "Checkout dismissed");
+    } catch {
+      toast.error("Could not update abandoned checkout");
+    } finally {
+      setAbandonedActionInFlightId(null);
+    }
+  };
+
+  const isAbandonedQueue = fulfillmentTab === "abandoned";
+  const activeOrderStatusFilter: OrderStatusFilter = isAbandonedQueue ? "all" : fulfillmentTab;
   const warehouseOrders = useMemo(
     () => orders.filter((order) => warehouseFilter === "all" || order.warehouse_id === warehouseFilter),
     [orders, warehouseFilter],
@@ -693,10 +782,15 @@ export default function Dashboard() {
   );
 
   const filteredOrders = useMemo(() => {
-    return filterOrdersByStatus(warehouseOrders, statusFilter).filter((order) =>
+    return filterOrdersByStatus(warehouseOrders, activeOrderStatusFilter).filter((order) =>
       matchesOrderSearch(order, debouncedSearch),
     );
-  }, [debouncedSearch, statusFilter, warehouseOrders]);
+  }, [activeOrderStatusFilter, debouncedSearch, warehouseOrders]);
+
+  const filteredAbandonedCheckouts = useMemo(
+    () => abandonedCheckouts.filter((checkout) => matchesAbandonedCheckoutSearch(checkout, debouncedSearch)),
+    [abandonedCheckouts, debouncedSearch],
+  );
 
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
@@ -1053,14 +1147,14 @@ export default function Dashboard() {
               }}
               className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground"
             >
-              Fulfillment Queue
+              {isAbandonedQueue ? "Abandoned Carts" : "Fulfillment Queue"}
             </TextEffect>
             <div className="w-px h-3.5 bg-black/10" />
-            {loading ? (
+            {(isAbandonedQueue ? abandonedLoading : loading) ? (
               <span className="text-[13px] text-muted-foreground tabular-nums">—</span>
             ) : (
               <TextEffect
-                key={filteredOrders.length}
+                key={`${isAbandonedQueue ? "abandoned" : "orders"}-${isAbandonedQueue ? filteredAbandonedCheckouts.length : filteredOrders.length}`}
                 as="span"
                 per="char"
                 delay={0.45}
@@ -1084,10 +1178,10 @@ export default function Dashboard() {
                 }}
                 className="text-[13px] text-muted-foreground tabular-nums"
               >
-                {`${filteredOrders.length} orders`}
+                {`${isAbandonedQueue ? filteredAbandonedCheckouts.length : filteredOrders.length} ${isAbandonedQueue ? "checkouts" : "orders"}`}
               </TextEffect>
              )}
-             {isMobile && (
+              {!isAbandonedQueue && isMobile && (
                <OrderRowsPerPageSelect
                  pageSize={orderPageSize}
                  onPageSizeChange={(nextPageSize) => {
@@ -1103,7 +1197,7 @@ export default function Dashboard() {
             <div className="relative max-md:w-full">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Search name, phone, order or courier ID…"
+                placeholder={isAbandonedQueue ? "Search name, phone, address or cart…" : "Search name, phone, order or courier ID…"}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20 max-md:w-full"
@@ -1111,16 +1205,18 @@ export default function Dashboard() {
               />
             </div>
 
-             {!isMobile && (
-               <OrderRowsPerPageSelect
+            {!isAbandonedQueue && (
+              <>
+              {!isMobile && (
+                <OrderRowsPerPageSelect
                  pageSize={orderPageSize}
                  onPageSizeChange={(nextPageSize) => {
                    setOrderPageSize(nextPageSize);
                    setOrderPage(0);
                  }}
                  ariaLabel="Rows per page for dashboard orders"
-               />
-             )}
+                />
+              )}
 
             <Select
               aria-label="Filter orders by warehouse"
@@ -1147,7 +1243,7 @@ export default function Dashboard() {
               Create Order
             </PopButton>
 
-            <Popover open={bulkMenuOpen} onOpenChange={setBulkMenuOpen}>
+              <Popover open={bulkMenuOpen} onOpenChange={setBulkMenuOpen}>
               <PopoverTrigger asChild>
                 <PopButton
                   color="sky"
@@ -1182,38 +1278,54 @@ export default function Dashboard() {
                   ))}
                 </div>
               </PopoverContent>
-            </Popover>
+              </Popover>
+              </>
+            )}
           </div>
         </div>
 
         <OrderStatusSegmentedControl
           counts={orderStatusCounts}
-          value={statusFilter}
-          loading={loading}
-          onChange={(nextStatus) => {
-            setStatusFilter(nextStatus);
+          abandonedCount={abandonedActiveCount}
+          value={fulfillmentTab}
+          loading={isAbandonedQueue ? abandonedLoading : loading}
+          onChange={(nextTab) => {
+            setFulfillmentTab(nextTab);
             setOrderPage(0);
+            if (nextTab === "abandoned") setSelectedOrderIds(new Set());
           }}
         />
 
-        {/* Table */}
-        <OrdersTable
-          orders={visibleOrders}
-          selectionOrders={orders}
-          loading={loading}
-          onStatusUpdate={handleStatusUpdate}
-          onOrderUpdate={handleOrderUpdate}
-          isPrintView={statusFilter === "print"}
-          selectedIds={selectedOrderIds}
-          onSelectionChange={setSelectedOrderIds}
-        />
+        {isAbandonedQueue ? (
+          <AbandonedCheckoutQueue
+            checkouts={filteredAbandonedCheckouts}
+            loading={abandonedLoading}
+            error={abandonedError}
+            actionInFlightId={abandonedActionInFlightId}
+            onAction={updateAbandonedCheckout}
+            onRetry={() => void fetchAbandonedCheckouts()}
+          />
+        ) : (
+          <>
+            <OrdersTable
+              orders={visibleOrders}
+              selectionOrders={orders}
+              loading={loading}
+              onStatusUpdate={handleStatusUpdate}
+              onOrderUpdate={handleOrderUpdate}
+              isPrintView={activeOrderStatusFilter === "print"}
+              selectedIds={selectedOrderIds}
+              onSelectionChange={setSelectedOrderIds}
+            />
 
-        <OrderTablePagination
-          page={orderSafePage}
-          pageSize={orderPageSize}
-          totalItems={filteredOrders.length}
-          onPageChange={setOrderPage}
-        />
+            <OrderTablePagination
+              page={orderSafePage}
+              pageSize={orderPageSize}
+              totalItems={filteredOrders.length}
+              onPageChange={setOrderPage}
+            />
+          </>
+        )}
       </motion.div>
 
       <OrderCreatorModal

@@ -18,16 +18,20 @@ const counts = {
 };
 
 describe("OrderStatusSegmentedControl", () => {
-  it("renders the complete fulfillment pipeline with formatted counts", () => {
-    render(<OrderStatusSegmentedControl counts={counts} value="all" onChange={vi.fn()} />);
+  it("renders Abandoned Carts immediately after All Orders without adding it to order status counts", () => {
+    render(<OrderStatusSegmentedControl counts={counts} abandonedCount={15} value="all" onChange={vi.fn()} />);
 
     expect(screen.getByRole("radiogroup", { name: "Filter orders by status" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /All Orders.*127,939/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /Abandoned Carts.*15/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Ready To Ship.*57,432/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /In-Transit.*2/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Cancelled.*30,676/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Print.*0/ })).toBeInTheDocument();
-    expect(screen.getAllByRole("radio")).toHaveLength(11);
+    const radios = screen.getAllByRole("radio");
+    expect(radios).toHaveLength(12);
+    expect(radios[0]).toHaveAccessibleName(/All Orders/);
+    expect(radios[1]).toHaveAccessibleName(/Abandoned Carts/);
   });
 
   it("reports the selected status", async () => {
@@ -44,7 +48,7 @@ describe("OrderStatusSegmentedControl", () => {
     render(<OrderStatusSegmentedControl counts={counts} value="all" onChange={vi.fn()} loading />);
 
     expect(screen.getByRole("radio", { name: /All Orders.*loading/ })).toBeInTheDocument();
-    expect(screen.getAllByText("—")).toHaveLength(11);
+    expect(screen.getAllByText("—")).toHaveLength(12);
   });
 
   it("uses a full-width gray tray with neutral count text", () => {
@@ -53,7 +57,7 @@ describe("OrderStatusSegmentedControl", () => {
     expect(screen.getByTestId("order-status-scroll-container")).toHaveClass("w-full");
     expect(screen.getByTestId("order-status-control")).toHaveClass(
       "xl:grid",
-      "xl:grid-cols-11",
+      "xl:grid-cols-12",
       "xl:w-full",
       "rounded-xl",
       "bg-black/[0.045]",

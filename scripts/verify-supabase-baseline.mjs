@@ -17,6 +17,35 @@ const migrationPaths = readdirSync(migrationsDir)
   .sort()
   .map((name) => join(migrationsDir, name));
 
+// This is the canonical runtime-table contract. Keep the SQL assertion below
+// derived from this list so adding a legitimate table requires an explicit,
+// reviewable contract change instead of a fragile magic-number update.
+const runtimeTables = Object.freeze([
+  "user_roles",
+  "app_settings",
+  "orders",
+  "products",
+  "product_images",
+  "product_variants",
+  "storefront_settings",
+  "social_conversations",
+  "social_messages",
+  "social_inbox_orders",
+  "meta_connections",
+  "meta_pages",
+  "meta_instagram_accounts",
+  "meta_whatsapp_accounts",
+  "meta_ad_accounts",
+  "meta_webhook_events",
+  "order_chat_history",
+  "ai_action_log",
+  "warehouses",
+  "order_items",
+  "abandoned_checkouts",
+]);
+
+const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
+
 function commandPath(name) {
   const configuredBin = process.env.PG_BINDIR;
   if (configuredBin) return join(configuredBin, name);
@@ -90,8 +119,28 @@ begin
   select count(*) into runtime_table_count
   from pg_class
   where relnamespace = 'public'::regnamespace and relkind = 'r';
-  if runtime_table_count <> 20 then
-    raise exception 'Expected 20 runtime tables, found %', runtime_table_count;
+  if runtime_table_count <> ${runtimeTables.length} then
+    raise exception 'Expected ${runtimeTables.length} runtime tables, found %', runtime_table_count;
+  end if;
+  if exists (
+    select expected_table
+    from unnest(array[${runtimeTablesSql}]::text[]) as expected_table
+    except
+    select relname
+    from pg_class
+    where relnamespace = 'public'::regnamespace and relkind = 'r'
+  ) then
+    raise exception 'A canonical runtime table is missing';
+  end if;
+  if exists (
+    select relname
+    from pg_class
+    where relnamespace = 'public'::regnamespace and relkind = 'r'
+    except
+    select expected_table
+    from unnest(array[${runtimeTablesSql}]::text[]) as expected_table
+  ) then
+    raise exception 'An unexpected runtime table exists';
   end if;
 
   select count(*) into rls_table_count
@@ -188,6 +237,10 @@ begin
       ('orders', 'source'),
       ('orders', 'payment_method'),
       ('orders', 'courier_fee'),
+      ('orders', 'abandoned_checkout_id'),
+      ('orders', 'abandoned_draft_key_hash'),
+      ('abandoned_checkouts', 'draft_key'),
+      ('abandoned_checkouts', 'expires_at'),
       ('products', 'selling_price'),
       ('products', 'stock_quantity'),
       ('products', 'image_embedding'),

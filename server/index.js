@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { isIP } from "node:net";
 import { readFile } from "fs/promises";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
@@ -54,6 +55,20 @@ import {
   processStorefrontSeoRefresh,
   queueStorefrontSeoRefresh,
 } from "./storefrontSeoRefresh.js";
+import {
+  ACTIVE_ABANDONED_CHECKOUT_STATUSES,
+  buildCaptureInsertRow,
+  buildCaptureUpdatePatch,
+  buildExpiryPatch,
+  buildPersonalDataScrubPatch,
+  buildRecoveredPatch,
+  buildStaffActionPatch,
+  canAcceptBrowserCapture,
+  hashAbandonedCheckoutDraftKey,
+  isAbandonedCheckoutDraftKey,
+  normalizeBdPhone,
+  parseAbandonedCheckoutCapture,
+} from "./abandonedCheckouts.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -199,6 +214,7 @@ let rlAPI = null;
 let rlHandleClaimUser = null;
 let rlHandleClaimIp = null;
 let rlPublicRead = null;
+let rlAbandonedCheckoutCapture = null;
 
 // Cloudflare edge-cache purge + warm-token bypass (Task 1).
 const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
@@ -241,6 +257,11 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       redis: redisClient,
       limiter: Ratelimit.slidingWindow(60, "60 s"),
       prefix: "rl:public:read",
+    });
+    rlAbandonedCheckoutCapture = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(30, "10 m"),
+      prefix: "rl:abandoned-checkout:capture",
     });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
@@ -307,6 +328,35 @@ async function runRateLimit(limiter, identifier, res, next) {
   } catch (err) {
     console.warn("[RateLimit] Redis check failed, allowing request:", err.message);
     next();
+  }
+}
+
+async function allowAbandonedCheckoutCapture(req, res, orgId) {
+  if (!rlAbandonedCheckoutCapture) return true;
+  const forwardedHeader = req.headers["x-storefront-client-ip"];
+  const forwardedClientIp = (Array.isArray(forwardedHeader) ? forwardedHeader[0] : forwardedHeader)?.trim() || "";
+  const clientIp = isIP(forwardedClientIp)
+    ? forwardedClientIp
+    : req.headers["cf-connecting-ip"]
+    || req.ip
+    || req.headers["x-forwarded-for"]?.split(",")[0]?.trim()
+    || req.socket.remoteAddress
+    || "unknown";
+  try {
+    const { success, limit, remaining, reset } = await rlAbandonedCheckoutCapture.limit(`${orgId}:${clientIp}`);
+    res.setHeader("X-RateLimit-Limit", limit);
+    res.setHeader("X-RateLimit-Remaining", remaining);
+    res.setHeader("X-RateLimit-Reset", reset);
+    if (success) return true;
+
+    const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+    res.setHeader("Retry-After", retryAfter);
+    res.status(429).json({ error: "Too many capture requests. Please try again shortly." });
+    return false;
+  } catch {
+    // Capture remains non-blocking when the optional Redis limiter is unavailable.
+    console.warn("[AbandonedCheckout] capture rate limiter unavailable");
+    return true;
   }
 }
 
@@ -541,6 +591,31 @@ async function getUserOrg(supabase, userId) {
   return { orgId, role };
 }
 
+function customStoreApiKeyFromRequest(req) {
+  const raw = req.headers["x-api-key"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function resolveCustomStoreOrgId(supabase, apiKey) {
+  if (!apiKey) return null;
+  const { data: settings, error } = await supabase
+    .from("app_settings")
+    .select("key")
+    .eq("value", apiKey)
+    .like("key", "%:custom_store_api_key");
+  if (error) throw error;
+
+  for (const setting of settings || []) {
+    const key = String(setting.key || "");
+    const suffix = ":custom_store_api_key";
+    if (!key.endsWith(suffix)) continue;
+    const orgId = key.slice(0, -suffix.length);
+    if (isValidOrgId(orgId)) return orgId;
+  }
+  return null;
+}
+
 async function requireAdmin(req, res) {
   const { user } = await getUser(getToken(req));
   if (!user) {
@@ -609,17 +684,6 @@ function parseOpenAIError(status, body) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeBdPhone(phone) {
-  let clean = (phone || "").replace(/\D/g, "");
-  if (clean.startsWith("880")) {
-    const after = clean.slice(3);
-    if (after.startsWith("01") && after.length === 11) clean = after;
-    else if (after.startsWith("1") && after.length === 10) clean = "0" + after;
-  }
-  if (clean.length !== 11 || !clean.startsWith("01")) return null;
-  return clean;
 }
 
 // Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
@@ -2748,6 +2812,58 @@ app.get("/api/internal/storefront-seo-refresh", async (req, res) => {
   } catch {
     console.warn("[storefront-seo] retry scan failed");
     return res.status(500).json({ error: "Could not refresh storefront SEO deployments" });
+  }
+});
+
+async function runAbandonedCheckoutMaintenance() {
+  const supabase = getServiceSupabase();
+  const { data: activeRows, error: activeRowsError } = await supabase
+    .from("abandoned_checkouts")
+    .select("org_id")
+    .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+    .limit(1000);
+  if (activeRowsError) throw activeRowsError;
+
+  const now = new Date();
+  let recovered = 0;
+  const orgIds = [...new Set((activeRows || []).map((row) => row.org_id).filter(Boolean))];
+  for (const orgId of orgIds) {
+    const { data: recoveredCount, error: reconcileError } = await supabase
+      .rpc("reconcile_abandoned_checkouts", { p_org_id: orgId });
+    if (reconcileError) throw reconcileError;
+    recovered += Number(recoveredCount) || 0;
+  }
+
+  const { count: expired, error: expiryError } = await supabase
+    .from("abandoned_checkouts")
+    .update(buildExpiryPatch(now), { count: "exact" })
+    .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+    .lte("expires_at", now.toISOString());
+  if (expiryError) throw expiryError;
+
+  // Recovered and dismissed drafts retain only their non-contact audit state
+  // after the same fixed expiry; changing their status would erase that audit.
+  const { count: scrubbed, error: scrubError } = await supabase
+    .from("abandoned_checkouts")
+    .update(buildPersonalDataScrubPatch(), { count: "exact" })
+    .in("status", ["dismissed", "recovered", "expired"])
+    .lte("expires_at", now.toISOString());
+  if (scrubError) throw scrubError;
+
+  return { scannedWorkspaces: orgIds.length, recovered, expired: expired || 0, scrubbed: scrubbed || 0 };
+}
+
+app.get("/api/internal/abandoned-checkouts-maintenance", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const result = await runAbandonedCheckoutMaintenance();
+    return res.json({ ok: true, ...result });
+  } catch {
+    console.warn("[AbandonedCheckout] maintenance failed");
+    return res.status(500).json({ error: "Could not maintain abandoned checkouts" });
   }
 });
 
@@ -5616,6 +5732,105 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
+const ABANDONED_CHECKOUT_DASHBOARD_FIELDS = [
+  "id",
+  "status",
+  "customer_name",
+  "phone",
+  "address",
+  "cart",
+  "subtotal",
+  "delivery_rate",
+  "total",
+  "source",
+  "source_path",
+  "campaign",
+  "contacted_at",
+  "created_at",
+  "updated_at",
+].join(", ");
+
+app.get("/api/abandoned-checkouts", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const now = new Date();
+    const { data, error } = await supabase
+      .from("abandoned_checkouts")
+      .select(ABANDONED_CHECKOUT_DASHBOARD_FIELDS)
+      .eq("org_id", orgId)
+      .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+      .gt("expires_at", now.toISOString())
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    const checkouts = (data || []).sort((left, right) => {
+      if (left.status !== right.status) return left.status === "open" ? -1 : 1;
+      return Date.parse(right.created_at) - Date.parse(left.created_at);
+    });
+    return res.json({ checkouts, activeCount: checkouts.length });
+  } catch {
+    console.warn("[AbandonedCheckout] active queue read failed");
+    return res.status(500).json({ error: "Could not load abandoned checkouts" });
+  }
+});
+
+app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!isAbandonedCheckoutDraftKey(req.params.id)) {
+      return res.status(400).json({ error: "Invalid checkout ID" });
+    }
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
+      || Object.keys(req.body).some((key) => key !== "action")) {
+      return res.status(400).json({ error: "Invalid checkout action" });
+    }
+    const action = req.body.action;
+    if (action !== "contacted" && action !== "dismissed") {
+      return res.status(400).json({ error: "Invalid checkout action" });
+    }
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const now = new Date();
+    const { data: current, error: currentError } = await supabase
+      .from("abandoned_checkouts")
+      .select("id, status")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+      .gt("expires_at", now.toISOString())
+      .maybeSingle();
+    if (currentError) throw currentError;
+    if (!current) return res.status(404).json({ error: "Checkout is no longer active" });
+
+    const patch = buildStaffActionPatch(current.status, action, now);
+    if (!patch) return res.status(409).json({ error: "Checkout action is not allowed" });
+
+    const { data: updated, error: updateError } = await supabase
+      .from("abandoned_checkouts")
+      .update(patch)
+      .eq("id", current.id)
+      .eq("org_id", orgId)
+      .eq("status", current.status)
+      .gt("expires_at", now.toISOString())
+      .select(ABANDONED_CHECKOUT_DASHBOARD_FIELDS)
+      .maybeSingle();
+    if (updateError) throw updateError;
+    if (!updated) return res.status(409).json({ error: "Checkout changed before it could be updated" });
+    return res.json({ checkout: updated });
+  } catch {
+    console.warn("[AbandonedCheckout] staff action failed");
+    return res.status(500).json({ error: "Could not update abandoned checkout" });
+  }
+});
+
 app.get("/api/orders/recent-notifications", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -6010,27 +6225,139 @@ app.patch("/api/orders/:id/items", async (req, res) => {
   }
 });
 
+async function persistAbandonedCheckoutCapture(supabase, orgId, capture, now) {
+  const { data: existing, error: existingError } = await supabase
+    .from("abandoned_checkouts")
+    .select("id, status, expires_at")
+    .eq("org_id", orgId)
+    .eq("draft_key", capture.draftKey)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
+  const updateExisting = async (checkout) => {
+    if (!canAcceptBrowserCapture({ status: checkout.status, expiresAt: checkout.expires_at }, now)) {
+      return null;
+    }
+    const { data, error } = await supabase
+      .from("abandoned_checkouts")
+      .update(buildCaptureUpdatePatch(capture))
+      .eq("id", checkout.id)
+      .eq("org_id", orgId)
+      .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+      .gt("expires_at", now.toISOString())
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  };
+
+  if (existing) return updateExisting(existing);
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("abandoned_checkouts")
+    .insert(buildCaptureInsertRow(orgId, capture, now))
+    .select("id")
+    .single();
+  if (!insertError) return inserted;
+  if (insertError.code !== "23505") throw insertError;
+
+  // A concurrent browser retry may have won the unique draft-key insert. Read
+  // the canonical row and update it only while it remains active and unexpired.
+  const { data: racedCheckout, error: racedReadError } = await supabase
+    .from("abandoned_checkouts")
+    .select("id, status, expires_at")
+    .eq("org_id", orgId)
+    .eq("draft_key", capture.draftKey)
+    .maybeSingle();
+  if (racedReadError) throw racedReadError;
+  return racedCheckout ? updateExisting(racedCheckout) : null;
+}
+
+async function recoverCapturedCheckoutForOrder(supabase, orgId, checkoutId, order, now) {
+  if (!checkoutId || !order?.id) return false;
+  if (order.abandoned_checkout_id && order.abandoned_checkout_id !== checkoutId) return false;
+
+  if (!order.abandoned_checkout_id) {
+    const { error: orderLinkError } = await supabase
+      .from("orders")
+      .update({ abandoned_checkout_id: checkoutId })
+      .eq("id", order.id)
+      .eq("org_id", orgId)
+      .is("abandoned_checkout_id", null);
+    if (orderLinkError) throw orderLinkError;
+  }
+
+  const { error: recoveryError } = await supabase
+    .from("abandoned_checkouts")
+    .update(buildRecoveredPatch(now))
+    .eq("id", checkoutId)
+    .eq("org_id", orgId)
+    .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+    .gt("expires_at", now.toISOString());
+  if (recoveryError) throw recoveryError;
+  return true;
+}
+
+app.post("/api/custom-orders/abandoned-checkouts", async (req, res) => {
+  try {
+    const apiKey = customStoreApiKeyFromRequest(req);
+    if (!apiKey) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const orgId = await resolveCustomStoreOrgId(supabase, apiKey);
+    if (!orgId) return res.status(401).json({ error: "Unauthorized" });
+    if (!await allowAbandonedCheckoutCapture(req, res, orgId)) return;
+
+    let capture;
+    try {
+      capture = parseAbandonedCheckoutCapture(req.body);
+    } catch {
+      return res.status(400).json({ error: "Invalid checkout capture" });
+    }
+
+    const now = new Date();
+    const checkout = await persistAbandonedCheckoutCapture(supabase, orgId, capture, now);
+    const draftKeyHash = hashAbandonedCheckoutDraftKey(capture.draftKey);
+    if (checkout && draftKeyHash) {
+      const { data: matchingOrder, error: matchingOrderError } = await supabase
+        .from("orders")
+        .select("id, abandoned_checkout_id")
+        .eq("org_id", orgId)
+        .eq("abandoned_draft_key_hash", draftKeyHash)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (matchingOrderError) throw matchingOrderError;
+      if (matchingOrder) {
+        try {
+          await recoverCapturedCheckoutForOrder(supabase, orgId, checkout.id, matchingOrder, now);
+        } catch {
+          // The durable order hash lets the daily reconciliation pass repair
+          // this linkage. Never emit checkout data in logs.
+          console.warn("[AbandonedCheckout] late recovery linkage deferred");
+        }
+      }
+    }
+
+    return res.status(201).json({ ok: true });
+  } catch {
+    console.warn("[AbandonedCheckout] capture persistence failed");
+    return res.status(503).json({ error: "Could not save checkout details" });
+  }
+});
+
 app.post("/api/custom-orders/webhook", async (req, res) => {
   try {
-    const apiKey = req.headers["x-api-key"];
+    const apiKey = customStoreApiKeyFromRequest(req);
     if (!apiKey) {
       return res.status(401).json({ error: "Missing x-api-key header" });
     }
 
     const supabase = getServiceSupabase();
-    // Look up the org_id by API key in app_settings.
-    const { data: settings, error: settingsError } = await supabase
-      .from("app_settings")
-      .select("key")
-      .eq("value", apiKey)
-      .like("key", "%:custom_store_api_key");
-
-    if (settingsError || !settings || settings.length === 0) {
+    const orgId = await resolveCustomStoreOrgId(supabase, apiKey);
+    if (!orgId) {
       return res.status(401).json({ error: "Invalid API Key" });
     }
-
-    // Extract orgId from the setting key (orgId is a UUID before the colon)
-    const orgId = settings[0].key.split(":")[0];
 
     // Validate and format incoming order data
     const allowed = [
@@ -6047,6 +6374,38 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     const row = { org_id: orgId, source: "custom_store" };
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
+    }
+
+    const submittedDraftKey = req.body?.abandoned_checkout_draft_key;
+    const abandonedDraftKey = isAbandonedCheckoutDraftKey(submittedDraftKey)
+      ? submittedDraftKey.toLowerCase()
+      : null;
+    const abandonedDraftKeyHash = abandonedDraftKey
+      ? hashAbandonedCheckoutDraftKey(abandonedDraftKey)
+      : null;
+    let matchingAbandonedCheckout = null;
+    if (abandonedDraftKeyHash) {
+      row.abandoned_draft_key_hash = abandonedDraftKeyHash;
+      try {
+        const nowIso = new Date().toISOString();
+        const { data: checkout, error: checkoutError } = await supabase
+          .from("abandoned_checkouts")
+          .select("id")
+          .eq("org_id", orgId)
+          .eq("draft_key", abandonedDraftKey)
+          .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+          .gt("expires_at", nowIso)
+          .maybeSingle();
+        if (checkoutError) throw checkoutError;
+        if (checkout) {
+          matchingAbandonedCheckout = checkout;
+          row.abandoned_checkout_id = checkout.id;
+        }
+      } catch {
+        // The normal order is authoritative. Its stored hash allows a later
+        // maintenance pass to recover the checkout without blocking purchase.
+        console.warn("[AbandonedCheckout] order recovery lookup deferred");
+      }
     }
 
     // Force the canonical sequential order number, ignoring any provided order identifier.
@@ -6108,6 +6467,22 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
         console.error("Custom Store Webhook authoritative order refresh failed:", refreshedOrderError);
       } else {
         persistedOrder = refreshedOrder;
+      }
+    }
+
+    if (matchingAbandonedCheckout) {
+      try {
+        await recoverCapturedCheckoutForOrder(
+          supabase,
+          orgId,
+          matchingAbandonedCheckout.id,
+          persistedOrder,
+          new Date(),
+        );
+      } catch {
+        // Keep a successful real order successful. Reconciliation can use its
+        // scoped relationship or server-side draft hash without any PII log.
+        console.warn("[AbandonedCheckout] order recovery update deferred");
       }
     }
 

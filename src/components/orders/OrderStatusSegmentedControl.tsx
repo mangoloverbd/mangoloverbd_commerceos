@@ -12,10 +12,16 @@ type StatusPresentation = {
   dotClassName: string;
 };
 
-const STATUS_PRESENTATION: Record<OrderStatusFilter, StatusPresentation> = {
+export type FulfillmentQueueTab = OrderStatusFilter | "abandoned";
+
+const STATUS_PRESENTATION: Record<FulfillmentQueueTab, StatusPresentation> = {
   all: {
     label: "All Orders",
     dotClassName: "bg-black/60",
+  },
+  abandoned: {
+    label: "Abandoned Carts",
+    dotClassName: "bg-rose-400",
   },
   pending: {
     label: "Pending",
@@ -59,15 +65,23 @@ const STATUS_PRESENTATION: Record<OrderStatusFilter, StatusPresentation> = {
   },
 };
 
+const FULFILLMENT_QUEUE_TABS: FulfillmentQueueTab[] = [
+  "all",
+  "abandoned",
+  ...ORDER_STATUS_FILTERS.filter((status) => status !== "all"),
+];
+
 export type OrderStatusSegmentedControlProps = {
   counts: Record<OrderStatusFilter, number>;
-  value: OrderStatusFilter;
-  onChange: (value: OrderStatusFilter) => void;
+  abandonedCount?: number;
+  value: FulfillmentQueueTab;
+  onChange: (value: FulfillmentQueueTab) => void;
   loading?: boolean;
 };
 
 export function OrderStatusSegmentedControl({
   counts,
+  abandonedCount = 0,
   value,
   onChange,
   loading = false,
@@ -83,13 +97,14 @@ export function OrderStatusSegmentedControl({
         selectedKeys={new Set([value])}
         onSelectionChange={(keys) => {
           const selected = [...keys][0];
-          if (selected) onChange(String(selected) as OrderStatusFilter);
+          if (selected) onChange(String(selected) as FulfillmentQueueTab);
         }}
-        className="w-max min-w-full rounded-xl bg-black/[0.045] p-1 ring-1 ring-black/[0.025] xl:grid xl:w-full xl:grid-cols-11"
+        className="w-max min-w-full rounded-xl bg-black/[0.045] p-1 ring-1 ring-black/[0.025] xl:grid xl:w-full xl:grid-cols-12"
       >
-        {ORDER_STATUS_FILTERS.map((status) => {
+        {FULFILLMENT_QUEUE_TABS.map((status) => {
           const presentation = STATUS_PRESENTATION[status];
-          const formattedCount = counts[status].toLocaleString("en-BD");
+          const count = status === "abandoned" ? abandonedCount : counts[status];
+          const formattedCount = count.toLocaleString("en-BD");
 
           return (
             <SegmentedControlItem

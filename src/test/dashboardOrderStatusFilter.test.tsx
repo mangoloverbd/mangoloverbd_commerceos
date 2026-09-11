@@ -57,6 +57,24 @@ const orders = [
   },
 ];
 
+const abandonedCheckouts = [{
+  id: "7cb13b8e-b576-4faa-b238-cc8b73059772",
+  status: "open",
+  customer_name: "Abandoned Customer",
+  phone: "01712345678",
+  address: "House 1, Road 2, Dhaka",
+  cart: [{ productName: "Sundarbans Honey", variantName: "1 kg", quantity: 1, unitPrice: 750 }],
+  subtotal: 750,
+  delivery_rate: 100,
+  total: 850,
+  source: "sundarbans_honey",
+  source_path: "/step/sundarbans-natural-honey",
+  campaign: {},
+  contacted_at: null,
+  created_at: "2026-09-11T12:00:00.000Z",
+  updated_at: "2026-09-11T12:00:00.000Z",
+}];
+
 function jsonResponse(body: unknown) {
   return { ok: true, json: async () => body };
 }
@@ -68,6 +86,10 @@ describe("dashboard order status filter", () => {
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (url: string) => {
       if (url === "/api/orders") return jsonResponse({ orders });
+      if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: abandonedCheckouts, activeCount: 1 });
+      if (url === `/api/abandoned-checkouts/${abandonedCheckouts[0].id}`) {
+        return jsonResponse({ checkout: { ...abandonedCheckouts[0], status: "contacted" } });
+      }
       if (url === "/api/products") return jsonResponse({ products: [] });
       if (url.startsWith("/api/analytics")) {
         return jsonResponse({
@@ -99,6 +121,52 @@ describe("dashboard order status filter", () => {
     expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Delivered Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Cancelled Customer");
+  });
+
+  it("switches to an independent abandoned checkout queue without changing order counts or bulk controls", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("radio", { name: /All Orders.*3/ })).toBeInTheDocument();
+    const abandonedTab = await screen.findByRole("radio", { name: /Abandoned Carts.*1/ });
+    await user.click(abandonedTab);
+
+    expect(await screen.findByTestId("abandoned-checkout-queue")).toHaveTextContent("Abandoned Customer");
+    expect(screen.getByRole("radio", { name: /All Orders.*3/ })).toBeInTheDocument();
+    expect(screen.queryByTestId("button-bulk-status")).not.toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith("/api/abandoned-checkouts");
+  });
+
+  it("updates the independent checkout cache through the scoped staff action route", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("radio", { name: /Abandoned Carts.*1/ }));
+    await user.click(await screen.findByRole("button", { name: "Mark as contacted" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Contacted")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Mark as contacted" })).not.toBeInTheDocument();
+    });
+    expect(apiFetch).toHaveBeenCalledWith(`/api/abandoned-checkouts/${abandonedCheckouts[0].id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "contacted" }),
+    });
   });
 
   it("searches orders by Steadfast consignment ID and tracking code", async () => {
