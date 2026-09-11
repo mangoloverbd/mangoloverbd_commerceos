@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
+import { motion } from "framer-motion";
 import {
   Check,
   ClipboardText,
@@ -28,6 +29,7 @@ import {
   abandonedCheckoutWhatsAppHref,
   type AbandonedCheckout,
 } from "@/lib/abandonedCheckouts";
+import { cn } from "@/lib/utils";
 
 type AbandonedCheckoutAction = "contacted" | "dismissed";
 
@@ -40,6 +42,10 @@ export type AbandonedCheckoutQueueProps = {
   onEdit?: (checkout: AbandonedCheckout) => void;
   onConvert?: (checkout: AbandonedCheckout, status: "pending" | "on_hold" | "approved") => void;
   onRetry?: () => void;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onSelectAll?: () => void;
+  onOpenCheckout?: (id: string) => void;
 };
 
 function formatEstimatedTotal(total: number | null) {
@@ -62,6 +68,10 @@ export function AbandonedCheckoutQueue({
   onEdit = () => {},
   onConvert = () => {},
   onRetry,
+  selectedIds = new Set(),
+  onToggleSelect = () => {},
+  onSelectAll = () => {},
+  onOpenCheckout = () => {},
 }: AbandonedCheckoutQueueProps) {
   const [dismissTarget, setDismissTarget] = useState<AbandonedCheckout | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
@@ -128,17 +138,101 @@ export function AbandonedCheckoutQueue({
     );
   }
 
+  const allSelected = checkouts.length > 0 && checkouts.every((checkout) => selectedIds.has(checkout.id));
+
   return (
     <>
+      <div className="flex items-center gap-2 px-4 py-2 sm:px-6">
+        <div
+          data-testid="checkbox-abandoned-all"
+          role="checkbox"
+          aria-checked={allSelected}
+          tabIndex={0}
+          onClick={() => onSelectAll()}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            onSelectAll();
+          }}
+          className={cn(
+            "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200",
+            allSelected
+              ? "bg-[#0285F7] border-[#0285F7] scale-105 shadow-sm"
+              : "border-black/20 bg-white hover:border-black/40 active:scale-95"
+          )}
+        >
+          {allSelected && (
+            <motion.svg
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 500, damping: 25 }}
+              viewBox="0 0 12 12"
+              className="w-3 h-3"
+              fill="none"
+            >
+              <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </motion.svg>
+          )}
+        </div>
+        <span className="text-xs text-black/45">{selectedIds.size} selected</span>
+      </div>
       <div className="divide-y divide-black/[0.08]" data-testid="abandoned-checkout-queue">
         {checkouts.map((checkout) => {
           const callHref = abandonedCheckoutTelHref(checkout.phone);
           const whatsAppHref = abandonedCheckoutWhatsAppHref(checkout.phone);
           const isUpdating = actionInFlightId === checkout.id;
           const isNew = checkout.status === "open";
+          const selected = selectedIds.has(checkout.id);
 
           return (
-            <article key={checkout.id} className="grid gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <article
+              key={checkout.id}
+              tabIndex={0}
+              onClick={(event) => {
+                const target = event.target as HTMLElement;
+                if (target.closest("button, a, input, textarea, select, [role='button'], [role='checkbox'], [data-row-interactive='true']")) return;
+                onOpenCheckout(checkout.id);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                const target = event.target as HTMLElement;
+                if (target.closest("button, a, input, textarea, select, [role='button'], [role='checkbox'], [data-row-interactive='true']")) return;
+                event.preventDefault();
+                onOpenCheckout(checkout.id);
+              }}
+              className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center"
+            >
+              <div
+                data-testid={`checkbox-abandoned-${checkout.id}`}
+                role="checkbox"
+                aria-checked={selected}
+                tabIndex={0}
+                onClick={() => onToggleSelect(checkout.id)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  onToggleSelect(checkout.id);
+                }}
+                className={cn(
+                  "w-[18px] h-[18px] rounded-[5px] border-[1.5px] flex items-center justify-center cursor-pointer transition-all duration-200 mt-1",
+                  selected
+                    ? "bg-[#0285F7] border-[#0285F7] scale-105 shadow-sm"
+                    : "border-black/20 bg-white hover:border-black/40 active:scale-95"
+                )}
+              >
+                {selected && (
+                  <motion.svg
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                    viewBox="0 0 12 12"
+                    className="w-3 h-3"
+                    fill="none"
+                  >
+                    <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </motion.svg>
+                )}
+              </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <p className="text-sm font-medium text-black">{checkout.customer_name || "Customer name not provided"}</p>
@@ -189,7 +283,7 @@ export function AbandonedCheckoutQueue({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+              <div className="col-start-2 flex flex-wrap items-center gap-1.5 lg:col-start-3 lg:justify-end">
                 {callHref ? (
                   <a
                     href={callHref}
