@@ -68,6 +68,7 @@ import {
   isAbandonedCheckoutDraftKey,
   normalizeBdPhone,
   parseAbandonedCheckoutCapture,
+  parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
@@ -5787,13 +5788,16 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
     if (!isAbandonedCheckoutDraftKey(req.params.id)) {
       return res.status(400).json({ error: "Invalid checkout ID" });
     }
-    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
-      || Object.keys(req.body).some((key) => key !== "action")) {
-      return res.status(400).json({ error: "Invalid checkout action" });
-    }
-    const action = req.body.action;
-    if (action !== "contacted" && action !== "dismissed") {
-      return res.status(400).json({ error: "Invalid checkout action" });
+    const hasAction = req.body.action !== undefined;
+    if (hasAction) {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
+        || Object.keys(req.body).some((key) => key !== "action")) {
+        return res.status(400).json({ error: "Invalid checkout action" });
+      }
+      const action = req.body.action;
+      if (action !== "contacted" && action !== "dismissed") {
+        return res.status(400).json({ error: "Invalid checkout action" });
+      }
     }
 
     const supabase = getServiceSupabase();
@@ -5810,8 +5814,21 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
     if (currentError) throw currentError;
     if (!current) return res.status(404).json({ error: "Checkout is no longer active" });
 
-    const patch = buildStaffActionPatch(current.status, action, now);
-    if (!patch) return res.status(409).json({ error: "Checkout action is not allowed" });
+    let patch;
+    if (hasAction) {
+      const action = req.body.action;
+      if (action !== "contacted" && action !== "dismissed") {
+        return res.status(400).json({ error: "Invalid checkout action" });
+      }
+      patch = buildStaffActionPatch(current.status, action, now);
+      if (!patch) return res.status(409).json({ error: "Checkout action is not allowed" });
+    } else {
+      try {
+        patch = parseAbandonedCheckoutStaffEdit(req.body);
+      } catch {
+        return res.status(400).json({ error: "Invalid checkout edits" });
+      }
+    }
 
     const { data: updated, error: updateError } = await supabase
       .from("abandoned_checkouts")

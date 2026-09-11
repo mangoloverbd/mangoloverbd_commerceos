@@ -66,6 +66,22 @@ describe("abandoned checkout route wiring", () => {
     expect(queuePatch).toContain("isAbandonedCheckoutDraftKey(req.params.id)");
   });
 
+  it("accepts staff field edits alongside contact/dismiss actions", () => {
+    const queuePatch = routeSection(
+      'app.patch("/api/abandoned-checkouts/:id"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(queuePatch).toContain("parseAbandonedCheckoutStaffEdit");
+    expect(queuePatch).toContain("Invalid checkout edits");
+    expect(queuePatch).toContain("hasAction");
+    expect(queuePatch).toContain('key !== "action"');
+    expect(queuePatch).toContain('.eq("status", current.status)');
+    expect(
+      queuePatch.indexOf('.in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)'),
+    ).toBeLessThan(queuePatch.indexOf("parseAbandonedCheckoutStaffEdit"));
+  });
+
   it("persists a draft-key hash on normal orders and recovers only after the durable order path", () => {
     const webhook = routeSection(
       'app.post("/api/custom-orders/webhook"',
