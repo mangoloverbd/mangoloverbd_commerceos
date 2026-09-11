@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.2.4] - 2026-09-12
+
+### Changed
+
+- Shorten the dashboard fulfillment queue tab label from Abandoned Carts to Abandoned.
+
 ## [0.0.2.3] - 2026-09-11
 
 ### Changed
