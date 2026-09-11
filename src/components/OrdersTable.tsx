@@ -208,6 +208,7 @@ interface OrdersTableProps {
   onStatusUpdate: (orderId: string, newStatus: string) => void;
   onOrderUpdate?: (updatedOrder: Order) => void;
   isPrintView?: boolean;
+  showRiskColumn?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
 }
@@ -556,7 +557,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   );
 }
 
-export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, selectedIds: controlledSelectedIds, onSelectionChange }: OrdersTableProps) {
+export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, selectedIds: controlledSelectedIds, onSelectionChange }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -1192,7 +1193,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
             </TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Order ID</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Customer</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Risk</TableHead>
+            {showRiskColumn && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Risk</TableHead>}
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Warehouse</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Ship To</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Items</TableHead>
@@ -1305,15 +1306,17 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       <span className="font-mono text-[11px] text-black">{order.phone || "No Phone"}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-center py-3">
-                    <div className="flex items-center justify-center">
-                      <FraudCell
-                        order={order}
-                        isChecking={checkingFraudIds.has(order.id)}
-                        onCheck={() => handleCheckFraud(order)}
-                      />
-                    </div>
-                  </TableCell>
+                  {showRiskColumn && (
+                    <TableCell className="text-center py-3">
+                      <div className="flex items-center justify-center">
+                        <FraudCell
+                          order={order}
+                          isChecking={checkingFraudIds.has(order.id)}
+                          onCheck={() => handleCheckFraud(order)}
+                        />
+                      </div>
+                    </TableCell>
+                  )}
                   <TableCell className="py-3 text-center" onClick={(event) => event.stopPropagation()}>
                     <BuiSelect aria-label={`Warehouse for ${order.order_number}`} placeholder="Select warehouse" selectedKey={order.warehouse_id || null} onSelectionChange={(key) => handleWarehouseChange(order, String(key))} className="items-center" triggerClassName={`h-8 w-auto max-w-full border-transparent ${order.warehouse_id ? "bg-status-lime-background text-status-lime-text hover:bg-status-lime-background" : "bg-status-yellow-background text-status-yellow-text hover:bg-status-yellow-background"}`} popoverClassName="w-[var(--trigger-width)]">
                       {warehouses.map((warehouse) => <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>)}
