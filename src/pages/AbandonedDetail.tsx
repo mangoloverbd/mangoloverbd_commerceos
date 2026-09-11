@@ -94,7 +94,7 @@ export default function AbandonedDetail() {
   const productsQuery = useQuery<ProductsResponse>({
     queryKey: ["/api/products"],
     staleTime: 60_000,
-    enabled: Boolean(draftId),
+    enabled: Boolean(draftId) && Boolean(checkout),
     queryFn: async () => {
       const res = await apiFetch("/api/products");
       const json = await res.json().catch(() => ({}));

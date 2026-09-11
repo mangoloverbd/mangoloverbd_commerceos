@@ -492,6 +492,12 @@ export default function Dashboard() {
   const [fulfillmentTab, setFulfillmentTab] = useState<FulfillmentQueueTab>(
     initialFulfillmentTab === "abandoned" ? "abandoned" : "all",
   );
+  // Clear the restore hint so browser-back does not sticky-reset the tab.
+  useEffect(() => {
+    if ((location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab) {
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.pathname, location.state, navigate]);
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
@@ -962,9 +968,14 @@ export default function Dashboard() {
     }
     setAbandonedBulkMenuOpen(false);
     setBulkAbandonedRunning(true);
-    const ids = filteredAbandonedCheckouts
-      .filter((checkout) => selectedAbandonedIds.has(checkout.id))
-      .map((checkout) => checkout.id);
+    const selectedDrafts = filteredAbandonedCheckouts
+      .filter((checkout) => selectedAbandonedIds.has(checkout.id));
+    // Already-contacted drafts need no PATCH — skip them and report the count.
+    const openDrafts = target === "contacted"
+      ? selectedDrafts.filter((checkout) => checkout.status === "open")
+      : selectedDrafts;
+    const skippedContacted = target === "contacted" ? selectedDrafts.length - openDrafts.length : 0;
+    const ids = openDrafts.map((checkout) => checkout.id);
     let succeeded = 0;
     const failed: string[] = [];
     try {
@@ -976,13 +987,26 @@ export default function Dashboard() {
             await runAbandonedConvert(checkoutId, target as "pending" | "on_hold" | "approved", {});
           }
           succeeded += 1;
-        } catch {
+        } catch (err) {
+          // Gone drafts (404/409) are dropped from the kept-selected set —
+          // the final refetch removes them visually.
+          if (err instanceof AbandonedCheckoutActionError && (err.status === 404 || err.status === 409)) {
+            continue;
+          }
           failed.push(checkoutId);
         }
       }
       if (target === "contacted") {
-        toast.success(succeeded === 1 ? "1 checkout marked as contacted" : `${succeeded} checkouts marked as contacted`);
-      } else {
+        if (succeeded > 0) {
+          const base = succeeded === 1 ? "1 checkout marked as contacted" : `${succeeded} checkouts marked as contacted`;
+          const skipClause = skippedContacted > 0
+            ? `, ${skippedContacted === 1 ? "1 already contacted" : `${skippedContacted} already contacted`} — skipped`
+            : "";
+          toast.success(`${base}${skipClause}`);
+        } else if (skippedContacted > 0 && failed.length === 0) {
+          toast(skippedContacted === 1 ? "1 already contacted — skipped" : `${skippedContacted} already contacted — skipped`);
+        }
+      } else if (succeeded > 0) {
         const statusLabel = target === "on_hold" ? "On Hold" : target === "approved" ? "Approved" : "Pending";
         toast.success(succeeded === 1 ? `1 order moved to ${statusLabel}` : `${succeeded} orders moved to ${statusLabel}`);
       }
@@ -1008,11 +1032,18 @@ export default function Dashboard() {
         try {
           await runAbandonedDismissed(checkoutId);
           succeeded += 1;
-        } catch {
+        } catch (err) {
+          // Gone drafts (404/409) are dropped from the kept-selected set —
+          // the final refetch removes them visually.
+          if (err instanceof AbandonedCheckoutActionError && (err.status === 404 || err.status === 409)) {
+            continue;
+          }
           failed.push(checkoutId);
         }
       }
-      toast.success(succeeded === 1 ? "1 checkout dismissed" : `${succeeded} checkouts dismissed`);
+      if (succeeded > 0) {
+        toast.success(succeeded === 1 ? "1 checkout dismissed" : `${succeeded} checkouts dismissed`);
+      }
       if (failed.length > 0) toast.error(`${failed.length} failed — kept selected`);
       setSelectedAbandonedIds(new Set(failed));
       setBulkDismissCount(0);
@@ -1680,14 +1711,22 @@ export default function Dashboard() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Dismiss {bulkDismissCount} checkouts?</AlertDialogTitle>
-            <AlertDialogDescription>Dismiss {bulkDismissCount} checkouts? This cannot be undone.</AlertDialogDescription>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep checkouts</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void confirmBulkDismiss()}
+              disabled={bulkAbandonedRunning}
             >
-              Dismiss checkouts
+              {bulkAbandonedRunning ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size="sm" />
+                  Dismissing…
+                </span>
+              ) : (
+                "Dismiss checkouts"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

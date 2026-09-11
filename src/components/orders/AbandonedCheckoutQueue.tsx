@@ -147,6 +147,7 @@ export function AbandonedCheckoutQueue({
           data-testid="checkbox-abandoned-all"
           role="checkbox"
           aria-checked={allSelected}
+          aria-label="Select all checkouts"
           tabIndex={0}
           onClick={() => onSelectAll()}
           onKeyDown={(event) => {
@@ -206,6 +207,7 @@ export function AbandonedCheckoutQueue({
                 data-testid={`checkbox-abandoned-${checkout.id}`}
                 role="checkbox"
                 aria-checked={selected}
+                aria-label={checkout.customer_name ? `Select checkout for ${checkout.customer_name}` : checkout.phone ? `Select checkout for ${checkout.phone}` : "Select checkout"}
                 tabIndex={0}
                 onClick={() => onToggleSelect(checkout.id)}
                 onKeyDown={(event) => {

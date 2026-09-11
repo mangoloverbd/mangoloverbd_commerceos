@@ -123,6 +123,7 @@ describe("AbandonedDetail", () => {
     renderDetail(["/abandoned/missing-id"]);
 
     expect(await screen.findByText("Checkout not found.")).toBeInTheDocument();
+    expect(apiFetch.mock.calls.some(([url]) => url === "/api/products")).toBe(false);
     await user.click(screen.getByRole("button", { name: /back to abandoned/i }));
     expect(await screen.findByTestId("dashboard-home")).toBeInTheDocument();
   });
