@@ -71,7 +71,11 @@ import {
   parseAbandonedCheckoutCapture,
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
-import { hashProtectionSignal } from "./orderProtectionStore.js";
+import {
+  getProtectionReview,
+  hashProtectionSignal,
+  listProtectionReviews,
+} from "./orderProtectionStore.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
@@ -10937,6 +10941,225 @@ async function handlePublicHandleConfig(req, res) {
     return res.status(500).json({ error: e.message });
   }
 }
+
+// ─── Order Protection Review Queue ───────────────────────────────────────────
+async function requireOrderProtectionStaff(req) {
+  const { user } = await getUser(getToken(req));
+  if (!user) return { user: null, supabase: null, orgId: null, role: null };
+  const supabase = getServiceSupabase();
+  const { orgId, role } = await getUserOrg(supabase, user.id);
+  return { user, supabase, orgId, role };
+}
+
+async function approveHeldProtectionReview(supabase, orgId, reviewId) {
+  const { data: review, error: reviewError } = await supabase
+    .from("order_protection_reviews")
+    .select("*")
+    .eq("id", reviewId)
+    .eq("org_id", orgId)
+    .eq("status", "on_hold")
+    .maybeSingle();
+  if (reviewError) throw reviewError;
+  if (!review) {
+    const err = new Error("Review is no longer awaiting action");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const items = Array.isArray(review.items) ? review.items : [];
+  const variantIds = items.map((item) => item?.variantId).filter(Boolean);
+  if (variantIds.length !== items.length || items.length === 0) {
+    const err = new Error("This compatibility review needs a fresh canonical checkout");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const { data: variants, error: variantsError } = await supabase
+    .from("product_variants")
+    .select("id, product_id, attributes, price_adjustment, stock_quantity, weight_kg")
+    .in("id", variantIds)
+    .eq("org_id", orgId);
+  if (variantsError) throw variantsError;
+  const variantMap = Object.fromEntries((variants || []).map((variant) => [variant.id, variant]));
+  const productIds = [...new Set((variants || []).map((variant) => variant.product_id))];
+  const { data: products, error: productsError } = await supabase
+    .from("products")
+    .select("id, name, selling_price, published, weight_kg, warehouse_id")
+    .in("id", productIds)
+    .eq("org_id", orgId)
+    .eq("published", true);
+  if (productsError) throw productsError;
+  const productMap = Object.fromEntries((products || []).map((product) => [product.id, product]));
+
+  const orderItems = [];
+  let subtotal = 0;
+  for (const item of items) {
+    const variant = variantMap[item.variantId];
+    const product = variant ? productMap[variant.product_id] : null;
+    const quantity = Number.isSafeInteger(item.quantity) ? item.quantity : 0;
+    if (!variant || !product || quantity < 1 || variant.stock_quantity < quantity) {
+      const err = new Error("Catalog or stock changed; review remains on hold");
+      err.statusCode = 409;
+      throw err;
+    }
+    const unitPrice = (parseFloat(product.selling_price) || 0) + (parseFloat(variant.price_adjustment) || 0);
+    orderItems.push({
+      productId: product.id,
+      variantId: variant.id,
+      productName: product.name,
+      attributes: variant.attributes || {},
+      quantity,
+      unitPrice,
+    });
+    subtotal += unitPrice * quantity;
+  }
+
+  let shipping = 0;
+  if (review.shipping_zone_id) {
+    const { data: settings, error: settingsError } = await supabase
+      .from("storefront_settings")
+      .select("shipping_zones")
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (settingsError) throw settingsError;
+    const shippingResult = calculateShippingCost(subtotal, review.shipping_zone_id, settings?.shipping_zones || []);
+    if (shippingResult.error) {
+      const err = new Error("Shipping configuration changed; review remains on hold");
+      err.statusCode = 409;
+      throw err;
+    }
+    shipping = shippingResult.cost;
+  }
+
+  const routing = await resolveOrderRouting(supabase, orgId, orderItems);
+  const orderNumber = await getNextManualOrderNumber(orgId);
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      org_id: orgId,
+      shopify_order_id: -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000),
+      order_number: orderNumber,
+      customer_name: review.customer_name,
+      phone: normalizeBdPhone(review.phone),
+      address: review.address,
+      product: orderItems.map((item) => `${item.productName} x${item.quantity}`).join(", "),
+      quantity: orderItems.reduce((sum, item) => sum + item.quantity, 0),
+      price: subtotal,
+      delivery_rate: shipping,
+      status: "pending",
+      source: "storefront_review",
+      warehouse_id: routing.warehouseId,
+      warehouse_auto: true,
+      weight_kg: routing.weightKg,
+      notes: review.notes,
+    })
+    .select("*")
+    .single();
+  if (orderError) throw orderError;
+
+  const { error: itemsError } = await supabase.from("order_items").insert(orderItems.map((item) => ({
+    org_id: orgId,
+    order_id: order.id,
+    product_id: item.productId,
+    variant_id: item.variantId,
+    product_name: item.productName,
+    variant_name: JSON.stringify(item.attributes),
+    unit_price: item.unitPrice,
+    quantity: item.quantity,
+  })));
+  if (itemsError) {
+    await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
+    throw itemsError;
+  }
+
+  for (const item of orderItems) {
+    const currentStock = variantMap[item.variantId].stock_quantity;
+    const { data: updatedVariants, error: stockError } = await supabase
+      .from("product_variants")
+      .update({ stock_quantity: currentStock - item.quantity })
+      .eq("id", item.variantId)
+      .eq("org_id", orgId)
+      .eq("stock_quantity", currentStock)
+      .select("id");
+    if (stockError || updatedVariants?.length !== 1) {
+      await supabase.from("order_items").delete().eq("order_id", order.id).eq("org_id", orgId);
+      await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
+      const err = new Error("Stock changed; review remains on hold");
+      err.statusCode = 409;
+      throw err;
+    }
+  }
+
+  const { error: reviewUpdateError } = await supabase
+    .from("order_protection_reviews")
+    .update({ status: "approved", updated_at: new Date().toISOString() })
+    .eq("id", reviewId)
+    .eq("org_id", orgId)
+    .eq("status", "on_hold");
+  if (reviewUpdateError) throw reviewUpdateError;
+
+  await sendBulkSms(orgId, "confirmation", order);
+  await purgeProductCache(orgId, null, { listChanged: false, warm: false });
+  return { orderRef: String(orderNumber), order };
+}
+
+app.get("/api/order-protection/reviews", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const allowedStatuses = new Set(["on_hold", "approved", "rejected", "expired"]);
+    const status = allowedStatuses.has(req.query.status) ? req.query.status : "on_hold";
+    const reviews = await listProtectionReviews({ supabase, orgId, status });
+    return res.json({ reviews });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+app.get("/api/order-protection/events", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const { data, error } = await supabase
+      .from("order_protection_events")
+      .select("id, review_id, order_id, route, decision, score, reason_codes, created_at, expires_at")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    return res.json({ events: data || [] });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+app.patch("/api/order-protection/reviews/:id", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const action = req.body?.action;
+    if (action !== "approve" && action !== "reject") {
+      return res.status(400).json({ error: "action must be approve or reject" });
+    }
+    if (action === "approve") {
+      const result = await approveHeldProtectionReview(supabase, orgId, req.params.id);
+      return res.json({ success: true, decision: "approved", ...result });
+    }
+    const { data, error } = await supabase
+      .from("order_protection_reviews")
+      .update({ status: "rejected", updated_at: new Date().toISOString() })
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .eq("status", "on_hold")
+      .select("id, status")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(409).json({ error: "Review is no longer awaiting action" });
+    return res.json({ success: true, decision: "rejected", review: data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 
 // ─── Public Storefront Order Submission ──────────────────────────────────────
 // Accepts orders from the storefront checkout flow. No authentication required —
