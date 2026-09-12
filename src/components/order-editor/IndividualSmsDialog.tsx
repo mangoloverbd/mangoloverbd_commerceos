@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import { formatTaka } from "@/lib/orderEditor";
 import { toast } from "@/components/ui/sonner";
@@ -34,6 +35,7 @@ export function IndividualSmsDialog({
   price,
   address,
 }: IndividualSmsDialogProps) {
+  const reduceMotion = useReducedMotion();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -91,51 +93,67 @@ export function IndividualSmsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[520px] rounded-2xl border-black/10 bg-[#FAFAF8] p-5 sm:p-6">
-        <DialogHeader>
-          <DialogTitle className="text-left text-[20px] font-medium tracking-tight text-black">Send individual SMS</DialogTitle>
-          <DialogDescription className="text-left text-[12px] text-black/50">
-            Send a one-off message to {customerName || "this customer"} at {phone}. Order {orderLabel(orderNumber)}.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        forceMount
+        className="data-[state=closed]:pointer-events-none max-w-[520px] rounded-2xl border-black/10 bg-[#FAFAF8] p-5 !duration-0 sm:p-6"
+      >
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              key="individual-sms-composer"
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+              transition={{ duration: reduceMotion ? 0.12 : 0.22, ease: "easeOut" }}
+              className="space-y-4"
+            >
+              <DialogHeader>
+                <DialogTitle className="text-left text-[20px] font-medium tracking-tight text-black">Send individual SMS</DialogTitle>
+                <DialogDescription className="text-left text-[12px] text-black/50">
+                  Send a one-off message to {customerName || "this customer"} at {phone}. Order {orderLabel(orderNumber)}.
+                </DialogDescription>
+              </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-1.5" aria-label="Quick insert values">
-            {quickValues.map(([label, value]) => (
-              <button
-                key={label}
-                type="button"
-                aria-label={`Insert ${label.toLowerCase()}`}
-                onClick={() => insertValue(value)}
-                className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black/60 transition hover:border-black/20 hover:text-black"
-              >
-                + {label}
-              </button>
-            ))}
-          </div>
-          <Textarea
-            ref={textareaRef}
-            aria-label="Message"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Write your message…"
-            maxLength={MAX_MESSAGE_LENGTH}
-            rows={6}
-            disabled={sending}
-            className="min-h-36 resize-y rounded-xl border-black/10 bg-white text-[13px] leading-6 text-black focus-visible:ring-black/15"
-          />
-          <div className="flex items-center justify-between gap-3 text-[11px] text-black/40">
-            <span>{error || "The message will be sent through Bulk SMS BD."}</span>
-            <span className="shrink-0 tabular-nums">{[...message].length}/{MAX_MESSAGE_LENGTH}</span>
-          </div>
-        </div>
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-1.5" aria-label="Quick insert values">
+                  {quickValues.map(([label, value]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-label={`Insert ${label.toLowerCase()}`}
+                      onClick={() => insertValue(value)}
+                      className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black/60 transition hover:border-black/20 hover:text-black"
+                    >
+                      + {label}
+                    </button>
+                  ))}
+                </div>
+                <Textarea
+                  ref={textareaRef}
+                  aria-label="Message"
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  placeholder="Write your message…"
+                  maxLength={MAX_MESSAGE_LENGTH}
+                  rows={6}
+                  disabled={sending}
+                  className="min-h-36 resize-y rounded-xl border-black/10 bg-white text-[13px] leading-6 text-black focus-visible:ring-black/15"
+                />
+                <div className="flex items-center justify-between gap-3 text-[11px] text-black/40">
+                  <span>{error || "The message will be sent through Bulk SMS BD."}</span>
+                  <span className="shrink-0 tabular-nums">{[...message].length}/{MAX_MESSAGE_LENGTH}</span>
+                </div>
+              </div>
 
-        <DialogFooter className="gap-2 sm:gap-2">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={sending}>Cancel</Button>
-          <Button type="button" onClick={() => { void sendMessage(); }} disabled={sending || !message.trim()}>
-            {sending ? "Sending…" : "Send SMS"}
-          </Button>
-        </DialogFooter>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={sending}>Cancel</Button>
+                <Button type="button" onClick={() => { void sendMessage(); }} disabled={sending || !message.trim()}>
+                  {sending ? "Sending…" : "Send SMS"}
+                </Button>
+              </DialogFooter>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   );
