@@ -106,7 +106,9 @@ describe("abandoned checkout lifecycle", () => {
     expect(canTransitionAbandonedCheckout("open", "contacted", "staff")).toBe(true);
     expect(canTransitionAbandonedCheckout("open", "dismissed", "staff")).toBe(true);
     expect(canTransitionAbandonedCheckout("contacted", "dismissed", "staff")).toBe(true);
-    expect(canTransitionAbandonedCheckout("contacted", "open", "staff")).toBe(false);
+    // Staff can un-mark a mis-clicked "contacted" back to open.
+    expect(canTransitionAbandonedCheckout("contacted", "open", "staff")).toBe(true);
+    expect(canTransitionAbandonedCheckout("open", "open", "staff")).toBe(false);
     expect(canTransitionAbandonedCheckout("dismissed", "contacted", "staff")).toBe(false);
     expect(canTransitionAbandonedCheckout("open", "recovered", "staff")).toBe(false);
   });
@@ -178,6 +180,10 @@ describe("abandoned checkout lifecycle", () => {
       status: "dismissed",
       resolved_at: "2026-09-11T12:00:00.000Z",
       resolution: "dismissed",
+    });
+    expect(buildStaffActionPatch("contacted", "open", now)).toEqual({
+      status: "open",
+      contacted_at: null,
     });
     expect(buildStaffActionPatch("dismissed", "contacted", now)).toBeNull();
   });

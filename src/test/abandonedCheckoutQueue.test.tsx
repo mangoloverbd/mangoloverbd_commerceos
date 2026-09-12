@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AbandonedCheckoutQueue } from "@/components/orders/AbandonedCheckoutQueue";
@@ -55,7 +55,8 @@ describe("AbandonedCheckoutQueue", () => {
     await user.click(screen.getByRole("button", { name: "Copy checkout summary" }));
     expect(screen.getByText("Checkout summary copied")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Mark as contacted" }));
+    await user.click(screen.getByRole("button", { name: "Contact status: Awaiting contact" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Contacted" }));
     expect(onAction).toHaveBeenCalledWith(checkout.id, "contacted");
   });
 
@@ -157,7 +158,7 @@ describe("AbandonedCheckoutQueue", () => {
     expect(screen.queryByRole("button", { name: "Edit checkout" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /move to/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy checkout summary" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mark as contacted" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Contact status: Awaiting contact" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss checkout" })).toBeInTheDocument();
   });
 
@@ -189,6 +190,33 @@ describe("AbandonedCheckoutQueue", () => {
 
     await user.click(screen.getByText("Farzana Akter"));
     expect(onOpenCheckout).toHaveBeenCalledWith(checkout.id);
+  });
+
+  it("does not open the detail page when changing status from the dropdown", async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    const onOpenCheckout = vi.fn();
+    render(
+      <AbandonedCheckoutQueue
+        checkouts={[checkout]}
+        loading={false}
+        error={null}
+        actionInFlightId={null}
+        onAction={onAction}
+        onOpenCheckout={onOpenCheckout}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Contact status: Awaiting contact" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Contacted" }));
+
+    expect(onAction).toHaveBeenCalledWith(checkout.id, "contacted");
+
+    // Radix portals the menu to <body>; selecting an item unmounts it and the
+    // trailing click lands on the row underneath. jsdom does not replay that
+    // click, so fire it explicitly to cover the real-browser behaviour.
+    fireEvent.click(screen.getByText("Farzana Akter"));
+    expect(onOpenCheckout).not.toHaveBeenCalled();
   });
 
   it("marks selected rows", () => {

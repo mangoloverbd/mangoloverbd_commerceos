@@ -1,18 +1,34 @@
+import { motion } from "framer-motion";
 import { OrderProtectionReviewQueue } from "@/components/OrderProtectionReviewQueue";
 
 export default function OrderProtection() {
   return (
-    <main className="min-h-screen bg-[#FAFAF8] px-5 py-8 sm:px-8 lg:px-12">
-      <div className="mx-auto max-w-6xl">
-        <div className="border-b border-black/10 pb-6">
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-muted-foreground">Storefront safety</p>
-          <h1 className="mt-2 text-3xl font-light tracking-tight">Order protection</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Review held storefront orders before stock, SMS, or courier actions are allowed.</p>
+    <div className="min-h-full space-y-6 bg-white p-1 max-md:p-2 lg:p-2">
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="relative space-y-4"
+      >
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Order Protection</h1>
+            <p className="mt-1 max-w-2xl text-[13px] text-black/45">
+              Review held storefront orders before stock, SMS, or courier actions are allowed.
+            </p>
+          </div>
         </div>
-        <section className="mt-8" aria-label="Held storefront orders">
-          <OrderProtectionReviewQueue />
-        </section>
-      </div>
-    </main>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.4 }}
+        className="overflow-hidden rounded-2xl bg-white"
+        aria-label="Held storefront orders"
+      >
+        <OrderProtectionReviewQueue />
+      </motion.div>
+    </div>
   );
 }

@@ -774,11 +774,16 @@ export default function Dashboard() {
     });
   };
 
-  const runAbandonedContacted = async (checkoutId: string): Promise<AbandonedCheckout> => {
+  // Both "contacted" and "open" keep the checkout in the active queue, so they
+  // share the same in-place cache update.
+  const runAbandonedActiveStatus = async (
+    checkoutId: string,
+    action: "contacted" | "open",
+  ): Promise<AbandonedCheckout> => {
     const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "contacted" }),
+      body: JSON.stringify({ action }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.checkout) {
@@ -820,13 +825,16 @@ export default function Dashboard() {
     return data.checkout as AbandonedCheckout;
   };
 
-  const updateAbandonedCheckout = async (checkoutId: string, action: "contacted" | "dismissed") => {
+  const updateAbandonedCheckout = async (checkoutId: string, action: "contacted" | "dismissed" | "open") => {
     if (abandonedActionInFlightId) return;
     setAbandonedActionInFlightId(checkoutId);
     try {
       if (action === "contacted") {
-        await runAbandonedContacted(checkoutId);
+        await runAbandonedActiveStatus(checkoutId, "contacted");
         toast.success("Checkout marked as contacted");
+      } else if (action === "open") {
+        await runAbandonedActiveStatus(checkoutId, "open");
+        toast.success("Checkout marked as not contacted");
       } else {
         await runAbandonedDismissed(checkoutId);
         toast.success("Checkout dismissed");
@@ -894,7 +902,7 @@ export default function Dashboard() {
       for (const checkoutId of ids) {
         try {
           if (target === "contacted") {
-            await runAbandonedContacted(checkoutId);
+            await runAbandonedActiveStatus(checkoutId, "contacted");
           } else {
             await runAbandonedConvert(checkoutId, target as "pending" | "on_hold" | "approved", {});
           }

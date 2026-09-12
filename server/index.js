@@ -5847,7 +5847,7 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
         return res.status(400).json({ error: "Invalid checkout action" });
       }
       const action = req.body.action;
-      if (action !== "contacted" && action !== "dismissed") {
+      if (action !== "contacted" && action !== "dismissed" && action !== "open") {
         return res.status(400).json({ error: "Invalid checkout action" });
       }
     }
@@ -5869,7 +5869,7 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
     let patch;
     if (hasAction) {
       const action = req.body.action;
-      if (action !== "contacted" && action !== "dismissed") {
+      if (action !== "contacted" && action !== "dismissed" && action !== "open") {
         return res.status(400).json({ error: "Invalid checkout action" });
       }
       patch = buildStaffActionPatch(current.status, action, now);
