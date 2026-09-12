@@ -14,10 +14,8 @@ import {
 } from "./orderProtectionStore.js";
 import { verifyTurnstileToken } from "./turnstile.js";
 
-const DEFAULT_HASH_SECRET = "development-order-protection-secret";
-
 function getProtectionSecret(dependencies) {
-  return dependencies.secret || process.env.ORDER_PROTECTION_HASH_SECRET || DEFAULT_HASH_SECRET;
+  return dependencies.secret || process.env.ORDER_PROTECTION_HASH_SECRET || null;
 }
 
 function getClientNetwork(input, requestMeta) {
@@ -43,6 +41,19 @@ function buildEvent(input, requestMeta, protection, reviewId = null) {
 export async function protectOrderSubmission({ input: rawInput, requestMeta = {}, dependencies = {} }) {
   const input = normalizeProtectionInput(rawInput);
   const secret = getProtectionSecret(dependencies);
+  if (!secret) {
+    return {
+      protection: {
+        decision: "BLOCK",
+        score: 100,
+        reasonCodes: ["rate_limit_exceeded"],
+        customerMessage: "Order protection is temporarily unavailable. Please try again shortly.",
+        retryable: true,
+      },
+      response: { decision: "block", error: "protection_unavailable", retryable: true },
+      fingerprint: null,
+    };
+  }
   const phoneHash = hashProtectionSignal(input.phone, secret);
   const fingerprint = buildSubmissionFingerprint(input, secret);
   const redis = dependencies.redis;
@@ -64,7 +75,7 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
     };
   }
 
-  const protection = await evaluateProtection(input, {
+  const evaluatedProtection = await evaluateProtection(input, {
     countPhoneAttempts: dependencies.countPhoneAttempts
       || (async () => counts?.attempts || { last15m: 0, last1h: 0, last24h: 0 }),
     countPhoneSessions: dependencies.countPhoneSessions
@@ -95,6 +106,7 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
     });
   }
 
+  let protection = evaluatedProtection;
   let review = null;
   const shouldReserve = protection.decision === "ALLOW" || protection.decision === "REVIEW";
   if (shouldReserve) {
@@ -102,10 +114,13 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
       ? await dependencies.reserveFingerprint({ fingerprint })
       : await reserveSubmissionFingerprint({ redis, fingerprint });
     if (!reservation.reserved) {
-      protection.decision = "BLOCK";
-      protection.score = 100;
-      protection.reasonCodes = [...protection.reasonCodes, "duplicate_submission"];
-      protection.customerMessage = "We could not accept this order. Please check your details and try again.";
+      protection = {
+        ...protection,
+        decision: "BLOCK",
+        score: 100,
+        reasonCodes: [...protection.reasonCodes, "duplicate_submission"],
+        customerMessage: "We could not accept this order. Please check your details and try again.",
+      };
     }
   }
 
@@ -141,4 +156,3 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
   if (review?.id) response.reviewId = review.id;
   return { protection, response, review, fingerprint };
 }
-

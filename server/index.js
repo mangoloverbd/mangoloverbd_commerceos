@@ -72,11 +72,11 @@ import {
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
 import {
-  getProtectionReview,
   hashProtectionSignal,
   listProtectionReviews,
 } from "./orderProtectionStore.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
+import { validateAddressWithAI } from "./addressValidation.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -2971,6 +2971,8 @@ async function provisionStorefrontProject(orgId, customOrdersApiKey) {
   if (!MERCHANT_SUITE_PUBLIC_URL) return { ok: false, error: "MERCHANT_SUITE_PUBLIC_URL not set — the public URL of this Merchant Suite deploy" };
 
   const projectName = `storefront-${orgId.slice(0, 8)}`;
+  const storefrontHandle = await getStorefrontHandle(orgId);
+  if (!storefrontHandle) return { ok: false, error: "Storefront handle is not configured" };
 
   // Vercel's git linking needs BOTH the repo name AND the numeric repoId.
   let repoId = "";
@@ -3004,7 +3006,10 @@ async function provisionStorefrontProject(orgId, customOrdersApiKey) {
   const envVars = [
     { key: "VITE_MERCHANT_SUITE_URL", value: MERCHANT_SUITE_PUBLIC_URL, type: "encrypted", target: ["production", "preview", "development"] },
     { key: "VITE_STOREFRONT_ID", value: orgId, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "VITE_STOREFRONT_HANDLE", value: storefrontHandle, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "VITE_TURNSTILE_SITE_KEY", value: process.env.TURNSTILE_SITE_KEY || "", type: "plain", target: ["production", "preview", "development"] },
     { key: "MERCHANT_SUITE_URL", value: MERCHANT_SUITE_PUBLIC_URL, type: "encrypted", target: ["production", "preview", "development"] },
+    { key: "STOREFRONT_HANDLE", value: storefrontHandle, type: "encrypted", target: ["production", "preview", "development"] },
     { key: "CUSTOM_ORDERS_API_KEY", value: customOrdersApiKey, type: "encrypted", target: ["production", "preview", "development"] },
   ];
   for (const ev of envVars) {
@@ -6587,9 +6592,10 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
         turnstileToken: req.body?.turnstile_token,
         clientSessionId: req.body?.client_session_id,
         checkoutStartedAt: req.body?.checkout_started_at,
+        shippingZoneId: req.body?.shipping_zone_id,
       },
       requestMeta: { ip: getClientIp(req), userAgent: req.headers["user-agent"] },
-      dependencies: { redis: redisClient, supabase },
+      dependencies: { redis: redisClient, supabase, validateAddress: validateAddressWithAI },
     });
     if (protection.protection.decision === "REVIEW") {
       return res.status(202).json({ ok: true, decision: "review", review_id: protection.review?.id || null });
@@ -11223,9 +11229,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
         turnstileToken: req.body?.turnstileToken || req.body?.turnstile_token,
         clientSessionId: req.body?.clientSessionId || req.body?.client_session_id,
         checkoutStartedAt: req.body?.checkoutStartedAt || req.body?.checkout_started_at,
+        shippingZoneId,
       },
       requestMeta: { ip: getClientIp(req), userAgent: req.headers["user-agent"] },
-      dependencies: { redis: redisClient, supabase },
+      dependencies: { redis: redisClient, supabase, validateAddress: validateAddressWithAI },
     });
     if (protection.protection.decision === "REVIEW") {
       return res.status(202).json({

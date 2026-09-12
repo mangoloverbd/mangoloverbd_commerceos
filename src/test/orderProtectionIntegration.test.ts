@@ -35,6 +35,17 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("order protection pipeline", () => {
+  test("fails closed when the server-side hash secret is missing", async () => {
+    const result = await protectOrderSubmission({
+      input,
+      requestMeta: { ip: "203.0.113.5" },
+      dependencies: { redis: dependencies().redis },
+    });
+
+    expect(result.protection).toMatchObject({ decision: "BLOCK", retryable: true });
+    expect(result.fingerprint).toBeNull();
+  });
+
   test("blocks without reserving an order fingerprint for a honeypot submission", async () => {
     const deps = dependencies();
     const result = await protectOrderSubmission({
@@ -45,6 +56,18 @@ describe("order protection pipeline", () => {
 
     expect(result.protection).toMatchObject({ decision: "BLOCK", reasonCodes: ["honeypot_filled"] });
     expect(deps.redis.set).not.toHaveBeenCalled();
+  });
+
+  test("does not mutate the evaluator result when a duplicate reservation loses the race", async () => {
+    const reserveFingerprint = vi.fn().mockResolvedValue({ reserved: false });
+    const result = await protectOrderSubmission({
+      input,
+      requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
+      dependencies: dependencies({ reserveFingerprint }),
+    });
+
+    expect(result.protection).toMatchObject({ decision: "BLOCK", reasonCodes: ["duplicate_submission"] });
+    expect(reserveFingerprint).toHaveBeenCalledOnce();
   });
 
   test("creates a held review and records an event without creating a normal order", async () => {
