@@ -28,7 +28,7 @@ export const ORDER_PROTECTION_REASON_CODES = Object.freeze([...reasonCodeValues]
 export const ORDER_PROTECTION_THRESHOLDS = Object.freeze({
   reviewScore: 40,
   checkoutTooFastSeconds: 8,
-  phoneAttempts15m: 3,
+  phoneAttempts15m: 2,
   phoneAttempts1h: 5,
   phoneAttempts24h: 8,
   phoneSessionCount: 3,
@@ -236,9 +236,11 @@ export async function evaluateProtection(rawInput, dependencies = {}) {
 
   const scoredSignals = {
     ...signals,
-    phoneVelocity15m: countValue(attempts, "last15m") >= ORDER_PROTECTION_THRESHOLDS.phoneAttempts15m,
-    phoneVelocity1h: countValue(attempts, "last1h") >= ORDER_PROTECTION_THRESHOLDS.phoneAttempts1h,
-    phoneVelocity24h: countValue(attempts, "last24h") >= ORDER_PROTECTION_THRESHOLDS.phoneAttempts24h,
+    // Redis counts prior submissions; include this submission when applying
+    // total-attempt thresholds so the second request is the second attempt.
+    phoneVelocity15m: countValue(attempts, "last15m") + 1 >= ORDER_PROTECTION_THRESHOLDS.phoneAttempts15m,
+    phoneVelocity1h: countValue(attempts, "last1h") + 1 >= ORDER_PROTECTION_THRESHOLDS.phoneAttempts1h,
+    phoneVelocity24h: countValue(attempts, "last24h") + 1 >= ORDER_PROTECTION_THRESHOLDS.phoneAttempts24h,
     phoneManySessions: Number(phoneSessions) >= ORDER_PROTECTION_THRESHOLDS.phoneSessionCount,
     phoneNetworkChange: Number(phoneNetworks) >= ORDER_PROTECTION_THRESHOLDS.phoneNetworkCount,
   };
@@ -279,7 +281,14 @@ export async function evaluateProtection(rawInput, dependencies = {}) {
   if (addressResult.action === "block" || addressResult.riskScore >= ORDER_PROTECTION_THRESHOLDS.aiHardBlockRiskScore) {
     return result("BLOCK", 100, reasonCodes.length > 0 ? reasonCodes : ["address_invalid"]);
   }
-  return result(score >= ORDER_PROTECTION_THRESHOLDS.reviewScore || aiRequestsReview ? "REVIEW" : "ALLOW", score, reasonCodes);
+  const phoneBurstRequestsReview = scoredSignals.phoneVelocity15m;
+  return result(
+    score >= ORDER_PROTECTION_THRESHOLDS.reviewScore || aiRequestsReview || phoneBurstRequestsReview
+      ? "REVIEW"
+      : "ALLOW",
+    score,
+    reasonCodes,
+  );
 }
 
 export function serializeProtectionResponse(protectionResult) {
