@@ -166,7 +166,7 @@ export function canAcceptBrowserCapture({ status, expiresAt }, now = new Date())
 export function canTransitionAbandonedCheckout(from, to, actor = "staff") {
   if (actor === "staff") {
     return (from === "open" && (to === "contacted" || to === "dismissed"))
-      || (from === "contacted" && to === "dismissed");
+      || (from === "contacted" && (to === "dismissed" || to === "open"));
   }
   if (actor === "system") {
     return ACTIVE_ABANDONED_CHECKOUT_STATUSES.includes(from)
@@ -218,6 +218,14 @@ export function buildStaffActionPatch(status, action, now = new Date()) {
     return {
       status: "contacted",
       contacted_at: now.toISOString(),
+    };
+  }
+  // Staff un-marking a mis-clicked "contacted"; clear the timestamp so the
+  // checkout reads as never contacted rather than contacted-then-reverted.
+  if (action === "open") {
+    return {
+      status: "open",
+      contacted_at: null,
     };
   }
   return {

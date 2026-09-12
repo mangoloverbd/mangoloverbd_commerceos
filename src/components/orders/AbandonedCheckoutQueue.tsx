@@ -1,14 +1,22 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
 import {
+  CaretDown,
   Check,
-  ClipboardText,
   Copy,
   Phone,
   Trash,
   WhatsappLogo,
 } from "@phosphor-icons/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Chip } from "@/components/base/badges/chip";
 import { Spinner } from "@/components/ui/ios-spinner";
 import {
   abandonedCheckoutCartSummary,
@@ -30,7 +39,59 @@ import {
 } from "@/lib/abandonedCheckouts";
 import { cn } from "@/lib/utils";
 
-type AbandonedCheckoutAction = "contacted" | "dismissed";
+type AbandonedCheckoutAction = "contacted" | "dismissed" | "open";
+
+/**
+ * Contact-status vocabulary. The pending state is named for what it is rather
+ * than what it is not, so the menu never asks staff to pick a negation.
+ */
+const ABANDONED_STATUS_LABEL = {
+  open: "Awaiting contact",
+  contacted: "Contacted",
+} as const;
+
+const ABANDONED_STATUS_OPTIONS = [
+  { value: "open", label: ABANDONED_STATUS_LABEL.open, dotClassName: "bg-rose-400" },
+  { value: "contacted", label: ABANDONED_STATUS_LABEL.contacted, dotClassName: "bg-lime-500" },
+] as const;
+
+/**
+ * Board UI chip recipe (see src/components/base/badges/chip.tsx) applied to the
+ * row's interactive actions. Chip itself renders a <span>, so these stay as
+ * <a>/<button> to keep href, onClick, disabled and keyboard semantics.
+ */
+const actionChip =
+  "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-caption-1-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-wait disabled:opacity-45";
+const actionChipNeutral =
+  "bg-background-secondary-default text-text-secondary hover:bg-background-secondary-hover hover:text-text-primary focus-visible:ring-black/30";
+const actionChipDanger =
+  "bg-status-rose-background text-status-rose-text hover:bg-background-quaternary-error focus-visible:ring-red-400/50";
+const actionChipContacted =
+  "bg-status-lime-background text-status-lime-text hover:bg-status-lime-background/80 focus-visible:ring-black/30";
+
+/** Crossfades the copy glyph to a check while a copy is freshly confirmed. */
+function CopyGlyph({ copied, size = 13 }: { copied: boolean; size?: number }) {
+  return (
+    <span className="relative inline-flex shrink-0" style={{ width: size, height: size }} aria-hidden>
+      <span
+        className={cn(
+          "absolute inset-0 inline-flex items-center justify-center transition-all duration-200 ease-out motion-reduce:transition-none",
+          copied ? "scale-0 opacity-0 blur-[2px]" : "scale-100 opacity-100 blur-none"
+        )}
+      >
+        <Copy size={size} weight="light" />
+      </span>
+      <span
+        className={cn(
+          "absolute inset-0 inline-flex items-center justify-center text-status-lime-text transition-all duration-200 ease-out motion-reduce:transition-none",
+          copied ? "scale-100 opacity-100 blur-none" : "scale-[0.7] opacity-0 blur-[2px]"
+        )}
+      >
+        <Check size={size} weight="bold" />
+      </span>
+    </span>
+  );
+}
 
 export type AbandonedCheckoutQueueProps = {
   checkouts: AbandonedCheckout[];
@@ -70,22 +131,40 @@ export function AbandonedCheckoutQueue({
 }: AbandonedCheckoutQueueProps) {
   const [dismissTarget, setDismissTarget] = useState<AbandonedCheckout | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Radix portals menu content to <body>, so selecting an item unmounts it and
+  // the trailing click lands on the row underneath — which would open the
+  // detail page. Ignore row clicks while a menu is open and just after it closes.
+  const rowClickSuppressedUntil = useRef(0);
+
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
+  const markCopied = (key: string) => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    setCopiedKey(key);
+    copiedTimer.current = setTimeout(() => setCopiedKey(null), 1600);
+  };
 
   const copySummary = async (checkout: AbandonedCheckout) => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(abandonedCheckoutCopySummary(checkout));
       setCopyStatus("Checkout summary copied");
+      markCopied(`${checkout.id}:summary`);
     } catch {
       setCopyStatus("Could not copy checkout summary");
     }
   };
 
-  const copyField = async (value: string, label: string) => {
+  const copyField = async (value: string, label: string, key: string) => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
       await navigator.clipboard.writeText(value);
       setCopyStatus(`${label} copied`);
+      markCopied(key);
     } catch {
       setCopyStatus(`Could not copy ${label.toLowerCase()}`);
     }
@@ -185,14 +264,16 @@ export function AbandonedCheckoutQueue({
               key={checkout.id}
               tabIndex={0}
               onClick={(event) => {
+                if (Date.now() < rowClickSuppressedUntil.current) return;
                 const target = event.target as HTMLElement;
-                if (target.closest("button, a, input, textarea, select, [role='button'], [role='checkbox'], [data-row-interactive='true']")) return;
+                if (target.closest("button, a, input, textarea, select, [role='button'], [role='checkbox'], [role='menuitemradio'], [role='menuitem'], [data-row-interactive='true']")) return;
                 onOpenCheckout(checkout.id);
               }}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" && event.key !== " ") return;
+                if (Date.now() < rowClickSuppressedUntil.current) return;
                 const target = event.target as HTMLElement;
-                if (target.closest("button, a, input, textarea, select, [role='button'], [role='checkbox'], [data-row-interactive='true']")) return;
+                if (target.closest("button, a, input, textarea, select, [role='button'], [role='checkbox'], [role='menuitemradio'], [role='menuitem'], [data-row-interactive='true']")) return;
                 event.preventDefault();
                 onOpenCheckout(checkout.id);
               }}
@@ -244,22 +325,25 @@ export function AbandonedCheckoutQueue({
                   <span>{abandonedCheckoutSourceLabel(checkout.source)}</span>
                   <span aria-hidden>·</span>
                   <span>{captureTime(checkout.created_at)}</span>
-                  <span aria-hidden>·</span>
-                  <span className="font-medium tabular-nums text-black/70">{formatEstimatedTotal(checkout.total)}</span>
+                  <Chip variant="subtle" color="gray" className="tabular-nums">
+                    {formatEstimatedTotal(checkout.total)}
+                  </Chip>
                 </div>
                 <p className="mt-3 text-xs leading-5 text-black/70">{abandonedCheckoutCartSummary(checkout.cart)}</p>
                 {checkout.phone && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-black/70">
-                    <span className="tabular-nums">{checkout.phone}</span>
+                    <Chip variant="subtle" color="gray" className="tabular-nums">
+                      {checkout.phone}
+                    </Chip>
                     <button
                       type="button"
                       aria-label="Copy phone number"
                       onClick={() => {
-                        if (checkout.phone) void copyField(checkout.phone, "Phone number");
+                        if (checkout.phone) void copyField(checkout.phone, "Phone number", `${checkout.id}:phone`);
                       }}
-                      className="inline-flex items-center rounded-md p-1 text-black/40 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                      className="inline-flex items-center rounded-md p-1 text-black/40 transition-all duration-200 ease-out active:scale-[0.97] hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                     >
-                      <Copy size={13} weight="light" aria-hidden />
+                      <CopyGlyph copied={copiedKey === `${checkout.id}:phone`} />
                     </button>
                   </p>
                 )}
@@ -270,11 +354,11 @@ export function AbandonedCheckoutQueue({
                       type="button"
                       aria-label="Copy address"
                       onClick={() => {
-                        if (checkout.address) void copyField(checkout.address, "Address");
+                        if (checkout.address) void copyField(checkout.address, "Address", `${checkout.id}:address`);
                       }}
-                      className="inline-flex items-center rounded-md p-1 align-middle text-black/40 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                      className="inline-flex items-center rounded-md p-1 text-black/40 transition-all duration-200 ease-out active:scale-[0.97] hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                     >
-                      <Copy size={13} weight="light" aria-hidden />
+                      <CopyGlyph copied={copiedKey === `${checkout.id}:address`} />
                     </button>
                   </p>
                 )}
@@ -285,9 +369,9 @@ export function AbandonedCheckoutQueue({
                   <a
                     href={callHref}
                     aria-label={`Call ${checkout.phone}`}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                    className={cn(actionChip, actionChipNeutral)}
                   >
-                    <Phone size={15} weight="light" aria-hidden />
+                    <Phone size={13} weight="light" aria-hidden />
                     Call
                   </a>
                 ) : null}
@@ -297,9 +381,9 @@ export function AbandonedCheckoutQueue({
                     target="_blank"
                     rel="noreferrer"
                     aria-label={`Open WhatsApp for ${checkout.phone}`}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                    className={cn(actionChip, actionChipNeutral)}
                   >
-                    <WhatsappLogo size={15} weight="light" aria-hidden />
+                    <WhatsappLogo size={13} weight="light" aria-hidden />
                     WhatsApp
                   </a>
                 ) : null}
@@ -307,31 +391,83 @@ export function AbandonedCheckoutQueue({
                   type="button"
                   aria-label="Copy checkout summary"
                   onClick={() => void copySummary(checkout)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                  className={cn(actionChip, actionChipNeutral)}
                 >
-                  <ClipboardText size={15} weight="light" aria-hidden />
-                  Copy
+                  <CopyGlyph copied={copiedKey === `${checkout.id}:summary`} />
+                  {copiedKey === `${checkout.id}:summary` ? "Copied" : "Copy"}
                 </button>
-                {isNew && (
-                  <button
-                    type="button"
-                    aria-label="Mark as contacted"
+                <DropdownMenu
+                  onOpenChange={(open) => {
+                    rowClickSuppressedUntil.current = Date.now() + (open ? 60_000 : 400);
+                  }}
+                >
+                  <DropdownMenuTrigger
+                    aria-label={`Contact status: ${isNew ? ABANDONED_STATUS_LABEL.open : ABANDONED_STATUS_LABEL.contacted}`}
                     disabled={isUpdating}
-                    onClick={() => void onAction(checkout.id, "contacted")}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30 disabled:cursor-wait disabled:opacity-45"
+                    // Fixed width so the chip does not resize between the two
+                    // labels — keeps the action row from shifting on every
+                    // status change, and lets the menu match it exactly while
+                    // still fitting the longer option.
+                    className={cn(actionChip, "w-[10.5rem] justify-start", isNew ? actionChipNeutral : actionChipContacted)}
                   >
-                    {isUpdating ? <Spinner size="sm" /> : <Check size={15} weight="light" aria-hidden />}
-                    Contacted
-                  </button>
-                )}
+                    {isUpdating ? (
+                      <Spinner size="sm" />
+                    ) : (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "h-1.5 w-1.5 shrink-0 rounded-full",
+                          isNew ? "bg-rose-400" : "bg-lime-500"
+                        )}
+                      />
+                    )}
+                    {isNew ? ABANDONED_STATUS_LABEL.open : ABANDONED_STATUS_LABEL.contacted}
+                    <CaretDown size={11} weight="light" aria-hidden className="ml-auto shrink-0 opacity-60" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    sideOffset={6}
+                    className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0"
+                  >
+                    <DropdownMenuLabel className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-black/40">
+                      Mark as
+                    </DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={isNew ? "open" : "contacted"}
+                      onValueChange={(value) => {
+                        if (value === (isNew ? "open" : "contacted")) return;
+                        void onAction(checkout.id, value as AbandonedCheckoutAction);
+                      }}
+                    >
+                      {ABANDONED_STATUS_OPTIONS.map((option) => {
+                        const isSelected = option.value === (isNew ? "open" : "contacted");
+                        return (
+                          <DropdownMenuRadioItem
+                            key={option.value}
+                            value={option.value}
+                            className="gap-2 whitespace-nowrap px-2 text-[12px] font-medium [&>span:first-child]:hidden"
+                          >
+                            {/* One left glyph: a check once selected, the status dot otherwise. */}
+                            <span aria-hidden className="flex h-3 w-1.5 shrink-0 items-center justify-center">
+                              {isSelected
+                                ? <Check size={12} weight="bold" />
+                                : <span className={cn("h-1.5 w-1.5 rounded-full", option.dotClassName)} />}
+                            </span>
+                            {option.label}
+                          </DropdownMenuRadioItem>
+                        );
+                      })}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <button
                   type="button"
                   aria-label="Dismiss checkout"
                   disabled={isUpdating}
                   onClick={() => setDismissTarget(checkout)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 disabled:cursor-wait disabled:opacity-45"
+                  className={cn(actionChip, actionChipDanger)}
                 >
-                  <Trash size={15} weight="light" aria-hidden />
+                  <Trash size={13} weight="light" aria-hidden />
                   Dismiss
                 </button>
               </div>

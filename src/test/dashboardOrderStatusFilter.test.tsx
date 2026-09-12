@@ -168,11 +168,12 @@ describe("dashboard order status filter", () => {
     );
 
     await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
-    await user.click(await screen.findByRole("button", { name: "Mark as contacted" }));
+    await user.click(await screen.findByRole("button", { name: "Contact status: Awaiting contact" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Contacted" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Contacted")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Mark as contacted" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Contact status: Contacted" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Contact status: Awaiting contact" })).not.toBeInTheDocument();
     });
     expect(apiFetch).toHaveBeenCalledWith(`/api/abandoned-checkouts/${abandonedCheckouts[0].id}`, {
       method: "PATCH",

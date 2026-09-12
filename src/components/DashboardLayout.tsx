@@ -30,6 +30,7 @@ const routeBreadcrumbLabels: Record<string, string> = {
     "/returns": "Returns",
     "/products": "Products",
     "/customers": "Customers",
+    "/order-protection": "Order Protection",
     "/order-extraction": "Extraction",
     "/order-chat": "Ask Edith",
     "/order-analysis": "AI Analysis",
