@@ -5,7 +5,6 @@ import {
   Check,
   ClipboardText,
   Copy,
-  Pencil,
   Phone,
   Trash,
   WhatsappLogo,
@@ -39,8 +38,6 @@ export type AbandonedCheckoutQueueProps = {
   error: string | null;
   actionInFlightId: string | null;
   onAction: (checkoutId: string, action: AbandonedCheckoutAction) => void | Promise<void>;
-  onEdit?: (checkout: AbandonedCheckout) => void;
-  onConvert?: (checkout: AbandonedCheckout, status: "pending" | "on_hold" | "approved") => void;
   onRetry?: () => void;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
@@ -65,8 +62,6 @@ export function AbandonedCheckoutQueue({
   error,
   actionInFlightId,
   onAction,
-  onEdit = () => {},
-  onConvert = () => {},
   onRetry,
   selectedIds = new Set(),
   onToggleSelect = () => {},
@@ -329,39 +324,6 @@ export function AbandonedCheckoutQueue({
                     Contacted
                   </button>
                 )}
-                <button
-                  type="button"
-                  aria-label="Edit checkout"
-                  onClick={() => onEdit(checkout)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
-                >
-                  <Pencil size={15} weight="light" aria-hidden />
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  aria-label="Move to pending"
-                  onClick={() => onConvert(checkout, "pending")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
-                >
-                  Pending
-                </button>
-                <button
-                  type="button"
-                  aria-label="Move to on hold"
-                  onClick={() => onConvert(checkout, "on_hold")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
-                >
-                  On Hold
-                </button>
-                <button
-                  type="button"
-                  aria-label="Move to approved"
-                  onClick={() => onConvert(checkout, "approved")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-black/70 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
-                >
-                  Approved
-                </button>
                 <button
                   type="button"
                   aria-label="Dismiss checkout"
