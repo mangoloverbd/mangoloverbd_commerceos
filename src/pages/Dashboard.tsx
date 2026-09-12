@@ -21,14 +21,9 @@ import {
 } from "@/components/orders/OrderStatusSegmentedControl";
 import { AbandonedCheckoutQueue } from "@/components/orders/AbandonedCheckoutQueue";
 import {
-  AbandonedCheckoutEditDialog,
-  type AbandonedCheckoutEditPayload,
-} from "@/components/orders/AbandonedCheckoutEditDialog";
-import {
-  AbandonedCheckoutConvertDialog,
   type AbandonedCheckoutConvertOverrides,
   type AbandonedCheckoutConvertStatus,
-} from "@/components/orders/AbandonedCheckoutConvertDialog";
+} from "@/lib/abandonedCheckouts";
 import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import {
@@ -466,15 +461,6 @@ export default function Dashboard() {
   const [abandonedLoading, setAbandonedLoading] = useState(() => !cachedAbandonedResponse);
   const [abandonedError, setAbandonedError] = useState<string | null>(null);
   const [abandonedActionInFlightId, setAbandonedActionInFlightId] = useState<string | null>(null);
-  const [editingCheckout, setEditingCheckout] = useState<AbandonedCheckout | null>(null);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [convertTarget, setConvertTarget] = useState<{
-    checkout: AbandonedCheckout;
-    status: AbandonedCheckoutConvertStatus;
-  } | null>(null);
-  const [convertSaving, setConvertSaving] = useState(false);
-  const [convertError, setConvertError] = useState<string | null>(null);
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
@@ -852,46 +838,6 @@ export default function Dashboard() {
     }
   };
 
-  const saveAbandonedCheckoutEdits = async (checkoutId: string, editBody: AbandonedCheckoutEditPayload) => {
-    if (abandonedActionInFlightId) return;
-    setAbandonedActionInFlightId(checkoutId);
-    setEditSaving(true);
-    setEditError(null);
-    try {
-      const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editBody),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.checkout) {
-        if (res.status === 404 || res.status === 409) {
-          toast.error("Checkout is no longer active");
-          await fetchAbandonedCheckouts(true);
-          setEditingCheckout(null);
-        } else {
-          setEditError("Could not save checkout edits");
-        }
-        return;
-      }
-
-      const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
-        || { checkouts: abandonedCheckouts, activeCount: abandonedActiveCount };
-      const checkouts = cached.checkouts.map((checkout) => checkout.id === checkoutId ? data.checkout as AbandonedCheckout : checkout);
-      const response: AbandonedCheckoutResponse = { checkouts, activeCount: cached.activeCount };
-      queryClient.setQueryData(["/api/abandoned-checkouts"], response);
-      setAbandonedCheckouts(checkouts);
-      setAbandonedActiveCount(cached.activeCount);
-      setEditingCheckout(null);
-      toast.success("Checkout updated");
-    } catch {
-      setEditError("Could not save checkout edits");
-    } finally {
-      setEditSaving(false);
-      setAbandonedActionInFlightId(null);
-    }
-  };
-
   const runAbandonedConvert = async (
     checkoutId: string,
     status: AbandonedCheckoutConvertStatus,
@@ -923,40 +869,6 @@ export default function Dashboard() {
     setAbandonedCheckouts(checkouts);
     setAbandonedActiveCount(activeCount);
     return data.order as { order_number: string };
-  };
-
-  const convertAbandonedCheckout = async (
-    checkoutId: string,
-    status: AbandonedCheckoutConvertStatus,
-    overrides: AbandonedCheckoutConvertOverrides,
-  ) => {
-    if (abandonedActionInFlightId) return;
-    setAbandonedActionInFlightId(checkoutId);
-    setConvertSaving(true);
-    setConvertError(null);
-    try {
-      const order = await runAbandonedConvert(checkoutId, status, overrides);
-      setConvertTarget(null);
-      await queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      await fetchOrders();
-      toast.success(`Order ${order.order_number} created`);
-    } catch (err) {
-      const statusCode = err instanceof AbandonedCheckoutActionError ? err.status : undefined;
-      if (statusCode === 404) {
-        toast.error("Checkout is no longer active");
-        await fetchAbandonedCheckouts(true);
-        setConvertTarget(null);
-      } else if (statusCode === 409) {
-        toast.error("Checkout changed before it could be converted");
-        await fetchAbandonedCheckouts(true);
-        setConvertTarget(null);
-      } else {
-        setConvertError("Could not convert checkout");
-      }
-    } finally {
-      setConvertSaving(false);
-      setAbandonedActionInFlightId(null);
-    }
   };
 
   const applyBulkAbandoned = async (target: string) => {
@@ -1625,14 +1537,6 @@ export default function Dashboard() {
             error={abandonedError}
             actionInFlightId={abandonedActionInFlightId}
             onAction={updateAbandonedCheckout}
-            onEdit={(checkout) => {
-              setEditError(null);
-              setEditingCheckout(checkout);
-            }}
-            onConvert={(checkout, status) => {
-              setConvertError(null);
-              setConvertTarget({ checkout, status });
-            }}
             onRetry={() => void fetchAbandonedCheckouts()}
             selectedIds={selectedAbandonedIds}
             onToggleSelect={(checkoutId) => setSelectedAbandonedIds((prev) => {
@@ -1680,33 +1584,6 @@ export default function Dashboard() {
           fetchAnalytics(dateRange);
         }}
       />
-      {editingCheckout && (
-        <AbandonedCheckoutEditDialog
-          checkout={editingCheckout}
-          open
-          saving={editSaving}
-          error={editError}
-          onClose={() => {
-            if (!editSaving) setEditingCheckout(null);
-          }}
-          onSave={(payload) => void saveAbandonedCheckoutEdits(editingCheckout.id, payload)}
-        />
-      )}
-      {convertTarget && (
-        <AbandonedCheckoutConvertDialog
-          checkout={convertTarget.checkout}
-          status={convertTarget.status}
-          open
-          saving={convertSaving}
-          error={convertError}
-          onClose={() => {
-            if (!convertSaving) setConvertTarget(null);
-          }}
-          onConfirm={(overrides) =>
-            void convertAbandonedCheckout(convertTarget.checkout.id, convertTarget.status, overrides)
-          }
-        />
-      )}
       <AlertDialog open={bulkDismissCount > 0} onOpenChange={(open) => { if (!open && !bulkAbandonedRunning) setBulkDismissCount(0); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

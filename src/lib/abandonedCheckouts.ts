@@ -30,6 +30,13 @@ export type AbandonedCheckoutResponse = {
   activeCount: number;
 };
 
+export type AbandonedCheckoutConvertStatus = "pending" | "on_hold" | "approved";
+
+export type AbandonedCheckoutConvertOverrides = {
+  customer_name: string;
+  address: string;
+};
+
 const SOURCE_LABELS: Record<string, string> = {
   storefront: "Storefront checkout",
   sundarbans_honey: "Sundarbans Honey",

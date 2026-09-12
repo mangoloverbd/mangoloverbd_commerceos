@@ -143,9 +143,7 @@ describe("AbandonedCheckoutQueue", () => {
     expect(clipboardWriteText).toHaveBeenCalledWith("House 1, Road 2, Dhaka");
   });
 
-  it("labels move-to actions by destination while keeping the visible status text", async () => {
-    const user = userEvent.setup();
-    const onConvert = vi.fn();
+  it("renders quick actions without per-row edit or move-to buttons", () => {
     render(
       <AbandonedCheckoutQueue
         checkouts={[checkout]}
@@ -153,23 +151,14 @@ describe("AbandonedCheckoutQueue", () => {
         error={null}
         actionInFlightId={null}
         onAction={vi.fn()}
-        onConvert={onConvert}
       />,
     );
 
-    const pending = screen.getByRole("button", { name: "Move to pending" });
-    const onHold = screen.getByRole("button", { name: "Move to on hold" });
-    const approved = screen.getByRole("button", { name: "Move to approved" });
-    expect(pending).toHaveTextContent("Pending");
-    expect(onHold).toHaveTextContent("On Hold");
-    expect(approved).toHaveTextContent("Approved");
-
-    await user.click(pending);
-    expect(onConvert).toHaveBeenCalledWith(checkout, "pending");
-    await user.click(onHold);
-    expect(onConvert).toHaveBeenCalledWith(checkout, "on_hold");
-    await user.click(approved);
-    expect(onConvert).toHaveBeenCalledWith(checkout, "approved");
+    expect(screen.queryByRole("button", { name: "Edit checkout" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /move to/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy checkout summary" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark as contacted" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss checkout" })).toBeInTheDocument();
   });
 
   it("supports selection and opens the detail page on row click", async () => {
