@@ -16,6 +16,7 @@ const reasonCodeValues = [
   "address_missing",
   "address_too_short",
   "address_too_vague",
+  "address_invalid",
   "abusive_content",
   "test_or_fake_content",
   "address_validation_unavailable",
@@ -112,7 +113,7 @@ function getElapsedSeconds(checkoutStartedAt, now = Date.now()) {
 }
 
 function containsAbusiveContent(value) {
-  return /(?:গালি|fuck|shit|bitch|সালা|হারামি|চুদ|মাদারচোদ)/iu.test(value);
+  return /(?:গালি|fuck|shit|bitch|সালা|হারামি|চুদ|মাদারচোদ|boka[\s_-]*choda|ban[\s_-]*chod|madar[\s_-]*chod|khankir[\s_-]*pola)/iu.test(value);
 }
 
 function containsTestContent(value) {
@@ -162,6 +163,7 @@ export function parseAddressValidationResult(value) {
     throw new TypeError("Address validation result must be an object");
   }
   if (!ADDRESS_ACTIONS.has(value.action)
+    || typeof value.addressValid !== "boolean"
     || typeof value.addressPresent !== "boolean"
     || typeof value.abuse !== "boolean"
     || typeof value.testOrFake !== "boolean"
@@ -176,6 +178,7 @@ export function parseAddressValidationResult(value) {
   if (reason.length > 240) throw new RangeError("Address validation reason is too long");
   return {
     action: value.action,
+    addressValid: value.addressValid,
     addressPresent: value.addressPresent,
     abuse: value.abuse,
     testOrFake: value.testOrFake,
@@ -248,32 +251,33 @@ export async function evaluateProtection(rawInput, dependencies = {}) {
   if (scoredSignals.phoneNetworkChange) reasonCodes.push("phone_network_change");
   if (scoredSignals.checkoutTooFast) reasonCodes.push("checkout_too_fast");
 
-  let addressResult = null;
-  if (scoredSignals.addressVague) {
-    if (typeof dependencies.validateAddress !== "function") {
-      return result("BLOCK", 100, ["address_validation_unavailable"], true);
-    }
-    try {
-      addressResult = parseAddressValidationResult(await dependencies.validateAddress(input));
-    } catch {
-      return result("BLOCK", 100, ["address_validation_unavailable"], true);
-    }
-    if (addressResult.abuse) reasonCodes.push("abusive_content");
-    if (addressResult.testOrFake) reasonCodes.push("test_or_fake_content");
-    if (!addressResult.addressPresent || addressResult.vague) reasonCodes.push("address_too_vague");
-    if (addressResult.abuse || addressResult.testOrFake) {
-      return result("BLOCK", 100, reasonCodes);
-    }
+  // Every otherwise eligible order receives the same server-side assessment.
+  // Deterministic checks above still short-circuit obvious abuse and malformed input.
+  if (typeof dependencies.validateAddress !== "function") {
+    return result("BLOCK", 100, ["address_validation_unavailable"], true);
+  }
+  let addressResult;
+  try {
+    addressResult = parseAddressValidationResult(await dependencies.validateAddress(input));
+  } catch {
+    return result("BLOCK", 100, ["address_validation_unavailable"], true);
+  }
+  if (addressResult.abuse) reasonCodes.push("abusive_content");
+  if (addressResult.testOrFake) reasonCodes.push("test_or_fake_content");
+  if (!addressResult.addressPresent || !addressResult.addressValid) reasonCodes.push("address_invalid");
+  if (addressResult.vague) reasonCodes.push("address_too_vague");
+  if (addressResult.abuse || addressResult.testOrFake || !addressResult.addressPresent || !addressResult.addressValid) {
+    return result("BLOCK", 100, reasonCodes);
   }
 
   const score = calculateProtectionScore({
     ...scoredSignals,
-    addressVague: Boolean(scoredSignals.addressVague && addressResult?.vague),
+    addressVague: Boolean(addressResult.vague),
   });
   const aiRequestsReview = addressResult
     && (addressResult.action === "review" || addressResult.riskScore >= ORDER_PROTECTION_THRESHOLDS.reviewScore);
-  if (addressResult?.riskScore >= ORDER_PROTECTION_THRESHOLDS.aiHardBlockRiskScore) {
-    return result("BLOCK", 100, [...reasonCodes, "address_too_vague"]);
+  if (addressResult.action === "block" || addressResult.riskScore >= ORDER_PROTECTION_THRESHOLDS.aiHardBlockRiskScore) {
+    return result("BLOCK", 100, reasonCodes.length > 0 ? reasonCodes : ["address_invalid"]);
   }
   return result(score >= ORDER_PROTECTION_THRESHOLDS.reviewScore || aiRequestsReview ? "REVIEW" : "ALLOW", score, reasonCodes);
 }

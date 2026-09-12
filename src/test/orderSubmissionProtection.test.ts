@@ -26,13 +26,31 @@ const safeDependencies = (overrides: Record<string, unknown> = {}) => ({
   countPhoneNetworks: async () => 1,
   isDuplicate: async () => false,
   validateTurnstile: async () => ({ ok: true }),
-  validateAddress: vi.fn(),
+  validateAddress: vi.fn(async () => ({
+    action: "allow",
+    addressValid: true,
+    addressPresent: true,
+    abuse: false,
+    testOrFake: false,
+    vague: false,
+    riskScore: 5,
+    reason: "specific",
+  })),
   ...overrides,
 });
 
 describe("order submission protection", () => {
-  test("allows a normal Bangla address without calling AI", async () => {
-    const validateAddress = vi.fn();
+  test("allows a normal Bangla address after the all-order AI assessment", async () => {
+    const validateAddress = vi.fn(async () => ({
+      action: "allow",
+      addressValid: true,
+      addressPresent: true,
+      abuse: false,
+      testOrFake: false,
+      vague: false,
+      riskScore: 5,
+      reason: "specific",
+    }));
     const result = await evaluateProtection(
       normalInput({ address: "ধানমন্ডি ৮ নম্বর রোড, বাড়ি ১২, ঢাকা" }),
       safeDependencies({ validateAddress }),
@@ -40,7 +58,7 @@ describe("order submission protection", () => {
 
     expect(result.decision).toBe("ALLOW");
     expect(result.reasonCodes).toEqual([]);
-    expect(validateAddress).not.toHaveBeenCalled();
+    expect(validateAddress).toHaveBeenCalledOnce();
   });
 
   test("blocks a filled honeypot before external checks", async () => {
@@ -70,6 +88,73 @@ describe("order submission protection", () => {
       "test_or_fake_content",
     ]));
     expect(normalBanglish.decision).toBe("ALLOW");
+  });
+
+  test("blocks gibberish addresses from the AI assessment", async () => {
+    const validateAddress = vi.fn(async () => ({
+      action: "block",
+      addressValid: false,
+      addressPresent: true,
+      abuse: false,
+      testOrFake: true,
+      vague: true,
+      riskScore: 95,
+      reason: "Random text is not a delivery address",
+    }));
+    const result = await evaluateProtection(
+      normalInput({ address: "ghfbwsh dugejgheu ahihw" }),
+      safeDependencies({ validateAddress }),
+    );
+
+    expect(result).toMatchObject({ decision: "BLOCK" });
+    expect(result.reasonCodes).toEqual(expect.arrayContaining(["test_or_fake_content", "address_invalid"]));
+    expect(validateAddress).toHaveBeenCalledOnce();
+  });
+
+  test("blocks AI-detected harassment even when local word filters do not match it", async () => {
+    const validateAddress = vi.fn(async () => ({
+      action: "block",
+      addressValid: true,
+      addressPresent: true,
+      abuse: true,
+      testOrFake: false,
+      vague: false,
+      riskScore: 90,
+      reason: "Abusive customer text",
+    }));
+    const result = await evaluateProtection(
+      normalInput({ address: "House 1 Road 2 Dhaka" }),
+      safeDependencies({ validateAddress }),
+    );
+
+    expect(result).toMatchObject({ decision: "BLOCK", reasonCodes: ["abusive_content"] });
+    expect(validateAddress).toHaveBeenCalledOnce();
+  });
+
+  test("fails closed when the required all-order AI assessment is unavailable", async () => {
+    const result = await evaluateProtection(
+      normalInput(),
+      safeDependencies({ validateAddress: async () => ({ unavailable: true }) }),
+    );
+
+    expect(result).toMatchObject({
+      decision: "BLOCK",
+      retryable: true,
+      reasonCodes: ["address_validation_unavailable"],
+    });
+  });
+
+  test("blocks Romanized Bangla harassment in customer-supplied fields before external checks", async () => {
+    const validateTurnstile = vi.fn();
+    const validateAddress = vi.fn();
+    const result = await evaluateProtection(
+      normalInput({ address: "ami ekta bokachoda" }),
+      safeDependencies({ validateTurnstile, validateAddress }),
+    );
+
+    expect(result).toMatchObject({ decision: "BLOCK", reasonCodes: ["abusive_content"] });
+    expect(validateTurnstile).not.toHaveBeenCalled();
+    expect(validateAddress).not.toHaveBeenCalled();
   });
 
   test("holds repeated phone, session, and network signals at the review threshold", async () => {
@@ -111,6 +196,7 @@ describe("order submission protection", () => {
     const vague = await evaluateProtection(normalInput({ address: "near the market" }), safeDependencies({
       validateAddress: async () => ({
         action: "review",
+        addressValid: true,
         addressPresent: true,
         abuse: false,
         testOrFake: false,
@@ -126,7 +212,7 @@ describe("order submission protection", () => {
     expect(vague.reasonCodes).toContain("address_too_vague");
   });
 
-  test("fails closed when Turnstile or ambiguous-address AI is unavailable", async () => {
+  test("fails closed when Turnstile or all-order address AI is unavailable", async () => {
     const turnstile = await evaluateProtection(normalInput(), safeDependencies({
       validateTurnstile: async () => ({ ok: false }),
     }));
@@ -146,6 +232,7 @@ describe("order submission protection", () => {
   test("parses only strict bounded address-validation JSON", () => {
     expect(parseAddressValidationResult({
       action: "allow",
+      addressValid: true,
       addressPresent: true,
       abuse: false,
       testOrFake: false,
@@ -154,6 +241,7 @@ describe("order submission protection", () => {
       reason: "Specific enough",
     })).toEqual({
       action: "allow",
+      addressValid: true,
       addressPresent: true,
       abuse: false,
       testOrFake: false,

@@ -10,7 +10,7 @@ Set these values in the Merchant Suite deployment:
 - `ORDER_PROTECTION_HASH_SECRET` — a random secret of at least 16 characters; rotate only with a planned Redis key transition.
 - `TURNSTILE_SECRET_KEY` — server-only Cloudflare Turnstile secret.
 - `TURNSTILE_SITE_KEY` — public site key used to build the storefront.
-- `ADDRESS_VALIDATION_MODEL=gpt-4o-mini`
+- `ADDRESS_VALIDATION_MODEL=gpt-4o-mini` (the model checks every otherwise eligible order)
 - `ADDRESS_VALIDATION_PROVIDER=openai`
 - `ADDRESS_VALIDATION_TIMEOUT_MS=5000`
 - Upstash Redis URL and token, because active protection fails closed when signal storage is unavailable.
@@ -21,10 +21,10 @@ The storefront project receives only `VITE_TURNSTILE_SITE_KEY`, the Merchant Sui
 
 1. Checkout renders a hidden honeypot and Turnstile challenge, then records a session ID and checkout start time.
 2. The storefront sends canonical product/variant IDs to `/api/public/v1/:handle/orders`.
-3. Merchant Suite validates stock and prices from Supabase, then runs deterministic checks. GPT-4o-mini is called only for an otherwise ambiguous address.
+3. Merchant Suite validates stock and prices from Supabase, then runs deterministic checks. For every otherwise eligible order, GPT-4o-mini checks the customer name, address, and notes for a plausible deliverable address, gibberish/fake content, and harassment or abuse.
 4. `ALLOW` creates the order and decrements stock atomically.
 5. `REVIEW` creates a 30-day hold and returns HTTP 202. No order, stock decrement, or purchase event is created.
-6. `BLOCK` returns a generic customer-safe message. No order, stock decrement, or purchase event is created.
+6. `BLOCK` returns a generic customer-safe message. No order, stock decrement, or purchase event is created. AI failures fail closed with a retryable response, so an order cannot bypass the check when OpenAI is unavailable.
 
 ## Staff flow
 

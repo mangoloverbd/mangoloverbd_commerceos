@@ -65,6 +65,7 @@ The first version will support these reason codes:
 - `address_missing`
 - `address_too_short`
 - `address_too_vague`
+- `address_invalid`
 - `abusive_content`
 - `test_or_fake_content`
 - `address_validation_unavailable`
@@ -79,7 +80,7 @@ The staff-review record stores only the customer/cart fields required to investi
 
 ### 5. Address validation
 
-Run deterministic checks first. Do not call AI for clearly valid addresses or obvious hard failures. Call the dedicated validator only for ambiguous text, such as a plausible-looking but incomplete or low-information address.
+Run deterministic checks first. Do not call AI for obvious hard failures such as a filled honeypot, missing/too-short address, known abuse, or an exact duplicate. For every other order, call the dedicated validator so it can assess whether the submitted text is a plausible deliverable address, gibberish/fake content, or harassment/abuse.
 
 Use `gpt-4o-mini` through a dedicated server-side configuration:
 
@@ -88,7 +89,7 @@ ADDRESS_VALIDATION_MODEL=gpt-4o-mini
 ADDRESS_VALIDATION_PROVIDER=openai
 ```
 
-The existing Order Chat/social AI configuration must not be changed. The validator receives only the customer name and address as untrusted data and must return strict JSON containing an action, address-presence flag, abuse/test/vagueness flags, integer risk score, and short reason. A timeout or malformed response returns a retryable error and does not create a normal order.
+The existing Order Chat/social AI configuration must not be changed. The validator receives only the customer name, address, and notes as untrusted data and must return strict JSON containing an action, address-validity and address-presence flags, abuse/test/vagueness flags, integer risk score, and short reason. A timeout or malformed response returns a retryable error and does not create a normal order.
 
 AI checks plausibility and abuse indicators; they do not prove a person owns a phone number or that an address exists.
 
@@ -122,7 +123,7 @@ checkout submission
   → required fields and normalized phone
   → deterministic abuse/address checks
   → phone/session/network velocity checks
-  → AI address check only when ambiguous
+  → AI address/abuse/fake-content check for every eligible order
   → score and ALLOW / REVIEW / BLOCK
   → only ALLOW continues to stock and order creation
 ```
