@@ -38,3 +38,22 @@ export function calculateShippingCost(subtotal, shippingZoneId, zones) {
 
   return { cost: price, error: null };
 }
+
+export const DEFAULT_STOREFRONT_DELIVERY_FEE = 100;
+export const DEFAULT_STOREFRONT_FREE_DELIVERY_THRESHOLD = 2600;
+
+/**
+ * Calculate shipping for the public storefront order contract.
+ *
+ * The legacy storefront displays a standard ৳100 delivery option and does not
+ * submit a zone ID. Keep that checkout path consistent with the dashboard
+ * while still honoring configured zones when a zone is supplied.
+ */
+export function calculateStorefrontShippingCost(subtotal, shippingZoneId, zones) {
+  if (shippingZoneId) return calculateShippingCost(subtotal, shippingZoneId, zones);
+
+  const cost = DEFAULT_STOREFRONT_FREE_DELIVERY_THRESHOLD > 0 && subtotal >= DEFAULT_STOREFRONT_FREE_DELIVERY_THRESHOLD
+    ? 0
+    : DEFAULT_STOREFRONT_DELIVERY_FEE;
+  return { cost, error: null };
+}

@@ -9,6 +9,10 @@
 - Compose SMS messages with quick order-value inserts and a Unicode length limit.
 - Keep manual SMS requests authenticated, workspace-scoped, and connected to the existing Bulk SMS BD gateway.
 
+### Fixed
+
+- Apply the standard ৳100 delivery charge to public storefront orders below the free-delivery threshold when no shipping zone is selected.
+
 ## [0.0.2.4] - 2026-09-12
 
 ### Changed
