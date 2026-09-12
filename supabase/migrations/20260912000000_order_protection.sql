@@ -29,6 +29,7 @@ create table if not exists public.order_protection_reviews (
   notes text null,
   score integer not null check (score between 0 and 100),
   reason_codes text[] not null default '{}',
+  approval_claimed_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   expires_at timestamptz not null
@@ -42,6 +43,9 @@ create index if not exists order_protection_reviews_org_status_created_idx
   on public.order_protection_reviews (org_id, status, created_at desc);
 create index if not exists order_protection_reviews_expires_idx
   on public.order_protection_reviews (org_id, expires_at);
+create index if not exists order_protection_reviews_approval_claim_idx
+  on public.order_protection_reviews (org_id, id)
+  where status = 'on_hold' and approval_claimed_at is null;
 
 alter table public.order_protection_events enable row level security;
 alter table public.order_protection_reviews enable row level security;

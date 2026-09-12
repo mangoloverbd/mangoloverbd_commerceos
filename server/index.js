@@ -10952,12 +10952,15 @@ async function requireOrderProtectionStaff(req) {
 }
 
 async function approveHeldProtectionReview(supabase, orgId, reviewId) {
+  const claimTime = new Date().toISOString();
   const { data: review, error: reviewError } = await supabase
     .from("order_protection_reviews")
-    .select("*")
+    .update({ approval_claimed_at: claimTime, updated_at: claimTime })
     .eq("id", reviewId)
     .eq("org_id", orgId)
     .eq("status", "on_hold")
+    .is("approval_claimed_at", null)
+    .select("*")
     .maybeSingle();
   if (reviewError) throw reviewError;
   if (!review) {
@@ -10966,34 +10969,35 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     throw err;
   }
 
-  const items = Array.isArray(review.items) ? review.items : [];
-  const variantIds = items.map((item) => item?.variantId).filter(Boolean);
-  if (variantIds.length !== items.length || items.length === 0) {
-    const err = new Error("This compatibility review needs a fresh canonical checkout");
-    err.statusCode = 409;
-    throw err;
-  }
+  try {
+    const items = Array.isArray(review.items) ? review.items : [];
+    const variantIds = items.map((item) => item?.variantId).filter(Boolean);
+    if (variantIds.length !== items.length || items.length === 0) {
+      const err = new Error("This compatibility review needs a fresh canonical checkout");
+      err.statusCode = 409;
+      throw err;
+    }
 
-  const { data: variants, error: variantsError } = await supabase
+    const { data: variants, error: variantsError } = await supabase
     .from("product_variants")
     .select("id, product_id, attributes, price_adjustment, stock_quantity, weight_kg")
     .in("id", variantIds)
     .eq("org_id", orgId);
-  if (variantsError) throw variantsError;
-  const variantMap = Object.fromEntries((variants || []).map((variant) => [variant.id, variant]));
-  const productIds = [...new Set((variants || []).map((variant) => variant.product_id))];
-  const { data: products, error: productsError } = await supabase
+    if (variantsError) throw variantsError;
+    const variantMap = Object.fromEntries((variants || []).map((variant) => [variant.id, variant]));
+    const productIds = [...new Set((variants || []).map((variant) => variant.product_id))];
+    const { data: products, error: productsError } = await supabase
     .from("products")
     .select("id, name, selling_price, published, weight_kg, warehouse_id")
     .in("id", productIds)
     .eq("org_id", orgId)
     .eq("published", true);
-  if (productsError) throw productsError;
-  const productMap = Object.fromEntries((products || []).map((product) => [product.id, product]));
+    if (productsError) throw productsError;
+    const productMap = Object.fromEntries((products || []).map((product) => [product.id, product]));
 
-  const orderItems = [];
-  let subtotal = 0;
-  for (const item of items) {
+    const orderItems = [];
+    let subtotal = 0;
+    for (const item of items) {
     const variant = variantMap[item.variantId];
     const product = variant ? productMap[variant.product_id] : null;
     const quantity = Number.isSafeInteger(item.quantity) ? item.quantity : 0;
@@ -11012,10 +11016,10 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
       unitPrice,
     });
     subtotal += unitPrice * quantity;
-  }
+    }
 
-  let shipping = 0;
-  if (review.shipping_zone_id) {
+    let shipping = 0;
+    if (review.shipping_zone_id) {
     const { data: settings, error: settingsError } = await supabase
       .from("storefront_settings")
       .select("shipping_zones")
@@ -11029,11 +11033,11 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
       throw err;
     }
     shipping = shippingResult.cost;
-  }
+    }
 
-  const routing = await resolveOrderRouting(supabase, orgId, orderItems);
-  const orderNumber = await getNextManualOrderNumber(orgId);
-  const { data: order, error: orderError } = await supabase
+    const routing = await resolveOrderRouting(supabase, orgId, orderItems);
+    const orderNumber = await getNextManualOrderNumber(orgId);
+    const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
       org_id: orgId,
@@ -11055,9 +11059,9 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     })
     .select("*")
     .single();
-  if (orderError) throw orderError;
+    if (orderError) throw orderError;
 
-  const { error: itemsError } = await supabase.from("order_items").insert(orderItems.map((item) => ({
+    const { error: itemsError } = await supabase.from("order_items").insert(orderItems.map((item) => ({
     org_id: orgId,
     order_id: order.id,
     product_id: item.productId,
@@ -11067,12 +11071,12 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     unit_price: item.unitPrice,
     quantity: item.quantity,
   })));
-  if (itemsError) {
+    if (itemsError) {
     await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
     throw itemsError;
-  }
+    }
 
-  for (const item of orderItems) {
+    for (const item of orderItems) {
     const currentStock = variantMap[item.variantId].stock_quantity;
     const { data: updatedVariants, error: stockError } = await supabase
       .from("product_variants")
@@ -11088,19 +11092,29 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
       err.statusCode = 409;
       throw err;
     }
-  }
+    }
 
-  const { error: reviewUpdateError } = await supabase
+    const { error: reviewUpdateError } = await supabase
     .from("order_protection_reviews")
-    .update({ status: "approved", updated_at: new Date().toISOString() })
+    .update({ status: "approved", approval_claimed_at: null, updated_at: new Date().toISOString() })
     .eq("id", reviewId)
     .eq("org_id", orgId)
     .eq("status", "on_hold");
-  if (reviewUpdateError) throw reviewUpdateError;
+    if (reviewUpdateError) throw reviewUpdateError;
 
-  await sendBulkSms(orgId, "confirmation", order);
-  await purgeProductCache(orgId, null, { listChanged: false, warm: false });
-  return { orderRef: String(orderNumber), order };
+    await sendBulkSms(orgId, "confirmation", order);
+    await purgeProductCache(orgId, null, { listChanged: false, warm: false });
+    return { orderRef: String(orderNumber), order };
+  } catch (error) {
+    await supabase
+      .from("order_protection_reviews")
+      .update({ approval_claimed_at: null, updated_at: new Date().toISOString() })
+      .eq("id", reviewId)
+      .eq("org_id", orgId)
+      .eq("status", "on_hold")
+      .eq("approval_claimed_at", claimTime);
+    throw error;
+  }
 }
 
 app.get("/api/order-protection/reviews", async (req, res) => {

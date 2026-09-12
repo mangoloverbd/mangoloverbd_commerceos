@@ -22,4 +22,11 @@ describe("order protection review routes", () => {
     expect(route).toContain("approveHeldProtectionReview");
     expect(route).toContain('action === "approve"');
   });
+
+  it("claims a held review before creating an order", () => {
+    const approval = source.slice(source.indexOf("async function approveHeldProtectionReview"), source.indexOf('app.get("/api/order-protection/reviews"'));
+    expect(approval).toContain("approval_claimed_at");
+    expect(approval).toContain('.is("approval_claimed_at", null)');
+    expect(approval).toContain('update({ approval_claimed_at:');
+  });
 });
