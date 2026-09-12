@@ -23,6 +23,7 @@ type IndividualSmsDialogProps = {
 };
 
 const MAX_MESSAGE_LENGTH = 1000;
+const DEFAULT_STORE_PHONE = "+8801301636461";
 
 const SMS_TEMPLATES = [
   { id: "custom", label: "Custom", message: "" },
@@ -172,7 +173,8 @@ export function IndividualSmsDialog({
     setTemplateLoading(true);
     const template = SMS_TEMPLATES.find((item) => item.id === templateId);
     const requiresStorePhone = Boolean(template?.message.includes("{{store_phone}}"));
-    const resolvedStorePhone = requiresStorePhone ? storePhone ?? await loadStorePhone() : storePhone || "";
+    const configuredStorePhone = requiresStorePhone ? storePhone ?? await loadStorePhone() : storePhone || "";
+    const resolvedStorePhone = requiresStorePhone ? configuredStorePhone || DEFAULT_STORE_PHONE : configuredStorePhone;
     if (requiresStorePhone) setStorePhone(resolvedStorePhone);
     setMessage(resolveTemplate(template?.message || "", {
       customerName,
@@ -231,7 +233,7 @@ export function IndividualSmsDialog({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: reduceMotion ? 0.12 : 0.22, ease: "easeOut" }}
-              className="space-y-4"
+              className="min-w-0 space-y-4"
             >
               <DialogHeader>
                 <DialogTitle className="text-left text-[20px] font-medium tracking-tight text-black">Send individual SMS</DialogTitle>
@@ -290,7 +292,7 @@ export function IndividualSmsDialog({
                   maxLength={MAX_MESSAGE_LENGTH}
                   rows={6}
                   disabled={sending || templateLoading}
-                  className="min-h-36 resize-y rounded-xl border-black/10 bg-white text-[13px] leading-6 text-black focus-visible:ring-black/15"
+                  className="min-h-36 w-full min-w-0 resize-y rounded-xl border-black/10 bg-white text-[13px] leading-6 text-black focus-visible:ring-black/15"
                 />
                 <div className="flex items-center justify-between gap-3 text-[11px] text-black/40">
                   <span>{error || "The message will be sent through Bulk SMS BD."}</span>
