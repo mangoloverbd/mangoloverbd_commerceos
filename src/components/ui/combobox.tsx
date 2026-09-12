@@ -86,17 +86,17 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] overflow-hidden p-0"
+        className="max-h-[min(70vh,420px)] w-[var(--radix-popover-trigger-width)] overflow-hidden p-0"
         align="start"
         collisionPadding={8}
         container={container ?? undefined}
       >
-        <Command className="flex w-full flex-col">
+        <Command className="flex max-h-[min(70vh,420px)] min-h-0 w-full flex-col">
           <CommandInput
             placeholder="Search products..."
             className="h-11 shrink-0 border-none"
           />
-          <CommandList className="max-h-[280px] overflow-y-auto">
+          <CommandList className="min-h-0 max-h-[min(70vh,360px)] flex-1 overflow-y-auto overscroll-contain">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {items.map((item) => (
