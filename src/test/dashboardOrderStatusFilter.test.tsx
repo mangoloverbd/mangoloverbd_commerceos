@@ -25,7 +25,6 @@ vi.mock("recharts", () => ({
   ResponsiveContainer: () => null,
   Tooltip: () => null,
 }));
-vi.mock("@/components/OrderCreatorModal", () => ({ default: () => null }));
 vi.mock("@/components/OrdersTable", () => ({
   OrdersTable: ({ orders, showRiskColumn = true }: { orders: Array<{ id: string; customer_name: string }>; showRiskColumn?: boolean }) => (
     <div data-testid="dashboard-orders">

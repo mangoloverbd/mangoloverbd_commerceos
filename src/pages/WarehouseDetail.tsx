@@ -26,7 +26,6 @@ import { WarehouseDialog } from "@/components/WarehouseDialog";
 import { WarehouseMetric } from "@/components/warehouse/WarehouseMetric";
 import { AddProductsDialog } from "@/components/warehouse/AddProductsDialog";
 import { Chip } from "@/components/base/badges/chip";
-import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { RichButton } from "@/components/ui/rich-button";
 import { PopButton } from "@/components/ui/pop-button";
 import {
@@ -83,7 +82,6 @@ export default function WarehouseDetail() {
   const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("all");
   const [orderPageSize, setOrderPageSize] = useOrderPageSize("warehouse-order-page-size");
   const [orderPage, setOrderPage] = useState(0);
-  const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
@@ -325,7 +323,7 @@ export default function WarehouseDetail() {
               <PopButton
                 color="yellow"
                 size="sm"
-                onClick={() => setCreateOrderOpen(true)}
+                onClick={() => navigate(`/orders/new`, { state: { from: `/warehouses/${id}` } })}
                 className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black"
                 data-testid="button-create-warehouse-order"
               >
@@ -404,13 +402,6 @@ export default function WarehouseDetail() {
         onClose={() => setAddOpen(false)}
         onAssigned={async () => {
           await Promise.all([detail.refetch(), queryClient.invalidateQueries({ queryKey: [WAREHOUSES_QUERY_KEY] })]);
-        }}
-      />
-      <OrderCreatorModal
-        open={createOrderOpen}
-        onOpenChange={setCreateOrderOpen}
-        onCreated={() => {
-          void orders.refetch();
         }}
       />
     </div>

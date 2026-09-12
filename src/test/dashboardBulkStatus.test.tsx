@@ -35,7 +35,6 @@ vi.mock("recharts", () => ({
   ResponsiveContainer: () => null,
   Tooltip: () => null,
 }));
-vi.mock("@/components/OrderCreatorModal", () => ({ default: () => null }));
 
 function baseOrder(overrides: Record<string, unknown>) {
   return {

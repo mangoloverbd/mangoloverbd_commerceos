@@ -19,6 +19,7 @@ const WarehouseDetail = lazy(() => import("./pages/WarehouseDetail"));
 const ProductNew = lazy(() => import("./pages/ProductNew"));
 const ProductEdit = lazy(() => import("./pages/ProductEdit"));
 const OrderDetail = lazy(() => import("./pages/OrderDetail"));
+const NewOrder = lazy(() => import("./pages/NewOrder"));
 const AbandonedDetail = lazy(() => import("./pages/AbandonedDetail"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -120,6 +121,7 @@ const AppRoutes = () => (
       <Route path="/products/:id/edit" element={<ProductEdit />} />
       <Route path="/warehouses" element={<Warehouses />} />
       <Route path="/warehouses/:id" element={<WarehouseDetail />} />
+      <Route path="/orders/new" element={<NewOrder />} />
       <Route path="/orders/:id" element={<OrderDetail />} />
       <Route path="/abandoned/:id" element={<AbandonedDetail />} />
       <Route path="/customers" element={<Customers />} />

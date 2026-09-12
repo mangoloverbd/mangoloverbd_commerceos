@@ -24,7 +24,6 @@ import {
   type AbandonedCheckoutConvertOverrides,
   type AbandonedCheckoutConvertStatus,
 } from "@/lib/abandonedCheckouts";
-import OrderCreatorModal from "@/components/OrderCreatorModal";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import {
   Search, AlertTriangle,
@@ -462,7 +461,6 @@ export default function Dashboard() {
   const [abandonedError, setAbandonedError] = useState<string | null>(null);
   const [abandonedActionInFlightId, setAbandonedActionInFlightId] = useState<string | null>(null);
   const [autoSyncing, setAutoSyncing] = useState(false);
-  const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [selectedAbandonedIds, setSelectedAbandonedIds] = useState<Set<string>>(new Set());
   const [bulkAbandonedRunning, setBulkAbandonedRunning] = useState(false);
@@ -1438,7 +1436,7 @@ export default function Dashboard() {
             <PopButton
               color="yellow"
               size="sm"
-              onClick={() => setCreateOrderOpen(true)}
+              onClick={() => navigate("/orders/new", { state: { from: location.pathname } })}
               disabled={bulkUpdating || autoSyncing}
               className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black max-md:w-full max-md:justify-center"
               data-testid="button-create-order"
@@ -1584,14 +1582,6 @@ export default function Dashboard() {
         )}
       </motion.div>
 
-      <OrderCreatorModal
-        open={createOrderOpen}
-        onOpenChange={setCreateOrderOpen}
-        onCreated={() => {
-          fetchOrders();
-          fetchAnalytics(dateRange);
-        }}
-      />
       <AlertDialog open={bulkDismissCount > 0} onOpenChange={(open) => { if (!open && !bulkAbandonedRunning) setBulkDismissCount(0); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
