@@ -867,6 +867,45 @@ async function checkFraudStatus(phone, apiKey) {
   }
 }
 
+const MAX_MANUAL_SMS_LENGTH = 1000;
+
+function bulkSmsError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+async function submitBulkSmsMessage({ apiKey, senderId, phone: rawPhone, message }) {
+  const phone = normalizeBdPhone(rawPhone);
+  if (!phone) {
+    return { accepted: false, statusCode: 422, errorMessage: "Invalid phone number" };
+  }
+
+  const bulkSmsPhone = `880${phone.slice(1)}`;
+  const url = `https://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(apiKey)}&type=text&number=${encodeURIComponent(bulkSmsPhone)}&senderid=${encodeURIComponent(senderId)}&message=${encodeURIComponent(message)}`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json().catch(() => null);
+    const responseCode = Number(data?.response_code);
+    const maskedPhone = `${bulkSmsPhone.slice(0, 5)}****${bulkSmsPhone.slice(-2)}`;
+    if (response.ok && responseCode === 202) {
+      console.log(`[BulkSMS] SMS submitted to ${maskedPhone}`, { responseCode });
+      return { accepted: true, responseCode };
+    }
+
+    const errorMessage = data?.error_message || data?.message || `HTTP ${response.status}`;
+    console.error(`[BulkSMS] SMS submission failed for ${maskedPhone}`, {
+      responseCode: data?.response_code ?? null,
+      errorMessage,
+    });
+    return { accepted: false, statusCode: 502, errorMessage };
+  } catch (error) {
+    console.error("[BulkSMS] Gateway request failed:", error instanceof Error ? error.message : String(error));
+    return { accepted: false, statusCode: 502, errorMessage: "Bulk SMS gateway unavailable" };
+  }
+}
+
 async function sendBulkSms(orgId, type, order) {
   try {
     const keys = [
@@ -902,10 +941,6 @@ async function sendBulkSms(orgId, type, order) {
     
     if (!template.trim() || !order.phone) return;
     
-    const phone = normalizeBdPhone(order.phone);
-    if (!phone) return;
-    const bulkSmsPhone = `880${phone.slice(1)}`;
-
     let message = template
       .replace(/{customer_name}/g, order.customer_name || "")
       .replace(/{order_id}/g, order.order_number || "")
@@ -914,23 +949,39 @@ async function sendBulkSms(orgId, type, order) {
       .replace(/{courier_name}/g, order.courier_name || "")
       .replace(/{tracking_code}/g, order.tracking_code || "");
       
-    const url = `https://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(apiKey)}&type=text&number=${encodeURIComponent(bulkSmsPhone)}&senderid=${encodeURIComponent(senderId)}&message=${encodeURIComponent(message)}`;
-
-    const response = await fetch(url);
-    const data = await response.json().catch(() => null);
-    const responseCode = Number(data?.response_code);
-    if (response.ok && responseCode === 202) {
-      console.log(`[BulkSMS] SMS submitted to ${bulkSmsPhone}`, { responseCode });
-    } else {
-      const errorMessage = data?.error_message || data?.message || `HTTP ${response.status}`;
-      console.error(`[BulkSMS] SMS submission failed for ${bulkSmsPhone}`, {
-        responseCode: data?.response_code ?? null,
-        errorMessage,
-      });
-    }
+    await submitBulkSmsMessage({ apiKey, senderId, phone: order.phone, message });
 
   } catch (err) {
     console.error("[BulkSMS] Error in sendBulkSms:", err);
+  }
+}
+
+async function sendManualBulkSms(orgId, order, message) {
+  const settings = await getSettings([
+    `${orgId}:bulksms_enabled`,
+    `${orgId}:bulksms_api_key`,
+    `${orgId}:bulksms_sender_id`,
+  ]);
+  if (settings[`${orgId}:bulksms_enabled`] !== "true") {
+    throw bulkSmsError("Bulk SMS is disabled. Enable it in Settings → Integrations.", 409);
+  }
+
+  const apiKey = String(settings[`${orgId}:bulksms_api_key`] || "").trim();
+  const senderId = String(settings[`${orgId}:bulksms_sender_id`] || "").trim();
+  if (!apiKey || !senderId) {
+    throw bulkSmsError("Bulk SMS credentials are not configured. Go to Settings → Integrations.", 409);
+  }
+
+  if (typeof message !== "string" || !message.trim()) {
+    throw bulkSmsError("Message cannot be empty", 422);
+  }
+  if ([...message].length > MAX_MANUAL_SMS_LENGTH) {
+    throw bulkSmsError(`Message cannot exceed ${MAX_MANUAL_SMS_LENGTH} characters`, 422);
+  }
+
+  const result = await submitBulkSmsMessage({ apiKey, senderId, phone: order.phone, message });
+  if (!result.accepted) {
+    throw bulkSmsError(result.errorMessage || "Bulk SMS submission failed", result.statusCode || 502);
   }
 }
 
@@ -7233,6 +7284,37 @@ app.patch("/api/orders/:id", async (req, res) => {
     return res.json({ success: true, order: data });
   } catch (e) {
     return sendError(res, e);
+  }
+});
+
+app.post("/api/orders/:id/send-sms", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const rawMessage = req.body?.message;
+    if (typeof rawMessage !== "string" || !rawMessage.trim()) {
+      return res.status(422).json({ error: "Message cannot be empty" });
+    }
+    if ([...rawMessage].length > MAX_MANUAL_SMS_LENGTH) {
+      return res.status(422).json({ error: `Message cannot exceed ${MAX_MANUAL_SMS_LENGTH} characters` });
+    }
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("id, order_number, phone")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (orderError) throw orderError;
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    await sendManualBulkSms(orgId, order, rawMessage);
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 

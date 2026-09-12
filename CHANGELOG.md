@@ -1,6 +1,13 @@
 # Changelog
 
-## [0.0.2.5] - 2026-09-13
+## [0.1.0.0] - 2026-09-13
+
+### Added
+
+- Send an individual SMS to a saved order phone number from the order editor.
+- Open a one-click WhatsApp chat for an order directly from its customer panel.
+- Compose SMS messages with quick order-value inserts and a Unicode length limit.
+- Keep manual SMS requests authenticated, workspace-scoped, and connected to the existing Bulk SMS BD gateway.
 
 ### Fixed
 
