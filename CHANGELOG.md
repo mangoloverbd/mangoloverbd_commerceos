@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.2.5] - 2026-09-13
+
+### Fixed
+
+- Apply the standard ৳100 delivery charge to public storefront orders below the free-delivery threshold when no shipping zone is selected.
+
 ## [0.0.2.4] - 2026-09-12
 
 ### Changed
