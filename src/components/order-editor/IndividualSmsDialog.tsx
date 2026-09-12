@@ -223,7 +223,8 @@ export function IndividualSmsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         forceMount
-        className="data-[state=closed]:pointer-events-none max-w-[520px] rounded-2xl border-black/10 bg-[#FAFAF8] p-5 !duration-0 sm:p-6"
+        overlayClassName="bg-black/50 backdrop-blur-md"
+        className="data-[state=closed]:pointer-events-none max-w-[560px] overflow-hidden rounded-[28px] border-white/70 bg-[#FAFAF8]/95 p-0 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.42)] backdrop-blur-xl !duration-0"
       >
         <AnimatePresence>
           {open && (
@@ -233,74 +234,80 @@ export function IndividualSmsDialog({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: reduceMotion ? 0.12 : 0.22, ease: "easeOut" }}
-              className="min-w-0 space-y-4"
+              className="min-w-0"
             >
-              <DialogHeader>
-                <DialogTitle className="text-left text-[20px] font-medium tracking-tight text-black">Send individual SMS</DialogTitle>
-                <DialogDescription className="text-left text-[12px] text-black/50">
-                  Send a one-off message to {customerName || "this customer"} at {phone}. Order {orderLabel(orderNumber)}.
-                </DialogDescription>
-              </DialogHeader>
+              <div className="space-y-5 p-5 sm:p-6">
+                <DialogHeader className="pr-10">
+                  <span className="mb-1 text-left text-[9px] font-medium uppercase tracking-[0.28em] text-black/40">Message composer</span>
+                  <DialogTitle className="text-left text-[22px] font-medium tracking-[-0.02em] text-black">Send individual SMS</DialogTitle>
+                  <DialogDescription className="text-left text-[12px] leading-5 text-black/50">
+                    Send a one-off message to {customerName || "this customer"} at {phone}. Order {orderLabel(orderNumber)}.
+                  </DialogDescription>
+                </DialogHeader>
 
-              <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:thin]">
-                <SegmentedControl
-                  aria-label="SMS templates"
-                  variant="plain"
-                  selectedKeys={new Set([selectedTemplate])}
-                  onSelectionChange={(keys) => {
-                    const selected = [...keys][0];
-                    if (selected) void selectTemplate(String(selected) as SmsTemplateId);
-                  }}
-                  className="w-max min-w-full justify-start gap-1 rounded-xl bg-black/[0.045] p-1"
-                >
-                  {SMS_TEMPLATES.map((template) => (
-                    <SegmentedControlItem
-                      key={template.id}
-                      id={template.id}
-                      isDisabled={templateLoading}
-                      className={({ isSelected }) => [
-                        "rounded-lg px-3 py-2 text-[10px] font-medium uppercase tracking-[0.1em]",
-                        isSelected ? "bg-white text-black shadow-sm" : "text-black/50 hover:bg-white/50 hover:text-black",
-                      ].join(" ")}
-                    >
-                      {template.label}
-                    </SegmentedControlItem>
-                  ))}
-                </SegmentedControl>
+                <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:thin]">
+                  <SegmentedControl
+                    aria-label="SMS templates"
+                    variant="plain"
+                    selectedKeys={new Set([selectedTemplate])}
+                    onSelectionChange={(keys) => {
+                      const selected = [...keys][0];
+                      if (selected) void selectTemplate(String(selected) as SmsTemplateId);
+                    }}
+                    className="w-max min-w-full justify-start gap-1 rounded-xl bg-black/[0.045] p-1"
+                  >
+                    {SMS_TEMPLATES.map((template) => (
+                      <SegmentedControlItem
+                        key={template.id}
+                        id={template.id}
+                        isDisabled={templateLoading}
+                        className={({ isSelected }) => [
+                          "rounded-lg px-3 py-2 text-[10px] font-medium uppercase tracking-[0.1em]",
+                          isSelected ? "bg-white text-black shadow-sm" : "text-black/50 hover:bg-white/50 hover:text-black",
+                        ].join(" ")}
+                      >
+                        {template.label}
+                      </SegmentedControlItem>
+                    ))}
+                  </SegmentedControl>
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-black/[0.07] bg-white/55 p-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[9px] font-medium uppercase tracking-[0.24em] text-black/40">Message</span>
+                    <span className="text-[10px] tabular-nums text-black/35">{[...message].length}/{MAX_MESSAGE_LENGTH}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5" aria-label="Quick insert values">
+                    {quickValues.map(([label, value]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-label={`Insert ${label.toLowerCase()}`}
+                        onClick={() => insertValue(value)}
+                        className="rounded-full border border-black/[0.08] bg-[#FAFAF8]/90 px-2.5 py-1 text-[10px] font-medium text-black/60 transition hover:border-black/20 hover:bg-white hover:text-black"
+                      >
+                        + {label}
+                      </button>
+                    ))}
+                  </div>
+                  <Textarea
+                    ref={textareaRef}
+                    aria-label="Message"
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    placeholder="Write your message…"
+                    maxLength={MAX_MESSAGE_LENGTH}
+                    rows={6}
+                    disabled={sending || templateLoading}
+                    className="min-h-36 w-full min-w-0 resize-y rounded-xl border-black/[0.08] bg-white/90 px-3.5 py-3 text-[13px] leading-6 text-black shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] focus-visible:ring-2 focus-visible:ring-black/10"
+                  />
+                  <div className="flex items-center gap-3 text-[11px] text-black/40">
+                    <span className="min-w-0 truncate">{error || "The message will be sent through Bulk SMS BD."}</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-1.5" aria-label="Quick insert values">
-                  {quickValues.map(([label, value]) => (
-                    <button
-                      key={label}
-                      type="button"
-                      aria-label={`Insert ${label.toLowerCase()}`}
-                      onClick={() => insertValue(value)}
-                      className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black/60 transition hover:border-black/20 hover:text-black"
-                    >
-                      + {label}
-                    </button>
-                  ))}
-                </div>
-                <Textarea
-                  ref={textareaRef}
-                  aria-label="Message"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder="Write your message…"
-                  maxLength={MAX_MESSAGE_LENGTH}
-                  rows={6}
-                  disabled={sending || templateLoading}
-                  className="min-h-36 w-full min-w-0 resize-y rounded-xl border-black/10 bg-white text-[13px] leading-6 text-black focus-visible:ring-black/15"
-                />
-                <div className="flex items-center justify-between gap-3 text-[11px] text-black/40">
-                  <span>{error || "The message will be sent through Bulk SMS BD."}</span>
-                  <span className="shrink-0 tabular-nums">{[...message].length}/{MAX_MESSAGE_LENGTH}</span>
-                </div>
-              </div>
-
-              <DialogFooter className="gap-2 sm:gap-2">
+              <DialogFooter className="border-t border-black/[0.06] bg-black/[0.02] px-5 py-4 sm:px-6">
                 <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={sending}>Cancel</Button>
                 <Button type="button" onClick={() => { void sendMessage(); }} disabled={sending || templateLoading || !message.trim() || (selectedTemplate !== "custom" && message.includes("{{"))}>
                   {sending ? "Sending…" : templateLoading ? "Loading…" : "Send SMS"}
