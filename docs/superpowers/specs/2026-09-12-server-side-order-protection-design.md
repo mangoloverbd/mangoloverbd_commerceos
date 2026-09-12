@@ -1,6 +1,6 @@
 # Server-Side Storefront Order Protection Design
 
-**Date:** 2026-09-12  
+**Date:** 2026-09-12
 **Repositories:** `mangoloverbd/mangoloverbd_commerceos` and `mangoloverbd/mangoloverbd_storefront`
 
 ## Goal

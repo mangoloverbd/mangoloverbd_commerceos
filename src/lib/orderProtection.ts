@@ -34,7 +34,6 @@ async function readApiResponse<T>(response: Response): Promise<T> {
   if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "Request failed");
   return payload as T;
 }
-
 export async function fetchProtectionReviews(status = "on_hold") {
   const response = await apiFetch(`/api/order-protection/reviews?status=${encodeURIComponent(status)}`);
   return readApiResponse<{ reviews: ProtectionReview[] }>(response);
@@ -53,4 +52,3 @@ export async function updateProtectionReview(reviewId: string, action: "approve"
   });
   return readApiResponse<{ success: boolean; decision: string; orderRef?: string }>(response);
 }
-

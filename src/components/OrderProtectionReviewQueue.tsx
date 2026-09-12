@@ -12,7 +12,6 @@ function formatDate(value: string) {
     timeStyle: "short",
   }).format(new Date(value));
 }
-
 export function OrderProtectionReviewQueue() {
   const [reviews, setReviews] = useState<ProtectionReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,4 +121,3 @@ export function OrderProtectionReviewQueue() {
     </div>
   );
 }
-

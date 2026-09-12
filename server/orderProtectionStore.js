@@ -9,7 +9,6 @@ function requireSecret(secret) {
   }
   return secret;
 }
-
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue);
   if (value && typeof value === "object") {
@@ -161,4 +160,3 @@ export async function scrubExpiredProtectionData({ supabase, now = new Date().to
   if (error) throw error;
   return data?.length || 0;
 }
-
