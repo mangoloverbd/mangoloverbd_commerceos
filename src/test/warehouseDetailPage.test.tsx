@@ -31,6 +31,7 @@ function renderDetail() {
           <Routes>
             <Route path="/warehouses/:id" element={<WarehouseDetail />} />
             <Route path="/warehouses" element={<div>Warehouse directory destination</div>} />
+            <Route path="/orders/new" element={<div>New order editor</div>} />
           </Routes>
         </MemoryRouter>
       </TooltipProvider>
@@ -182,12 +183,12 @@ describe("warehouse detail", () => {
     expect(screen.getByText("Warehouse Customer 21")).toBeInTheDocument();
   });
 
-  it("opens the create order modal from the routed orders header", async () => {
+  it("opens the full-page create order editor from the routed orders header", async () => {
     const user = userEvent.setup();
     renderDetail();
 
     await user.click(await screen.findByRole("button", { name: "Create Order" }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("New order editor")).toBeInTheDocument();
   });
 
   it("moves selected routed orders from the header status menu", async () => {
