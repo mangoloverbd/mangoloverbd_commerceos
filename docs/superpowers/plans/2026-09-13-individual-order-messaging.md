@@ -32,7 +32,7 @@
 - Produces `bdWhatsAppHref(phone: string | null | undefined): string | null`, returning `https://wa.me/8801XXXXXXXXX` or `null`.
 - The normalization must mirror `server/abandonedCheckouts.js`: strip non-digits, accept valid `880...` and local formats, and reject all other values.
 
-- [ ] **Step 1: Write failing normalization and WhatsApp URL tests**
+- [x] **Step 1: Write failing normalization and WhatsApp URL tests**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -58,13 +58,13 @@ describe("Bangladesh phone helpers", () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- [x] **Step 2: Run the focused test and confirm it fails**
 
 Run: `npm test -- src/test/bdPhone.test.ts`
 
 Expected: FAIL because `src/lib/bdPhone.ts` does not exist.
 
-- [ ] **Step 3: Implement the helpers**
+- [x] **Step 3: Implement the helpers**
 
 ```ts
 export function normalizeBdPhone(phone: string | null | undefined): string | null {
@@ -83,13 +83,13 @@ export function bdWhatsAppHref(phone: string | null | undefined): string | null 
 }
 ```
 
-- [ ] **Step 4: Run the focused test and confirm it passes**
+- [x] **Step 4: Run the focused test and confirm it passes**
 
 Run: `npm test -- src/test/bdPhone.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the helper**
+- [x] **Step 5: Commit the helper**
 
 ```bash
 git add src/lib/bdPhone.ts src/test/bdPhone.test.ts
@@ -108,7 +108,7 @@ git commit -m "feat: add Bangladesh phone helpers"
 - The route returns `401`, `404`, `422`, `409`, `502`, or `200` according to the approved design.
 - Shared gateway submission must preserve Bulk SMS BD's accepted `response_code === 202` check and `880...` recipient format used by automatic SMS.
 
-- [ ] **Step 1: Add failing source-level route contract tests**
+- [x] **Step 1: Add failing source-level route contract tests**
 
 ```ts
 import { readFileSync } from "node:fs";
@@ -137,13 +137,13 @@ describe("individual order messaging route", () => {
 });
 ```
 
-- [ ] **Step 2: Run the contract test and confirm it fails**
+- [x] **Step 2: Run the contract test and confirm it fails**
 
 Run: `npm test -- src/test/individualOrderMessaging.test.ts`
 
 Expected: FAIL because the route and manual helper do not exist.
 
-- [ ] **Step 3: Factor shared gateway submission and add manual sending**
+- [x] **Step 3: Factor shared gateway submission and add manual sending**
 
 Within `server/index.js`:
 
@@ -153,19 +153,19 @@ Within `server/index.js`:
 4. Add `sendManualBulkSms(orgId, order, message)` that reads `bulksms_enabled`, `bulksms_api_key`, and `bulksms_sender_id`, validates configuration and the saved phone, calls the shared submitter, and throws errors carrying the route status needed by the endpoint. Do not log the API key or full message.
 5. Add the authenticated route immediately before the delete-orders route. Validate the message type, trim only for empty-checking while submitting the operator's exact message, enforce the 1,000-code-point limit, load the order with both `id` and `org_id`, call `sendManualBulkSms`, and map errors to the approved status codes.
 
-- [ ] **Step 4: Run the route contract test and confirm it passes**
+- [x] **Step 4: Run the route contract test and confirm it passes**
 
 Run: `npm test -- src/test/individualOrderMessaging.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run existing Bulk SMS regression coverage**
+- [x] **Step 5: Run existing Bulk SMS regression coverage**
 
 Run: `npm test -- src/test/sendBulkSms.test.ts`
 
 Expected: PASS, including automatic confirmation and dispatch trigger assertions.
 
-- [ ] **Step 6: Commit the backend endpoint**
+- [x] **Step 6: Commit the backend endpoint**
 
 ```bash
 git add server/index.js src/test/individualOrderMessaging.test.ts
@@ -183,7 +183,7 @@ git commit -m "feat: add individual order SMS endpoint"
 - Calls `apiFetch(`/api/orders/${orderId}/send-sms`, { method: "POST", ... })` with `{ message }`.
 - Calls `onOpenChange(false)` only after a successful response.
 
-- [ ] **Step 1: Write failing dialog tests**
+- [x] **Step 1: Write failing dialog tests**
 
 Cover these behaviors:
 
@@ -199,13 +199,13 @@ it("does not send an empty message and keeps failed text available", async () =>
 });
 ```
 
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- [x] **Step 2: Run the focused test and confirm it fails**
 
 Run: `npm test -- src/test/individualSmsDialog.test.tsx`
 
 Expected: FAIL because the dialog component does not exist.
 
-- [ ] **Step 3: Implement the dialog**
+- [x] **Step 3: Implement the dialog**
 
 Use the existing `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `Textarea`, and base `Button` components. Keep the message state local and reset it when a new open cycle begins. Use a textarea ref and cursor-aware insertion so quick-insert controls insert resolved values at the current caret without overwriting existing text. Show a Unicode code-point count, disable controls while sending, parse JSON error messages, and use the existing toast helper for success/error feedback.
 
@@ -220,13 +220,13 @@ const quickValues = [
 ] as const;
 ```
 
-- [ ] **Step 4: Run the focused test and confirm it passes**
+- [x] **Step 4: Run the focused test and confirm it passes**
 
 Run: `npm test -- src/test/individualSmsDialog.test.tsx`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the composer**
+- [x] **Step 5: Commit the composer**
 
 ```bash
 git add src/components/order-editor/IndividualSmsDialog.tsx src/test/individualSmsDialog.test.tsx
@@ -243,7 +243,7 @@ git commit -m "feat: add individual SMS composer"
 - Consumes `order.id`, `order.order_number`, `order.price`, the saved `customer` draft, `bdWhatsAppHref`, and `IndividualSmsDialog`.
 - Produces accessible `Send SMS` and `Open WhatsApp chat` actions beside the saved phone.
 
-- [ ] **Step 1: Extend the failing CustomerPanel tests**
+- [x] **Step 1: Extend the failing CustomerPanel tests**
 
 Add assertions that:
 
@@ -257,29 +257,29 @@ expect(screen.getByRole("link", { name: /open whatsapp chat/i })).toHaveAttribut
 
 Also cover invalid phone disabling SMS and omitting/disabling the WhatsApp link, and verify the SMS dialog receives the saved order values.
 
-- [ ] **Step 2: Run the focused panel test and confirm the new assertions fail**
+- [x] **Step 2: Run the focused panel test and confirm the new assertions fail**
 
 Run: `npm test -- src/test/customerPanel.test.tsx`
 
 Expected: FAIL because the actions do not exist.
 
-- [ ] **Step 3: Implement the actions without changing edit behavior**
+- [x] **Step 3: Implement the actions without changing edit behavior**
 
 Extend the `CustomerOrder` type with `id` and `order_number`. In the read-only phone row, derive `whatsappHref = bdWhatsAppHref(customer.phone)`. Render the SMS trigger only when the phone is valid and not disabled; render the WhatsApp action as a normal new-tab link with `target="_blank"`, `rel="noreferrer"`, and an accessible label. Keep both actions out of the customer-editing branch. Render `IndividualSmsDialog` at the panel root with `customer.address`, `order.price`, and the saved order identity.
 
-- [ ] **Step 4: Run the focused panel test and confirm it passes**
+- [x] **Step 4: Run the focused panel test and confirm it passes**
 
 Run: `npm test -- src/test/customerPanel.test.tsx`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run the order editor integration test**
+- [x] **Step 5: Run the order editor integration test**
 
 Run: `npm test -- src/test/order-detail.test.ts`
 
 Expected: PASS, including existing customer editing, navigation, and save behavior.
 
-- [ ] **Step 6: Commit the customer panel actions**
+- [x] **Step 6: Commit the customer panel actions**
 
 ```bash
 git add src/components/order-editor/CustomerPanel.tsx src/test/customerPanel.test.tsx
@@ -291,29 +291,29 @@ git commit -m "feat: add order SMS and WhatsApp actions"
 **Files:**
 - Modify: none unless verification exposes an issue
 
-- [ ] **Step 1: Run all tests**
+- [x] **Step 1: Run all tests**
 
 Run: `npm test`
 
 Expected: PASS.
 
-- [ ] **Step 2: Run lint and production build**
+- [x] **Step 2: Run lint and production build**
 
 Run: `npm run lint && npm run build`
 
 Expected: both commands exit successfully.
 
-- [ ] **Step 3: Review the diff against the target branch**
+- [x] **Step 3: Review the diff against the target branch**
 
 Run: `git diff --check origin/main...HEAD && git diff --stat origin/main...HEAD`
 
 Expected: no whitespace errors; only the approved design/plan documentation and focused SMS/WhatsApp implementation files are changed.
 
-- [ ] **Step 4: Perform a security review of the final diff**
+- [x] **Step 4: Perform a security review of the final diff**
 
 Confirm manually that the final diff contains no secrets, the manual route has auth plus `org_id` filtering, the route never accepts a client phone, and the frontend never receives Bulk SMS credentials.
 
-- [ ] **Step 5: Commit any verification-only fixes**
+- [x] **Step 5: Commit any verification-only fixes**
 
 ```bash
 git diff --name-only
