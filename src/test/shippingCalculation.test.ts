@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateShippingCost } from "../../server/shippingCalculation.js";
+import { calculateShippingCost, calculateStorefrontShippingCost } from "../../server/shippingCalculation.js";
 
 const ZONES = [
   { id: "zone_dhaka", name: "Inside Dhaka", price: 60, min_order_amount: 0, free_above: 1000, conditions: [] },
@@ -128,5 +128,19 @@ describe("calculateShippingCost", () => {
       const result = calculateShippingCost(500, "z1", minimalZones);
       expect(result).toEqual({ cost: 50, error: null });
     });
+  });
+});
+
+describe("calculateStorefrontShippingCost", () => {
+  it("uses the standard delivery fee when a public order has no shipping zone", () => {
+    expect(calculateStorefrontShippingCost(1800, undefined, [])).toEqual({ cost: 100, error: null });
+  });
+
+  it("keeps the storefront free-delivery threshold when no shipping zone is supplied", () => {
+    expect(calculateStorefrontShippingCost(2600, null, [])).toEqual({ cost: 0, error: null });
+  });
+
+  it("uses configured shipping zones when a public order supplies one", () => {
+    expect(calculateStorefrontShippingCost(500, "zone_dhaka", ZONES)).toEqual({ cost: 60, error: null });
   });
 });

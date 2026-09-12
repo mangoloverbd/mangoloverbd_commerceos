@@ -14,7 +14,7 @@ import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildOverviewData } from "./overview.js";
 import { buildSalesTrend } from "./salesTrend.js";
-import { calculateShippingCost } from "./shippingCalculation.js";
+import { calculateStorefrontShippingCost } from "./shippingCalculation.js";
 import {
   computeOrderWeightKg,
   parseOptionalWeightKg,
@@ -11025,6 +11025,7 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     }
 
     let shipping = 0;
+    let shippingZones = [];
     if (review.shipping_zone_id) {
     const { data: settings, error: settingsError } = await supabase
       .from("storefront_settings")
@@ -11032,14 +11033,15 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
       .eq("org_id", orgId)
       .maybeSingle();
     if (settingsError) throw settingsError;
-    const shippingResult = calculateShippingCost(subtotal, review.shipping_zone_id, settings?.shipping_zones || []);
+    shippingZones = settings?.shipping_zones || [];
+    }
+    const shippingResult = calculateStorefrontShippingCost(subtotal, review.shipping_zone_id, shippingZones);
     if (shippingResult.error) {
       const err = new Error("Shipping configuration changed; review remains on hold");
       err.statusCode = 409;
       throw err;
     }
     shipping = shippingResult.cost;
-    }
 
     const routing = await resolveOrderRouting(supabase, orgId, orderItems);
     const orderNumber = await getNextManualOrderNumber(orgId);
@@ -11322,6 +11324,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
 
     // ── Shipping calculation ─────────────────────────────────────────────
     let shipping = 0;
+    let shippingZones = [];
     if (shippingZoneId) {
       const { data: settings } = await supabase
         .from("storefront_settings")
@@ -11329,13 +11332,13 @@ async function handlePublicHandleOrderSubmit(req, res) {
         .eq("org_id", orgId)
         .maybeSingle();
 
-      const zones = settings?.shipping_zones || [];
-      const shippingResult = calculateShippingCost(subtotal, shippingZoneId, zones);
-      if (shippingResult.error) {
-        return res.status(400).json({ error: shippingResult.error });
-      }
-      shipping = shippingResult.cost;
+      shippingZones = settings?.shipping_zones || [];
     }
+    const shippingResult = calculateStorefrontShippingCost(subtotal, shippingZoneId, shippingZones);
+    if (shippingResult.error) {
+      return res.status(400).json({ error: shippingResult.error });
+    }
+    shipping = shippingResult.cost;
 
     const total = subtotal + shipping;
 
