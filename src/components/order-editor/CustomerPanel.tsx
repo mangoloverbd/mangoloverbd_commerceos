@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
+import { ChatText, Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
 import { normalizeBusinessStatus } from "@/lib/orderTransitions";
 import { formatTaka } from "@/lib/orderEditor";
+import { bdWhatsAppHref } from "@/lib/bdPhone";
+import WhatsappLogo from "@/components/WhatsappLogo";
+import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
 
 export type CustomerDraft = {
   customerName: string;
@@ -18,6 +21,8 @@ export type HistoryEntry = {
 };
 
 type CustomerOrder = {
+  id?: string;
+  order_number?: string | number | null;
   status?: string | null;
   payment_method?: string | null;
   delivery_rate?: number | null;
@@ -113,6 +118,7 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
   const [copied, setCopied] = useState(false);
+  const [smsOpen, setSmsOpen] = useState(false);
 
   useEffect(() => {
     if (!editing) setLocal(customer);
@@ -145,6 +151,9 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
       window.setTimeout(() => setCopied(false), 1500);
     }
   }
+
+  const whatsappHref = bdWhatsAppHref(customer.phone);
+  const messagingAvailable = Boolean(order.id && whatsappHref && !disabled && !editing);
 
   return (
     <section aria-label="Customer and order" className="bg-[#FAFAF8] px-5 py-4">
@@ -186,6 +195,29 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
                 >
                   {copied ? <Check weight="light" size={15} /> : <Copy weight="light" size={15} />}
                 </button>
+              )}
+              {messagingAvailable && (
+                <button
+                  type="button"
+                  aria-label="Send SMS"
+                  onClick={() => setSmsOpen(true)}
+                  className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-black/50 transition hover:bg-black/[0.06] hover:text-black"
+                >
+                  <ChatText weight="light" size={15} />
+                  SMS
+                </button>
+              )}
+              {messagingAvailable && whatsappHref && (
+                <a
+                  href={whatsappHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open WhatsApp chat"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[#128C4A] transition hover:bg-[#25D366]/10"
+                >
+                  <WhatsappLogo size={15} />
+                  WhatsApp
+                </a>
               )}
             </p>
           </div>
@@ -239,6 +271,19 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
         <DetailField label="Updated" value={dateTime(order.updated_at)} />
         <DetailField label="Consignment" value={order.consignment_id} />
       </div>
+
+      {order.id && whatsappHref && (
+        <IndividualSmsDialog
+          open={smsOpen}
+          onOpenChange={setSmsOpen}
+          orderId={order.id}
+          orderNumber={order.order_number}
+          customerName={customer.customerName}
+          phone={customer.phone}
+          price={order.price}
+          address={customer.address}
+        />
+      )}
     </section>
   );
 }
