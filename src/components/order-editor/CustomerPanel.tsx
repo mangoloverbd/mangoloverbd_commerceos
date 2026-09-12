@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { ChatText, Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
+import { Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
 import { normalizeBusinessStatus } from "@/lib/orderTransitions";
 import { formatTaka } from "@/lib/orderEditor";
 import { bdWhatsAppHref } from "@/lib/bdPhone";
 import WhatsappLogo from "@/components/WhatsappLogo";
+import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
 
 export type CustomerDraft = {
@@ -203,7 +204,7 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
                   onClick={() => setSmsOpen(true)}
                   className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-black/50 transition hover:bg-black/[0.06] hover:text-black"
                 >
-                  <ChatText weight="light" size={15} />
+                  <SmsBubbleIcon size={15} />
                   SMS
                 </button>
               )}

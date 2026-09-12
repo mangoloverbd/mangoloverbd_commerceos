@@ -70,6 +70,7 @@ describe("CustomerPanel messaging actions", () => {
       "href",
       "https://wa.me/8801711111111",
     );
+    expect(screen.getByTestId("sms-bubble-icon")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /send sms/i }));
     expect(await screen.findByRole("heading", { name: /send individual sms/i })).toBeInTheDocument();
     expect(screen.getByText(/Order #ML-1001/)).toBeInTheDocument();
