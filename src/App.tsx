@@ -33,6 +33,7 @@ const Returns = lazy(() => import("./pages/Returns"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const OnlineStore = lazy(() => import("./pages/OnlineStore"));
 const Overview = lazy(() => import("./pages/Overview"));
+const OrderProtection = lazy(() => import("./pages/OrderProtection"));
 import { Spinner } from "@/components/ui/ios-spinner";
 
 function RouteFallback() {
@@ -109,6 +110,7 @@ const AppRoutes = () => (
     >
       <Route path="/" element={<Dashboard />} />
       <Route path="/overview" element={<Overview />} />
+      <Route path="/order-protection" element={<AdminRoute><OrderProtection /></AdminRoute>} />
       <Route path="/order-analysis" element={<AdminRoute><OrderAnalysis /></AdminRoute>} />
       <Route path="/order-chat" element={<OrderChat />} />
       <Route path="/settings" element={<Settings />} />

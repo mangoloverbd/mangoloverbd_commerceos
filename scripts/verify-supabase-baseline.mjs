@@ -42,6 +42,8 @@ const runtimeTables = Object.freeze([
   "warehouses",
   "order_items",
   "abandoned_checkouts",
+  "order_protection_events",
+  "order_protection_reviews",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
