@@ -72,6 +72,7 @@ import {
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
 import { hashProtectionSignal } from "./orderProtectionStore.js";
+import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -6568,6 +6569,35 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       return res.status(401).json({ error: "Invalid API Key" });
     }
 
+    if (!(await allowOrderSubmission(req, res, orgId))) return;
+    const protection = await protectOrderSubmission({
+      input: {
+        orgId,
+        route: "custom_webhook",
+        customerName: req.body?.customer_name,
+        phone: req.body?.phone,
+        address: req.body?.address,
+        notes: req.body?.notes,
+        items: req.body?.items,
+        website: req.body?.website,
+        turnstileToken: req.body?.turnstile_token,
+        clientSessionId: req.body?.client_session_id,
+        checkoutStartedAt: req.body?.checkout_started_at,
+      },
+      requestMeta: { ip: getClientIp(req), userAgent: req.headers["user-agent"] },
+      dependencies: { redis: redisClient, supabase },
+    });
+    if (protection.protection.decision === "REVIEW") {
+      return res.status(202).json({ ok: true, decision: "review", review_id: protection.review?.id || null });
+    }
+    if (protection.protection.decision === "BLOCK") {
+      return res.status(protection.protection.retryable ? 503 : 403).json({
+        error: protection.protection.retryable ? "protection_unavailable" : "order_not_accepted",
+        message: protection.protection.customerMessage,
+        retryable: protection.protection.retryable,
+      });
+    }
+
     // Validate and format incoming order data
     const allowed = [
       "customer_name",
@@ -6700,6 +6730,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
     return res.status(201).json({
       success: true,
+      decision: "allow",
       order_id: persistedOrder.order_number,
       order: persistedOrder,
     });
@@ -10916,6 +10947,8 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const orgId = await resolveStorefrontHandle(req.params.handle);
     if (!orgId) return res.status(404).json({ error: "not_found" });
 
+    if (!(await allowOrderSubmission(req, res, orgId, req.params.handle))) return;
+
     const supabase = getServiceSupabase();
     const { customerName, phone, address, items, shippingZoneId, notes } = req.body || {};
 
@@ -10938,6 +10971,40 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const variantIds = items.map((i) => i.variantId).filter(Boolean);
     if (variantIds.length !== items.length) {
       return res.status(400).json({ error: "Each item must have a variantId" });
+    }
+
+    const protection = await protectOrderSubmission({
+      input: {
+        orgId,
+        route: "public_v1",
+        customerName,
+        phone: cleanPhone,
+        address,
+        notes,
+        items,
+        website: req.body?.website,
+        turnstileToken: req.body?.turnstileToken || req.body?.turnstile_token,
+        clientSessionId: req.body?.clientSessionId || req.body?.client_session_id,
+        checkoutStartedAt: req.body?.checkoutStartedAt || req.body?.checkout_started_at,
+      },
+      requestMeta: { ip: getClientIp(req), userAgent: req.headers["user-agent"] },
+      dependencies: { redis: redisClient, supabase },
+    });
+    if (protection.protection.decision === "REVIEW") {
+      return res.status(202).json({
+        success: false,
+        decision: "review",
+        reviewId: protection.review?.id || null,
+        message: protection.protection.customerMessage,
+      });
+    }
+    if (protection.protection.decision === "BLOCK") {
+      return res.status(protection.protection.retryable ? 503 : 403).json({
+        decision: "block",
+        error: protection.protection.retryable ? "protection_unavailable" : "order_not_accepted",
+        message: protection.protection.customerMessage,
+        retryable: protection.protection.retryable,
+      });
     }
 
     // Fetch all variants + their parent products in one pass
@@ -11093,6 +11160,8 @@ async function handlePublicHandleOrderSubmit(req, res) {
 
     return res.json({
       success: true,
+      decision: "allow",
+      orderRef: String(orderNumber),
       orderId: orderNumber,
       total,
       shipping,
@@ -11212,7 +11281,7 @@ async function handlePublicHandleProductInventory(req, res) {
 
 app.get("/api/public/v1/:handle/config", rateLimitPublicRead, handlePublicHandleConfig);
 app.get("/api/public/v1/:handle/products", rateLimitPublicRead, handlePublicHandleProducts);
-app.post("/api/public/v1/:handle/orders", rateLimitPublicRead, handlePublicHandleOrderSubmit);
+app.post("/api/public/v1/:handle/orders", handlePublicHandleOrderSubmit);
 app.get("/api/public/v1/:handle/products/:slug", rateLimitPublicRead, handlePublicHandleProductDetail);
 app.get("/api/public/v1/:handle/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
 app.get("/api/public/v1/:handle/inventory", rateLimitPublicRead, handlePublicHandleInventory);
