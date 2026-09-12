@@ -29,7 +29,16 @@ function dependencies(overrides: Record<string, unknown> = {}) {
       from: vi.fn(() => ({ insert: vi.fn().mockResolvedValue({ error: null }) })),
     },
     verifyTurnstile: async () => ({ ok: true }),
-    validateAddress: vi.fn(),
+    validateAddress: vi.fn(async () => ({
+      action: "allow",
+      addressValid: true,
+      addressPresent: true,
+      abuse: false,
+      testOrFake: false,
+      vague: false,
+      riskScore: 5,
+      reason: "specific",
+    })),
     ...overrides,
   };
 }

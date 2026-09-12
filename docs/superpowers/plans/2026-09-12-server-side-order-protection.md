@@ -4,7 +4,7 @@
 
 **Goal:** Add server-authoritative protection against automated, duplicate, abusive, and obviously fake storefront orders while allowing normal Bangla, Banglish, and English customers to check out.
 
-**Architecture:** Merchant Suite owns the protection decision, authoritative product pricing, inventory checks, review records, and all order side effects. A reusable protection engine combines deterministic checks with short-lived keyed signals and calls `gpt-4o-mini` only for ambiguous addresses; it returns `ALLOW`, `REVIEW`, or `BLOCK`. The storefront submits non-sensitive challenge and timing signals through its server handlers to the versioned public API, while the existing custom webhook remains protected as a compatibility path.
+**Architecture:** Merchant Suite owns the protection decision, authoritative product pricing, inventory checks, review records, and all order side effects. A reusable protection engine combines deterministic checks with short-lived keyed signals and calls `gpt-4o-mini` for every otherwise eligible address, checking deliverability, gibberish/fake content, and harassment; it returns `ALLOW`, `REVIEW`, or `BLOCK`. The storefront submits non-sensitive challenge and timing signals through its server handlers to the versioned public API, while the existing custom webhook remains protected as a compatibility path.
 
 **Tech Stack:** Express/Node 20, Supabase PostgreSQL and service-role API, Upstash Redis, Cloudflare Turnstile, OpenAI-compatible chat completions with a dedicated `gpt-4o-mini` address-validation configuration, React/TypeScript/Vite, React Router, Vitest, Testing Library, Playwright/browser QA.
 
@@ -84,7 +84,7 @@ Storefront:
       "phone_velocity_15m", "phone_velocity_1h", "phone_velocity_24h",
       "phone_many_sessions", "phone_network_change", "checkout_too_fast",
       "duplicate_submission", "address_missing", "address_too_short",
-      "address_too_vague", "abusive_content", "test_or_fake_content",
+      "address_too_vague", "address_invalid", "abusive_content", "test_or_fake_content",
       "address_validation_unavailable",
     ]));
     expect(ORDER_PROTECTION_THRESHOLDS.reviewScore).toBe(40);
@@ -202,7 +202,7 @@ Storefront:
 
 - [ ] **Step 4: Implement scoring and strict AI-result parsing.**
 
-  Add the exact weights and review threshold from Task 1. Parse only a JSON object with `action`, `addressPresent`, `abuse`, `testOrFake`, `vague`, `riskScore`, and `reason`; require a bounded integer risk score and booleans. Ignore extra keys, reject malformed types, trim the reason to a short safe string, and never include raw AI output in the returned result. AI hard-blocks only when it flags abuse/test content or reaches the configured risk threshold; an ambiguous but non-abusive result contributes `address_too_vague` and can produce `REVIEW`.
+  Add the exact weights and review threshold from Task 1. Parse only a JSON object with `action`, `addressValid`, `addressPresent`, `abuse`, `testOrFake`, `vague`, `riskScore`, and `reason`; require a bounded integer risk score and booleans. Ignore extra keys, reject malformed types, trim the reason to a short safe string, and never include raw AI output in the returned result. AI hard-blocks when it flags abuse, test/fake content, an invalid address, an explicit block, or reaches the configured risk threshold; an uncertain but non-abusive result contributes `address_too_vague` and can produce `REVIEW`.
 
 - [ ] **Step 5: Run the focused test and verify it passes.**
 
@@ -309,7 +309,7 @@ Storefront:
   - all product, variant, settings, order, and item queries carry the resolved `org_id` guard;
   - both routes return equivalent decision semantics;
   - a second concurrent exact submission is blocked by the atomic fingerprint reservation;
-  - address AI is called only for ambiguous addresses, with `gpt-4o-mini` dedicated configuration, and AI outage returns retryable `503` without creating an order.
+  - address AI is called for every otherwise eligible order, with `gpt-4o-mini` dedicated configuration, and AI outage returns retryable `503` without creating an order.
 
 - [ ] **Step 2: Run the focused tests and verify they fail.**
 
@@ -541,7 +541,7 @@ Storefront:
 
 - [ ] **Step 5: Write the runbook.**
 
-  Document required server settings and secret ownership, storefront public settings, the exact customer/staff outcomes, Redis/Turnstile/OpenAI outage behavior, 30-day retention and scrub behavior, safe monitoring metrics (counts by decision/reason code, latency, AI availability, review aging), and rollback by setting `ORDER_PROTECTION_MODE=shadow` or `off` without removing database tables. State that `gpt-4o-mini` checks only ambiguous address/abuse cases and cannot prove address existence or phone ownership.
+  Document required server settings and secret ownership, storefront public settings, the exact customer/staff outcomes, Redis/Turnstile/OpenAI outage behavior, 30-day retention and scrub behavior, safe monitoring metrics (counts by decision/reason code, latency, AI availability, review aging), and rollback by setting `ORDER_PROTECTION_MODE=shadow` or `off` without removing database tables. State that `gpt-4o-mini` checks every otherwise eligible order for plausible address/abuse/fake-content signals and cannot prove address existence or phone ownership.
 
 - [ ] **Step 6: Review security and final diff.**
 
