@@ -11395,7 +11395,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
       warehouse_id: routing.warehouseId,
       warehouse_auto: true,
       weight_kg: routing.weightKg,
-      notes: notes || null,
+      // The storefront currently sends its bundle title/details in `notes`.
+      // Product and variant data already have authoritative columns below, so
+      // do not duplicate that display metadata in the dashboard custom note.
+      notes: null,
       ...(abandonedDraftKeyHash ? { abandoned_draft_key_hash: abandonedDraftKeyHash } : {}),
       ...(matchingAbandonedCheckout ? { abandoned_checkout_id: matchingAbandonedCheckout.id } : {}),
     };
