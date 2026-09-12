@@ -39,6 +39,8 @@ describe("order protection route wiring", () => {
     expect(storefront).toContain("await protectOrderSubmission(");
     expect(storefront.indexOf("await protectOrderSubmission(")).toBeLessThan(storefront.indexOf('.from("orders")'));
     expect(storefront.indexOf("await protectOrderSubmission(")).toBeLessThan(storefront.indexOf("stock_quantity: Math.max"));
+    expect(storefront).toContain("body.customerName ?? body.customer_name");
+    expect(storefront).toContain("body.shippingZoneId ?? body.shipping_zone_id");
     expect(storefront).toContain('decision: "allow"');
   });
 

@@ -11193,7 +11193,13 @@ async function handlePublicHandleOrderSubmit(req, res) {
     if (!(await allowOrderSubmission(req, res, orgId, req.params.handle))) return;
 
     const supabase = getServiceSupabase();
-    const { customerName, phone, address, items, shippingZoneId, notes } = req.body || {};
+    const body = req.body || {};
+    const customerName = body.customerName ?? body.customer_name;
+    const phone = body.phone;
+    const address = body.address;
+    const items = body.items;
+    const shippingZoneId = body.shippingZoneId ?? body.shipping_zone_id;
+    const notes = body.notes;
 
     // ── Validate required fields ─────────────────────────────────────────
     if (!customerName || typeof customerName !== "string") {
@@ -11226,9 +11232,9 @@ async function handlePublicHandleOrderSubmit(req, res) {
         notes,
         items,
         website: req.body?.website,
-        turnstileToken: req.body?.turnstileToken || req.body?.turnstile_token,
-        clientSessionId: req.body?.clientSessionId || req.body?.client_session_id,
-        checkoutStartedAt: req.body?.checkoutStartedAt || req.body?.checkout_started_at,
+        turnstileToken: body.turnstileToken || body.turnstile_token,
+        clientSessionId: body.clientSessionId || body.client_session_id,
+        checkoutStartedAt: body.checkoutStartedAt || body.checkout_started_at,
         shippingZoneId,
       },
       requestMeta: { ip: getClientIp(req), userAgent: req.headers["user-agent"] },
@@ -11333,6 +11339,32 @@ async function handlePublicHandleOrderSubmit(req, res) {
 
     const total = subtotal + shipping;
 
+    // Preserve the abandoned-checkout handoff without storing the raw draft key.
+    const submittedDraftKey = body.abandonedCheckoutDraftKey || body.abandoned_checkout_draft_key;
+    const abandonedDraftKey = isAbandonedCheckoutDraftKey(submittedDraftKey)
+      ? submittedDraftKey.toLowerCase()
+      : null;
+    const abandonedDraftKeyHash = abandonedDraftKey
+      ? hashAbandonedCheckoutDraftKey(abandonedDraftKey)
+      : null;
+    let matchingAbandonedCheckout = null;
+    if (abandonedDraftKey) {
+      try {
+        const { data: checkout, error: checkoutError } = await supabase
+          .from("abandoned_checkouts")
+          .select("id")
+          .eq("org_id", orgId)
+          .eq("draft_key", abandonedDraftKey)
+          .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+          .gt("expires_at", new Date().toISOString())
+          .maybeSingle();
+        if (checkoutError) throw checkoutError;
+        matchingAbandonedCheckout = checkout || null;
+      } catch {
+        console.warn("[AbandonedCheckout] public order recovery lookup deferred");
+      }
+    }
+
     // ── Build order product string (summary of all items) ───────────────
     const productSummary = orderItems
       .map((item) => {
@@ -11364,6 +11396,8 @@ async function handlePublicHandleOrderSubmit(req, res) {
       warehouse_auto: true,
       weight_kg: routing.weightKg,
       notes: notes || null,
+      ...(abandonedDraftKeyHash ? { abandoned_draft_key_hash: abandonedDraftKeyHash } : {}),
+      ...(matchingAbandonedCheckout ? { abandoned_checkout_id: matchingAbandonedCheckout.id } : {}),
     };
 
     const { data: order, error: orderErr } = await supabase
@@ -11397,6 +11431,20 @@ async function handlePublicHandleOrderSubmit(req, res) {
         .update({ stock_quantity: Math.max(0, variantMap[item.variantId].stock_quantity - item.quantity) })
         .eq("id", item.variantId)
         .eq("org_id", orgId);
+    }
+
+    if (matchingAbandonedCheckout) {
+      try {
+        await recoverCapturedCheckoutForOrder(
+          supabase,
+          orgId,
+          matchingAbandonedCheckout.id,
+          order,
+          new Date(),
+        );
+      } catch {
+        console.warn("[AbandonedCheckout] public order recovery update deferred");
+      }
     }
 
     // ── Purge inventory cache so storefront reflects new stock ───────────
