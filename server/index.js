@@ -71,6 +71,7 @@ import {
   parseAbandonedCheckoutCapture,
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
+import { hashProtectionSignal } from "./orderProtectionStore.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -217,6 +218,7 @@ let rlHandleClaimUser = null;
 let rlHandleClaimIp = null;
 let rlPublicRead = null;
 let rlAbandonedCheckoutCapture = null;
+let rlOrderSubmission = null;
 
 // Cloudflare edge-cache purge + warm-token bypass (Task 1).
 const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
@@ -264,6 +266,11 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       redis: redisClient,
       limiter: Ratelimit.slidingWindow(30, "10 m"),
       prefix: "rl:abandoned-checkout:capture",
+    });
+    rlOrderSubmission = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(10, "15 m"),
+      prefix: "rl:order-submission",
     });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
@@ -381,6 +388,40 @@ const rateLimitPublicRead = (req, res, next) => {
   const handle = req.params.handle || req.params.storefrontId || "*";
   return makeRateLimitMiddleware(rlPublicRead, "ip")({ ...req, __forceId: `${ip}:${handle}` }, res, next);
 };
+
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
+  return req.headers["cf-connecting-ip"] || forwarded || req.socket.remoteAddress || "unknown";
+}
+
+async function allowOrderSubmission(req, res, orgId, handle = "*") {
+  if (!rlOrderSubmission) return true;
+  const limiterSecret = process.env.ORDER_PROTECTION_HASH_SECRET || "order-protection-unconfigured";
+  const ipHash = hashProtectionSignal(getClientIp(req), limiterSecret);
+  try {
+    const { success, limit, remaining, reset } = await rlOrderSubmission.limit(`${orgId}:${handle}:${ipHash}`);
+    res.setHeader("X-RateLimit-Limit", limit);
+    res.setHeader("X-RateLimit-Remaining", remaining);
+    res.setHeader("X-RateLimit-Reset", reset);
+    if (success) return true;
+    const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+    res.setHeader("Retry-After", retryAfter);
+    res.status(429).json({
+      error: "rate_limit_exceeded",
+      message: "Too many order attempts. Please try again shortly.",
+      retryAfter,
+    });
+    return false;
+  } catch (error) {
+    console.warn("[OrderProtection] order limiter unavailable:", error.message);
+    res.status(503).json({
+      error: "protection_unavailable",
+      message: "Order protection is temporarily unavailable. Please try again shortly.",
+      retryable: true,
+    });
+    return false;
+  }
+}
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const PRODUCT_IMAGE_MAX_COUNT = 8;
