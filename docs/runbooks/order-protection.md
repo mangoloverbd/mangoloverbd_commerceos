@@ -22,9 +22,10 @@ The storefront project receives only `VITE_TURNSTILE_SITE_KEY`, the Merchant Sui
 1. Checkout renders a hidden honeypot and Turnstile challenge, then records a session ID and checkout start time.
 2. The storefront sends canonical product/variant IDs to `/api/public/v1/:handle/orders`.
 3. Merchant Suite validates stock and prices from Supabase, then runs deterministic checks. For every otherwise eligible order, GPT-4o-mini checks the customer name, address, and notes for a plausible deliverable address, gibberish/fake content, and harassment or abuse.
-4. `ALLOW` creates the order and decrements stock atomically.
-5. `REVIEW` creates a 30-day hold and returns HTTP 202. No order, stock decrement, or purchase event is created.
-6. `BLOCK` returns a generic customer-safe message. No order, stock decrement, or purchase event is created. AI failures fail closed with a retryable response, so an order cannot bypass the check when OpenAI is unavailable.
+4. A second attempt from the same normalized phone within 15 minutes is sent to review, even if the address and items are different. This prevents back-to-back orders from entering fulfillment automatically while allowing staff to approve legitimate multiple orders.
+5. `ALLOW` creates the order and decrements stock atomically.
+6. `REVIEW` creates a 30-day hold and returns HTTP 202. No order, stock decrement, or purchase event is created.
+7. `BLOCK` returns a generic customer-safe message. No order, stock decrement, or purchase event is created. AI failures fail closed with a retryable response, so an order cannot bypass the check when OpenAI is unavailable.
 
 ## Staff flow
 

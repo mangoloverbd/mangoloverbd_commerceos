@@ -34,7 +34,7 @@ describe("order protection contract", () => {
     expect(ORDER_PROTECTION_THRESHOLDS).toEqual({
       reviewScore: 40,
       checkoutTooFastSeconds: 8,
-      phoneAttempts15m: 3,
+      phoneAttempts15m: 2,
       phoneAttempts1h: 5,
       phoneAttempts24h: 8,
       phoneSessionCount: 3,

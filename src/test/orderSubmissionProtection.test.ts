@@ -178,6 +178,17 @@ describe("order submission protection", () => {
     ]));
   });
 
+  test("holds a second order from the same phone within fifteen minutes", async () => {
+    const result = await evaluateProtection(
+      normalInput(),
+      safeDependencies({
+        countPhoneAttempts: async () => ({ last15m: 1, last1h: 1, last24h: 1 }),
+      }),
+    );
+
+    expect(result).toMatchObject({ decision: "REVIEW", reasonCodes: ["phone_velocity_15m"] });
+  });
+
   test("blocks an exact duplicate and never calls address AI", async () => {
     const validateAddress = vi.fn();
     const result = await evaluateProtection(
