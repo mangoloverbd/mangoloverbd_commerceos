@@ -239,9 +239,12 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
             </p>
           </div>
           <DetailField label="Delivery address" value={customer.address} />
-          <DetailField label="Landing page" value={order.landing_page_path} />
         </div>
       )}
+
+      <div className="mt-4">
+        <DetailField label="Landing page" value={order.landing_page_path} />
+      </div>
 
       <div className="mt-4 min-w-0">
         <div className="flex items-center gap-2.5">

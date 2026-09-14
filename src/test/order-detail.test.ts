@@ -175,6 +175,17 @@ describe("OrderDetail", () => {
     expect(landingPageField).toHaveTextContent("—");
   });
 
+  it("keeps landing page attribution visible while customer details are edited", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    const customerSection = await screen.findByRole("region", { name: "Customer and order" });
+
+    await user.click(within(customerSection).getByRole("button", { name: "Edit customer" }));
+
+    expect(within(customerSection).getByText("Landing page")).toBeInTheDocument();
+    expect(within(customerSection).getByText("/step/katimon-mango")).toBeInTheDocument();
+  });
+
   it("shows and saves an order source independently", async () => {
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders/order-1" && init?.method === "PATCH") {
