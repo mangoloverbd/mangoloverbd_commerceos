@@ -25,6 +25,13 @@ describe("order source route wiring", () => {
   it("sets Website at public storefront insertion boundaries", () => {
     expect(serverSource).toContain('source: "website"');
   });
+
+  it("validates and persists optional landing page attribution", () => {
+    expect(serverSource).toContain("function normalizeLandingPagePath");
+    expect(serverSource).toContain('const landingPagePath = normalizeLandingPagePath(body.landingPagePath ?? body.landing_page_path)');
+    expect(serverSource).toContain('return res.status(400).json({ error: "Invalid landing page path" });');
+    expect(serverSource).toContain("landing_page_path: landingPagePath");
+  });
 });
 
 describe("canonical order sources in customer analytics", () => {

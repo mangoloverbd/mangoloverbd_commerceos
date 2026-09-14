@@ -28,6 +28,7 @@ type CustomerOrder = {
   order_number?: string | number | null;
   status?: string | null;
   payment_method?: string | null;
+  landing_page_path?: string | null;
   delivery_rate?: number | null;
   price?: number | null;
   courier_name?: string | null;
@@ -163,16 +164,26 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
 
   return (
     <section aria-label="Customer and order" className="bg-[#FAFAF8] px-5 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-baseline justify-between gap-3">
+      <div data-testid="customer-order-header" className="flex flex-wrap items-center justify-between gap-3">
+        <div data-testid="customer-order-identity" className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <p className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Customer and order</p>
           <h2 className="truncate text-[15px] font-medium text-black">{customer.customerName || "Customer details"}</h2>
+          {!editing && (
+            <button type="button" aria-label="Edit customer" onClick={beginEditing} disabled={disabled} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] text-black/55 transition hover:bg-black/[0.05] disabled:opacity-40">
+              <PencilSimple weight="light" size={15} /> Edit
+            </button>
+          )}
         </div>
-        {!editing && (
-          <button type="button" aria-label="Edit customer" onClick={beginEditing} disabled={disabled} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] text-black/55 transition hover:bg-black/[0.05] disabled:opacity-40">
-            <PencilSimple weight="light" size={15} /> Edit
-          </button>
-        )}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
+          {source && onSourceChange && (
+            <div data-testid="order-source-control" className="flex min-w-0 items-center gap-3">
+              <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Order source</p>
+              <div className="w-36 min-w-0">
+                <OrderSourceSelect value={source} onChange={onSourceChange} disabled={sourceDisabled} compact />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {editing ? (
@@ -228,15 +239,7 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
             </p>
           </div>
           <DetailField label="Delivery address" value={customer.address} />
-        </div>
-      )}
-
-      {source && onSourceChange && (
-        <div className="mt-4 max-w-xs">
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Order source</p>
-          <div className="mt-2">
-            <OrderSourceSelect value={source} onChange={onSourceChange} disabled={sourceDisabled} />
-          </div>
+          <DetailField label="Landing page" value={order.landing_page_path} />
         </div>
       )}
 
@@ -246,13 +249,6 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
           {history.length > 0 && (
             <span className="grid h-7 min-w-7 place-items-center rounded-full bg-[#FBBB14] px-1.5 text-[13px] font-bold tabular-nums text-black">{history.length}</span>
           )}
-          <span aria-hidden className="flex items-end gap-[3px]">
-            <span className="w-1 rounded-full bg-black" style={{ height: 7 }} />
-            <span className="w-1 rounded-full bg-black" style={{ height: 11 }} />
-            <span className="w-1 rounded-full bg-black" style={{ height: 15 }} />
-            <span className="w-1 rounded-full bg-black" style={{ height: 19 }} />
-            <span className="w-1 rounded-full bg-black" style={{ height: 23 }} />
-          </span>
         </div>
         {historyLoading ? (
           <p className="mt-3 text-[12px] text-black/40">Loading…</p>

@@ -194,6 +194,7 @@ export interface Order {
   courier_message?: string | null;
   notes?: string | null;
   fulfillment_status?: string | null;
+  landing_page_path?: string | null;
   items?: OrderItemSummary[];
 }
 

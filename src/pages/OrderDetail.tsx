@@ -29,6 +29,7 @@ type Order = {
   phone?: string | null;
   address?: string | null;
   source?: string | null;
+  landing_page_path?: string | null;
   notes?: string | null;
   status?: string | null;
   payment_method?: string | null;

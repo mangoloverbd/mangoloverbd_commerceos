@@ -746,6 +746,15 @@ function isCanonicalOrderSource(value) {
   return typeof value === "string" && ORDER_SOURCE_VALUES.has(value.trim().toLowerCase());
 }
 
+const LANDING_PAGE_PATH_RE = /^\/step\/[a-z0-9]+(?:-[a-z0-9]+)*$/i;
+
+function normalizeLandingPagePath(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const path = value.trim().split(/[?#]/, 1)[0].replace(/\/+$/, "");
+  return path.length <= 120 && LANDING_PAGE_PATH_RE.test(path) ? path : undefined;
+}
+
 function parseFraudShieldError(status, body) {
   let message = body;
   try {
@@ -11320,6 +11329,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const items = body.items;
     const shippingZoneId = body.shippingZoneId ?? body.shipping_zone_id;
     const notes = body.notes;
+    const landingPagePath = normalizeLandingPagePath(body.landingPagePath ?? body.landing_page_path);
+    if ((body.landingPagePath !== undefined || body.landing_page_path !== undefined) && !landingPagePath) {
+      return res.status(400).json({ error: "Invalid landing page path" });
+    }
 
     // ── Validate required fields ─────────────────────────────────────────
     if (!customerName || typeof customerName !== "string") {
@@ -11513,6 +11526,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
       delivery_rate: shipping,
       status: "pending",
       source: "website",
+      landing_page_path: landingPagePath,
       warehouse_id: routing.warehouseId,
       warehouse_auto: true,
       weight_kg: routing.weightKg,

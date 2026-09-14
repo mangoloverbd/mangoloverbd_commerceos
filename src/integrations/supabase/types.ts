@@ -466,6 +466,7 @@ export type Database = {
           fraud_data: Json | null
           fulfillment_status: string | null
           id: string
+          landing_page_path: string | null
           notes: string | null
           order_number: string
           org_id: string
@@ -500,6 +501,7 @@ export type Database = {
           fraud_data?: Json | null
           fulfillment_status?: string | null
           id?: string
+          landing_page_path?: string | null
           notes?: string | null
           order_number: string
           org_id: string
@@ -534,6 +536,7 @@ export type Database = {
           fraud_data?: Json | null
           fulfillment_status?: string | null
           id?: string
+          landing_page_path?: string | null
           notes?: string | null
           order_number?: string
           org_id?: string

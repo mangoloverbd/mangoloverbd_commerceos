@@ -25,6 +25,7 @@ const order = {
   address: "Dhanmondi, Dhaka",
   status: "confirmed",
   source: "website",
+  landing_page_path: "/step/katimon-mango",
   payment_method: "Cash on delivery",
   delivery_rate: 80,
   price: 580,
@@ -133,6 +134,45 @@ describe("OrderDetail", () => {
     expect(await screen.findByRole("region", { name: "Customer and order" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Product catalog" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
+  });
+
+  it("places the order source selector in the customer section header", async () => {
+    renderPage();
+
+    const customerSection = await screen.findByRole("region", { name: "Customer and order" });
+    const header = within(customerSection).getByTestId("customer-order-header");
+    const identity = within(header).getByTestId("customer-order-identity");
+    const sourceControl = within(header).getByTestId("order-source-control");
+
+    expect(within(identity).getByRole("button", { name: "Edit customer" })).toBeInTheDocument();
+    expect(sourceControl).toHaveClass("flex", "items-center");
+    expect(within(sourceControl).getByText("Order source")).toBeInTheDocument();
+    expect(within(sourceControl).getByRole("button", { name: /Order source/ })).toHaveClass("h-8");
+    expect(within(customerSection).getByText("Last orders")).toBeInTheDocument();
+    expect(header).not.toHaveTextContent("Last orders");
+    expect(within(customerSection).getByText("Last orders").parentElement?.querySelectorAll('[aria-hidden="true"]')).toHaveLength(0);
+  });
+
+  it("shows the originating landing page path", async () => {
+    renderPage();
+
+    const customerSection = await screen.findByRole("region", { name: "Customer and order" });
+    expect(within(customerSection).getByText("Landing page")).toBeInTheDocument();
+    expect(within(customerSection).getByText("/step/katimon-mango")).toBeInTheDocument();
+  });
+
+  it("keeps the landing page label visible when attribution is unavailable", async () => {
+    const detailWithoutLandingPage = { ...detail, order: { ...order, landing_page_path: null } };
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") return response(detailWithoutLandingPage);
+      if (url === "/api/products") return response(products);
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    renderPage();
+
+    const customerSection = await screen.findByRole("region", { name: "Customer and order" });
+    const landingPageField = within(customerSection).getByText("Landing page").parentElement;
+    expect(landingPageField).toHaveTextContent("—");
   });
 
   it("shows and saves an order source independently", async () => {
