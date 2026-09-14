@@ -6,7 +6,7 @@ Order protection runs on the Merchant Suite server before a storefront order is 
 
 Set these values in the Merchant Suite deployment:
 
-- `ORDER_PROTECTION_MODE=active`
+- `ORDER_PROTECTION_MODE=active` to enforce protection, or `off` to temporarily bypass it without deleting the protection code.
 - `ORDER_PROTECTION_HASH_SECRET` — a random secret of at least 16 characters; rotate only with a planned Redis key transition.
 - `TURNSTILE_SECRET_KEY` — server-only Cloudflare Turnstile secret.
 - `TURNSTILE_SITE_KEY` — public site key used to build the storefront.

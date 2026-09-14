@@ -75,6 +75,7 @@ import {
   hashProtectionSignal,
   listProtectionReviews,
 } from "./orderProtectionStore.js";
+import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { validateAddressWithAI } from "./addressValidation.js";
 
@@ -400,7 +401,7 @@ function getClientIp(req) {
 }
 
 async function allowOrderSubmission(req, res, orgId, handle = "*") {
-  if (!rlOrderSubmission) return true;
+  if (!isOrderProtectionEnabled() || !rlOrderSubmission) return true;
   const limiterSecret = process.env.ORDER_PROTECTION_HASH_SECRET || "order-protection-unconfigured";
   const ipHash = hashProtectionSignal(getClientIp(req), limiterSecret);
   try {

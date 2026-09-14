@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.3] - 2026-09-14
+
+### Changed
+
+- Add a reversible `ORDER_PROTECTION_MODE=off` switch for temporarily bypassing storefront order protection.
+
 ## [0.1.0.2] - 2026-09-13
 
 ### Changed
