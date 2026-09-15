@@ -8,7 +8,7 @@ describe("sidebar active item style", () => {
   it("uses the P&L card treatment for selected navigation items", () => {
     expect(source).toContain("activeNavItemClass");
     expect(source).toContain("rounded-[8px]");
-    expect(source).toContain("text-[#1a1a1a]");
+    expect(source).toContain("text-black");
     expect(source).toContain("glass-button");
   });
 });
