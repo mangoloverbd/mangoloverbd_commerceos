@@ -238,7 +238,7 @@ export function IndividualSmsDialog({
             >
               <DialogHeader className="pr-8">
                 <DialogTitle className="text-left text-[20px] font-medium tracking-tight text-black">Send individual SMS</DialogTitle>
-                <DialogDescription className="text-left text-[12px] leading-5 text-black/50">
+                <DialogDescription className="text-left text-[12px] leading-5 text-black">
                   Send a one-off message to {customerName || "this customer"} at {phone}. Order {orderLabel(orderNumber)}.
                 </DialogDescription>
               </DialogHeader>
@@ -261,7 +261,7 @@ export function IndividualSmsDialog({
                       isDisabled={templateLoading}
                       className={({ isSelected }) => [
                         "rounded-lg px-3 py-2 text-[10px] font-medium uppercase tracking-[0.1em]",
-                        isSelected ? "bg-white text-black shadow-sm" : "text-black/50 hover:bg-white/50 hover:text-black",
+                        isSelected ? "bg-white text-black shadow-sm" : "text-black hover:bg-white/50 hover:text-black",
                       ].join(" ")}
                     >
                       {template.label}
@@ -278,7 +278,7 @@ export function IndividualSmsDialog({
                       type="button"
                       aria-label={`Insert ${label.toLowerCase()}`}
                       onClick={() => insertValue(value)}
-                      className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black/60 transition hover:border-black/20 hover:text-black"
+                      className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black transition hover:border-black/20 hover:text-black"
                     >
                       + {label}
                     </button>
@@ -295,7 +295,7 @@ export function IndividualSmsDialog({
                   disabled={sending || templateLoading}
                   className="min-h-36 w-full min-w-0 resize-y rounded-xl border-black/10 bg-white text-[13px] leading-6 text-black focus-visible:ring-black/15"
                 />
-                <div className="flex items-center justify-between gap-3 text-[11px] text-black/40">
+                <div className="flex items-center justify-between gap-3 text-[11px] text-black">
                   <span className="min-w-0 truncate">{error || "The message will be sent through Bulk SMS BD."}</span>
                   <span className="shrink-0 tabular-nums">{[...message].length}/{MAX_MESSAGE_LENGTH}</span>
                 </div>

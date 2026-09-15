@@ -132,7 +132,7 @@ function UsageBar({ label, used, limit, icon }: { label: string; used: number; l
           {icon}
           <span className="text-[13px] font-medium text-black">{label}</span>
         </div>
-        <span className="text-[12px] text-black/50 tabular-nums">
+        <span className="text-[12px] text-black tabular-nums">
           {used.toLocaleString()} / {limit.toLocaleString()}
         </span>
       </div>
@@ -190,7 +190,7 @@ function PlanSection({ currentPlan, onRefresh }: { currentPlan: PlanInfo | null;
       <div className="space-y-4">
         <div>
           <h2 className="text-[17px] font-semibold text-black tracking-tight">Current Plan</h2>
-          <p className="mt-0.5 text-[13px] text-black/45">
+          <p className="mt-0.5 text-[13px] text-black">
             {currentPlan ? (
               currentPlan.status === "trialing" && currentPlan.trialEndsAt ? (
                 (() => {
@@ -318,7 +318,7 @@ function UsageSection({ usage }: { usage: UsageData | null }) {
     <div className="space-y-4">
       <div>
         <h2 className="text-[17px] font-semibold text-black tracking-tight">Usage This Month</h2>
-        <p className="mt-0.5 text-[13px] text-black/45">
+        <p className="mt-0.5 text-[13px] text-black">
           Billing period: {usage.period}
         </p>
       </div>
@@ -334,25 +334,25 @@ function UsageSection({ usage }: { usage: UsageData | null }) {
           label="AI Order Captures"
           used={usage.aiOrderCaptures.used}
           limit={usage.aiOrderCaptures.limit}
-          icon={<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black/40"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>}
+          icon={<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>}
         />
         <UsageBar
           label="AI Extractions"
           used={usage.aiExtractions.used}
           limit={usage.aiExtractions.limit}
-          icon={<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black/40"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
+          icon={<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>}
         />
         <UsageBar
           label="Fraud Checks"
           used={usage.fraudChecks.used}
           limit={usage.fraudChecks.limit}
-          icon={<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black/40"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
+          icon={<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-black"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
         />
       </div>
 
       <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-5">
         <p className="text-[13px] font-medium text-black mb-2">Need more?</p>
-        <p className="text-[11px] text-black/50 mb-3">Purchase a top-up pack without changing your plan.</p>
+        <p className="text-[11px] text-black mb-3">Purchase a top-up pack without changing your plan.</p>
         <div className="flex flex-wrap gap-2">
           {[
             { label: "+100 AI Replies", price: 199 },
@@ -402,18 +402,18 @@ function PaymentSection() {
     <div className="space-y-4">
       <div>
         <h2 className="text-[17px] font-semibold text-black tracking-tight">Payment Method</h2>
-        <p className="mt-0.5 text-[13px] text-black/45">Manage how you pay for your subscription.</p>
+        <p className="mt-0.5 text-[13px] text-black">Manage how you pay for your subscription.</p>
       </div>
 
       <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="h-9 w-14 rounded-md bg-gradient-to-br from-black/[0.08] to-black/[0.03] flex items-center justify-center">
-              <CreditCard className="h-4 w-4 text-black/40" strokeWidth={1.5} />
+              <CreditCard className="h-4 w-4 text-black" strokeWidth={1.5} />
             </div>
             <div>
               <p className="text-[13px] font-medium text-black">Manage via Stripe</p>
-              <p className="text-[11px] text-black/40 mt-0.5">Update your card, view invoices, or cancel your subscription.</p>
+              <p className="text-[11px] text-black mt-0.5">Update your card, view invoices, or cancel your subscription.</p>
             </div>
           </div>
           <RichButton
@@ -427,7 +427,7 @@ function PaymentSection() {
         </div>
 
         <div className="px-5 py-4">
-          <p className="text-[11px] text-black/40">
+          <p className="text-[11px] text-black">
             Powered by Stripe. Supports Visa, Mastercard, and other international payment methods.
           </p>
         </div>
@@ -442,11 +442,11 @@ function InvoiceSection({ invoices }: { invoices: Invoice[] }) {
       <div className="space-y-4">
         <div>
           <h2 className="text-[17px] font-semibold text-black tracking-tight">Invoices</h2>
-          <p className="mt-0.5 text-[13px] text-black/45">Your billing history.</p>
+          <p className="mt-0.5 text-[13px] text-black">Your billing history.</p>
         </div>
         <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white p-10 text-center">
           <Receipt className="h-6 w-6 text-black/20 mx-auto mb-2" strokeWidth={1.5} />
-          <p className="text-[13px] text-black/40">No invoices yet.</p>
+          <p className="text-[13px] text-black">No invoices yet.</p>
           <p className="text-[11px] text-black/25 mt-0.5">Invoices will appear here after your first payment.</p>
         </div>
       </div>
@@ -457,7 +457,7 @@ function InvoiceSection({ invoices }: { invoices: Invoice[] }) {
     <div className="space-y-4">
       <div>
         <h2 className="text-[17px] font-semibold text-black tracking-tight">Invoices</h2>
-        <p className="mt-0.5 text-[13px] text-black/45">Your billing history.</p>
+        <p className="mt-0.5 text-[13px] text-black">Your billing history.</p>
       </div>
 
       <div className="overflow-hidden rounded-[14px] border border-black/[0.08] bg-white divide-y divide-black/[0.06]">
@@ -468,7 +468,7 @@ function InvoiceSection({ invoices }: { invoices: Invoice[] }) {
                 <span className="text-[13px] font-medium text-black">
                   ৳{inv.amount.toLocaleString()}
                 </span>
-                <span className="text-[11px] text-black/40">
+                <span className="text-[11px] text-black">
                   {new Date(inv.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                 </span>
               </div>
@@ -484,7 +484,7 @@ function InvoiceSection({ invoices }: { invoices: Invoice[] }) {
               >
                 {inv.status}
               </span>
-              <button className="text-[11px] text-black/40 hover:text-black transition-colors underline underline-offset-2">
+              <button className="text-[11px] text-black hover:text-black transition-colors underline underline-offset-2">
                 Download
               </button>
             </div>
@@ -558,7 +558,7 @@ export default function Billing() {
             onClick={() => setSection(id)}
             className={cn(
               "relative flex items-center gap-2 px-3 pb-3 text-[13px] font-medium transition-colors",
-              section === id ? "text-black" : "text-black/40 hover:text-black/70"
+              section === id ? "text-black" : "text-black hover:text-black/70"
             )}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />

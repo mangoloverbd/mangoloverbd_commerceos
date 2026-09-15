@@ -102,10 +102,10 @@ export function TeamManagement() {
       {/* Member list */}
       <div>
         <div className="flex items-center justify-between mb-1.5 px-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black">
             Members
           </p>
-          <p className="text-[11px] text-black/30">{members.length} total</p>
+          <p className="text-[11px] text-black">{members.length} total</p>
         </div>
 
         <div className="overflow-hidden rounded-2xl bg-black/[0.04]">
@@ -119,7 +119,7 @@ export function TeamManagement() {
                 transition={{ duration: 0.18 }}
                 className="flex items-center justify-center py-10"
               >
-                <Spinner className="h-4 w-4 text-black/30" />
+                <Spinner className="h-4 w-4 text-black" />
               </motion.div>
             ) : members.length === 0 ? (
               <motion.div
@@ -131,7 +131,7 @@ export function TeamManagement() {
                 className="flex flex-col items-center justify-center py-10 gap-2"
               >
                 <Users className="h-5 w-5 text-black/20" strokeWidth={1.5} />
-                <p className="text-[13px] text-black/30">No members yet</p>
+                <p className="text-[13px] text-black">No members yet</p>
               </motion.div>
             ) : (
               <motion.div
@@ -169,9 +169,9 @@ export function TeamManagement() {
                             {member.role === "admin" ? (
                               <Crown className="h-3 w-3 text-amber-500" strokeWidth={1.8} />
                             ) : (
-                              <Users className="h-3 w-3 text-black/30" strokeWidth={1.8} />
+                              <Users className="h-3 w-3 text-black" strokeWidth={1.8} />
                             )}
-                            <p className="text-[11px] text-black/40">
+                            <p className="text-[11px] text-black">
                               {member.role === "admin" ? "Admin" : "Team member"}
                             </p>
                           </div>
@@ -199,14 +199,14 @@ export function TeamManagement() {
       {/* Add member — admin only */}
       {isAdmin ? (
         <div>
-          <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/30">
+          <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-black">
             Add Member
           </p>
           <div className="overflow-hidden rounded-2xl bg-black/[0.04] px-5 py-4 space-y-4">
             <form onSubmit={handleCreateMember} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-black/50">Email</label>
+                  <label className="block text-[11px] font-medium text-black">Email</label>
                   <input
                     type="email"
                     required
@@ -217,7 +217,7 @@ export function TeamManagement() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-black/50">Password <span className="text-black/30">(optional)</span></label>
+                  <label className="block text-[11px] font-medium text-black">Password <span className="text-black">(optional)</span></label>
                   <input
                     type="text"
                     placeholder="Leave blank to auto-generate"
@@ -261,7 +261,7 @@ export function TeamManagement() {
                         { label: "Password", value: generatedCredentials.password, type: "password" as const },
                       ]).map(({ label, value, type }) => (
                         <div key={type} className="space-y-1.5">
-                          <p className="text-[11px] font-medium text-black/50">{label}</p>
+                          <p className="text-[11px] font-medium text-black">{label}</p>
                           <div className="flex h-10 items-center gap-2 rounded-[10px] border border-black/[0.08] bg-black/[0.03] px-3">
                             <code className="flex-1 truncate font-mono text-[12px] text-black">
                               {type === "password" && !showPassword ? "••••••••••••" : value}
@@ -270,7 +270,7 @@ export function TeamManagement() {
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="text-black/30 transition-colors hover:text-black/60"
+                                className="text-black transition-colors hover:text-black/60"
                               >
                                 {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                               </button>
@@ -278,7 +278,7 @@ export function TeamManagement() {
                             <button
                               type="button"
                               onClick={() => copyToClipboard(value, type)}
-                              className="text-black/30 transition-colors hover:text-black/60"
+                              className="text-black transition-colors hover:text-black/60"
                             >
                               {copied === type
                                 ? <Check className="h-3.5 w-3.5 text-emerald-500" />
@@ -295,7 +295,7 @@ export function TeamManagement() {
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl bg-black/[0.04] px-5 py-4 flex items-center gap-3 text-black/40">
+        <div className="overflow-hidden rounded-2xl bg-black/[0.04] px-5 py-4 flex items-center gap-3 text-black">
           <Lock className="h-4 w-4 shrink-0" />
           <p className="text-[13px]">Only admins can add or remove team members.</p>
         </div>

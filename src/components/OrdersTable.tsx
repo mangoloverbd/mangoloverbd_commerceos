@@ -1152,7 +1152,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         renderActions={(order) => (
           <div className="flex flex-wrap gap-2">
             {!order.fraud_checked && (
-              <button type="button" onClick={() => handleCheckFraud(order)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black/65">
+              <button type="button" onClick={() => handleCheckFraud(order)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black">
                 Check fraud
               </button>
             )}

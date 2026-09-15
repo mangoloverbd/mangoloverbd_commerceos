@@ -25,7 +25,7 @@ export function SocialInboxPanel({ data }: { data: SocialInboxData }) {
       className="rounded-2xl bg-black/[0.04] p-5"
     >
       <div className="mb-4">
-        <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Social</p>
+        <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Social</p>
         <p className="text-[15px] font-semibold text-black mt-0.5">Inbox Activity</p>
       </div>
 
@@ -33,24 +33,24 @@ export function SocialInboxPanel({ data }: { data: SocialInboxData }) {
         <div className="text-center">
           <Chats weight="light" size={18} className="mx-auto text-black/30 mb-1" />
           <p className="text-[16px] font-semibold text-black tabular-nums">{data.unread}</p>
-          <p className="text-[9px] text-black/40">Unread</p>
+          <p className="text-[9px] text-black">Unread</p>
         </div>
         <div className="text-center">
           <Clock weight="light" size={18} className="mx-auto text-black/30 mb-1" />
           <p className="text-[16px] font-semibold text-black tabular-nums">{data.avgResponseTimeMinutes}m</p>
-          <p className="text-[9px] text-black/40">Avg Response</p>
+          <p className="text-[9px] text-black">Avg Response</p>
         </div>
         <div className="text-center">
           <Hash weight="light" size={18} className="mx-auto text-black/30 mb-1" />
           <p className="text-[16px] font-semibold text-black tabular-nums">{data.conversationsToday}</p>
-          <p className="text-[9px] text-black/40">Today</p>
+          <p className="text-[9px] text-black">Today</p>
         </div>
       </div>
 
       <div className="space-y-2">
         {Object.entries(data.byChannel).map(([channel, count]) => (
           <div key={channel} className="flex items-center gap-2">
-            <span className="text-[10px] text-black/50 w-16">{channelIcons[channel] || channel}</span>
+            <span className="text-[10px] text-black w-16">{channelIcons[channel] || channel}</span>
             <div className="flex-1 h-1.5 bg-black/[0.04] rounded-full overflow-hidden">
               <div
                 className="h-full bg-[#232323] rounded-full transition-all"

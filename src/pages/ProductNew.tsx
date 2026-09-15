@@ -167,7 +167,7 @@ export default function ProductNew() {
           <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={() => navigate("/products")} />
           <div>
             <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Add Product</h1>
-            <p className="mt-1 text-[13px] text-black/45">Create a product manually, then publish it to the public catalog.</p>
+            <p className="mt-1 text-[13px] text-black">Create a product manually, then publish it to the public catalog.</p>
           </div>
         </div>
       </div>

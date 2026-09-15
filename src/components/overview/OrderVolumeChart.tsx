@@ -25,9 +25,9 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 
   return (
     <div className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 shadow-lg">
-      <p className="text-[10px] font-medium text-black/50 mb-1">{label}</p>
+      <p className="text-[10px] font-medium text-black mb-1">{label}</p>
       <p className="text-[12px] font-semibold text-black">This period: {current?.value ?? 0}</p>
-      <p className="text-[11px] text-black/50">Previous: {previous?.value ?? 0}</p>
+      <p className="text-[11px] text-black">Previous: {previous?.value ?? 0}</p>
       <p className={`text-[11px] font-medium ${Number(change) >= 0 ? "text-emerald-600" : "text-red-500"}`}>
         {Number(change) >= 0 ? "+" : ""}{change}% vs previous
       </p>
@@ -45,17 +45,17 @@ export function OrderVolumeChart({ data }: { data: OrderVolumeData[] }) {
     >
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Orders</p>
+          <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Orders</p>
           <p className="text-[15px] font-semibold text-black mt-0.5">Order Volume</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <div className="h-2 w-2 rounded-full bg-[#232323]" />
-            <span className="text-[10px] text-black/50">This period</span>
+            <span className="text-[10px] text-black">This period</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="h-2 w-2 rounded-full bg-black/15" />
-            <span className="text-[10px] text-black/50">Previous</span>
+            <span className="text-[10px] text-black">Previous</span>
           </div>
         </div>
       </div>

@@ -54,7 +54,7 @@ type CustomerPanelProps = {
 function DetailField({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
     <div className="min-w-0">
-      <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">{label}</p>
+      <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{label}</p>
       <p className="mt-1 break-words text-[14px] text-black">{value || "—"}</p>
     </div>
   );
@@ -186,35 +186,35 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
     <section aria-label="Customer and order" className="bg-[#FAFAF8] px-5 py-4">
       <div data-testid="customer-order-header" className="flex flex-wrap items-center justify-between gap-3">
         <div data-testid="customer-order-identity" className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-          <p className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Customer and order</p>
+          <p className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Customer and order</p>
           <h2 className="truncate text-[15px] font-medium text-black">{customer.customerName || "Customer details"}</h2>
           {!editing && (
-            <button type="button" aria-label="Edit customer" onClick={beginEditing} disabled={disabled} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] text-black/55 transition hover:bg-black/[0.05] disabled:opacity-40">
+            <button type="button" aria-label="Edit customer" onClick={beginEditing} disabled={disabled} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40">
               <PencilSimple weight="light" size={15} /> Edit
             </button>
           )}
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
           <div data-testid="landing-page-attribution" className="flex min-w-0 items-center gap-2">
-            <p className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Landing page</p>
+            <p className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Landing page</p>
             {landingPageHref(order.landing_page_path) ? (
               <a
                 href={landingPageHref(order.landing_page_path)}
                 target="_blank"
                 rel="noreferrer"
                 title={order.landing_page_path?.trim()}
-                className="inline-flex min-w-0 items-center gap-1 truncate text-[12px] text-black/65 underline decoration-black/20 underline-offset-2 transition hover:text-black hover:decoration-black"
+                className="inline-flex min-w-0 items-center gap-1 truncate text-[12px] text-black underline decoration-black/20 underline-offset-2 transition hover:text-black hover:decoration-black"
               >
                 <span className="truncate">{formatLandingPageLabel(order.landing_page_path)}</span>
                 <ArrowUpRight weight="light" size={14} aria-hidden="true" />
               </a>
             ) : (
-              <span className="text-[12px] text-black/45">{formatLandingPageLabel(order.landing_page_path)}</span>
+              <span className="text-[12px] text-black">{formatLandingPageLabel(order.landing_page_path)}</span>
             )}
           </div>
           {source && onSourceChange && (
             <div data-testid="order-source-control" className="flex min-w-0 items-center gap-3">
-              <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Order source</p>
+              <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Order source</p>
               <div className="w-36 min-w-0">
                 <OrderSourceSelect value={source} onChange={onSourceChange} disabled={sourceDisabled} compact />
               </div>
@@ -225,19 +225,19 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
 
       {editing ? (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black/45">Customer name<input aria-label="Customer name" value={local.customerName} onChange={(event) => setLocal((current) => ({ ...current, customerName: event.target.value }))} disabled={disabled} className={`${inputClass} mt-2 normal-case tracking-normal`} /></label>
-          <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black/45">Phone<input aria-label="Phone" type="tel" value={local.phone} onChange={(event) => setLocal((current) => ({ ...current, phone: event.target.value }))} disabled={disabled} className={`${inputClass} mt-2 normal-case tracking-normal`} /></label>
-          <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black/45 sm:col-span-2">Delivery address<textarea aria-label="Delivery address" value={local.address} onChange={(event) => setLocal((current) => ({ ...current, address: event.target.value }))} disabled={disabled} rows={4} className={`${inputClass} mt-2 h-auto min-h-24 py-2.5 normal-case tracking-normal`} /></label>
+          <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Customer name<input aria-label="Customer name" value={local.customerName} onChange={(event) => setLocal((current) => ({ ...current, customerName: event.target.value }))} disabled={disabled} className={`${inputClass} mt-2 normal-case tracking-normal`} /></label>
+          <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Phone<input aria-label="Phone" type="tel" value={local.phone} onChange={(event) => setLocal((current) => ({ ...current, phone: event.target.value }))} disabled={disabled} className={`${inputClass} mt-2 normal-case tracking-normal`} /></label>
+          <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black sm:col-span-2">Delivery address<textarea aria-label="Delivery address" value={local.address} onChange={(event) => setLocal((current) => ({ ...current, address: event.target.value }))} disabled={disabled} rows={4} className={`${inputClass} mt-2 h-auto min-h-24 py-2.5 normal-case tracking-normal`} /></label>
           <div className="flex gap-2 pt-1 sm:col-span-2">
             <button type="button" aria-label="Apply customer changes" onClick={applyEditing} disabled={disabled} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-[13px] text-white disabled:opacity-40"><Check weight="light" size={16} /> Apply</button>
-            <button type="button" aria-label="Cancel customer edit" onClick={cancelEditing} disabled={disabled} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-4 text-[13px] text-black/55 hover:bg-black/[0.05] disabled:opacity-40"><X weight="light" size={16} /> Cancel</button>
+            <button type="button" aria-label="Cancel customer edit" onClick={cancelEditing} disabled={disabled} className="inline-flex h-10 items-center gap-1.5 rounded-lg px-4 text-[13px] text-black hover:bg-black/[0.05] disabled:opacity-40"><X weight="light" size={16} /> Cancel</button>
           </div>
         </div>
       ) : (
         <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-3">
           <DetailField label="Name" value={customer.customerName} />
           <div className="min-w-0">
-            <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Phone</p>
+            <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Phone</p>
             <p className="mt-1.5 flex items-center gap-2 text-[15px] text-black">
               <span className="break-words">{customer.phone || "—"}</span>
               {customer.phone.trim() && (
@@ -245,7 +245,7 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
                   type="button"
                   aria-label={copied ? "Phone number copied" : "Copy phone number"}
                   onClick={() => { void copyPhone(); }}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-black/45 transition hover:bg-black/[0.06] hover:text-black"
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-black transition hover:bg-black/[0.06] hover:text-black"
                 >
                   {copied ? <Check weight="light" size={15} /> : <Copy weight="light" size={15} />}
                 </button>
@@ -255,7 +255,7 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
                   type="button"
                   aria-label="Send SMS"
                   onClick={() => setSmsOpen(true)}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-black/50 transition hover:bg-black/[0.06] hover:text-black"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-medium uppercase tracking-[0.12em] text-black transition hover:bg-black/[0.06] hover:text-black"
                 >
                   <SmsBubbleIcon size={15} />
                   SMS
@@ -287,9 +287,9 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
           )}
         </div>
         {historyLoading ? (
-          <p className="mt-3 text-[12px] text-black/40">Loading…</p>
+          <p className="mt-3 text-[12px] text-black">Loading…</p>
         ) : history.length === 0 ? (
-          <p className="mt-3 text-[12px] text-black/40">No previous orders.</p>
+          <p className="mt-3 text-[12px] text-black">No previous orders.</p>
         ) : (
           <ul className="mt-2.5 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
             {history.map((entry) => (
@@ -300,7 +300,7 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="text-[15px] font-bold tabular-nums tracking-[0.02em] text-black">{formatTaka(entry.price)}</p>
-                  <p className="min-w-0 truncate text-[13px] text-black/45">{historyDateTime(entry.created_at) || "—"}</p>
+                  <p className="min-w-0 truncate text-[13px] text-black">{historyDateTime(entry.created_at) || "—"}</p>
                 </div>
               </li>
             ))}

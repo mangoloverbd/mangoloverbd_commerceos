@@ -95,7 +95,7 @@ function InboxStat({
       transition={{ duration: 0.35 }}
       className="rounded-2xl bg-black/[0.04] px-4 py-2.5"
     >
-      <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
+      <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">{label}</p>
       <div className="mt-0.5 flex items-baseline gap-1.5">
         <AnimatePresence mode="wait">
           {loading ? (
@@ -118,7 +118,7 @@ function InboxStat({
             </motion.p>
           )}
         </AnimatePresence>
-        {sub && !loading && <p className="text-[10px] text-black/40">{sub}</p>}
+        {sub && !loading && <p className="text-[10px] text-black">{sub}</p>}
       </div>
     </motion.div>
   );
@@ -327,7 +327,7 @@ export default function SocialInbox({ platform }: Props) {
             </span>
             <div>
               <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">{cfg.label} Inbox</h1>
-              <p className="text-[12px] text-black/45">Live conversations from {cfg.label}</p>
+              <p className="text-[12px] text-black">Live conversations from {cfg.label}</p>
             </div>
           </div>
           <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold", cfg.chip)}>
@@ -364,12 +364,12 @@ export default function SocialInbox({ platform }: Props) {
           {/* Search */}
           <div className="shrink-0 border-b border-black/[0.06] px-3 py-2.5">
             <div className="relative flex h-8 items-center gap-2 rounded-full bg-black/[0.05] px-3">
-              <MagnifyingGlass size={13} weight="light" className="shrink-0 text-black/35" />
+              <MagnifyingGlass size={13} weight="light" className="shrink-0 text-black" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search conversations…"
-                className="flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-black/35"
+                className="flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-black"
                 data-testid="input-search-conversations"
               />
             </div>
@@ -396,7 +396,7 @@ export default function SocialInbox({ platform }: Props) {
                 <span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", cfg.bg)}>
                   <Icon size={ICON_SIZE[platform](22)} weight="fill" className={cfg.color} />
                 </span>
-                <p className="text-[12px] font-medium text-black/40">No conversations yet</p>
+                <p className="text-[12px] font-medium text-black">No conversations yet</p>
               </div>
             ) : (
               <AnimatePresence initial={false}>
@@ -421,9 +421,9 @@ export default function SocialInbox({ platform }: Props) {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="truncate text-[12px] font-semibold text-foreground">{conv.contact_name || "Unknown"}</span>
-                          <span className="shrink-0 text-[10px] text-black/35">{formatTime(conv.last_message_at)}</span>
+                          <span className="shrink-0 text-[10px] text-black">{formatTime(conv.last_message_at)}</span>
                         </div>
-                        <p className="mt-0.5 truncate text-[11px] text-black/40">{conv.last_message || "—"}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-black">{conv.last_message || "—"}</p>
                       </div>
                       {conv.unread_count > 0 && (
                         <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white", platform === "facebook" ? "bg-[#1877F2]" : platform === "instagram" ? "bg-[#E1306C]" : "bg-[#25D366]")}>
@@ -510,7 +510,7 @@ export default function SocialInbox({ platform }: Props) {
                   </div>
                 ) : messages.length === 0 ? (
                   <div className="flex h-full items-center justify-center">
-                    <p className="text-[12px] font-medium text-black/35">No messages</p>
+                    <p className="text-[12px] font-medium text-black">No messages</p>
                   </div>
                 ) : (
                   <AnimatePresence initial={false}>
@@ -571,7 +571,7 @@ export default function SocialInbox({ platform }: Props) {
                       }}
                       placeholder="Type a reply..."
                       rows={1}
-                      className="w-full resize-none bg-transparent px-3.5 pt-3 pb-0 text-[13px] leading-[1.6] text-foreground placeholder:text-black/35 focus:outline-none"
+                      className="w-full resize-none bg-transparent px-3.5 pt-3 pb-0 text-[13px] leading-[1.6] text-foreground placeholder:text-black focus:outline-none"
                       style={{ minHeight: "36px", maxHeight: "120px" }}
                       onInput={(e) => {
                         const t = e.currentTarget;
@@ -595,14 +595,14 @@ export default function SocialInbox({ platform }: Props) {
                 ) : (
                   <div className="relative rounded-2xl bg-black/[0.04]">
                     <div className="px-3.5 py-3">
-                      <p className="text-[13px] leading-[1.6] text-black/40 flex items-center gap-1.5">
+                      <p className="text-[13px] leading-[1.6] text-black flex items-center gap-1.5">
                         <Robot size={13} weight="light" />
                         AI bot responds automatically
                       </p>
                     </div>
                   </div>
                 )}
-                <p className="mt-2 text-center text-[10px] font-medium text-black/35">
+                <p className="mt-2 text-center text-[10px] font-medium text-black">
                   Replies sent via {cfg.label} API
                 </p>
               </div>

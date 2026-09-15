@@ -41,9 +41,9 @@ type ContactStatus = "open" | "contacted";
 const actionChip =
   "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-caption-1-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-wait disabled:opacity-45";
 const actionChipNeutral =
-  "bg-background-secondary-default text-text-secondary hover:bg-background-secondary-hover hover:text-text-primary focus-visible:ring-black/30";
+  "bg-background-secondary-default text-black hover:bg-background-secondary-hover hover:text-black focus-visible:ring-black/30";
 const actionChipApprove =
-  "bg-status-lime-background text-status-lime-text hover:bg-status-lime-background/80 focus-visible:ring-black/30";
+  "bg-status-lime-background text-black hover:bg-status-lime-background/80 focus-visible:ring-black/30";
 
 const CONTACT_STATUS_OPTIONS = [
   { value: "open", label: "Awaiting contact", dotClassName: "bg-rose-400" },
@@ -225,7 +225,7 @@ export function OrderProtectionReviewQueue() {
               </motion.svg>
             )}
           </div>
-          <span className="text-xs text-black/45">{selectedIds.size} selected</span>
+          <span className="text-xs text-black">{selectedIds.size} selected</span>
         </div>
       )}
     </>
@@ -235,7 +235,7 @@ export function OrderProtectionReviewQueue() {
     return (
       <>
         {header}
-        <div className="flex min-h-48 items-center justify-center gap-2 border-t border-black/[0.07] px-6 py-12 text-sm text-black/45" role="status">
+        <div className="flex min-h-48 items-center justify-center gap-2 border-t border-black/[0.07] px-6 py-12 text-sm text-black" role="status">
           <Spinner size="sm" className="text-black/55" />
           Loading held orders…
         </div>
@@ -248,7 +248,7 @@ export function OrderProtectionReviewQueue() {
       <>
         {header}
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 border-t border-black/[0.07] px-6 py-12 text-center">
-          <p role="alert" className="text-sm text-black/60">{error}</p>
+          <p role="alert" className="text-sm text-black">{error}</p>
           <button
             type="button"
             onClick={() => void loadReviews()}
@@ -266,8 +266,8 @@ export function OrderProtectionReviewQueue() {
       <>
         {header}
         <div className="flex min-h-48 flex-col items-center justify-center border-t border-black/[0.07] px-6 py-12 text-center">
-          <p className="text-sm font-medium text-black/75">No orders are waiting for review</p>
-          <p className="mt-1 text-xs text-black/45">Held storefront orders appear here before stock, SMS, or courier actions run.</p>
+          <p className="text-sm font-medium text-black">No orders are waiting for review</p>
+          <p className="mt-1 text-xs text-black">Held storefront orders appear here before stock, SMS, or courier actions run.</p>
         </div>
       </>
     );
@@ -327,11 +327,11 @@ export function OrderProtectionReviewQueue() {
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <ShieldCheck weight="light" size={18} aria-hidden="true" className="text-black/50" />
+                  <ShieldCheck weight="light" size={18} aria-hidden="true" className="text-black" />
                   <p className="text-sm font-medium text-black">{review.customer_name || "Customer name not provided"}</p>
                   <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-700">On hold</span>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black/45">
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black">
                   <span>{protectionSourceLabel(review.source_route)}</span>
                   <span aria-hidden>·</span>
                   <span>{captureTime(review.created_at)}</span>
@@ -341,7 +341,7 @@ export function OrderProtectionReviewQueue() {
                     <strong className="font-medium">{review.score}</strong>
                   </Chip>
                 </div>
-                <div className="mt-3 space-y-1 text-xs leading-5 text-black/70">
+                <div className="mt-3 space-y-1 text-xs leading-5 text-black">
                   {review.items.length > 0 ? review.items.map((item, index) => (
                     <Chip
                       key={`${review.id}-item-${index}`}
@@ -355,36 +355,36 @@ export function OrderProtectionReviewQueue() {
                   )) : <p>No cart details</p>}
                 </div>
                 {review.phone && (
-                  <p className="mt-1 flex items-center gap-1 text-xs text-black/70">
+                  <p className="mt-1 flex items-center gap-1 text-xs text-black">
                     <Chip variant="subtle" color="gray" className="tabular-nums">{review.phone}</Chip>
                     <button
                       type="button"
                       aria-label="Copy phone number"
                       onClick={() => void copyValue(review.phone || "", "Phone number", `${review.id}:phone`)}
-                      className="inline-flex items-center rounded-md p-1 text-black/40 transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                      className="inline-flex items-center rounded-md p-1 text-black transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                     >
                       <CopyGlyph copied={copiedKey === `${review.id}:phone`} />
                     </button>
                   </p>
                 )}
-                <p className="mt-1 flex items-start gap-1 text-xs leading-5 text-black/45">
+                <p className="mt-1 flex items-start gap-1 text-xs leading-5 text-black">
                   <span>{review.address || "Address not provided"}</span>
                   {review.address && (
                     <button
                       type="button"
                       aria-label="Copy address"
                       onClick={() => void copyValue(review.address || "", "Address", `${review.id}:address`)}
-                      className="inline-flex shrink-0 items-center rounded-md p-1 text-black/40 transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                      className="inline-flex shrink-0 items-center rounded-md p-1 text-black transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                     >
                       <CopyGlyph copied={copiedKey === `${review.id}:address`} />
                     </button>
                   )}
                 </p>
                 <div data-testid={`risk-reasons-${review.id}`} className="mt-2 flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5">
-                  <span className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black/45">Risk reasons</span>
+                  <span className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Risk reasons</span>
                   {review.reason_codes.length > 0 ? review.reason_codes.map((reason) => (
                     <Chip key={reason} variant="caption" color="rose" className="shrink-0">{reason}</Chip>
-                  )) : <span className="text-xs text-black/45">None</span>}
+                  )) : <span className="text-xs text-black">None</span>}
                 </div>
               </div>
 
@@ -430,7 +430,7 @@ export function OrderProtectionReviewQueue() {
                     <CaretDown size={11} weight="light" aria-hidden className="ml-auto shrink-0 opacity-60" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" sideOffset={6} className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0">
-                    <DropdownMenuLabel className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-black/40">Mark as</DropdownMenuLabel>
+                    <DropdownMenuLabel className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-black">Mark as</DropdownMenuLabel>
                     <DropdownMenuRadioGroup
                       value={status}
                       onValueChange={(value) => {

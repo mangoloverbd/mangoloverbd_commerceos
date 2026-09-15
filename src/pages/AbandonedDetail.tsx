@@ -236,7 +236,7 @@ export default function AbandonedDetail() {
         <div className="flex min-w-0 items-baseline gap-2.5">
           <h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Abandoned editor</h1>
           {checkout && (
-            <span className="truncate text-[13px] text-black/45">
+            <span className="truncate text-[13px] text-black">
               Captured {capturedLabel(checkout.created_at)}{checkout.phone ? ` · ${checkout.phone}` : ""}
             </span>
           )}
@@ -251,7 +251,7 @@ export default function AbandonedDetail() {
         ) : (
           <div className="py-24 text-center">
             <p className="text-[15px] font-medium text-black">Checkout not found.</p>
-            <button type="button" aria-label="Back to abandoned checkouts" onClick={goBack} className="mt-2 text-[13px] text-black/50 underline">Back to abandoned checkouts</button>
+            <button type="button" aria-label="Back to abandoned checkouts" onClick={goBack} className="mt-2 text-[13px] text-black underline">Back to abandoned checkouts</button>
           </div>
         )
       ) : (

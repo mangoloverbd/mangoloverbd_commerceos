@@ -47,7 +47,7 @@ function ReturnsMetric({
   value,
   subValue,
   valueClassName = "text-black",
-  subValueClassName = "text-black/30",
+  subValueClassName = "text-black",
   sparklineValues = [],
   loading = false,
 }: {
@@ -81,7 +81,7 @@ function ReturnsMetric({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
           >
-            <p className="text-[10px] font-medium tracking-[0.08em] uppercase text-black/50">{label}</p>
+            <p className="text-[10px] font-medium tracking-[0.08em] uppercase text-black">{label}</p>
 
             <div className="mt-1.5 flex items-end justify-between">
               <TextEffect
@@ -116,7 +116,7 @@ function ReturnsMetric({
             </div>
 
             {subValue && (
-              <p className="mt-1.5 text-[10px] font-medium text-black/40">
+              <p className="mt-1.5 text-[10px] font-medium text-black">
                 {subValue}
               </p>
             )}
@@ -132,15 +132,15 @@ function ReturnStatusBadge({ status }: { status: string }) {
   if (s === "pending") return <span className="inline-flex items-center rounded-lg bg-amber-50 border border-amber-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700">Pending</span>;
   if (s === "approved" || s === "processing") return <span className="inline-flex items-center rounded-lg bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-blue-700">Processing</span>;
   if (s === "completed" || s === "returned") return <span className="inline-flex items-center rounded-lg bg-red-50 border border-red-200/80 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-600">Returned</span>;
-  if (s === "cancelled") return <span className="inline-flex items-center rounded-lg bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black/40">Cancelled</span>;
-  return <span className="inline-flex items-center rounded-lg bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black/40">{status || "Unknown"}</span>;
+  if (s === "cancelled") return <span className="inline-flex items-center rounded-lg bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black">Cancelled</span>;
+  return <span className="inline-flex items-center rounded-lg bg-black/[0.05] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-black">{status || "Unknown"}</span>;
 }
 
 function CourierBadge({ name }: { name: string }) {
   const n = (name || "").toLowerCase();
   if (n === "steadfast") return <SteadfastLogo className="h-4 w-auto" />;
   if (n === "pathao") return <PathaoLogo className="h-5 w-auto" />;
-  return <span className="text-[10px] text-black/40 uppercase">{name || "—"}</span>;
+  return <span className="text-[10px] text-black uppercase">{name || "—"}</span>;
 }
 
 export default function Returns() {
@@ -294,7 +294,7 @@ export default function Returns() {
         <div className="overflow-x-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
-              <Spinner className="h-5 w-5 text-black/30" />
+              <Spinner className="h-5 w-5 text-black" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-16">
@@ -324,11 +324,11 @@ export default function Returns() {
                   <tr key={order.id} className="border-b border-black/[0.04] hover:bg-black/[0.01] transition-colors">
                     <td className="py-2.5 px-4">
                       <span className="text-[12px] font-medium text-black">{order.order_number}</span>
-                      <span className="ml-1.5 text-[9px] text-black/30 uppercase">{order.source}</span>
+                      <span className="ml-1.5 text-[9px] text-black uppercase">{order.source}</span>
                     </td>
                     <td className="py-2.5">
                       <p className="text-[12px] font-medium text-black truncate max-w-[120px]">{order.customer_name}</p>
-                      <p className="text-[10px] text-black/40 font-mono">{order.phone || "—"}</p>
+                      <p className="text-[10px] text-black font-mono">{order.phone || "—"}</p>
                     </td>
                     <td className="py-2.5 max-w-[180px]">
                       <p className="text-[11px] text-black truncate">{order.product || "—"}</p>
@@ -350,7 +350,7 @@ export default function Returns() {
                       </span>
                     </td>
                     <td className="py-2.5 text-right pr-4">
-                      <span className="text-[10px] text-black/40">
+                      <span className="text-[10px] text-black">
                         {order.return_requested_at
                           ? format(new Date(order.return_requested_at), "MMM dd")
                           : format(new Date(order.created_at), "MMM dd")}
@@ -386,7 +386,7 @@ export default function Returns() {
                           </PopoverContent>
                         </Popover>
                       ) : (
-                        <span className="text-[10px] text-black/30">—</span>
+                        <span className="text-[10px] text-black">—</span>
                       )}
                     </td>
                   </tr>

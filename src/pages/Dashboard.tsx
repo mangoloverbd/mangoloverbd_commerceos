@@ -433,7 +433,7 @@ const FinanceMetric = memo(function FinanceMetric({
                     {isPositive ? "+" : ""}
                     {(trend ?? 0).toFixed(2)}%
                   </span>{" "}
-                  <span className="text-black/40">vs prev</span>
+                  <span className="text-black">vs prev</span>
                 </p>
               ) : (
                 <span className="text-[12px] text-black/30">—</span>
@@ -1276,7 +1276,7 @@ export default function Dashboard() {
           >
             {`${getDhakaGreeting()}!`}
           </TextShimmer>
-          <p className="mt-2 text-base font-light text-black/45">
+          <p className="mt-2 text-base font-light text-black">
             Manage your operations and every profit under one roof.
           </p>
 

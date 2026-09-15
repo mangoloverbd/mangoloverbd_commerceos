@@ -27,7 +27,7 @@ function stockClass(product: Product) {
 }
 
 export function MobileProductCards({ products, selectedProductIds, onToggleSelection, onEditProduct, renderActions }: MobileProductCardsProps) {
-  if (!products.length) return <div className="px-5 py-20 text-center text-sm text-black/45">No products match your filters.</div>;
+  if (!products.length) return <div className="px-5 py-20 text-center text-sm text-black">No products match your filters.</div>;
 
   return (
     <div className="space-y-3 p-3" data-testid="mobile-product-cards">
@@ -44,18 +44,18 @@ export function MobileProductCards({ products, selectedProductIds, onToggleSelec
                 {product.image_url ? <img src={product.image_url} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" /> : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-black/[0.05] text-black/35"><Package weight="light" size={22} /></span>}
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-black">{product.name}</p>
-                  <p className="mt-1 text-[11px] text-black/40">{product.published ? "Published" : "Draft"}</p>
+                  <p className="mt-1 text-[11px] text-black">{product.published ? "Published" : "Draft"}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => onEditProduct(product.id)} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-black/50 hover:bg-black/[0.05] hover:text-black" aria-label={`Edit ${product.name}`}>
+              <button type="button" onClick={() => onEditProduct(product.id)} className="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-black hover:bg-black/[0.05] hover:text-black" aria-label={`Edit ${product.name}`}>
                 <PencilSimple weight="light" size={19} />
               </button>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 border-t border-black/[0.06] pt-3">
-              <div><p className="text-[9px] uppercase tracking-[0.2em] text-black/40">Price</p><p className="mt-1 text-sm font-semibold tabular-nums text-black">{priceLabel(product)}</p></div>
-              <div><p className="text-[9px] uppercase tracking-[0.2em] text-black/40">Stock</p><p className={cn("mt-1 text-sm font-semibold tabular-nums", stockClass(product))}>{stockLabel(product)}</p></div>
+              <div><p className="text-[9px] uppercase tracking-[0.2em] text-black">Price</p><p className="mt-1 text-sm font-semibold tabular-nums text-black">{priceLabel(product)}</p></div>
+              <div><p className="text-[9px] uppercase tracking-[0.2em] text-black">Stock</p><p className={cn("mt-1 text-sm font-semibold tabular-nums", stockClass(product))}>{stockLabel(product)}</p></div>
             </div>
-            <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-black/45">
+            <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-black">
               <span>COG ৳{Number(product.cog || 0).toLocaleString("en-BD")}</span>
               <span className="inline-flex items-center gap-1">{product.published ? <Check weight="light" size={14} /> : <DotsThree weight="light" size={14} />} {product.published ? "Live" : "Draft"}</span>
             </div>
