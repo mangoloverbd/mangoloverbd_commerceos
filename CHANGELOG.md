@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.5] - 2026-09-17
+
+### Added
+
+- Add a Packing Summary print action to the Dashboard Print tab: per-product/pack totals with order counts, total kg, and tick boxes, plus a multi-item exception list with order IDs and ticks.
+
 ## [0.1.0.4] - 2026-09-14
 
 ### Added
