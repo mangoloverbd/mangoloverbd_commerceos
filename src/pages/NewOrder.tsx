@@ -197,7 +197,7 @@ export default function NewOrder() {
           price: subtotal - discount,
           items: lines.map((line) => ({ product_id: line.productId, variant_id: line.variantId, product_name: line.name, variant_name: line.variantName, unit_price: line.unitPrice, quantity: line.quantity })),
           delivery_rate: deliveryCharge,
-          status: "pending",
+          status: "confirmed",
           fraud_checked: false,
           fulfillment_status: "unfulfilled",
           notes: notes.trim() || null,
