@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.8] - 2026-09-17
+
+### Changed
+
+- Manual Create Order submissions save directly as Approved instead of Pending.
+
 ## [0.1.0.7] - 2026-09-17
 
 ### Fixed
