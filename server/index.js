@@ -5797,6 +5797,16 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
   }
 });
 
+// PostgREST receives list filters as GET query params, so a single .in()
+// with hundreds of UUIDs blows past URL length limits and the request dies
+// with "fetch failed". Chunk all unbounded id-list fetches (batch size 100
+// keeps URLs at ~4KB).
+function chunkIds(ids, size = 100) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
 app.get("/api/orders", async (req, res) => {
   try {
     const token = getToken(req);
@@ -5805,8 +5815,7 @@ app.get("/api/orders", async (req, res) => {
     console.log(`[Orders] user=${user.id}`);
 
     const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const warehouseFilter = typeof req.query.warehouse_id === "string"
+    const { orgId } = await getUserOrg(supabase, user.id);    const warehouseFilter = typeof req.query.warehouse_id === "string"
       ? req.query.warehouse_id.trim()
       : "";
     let ordersQuery = supabase
@@ -5822,11 +5831,13 @@ app.get("/api/orders", async (req, res) => {
 
     const allOrders = allData || [];
     const orderIds = allOrders.map((order) => order.id).filter(Boolean);
-    const { data: orderItems, error: itemsError } = orderIds.length
-      ? await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", orderIds).eq("org_id", orgId).order("created_at", { ascending: true })
-      : { data: [], error: null };
-    if (itemsError) throw itemsError;
-    const enrichedItems = await enrichOrderItems(supabase, orgId, orderItems || []);
+    const itemRows = [];
+    for (const idBatch of chunkIds(orderIds)) {
+      const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+      if (itemsError) throw itemsError;
+      itemRows.push(...(batchItems || []));
+    }
+    const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
     const itemsByOrder = new Map();
     for (const item of enrichedItems) {
       const list = itemsByOrder.get(item.order_id) || [];
@@ -5847,146 +5858,6 @@ app.get("/api/orders", async (req, res) => {
 
     console.log(`[Orders] total=${allOrders.length}`);
     return res.json({ orders });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
-});
-
-const DISTRICT_NAMES = ["Bagerhat","Bandarban","Barguna","Barishal","Bhola","Bogura","Brahmanbaria","Chandpur","Chapai Nawabganj","Chattogram","Chuadanga","Cox's Bazar","Cumilla","Dhaka","Dinajpur","Faridpur","Feni","Gaibandha","Gazipur","Gopalganj","Habiganj","Jamalpur","Jashore","Jhalokati","Jhenaidah","Joypurhat","Khagrachari","Khulna","Kishoreganj","Kurigram","Kushtia","Lakshmipur","Lalmonirhat","Madaripur","Magura","Manikganj","Meherpur","Moulvibazar","Munshiganj","Mymensingh","Naogaon","Narail","Narayanganj","Narsingdi","Natore","Netrokona","Nilphamari","Noakhali","Pabna","Panchagarh","Patuakhali","Pirojpur","Rajbari","Rajshahi","Rangamati","Rangpur","Satkhira","Shariatpur","Sherpur","Sirajganj","Sunamganj","Sylhet","Tangail","Thakurgaon"];
-const DISTRICT_UNKNOWN_SENTINEL = "__unknown__";
-const DISTRICT_ALIAS_LIMIT = 500;
-const DISTRICT_RESOLVE_LIMIT = 50;
-
-function normalizeDistrictAddress(value) {
-  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function parseDistrictAliasMap(raw) {
-  try {
-    const parsed = JSON.parse(raw || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function toClientDistrictAliasMap(stored) {
-  const map = {};
-  for (const [key, value] of Object.entries(stored)) {
-    map[key] = value === DISTRICT_UNKNOWN_SENTINEL ? null : value;
-  }
-  return map;
-}
-
-function evictOldestDistrictAliases(map) {
-  const keys = Object.keys(map);
-  if (keys.length <= DISTRICT_ALIAS_LIMIT) return map;
-  const trimmed = {};
-  for (const key of keys.slice(keys.length - DISTRICT_ALIAS_LIMIT)) trimmed[key] = map[key];
-  return trimmed;
-}
-
-async function resolveDistrictsWithAI(addresses) {
-  const models = [];
-  if (process.env.DISTRICT_MODEL) models.push(process.env.DISTRICT_MODEL);
-  if (AI_DEFAULT_MODEL && !models.includes(AI_DEFAULT_MODEL)) models.push(AI_DEFAULT_MODEL);
-  if (!models.includes("gpt-4o-mini")) models.push("gpt-4o-mini");
-  const prompt = `You map Bangladeshi delivery addresses to districts. Reply with ONLY a JSON object mapping each input address string to exactly one of these 64 districts: ${DISTRICT_NAMES.join(", ")}. Use "unknown" unless you are confident.`;
-  let lastNonModelError = null;
-  for (const model of models) {
-    const response = await aiChatCompletion({
-      model,
-      temperature: 0,
-      max_tokens: 2000,
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: JSON.stringify(addresses) },
-      ],
-    });
-    if (response.ok) return response;
-    const body = await response.text().catch(() => "");
-    const isModelError = response.status === 404 || /model_not_found|does not exist|invalid model/i.test(body);
-    if (!isModelError) {
-      lastNonModelError = { status: response.status, body };
-      break;
-    }
-  }
-  return lastNonModelError;
-}
-
-app.get("/api/orders/district-aliases", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const settings = await getOrgSettings(orgId, ["district_aliases"]);
-    const stored = parseDistrictAliasMap(settings.district_aliases);
-    return res.json({ aliases: toClientDistrictAliasMap(stored) });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
-});
-
-app.post("/api/orders/resolve-districts", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const rawAddresses = Array.isArray(req.body?.addresses) ? req.body.addresses : null;
-    if (!rawAddresses) return res.status(400).json({ error: "addresses must be an array" });
-    const addresses = [...new Set(
-      rawAddresses.map(normalizeDistrictAddress).filter(Boolean),
-    )].slice(0, 50);
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const settings = await getOrgSettings(orgId, ["district_aliases"]);
-    let stored = parseDistrictAliasMap(settings.district_aliases);
-    const resolved = {};
-    const fresh = [];
-    for (const address of addresses) {
-      if (Object.hasOwn(stored, address)) {
-        resolved[address] = stored[address] === DISTRICT_UNKNOWN_SENTINEL ? null : stored[address];
-      } else {
-        fresh.push(address);
-      }
-    }
-    if (fresh.length && AI_API_KEY) {
-      const aiResponse = await resolveDistrictsWithAI(fresh);
-      if (aiResponse && aiResponse.ok) {
-        const payload = await aiResponse.json().catch(() => null);
-        const content = payload?.choices?.[0]?.message?.content || "";
-        let answers = null;
-        try {
-          answers = JSON.parse(content.slice(content.indexOf("{"), content.lastIndexOf("}") + 1));
-        } catch {
-          answers = null;
-        }
-        if (answers && typeof answers === "object") {
-          const canonical = new Map(DISTRICT_NAMES.map((name) => [name.toLowerCase(), name]));
-          for (const address of fresh) {
-            const answer = typeof answers[address] === "string" ? answers[address].trim() : "";
-            if (answer.toLowerCase() === "unknown") {
-              stored[address] = DISTRICT_UNKNOWN_SENTINEL;
-              resolved[address] = null;
-            } else if (canonical.has(answer.toLowerCase())) {
-              stored[address] = canonical.get(answer.toLowerCase());
-              resolved[address] = stored[address];
-            } else {
-              resolved[address] = null;
-            }
-          }
-          stored = evictOldestDistrictAliases(stored);
-          await saveOrgSettings(orgId, { district_aliases: JSON.stringify(stored) });
-        } else {
-          for (const address of fresh) resolved[address] = null;
-        }
-      } else {
-        for (const address of fresh) resolved[address] = null;
-      }
-    } else {
-      for (const address of fresh) resolved[address] = null;
-    }
-    return res.json({ resolved });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -7532,12 +7403,17 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
       return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
     }
 
-    const { data: orders, error: fetchError } = await supabase
-      .from("orders")
-      .select("*")
-      .in("id", orderIds)
-      .eq("org_id", orgId);
-    if (fetchError) throw fetchError;
+    const orderRows = [];
+    for (const idBatch of chunkIds(orderIds)) {
+      const { data: batchOrders, error: fetchError } = await supabase
+        .from("orders")
+        .select("*")
+        .in("id", idBatch)
+        .eq("org_id", orgId);
+      if (fetchError) throw fetchError;
+      orderRows.push(...(batchOrders || []));
+    }
+    const orders = orderRows;
 
     const failures = [];
     const succeeded = [];

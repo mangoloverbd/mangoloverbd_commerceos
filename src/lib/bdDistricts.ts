@@ -12,7 +12,7 @@ export const BD_DISTRICTS: BdDistrict[] = [
   { name: "Barishal", match: ["barishal", "barisal", "বরিশাল"] },
   { name: "Bhola", match: ["bhola", "ভোলা"] },
   { name: "Bogura", match: ["bogura", "bogra", "বগুড়া"] },
-  { name: "Brahmanbaria", match: ["brahmanbaria", "ব্রাহ্মণবাড়িয়া"] },
+  { name: "Brahmanbaria", match: ["brahmanbaria", "ব্রাহ্মণবাড়িয়া", "বিবাড়িয়া", "বিবাড়ীয়া", "বীবাড়িয়া", "bbaria", "b baria"] },
   { name: "Chandpur", match: ["chandpur", "চাঁদপুর"] },
   { name: "Chapai Nawabganj", match: ["chapai nawabganj", "chapainawabganj", "nawabganj", "চাঁপাইনবাবগঞ্জ"] },
   { name: "Chattogram", match: ["chattogram", "chittagong", "চট্টগ্রাম"] },
@@ -25,7 +25,7 @@ export const BD_DISTRICTS: BdDistrict[] = [
   { name: "Feni", match: ["feni", "ফেনী"] },
   { name: "Gaibandha", match: ["gaibandha", "গাইবান্ধা"] },
   { name: "Gazipur", match: ["gazipur", "গাজীপুর"] },
-  { name: "Gopalganj", match: ["gopalganj", "গোপালগঞ্জ"] },
+  { name: "Gopalganj", match: ["gopalganj", "gopalgonj", "গোপালগঞ্জ"] },
   { name: "Habiganj", match: ["habiganj", "হবিগঞ্জ"] },
   { name: "Jamalpur", match: ["jamalpur", "জামালপুর"] },
   { name: "Jashore", match: ["jashore", "jessore", "যশোর"] },
@@ -48,7 +48,7 @@ export const BD_DISTRICTS: BdDistrict[] = [
   { name: "Mymensingh", match: ["mymensingh", "ময়মনসিংহ"] },
   { name: "Naogaon", match: ["naogaon", "নওগাঁ"] },
   { name: "Narail", match: ["narail", "নড়াইল"] },
-  { name: "Narayanganj", match: ["narayanganj", "নারায়ণগঞ্জ"] },
+  { name: "Narayanganj", match: ["narayanganj", "narayangonj", "narayanrgonj", "নারায়ণগঞ্জ", "নারায়নগঞ্জ"] },
   { name: "Narsingdi", match: ["narsingdi", "নরসিংদী"] },
   { name: "Natore", match: ["natore", "নাটোর"] },
   { name: "Netrokona", match: ["netrokona", "নেত্রকোণা"] },
@@ -65,7 +65,7 @@ export const BD_DISTRICTS: BdDistrict[] = [
   { name: "Satkhira", match: ["satkhira", "সাতক্ষীরা"] },
   { name: "Shariatpur", match: ["shariatpur", "শরীয়তপুর"] },
   { name: "Sherpur", match: ["sherpur", "শেরপুর"] },
-  { name: "Sirajganj", match: ["sirajganj", "সিরাজগঞ্জ"] },
+  { name: "Sirajganj", match: ["sirajganj", "sirajgonj", "সিরাজগঞ্জ"] },
   { name: "Sunamganj", match: ["sunamganj", "সুনামগঞ্জ"] },
   { name: "Sylhet", match: ["sylhet", "সিলেট"] },
   { name: "Tangail", match: ["tangail", "টাঙ্গাইল"] },
@@ -74,12 +74,19 @@ export const BD_DISTRICTS: BdDistrict[] = [
 
 const DISTRICT_AREA_ALIASES: Record<string, string> = {
   dhanmondi: "Dhaka",
+  ধানমন্ডি: "Dhaka",
   gulshan: "Dhaka",
+  গুলশান: "Dhaka",
   banani: "Dhaka",
   mirpur: "Dhaka",
+  মিরপুর: "Dhaka",
   mohammadpur: "Dhaka",
+  মোহাম্মদপুর: "Dhaka",
   uttara: "Dhaka",
+  উত্তরা: "Dhaka",
   badda: "Dhaka",
+  বাড্ডা: "Dhaka",
+  বাড্ডা: "Dhaka",
   khilgaon: "Dhaka",
   motijheel: "Dhaka",
   paltan: "Dhaka",
@@ -93,13 +100,19 @@ const DISTRICT_AREA_ALIASES: Record<string, string> = {
   jatrabari: "Dhaka",
   demra: "Dhaka",
   keraniganj: "Dhaka",
+  কেরানীগঞ্জ: "Dhaka",
   savar: "Dhaka",
+  সাভার: "Dhaka",
   dhamrai: "Dhaka",
   ashulia: "Dhaka",
   shantinagar: "Dhaka",
   malibagh: "Dhaka",
   moghbazar: "Dhaka",
+  kamrangirchar: "Dhaka",
+  কামরাঙ্গীরচর: "Dhaka",
   tongi: "Gazipur",
+  টঙ্গী: "Gazipur",
+  টংগী: "Gazipur",
   kaliakair: "Gazipur",
   sreepur: "Gazipur",
   sonargaon: "Narayanganj",
@@ -112,7 +125,57 @@ const DISTRICT_AREA_ALIASES: Record<string, string> = {
   patiya: "Chattogram",
   zindabazar: "Sylhet",
   ambarkhana: "Sylhet",
+  puthia: "Rajshahi",
+  পুঠিয়া: "Rajshahi",
+  kashinathpur: "Pabna",
+  কাশিনাথপুর: "Pabna",
 };
+
+// Bengali input varies by keyboard: "য়" is sometimes U+09DF and sometimes a
+// য+nukta sequence, and phones insert ZWJ/ZWNJ inside words. Fold both sides
+// identically so matching never depends on which encoding was typed.
+function foldUnicode(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/\u200C|\u200D|\uFEFF/g, "")
+    .replace(/\u09DF/g, "\u09AF");
+}
+
+function normalizeText(value: string): string {
+  return foldUnicode(value.toLowerCase()).replace(/\s+/g, " ").trim();
+}
+
+function spaceless(value: string): string {
+  return normalizeText(value).replace(/\s+/g, "");
+}
+
+interface MatchIndex {
+  name: string;
+  spaced: string[];
+  flat: string[];
+}
+
+const DISTRICT_INDEX: MatchIndex[] = BD_DISTRICTS.map((district) => ({
+  name: district.name,
+  spaced: district.match.map(normalizeText),
+  flat: district.match.map(spaceless),
+}));
+
+const AREA_INDEX: MatchIndex[] = Object.entries(DISTRICT_AREA_ALIASES).map(([area, name]) => ({
+  name,
+  spaced: [normalizeText(area)],
+  flat: [spaceless(area)],
+}));
+
+function matchIndex(index: MatchIndex[], text: string, flat: string): string | null {
+  for (const entry of index) {
+    if (entry.spaced.some((variant) => variant && text.includes(variant))) return entry.name;
+  }
+  for (const entry of index) {
+    if (entry.flat.some((variant) => variant && variant.length >= 4 && flat.includes(variant))) return entry.name;
+  }
+  return null;
+}
 
 export function normalizeAddress(value: string | null | undefined): string {
   return (value || "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -122,14 +185,12 @@ export function detectDistrict(
   address: string | null | undefined,
   learnedAliases: Record<string, string | null> = {},
 ): string | null {
-  const normalized = normalizeAddress(address);
-  if (!normalized) return null;
-  if (Object.hasOwn(learnedAliases, normalized)) return learnedAliases[normalized];
-  for (const district of BD_DISTRICTS) {
-    if (district.match.some((variant) => normalized.includes(variant))) return district.name;
-  }
-  for (const [area, districtName] of Object.entries(DISTRICT_AREA_ALIASES)) {
-    if (normalized.includes(area)) return districtName;
-  }
-  return null;
+  const key = normalizeAddress(address);
+  if (!key) return null;
+  if (Object.hasOwn(learnedAliases, key)) return learnedAliases[key];
+  const text = normalizeText(address || "");
+  const flat = text.replace(/\s+/g, "");
+  // Explicit district names win over area aliases: an address naming two
+  // districts keeps the explicitly named one, not an area guess.
+  return matchIndex(DISTRICT_INDEX, text, flat) ?? matchIndex(AREA_INDEX, text, flat);
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.7] - 2026-09-17
+
+### Fixed
+
+- Batch unbounded order id fetches that failed past URL limits, restoring the orders queue at higher order volumes.
+- Remove the AI district fallback; harden the built-in matcher for misspellings, Bengali unicode variants, inserted spaces, and Bengali area names.
+
 ## [0.1.0.6] - 2026-09-17
 
 ### Added

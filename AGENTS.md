@@ -44,7 +44,6 @@ STOREFRONT_GIT_REPO=mangoloverbd/mangoloverbd_storefront
 AI_PROVIDER=openrouter            # "openai" (default) or "openrouter"
 OPENROUTER_API_KEY=
 AI_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free   # OpenRouter model slug; default if unset
-DISTRICT_MODEL=gpt-5.4-mini   # district auto-detect model; falls back to gpt-4o-mini
 # Optional OpenRouter attribution headers (recommended, not required)
 OPENROUTER_SITE_URL=
 OPENROUTER_APP_TITLE=
