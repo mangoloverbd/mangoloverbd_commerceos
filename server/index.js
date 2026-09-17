@@ -5797,6 +5797,16 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
   }
 });
 
+// PostgREST receives list filters as GET query params, so a single .in()
+// with hundreds of UUIDs blows past URL length limits and the request dies
+// with "fetch failed". Chunk all unbounded id-list fetches (batch size 100
+// keeps URLs at ~4KB).
+function chunkIds(ids, size = 100) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
 app.get("/api/orders", async (req, res) => {
   try {
     const token = getToken(req);
@@ -5805,8 +5815,7 @@ app.get("/api/orders", async (req, res) => {
     console.log(`[Orders] user=${user.id}`);
 
     const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const warehouseFilter = typeof req.query.warehouse_id === "string"
+    const { orgId } = await getUserOrg(supabase, user.id);    const warehouseFilter = typeof req.query.warehouse_id === "string"
       ? req.query.warehouse_id.trim()
       : "";
     let ordersQuery = supabase
@@ -5822,11 +5831,13 @@ app.get("/api/orders", async (req, res) => {
 
     const allOrders = allData || [];
     const orderIds = allOrders.map((order) => order.id).filter(Boolean);
-    const { data: orderItems, error: itemsError } = orderIds.length
-      ? await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", orderIds).eq("org_id", orgId).order("created_at", { ascending: true })
-      : { data: [], error: null };
-    if (itemsError) throw itemsError;
-    const enrichedItems = await enrichOrderItems(supabase, orgId, orderItems || []);
+    const itemRows = [];
+    for (const idBatch of chunkIds(orderIds)) {
+      const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+      if (itemsError) throw itemsError;
+      itemRows.push(...(batchItems || []));
+    }
+    const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
     const itemsByOrder = new Map();
     for (const item of enrichedItems) {
       const list = itemsByOrder.get(item.order_id) || [];
@@ -7532,12 +7543,17 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
       return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
     }
 
-    const { data: orders, error: fetchError } = await supabase
-      .from("orders")
-      .select("*")
-      .in("id", orderIds)
-      .eq("org_id", orgId);
-    if (fetchError) throw fetchError;
+    const orderRows = [];
+    for (const idBatch of chunkIds(orderIds)) {
+      const { data: batchOrders, error: fetchError } = await supabase
+        .from("orders")
+        .select("*")
+        .in("id", idBatch)
+        .eq("org_id", orgId);
+      if (fetchError) throw fetchError;
+      orderRows.push(...(batchOrders || []));
+    }
+    const orders = orderRows;
 
     const failures = [];
     const succeeded = [];
