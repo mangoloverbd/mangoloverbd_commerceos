@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateShippingCost, calculateStorefrontShippingCost } from "../../server/shippingCalculation.js";
+import { calculateShippingCost, calculateStorefrontShippingCost, cartHasFreeDeliveryProduct } from "../../server/shippingCalculation.js";
 
 const ZONES = [
   { id: "zone_dhaka", name: "Inside Dhaka", price: 60, min_order_amount: 0, free_above: 1000, conditions: [] },
@@ -142,5 +142,55 @@ describe("calculateStorefrontShippingCost", () => {
 
   it("uses configured shipping zones when a public order supplies one", () => {
     expect(calculateStorefrontShippingCost(500, "zone_dhaka", ZONES)).toEqual({ cost: 60, error: null });
+  });
+});
+
+describe("cartHasFreeDeliveryProduct", () => {
+  it("returns true when the cart contains Litchi Flower Honey", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "11043874-e90d-4160-bce7-38723b703706", productName: "লিচু ফুলের মধু | Litchi Flower Honey" },
+    ])).toBe(true);
+  });
+
+  it("recognizes Litchi Flower Honey by its Bengali product name fallback", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "other-id", productName: "লিচু ফুলের মধু | Litchi Flower Honey" },
+    ])).toBe(true);
+  });
+
+  it("returns true for a mixed cart containing Litchi Flower Honey", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "other-id", productName: "Other Product" },
+      { productId: "11043874-e90d-4160-bce7-38723b703706", productName: "লিচু ফুলের মধু | Litchi Flower Honey" },
+    ])).toBe(true);
+  });
+
+  it("returns false for carts without Litchi Flower Honey", () => {
+    expect(cartHasFreeDeliveryProduct([{ productId: "other-id", productName: "Other Product" }])).toBe(false);
+  });
+
+  it("returns true when the cart contains only Black Seed Flower Honey", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "814979aa-8446-429b-917f-e6d94cf6b334", productName: "কালোজিরা ফুলের মধু | Black Seed Flower Honey" },
+    ])).toBe(true);
+  });
+
+  it("returns true for a mixed cart containing the honey plus another product", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "814979aa-8446-429b-917f-e6d94cf6b334", productName: "কালোজিরা ফুলের মধু | Black Seed Flower Honey" },
+      { productId: "other-id", productName: "Some Other Product" },
+    ])).toBe(true);
+  });
+
+  it("returns false for carts without the honey", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "other-id", productName: "Some Other Product" },
+    ])).toBe(false);
+  });
+
+  it("returns false for empty, null, or undefined input", () => {
+    expect(cartHasFreeDeliveryProduct([])).toBe(false);
+    expect(cartHasFreeDeliveryProduct(null)).toBe(false);
+    expect(cartHasFreeDeliveryProduct(undefined)).toBe(false);
   });
 });
