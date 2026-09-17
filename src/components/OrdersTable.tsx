@@ -202,7 +202,6 @@ interface OrderItemSummary {
   product_name: string | null;
   variant_name: string | null;
   quantity: number;
-  weight_kg?: number | null;
 }
 
 interface OrdersTableProps {

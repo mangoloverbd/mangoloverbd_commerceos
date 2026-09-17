@@ -438,8 +438,8 @@ git commit -m "feat: add packing summary print html and print wrapper"
 ### Task 3: Carry server-enriched weights through frontend types
 
 **Files:**
-- Modify: `src/components/OrdersTable.tsx:201-205`
 - Modify: `src/pages/Dashboard.tsx:140-163`
+- Do NOT modify: `src/components/OrdersTable.tsx` — `src/test/shippingLabelPrinter.test.ts:236` pins `OrderItemSummary` as weight-free; the packing button consumes Dashboard `filteredOrders`, not table rows, so the table type stays untouched.
 - Test: type-check via `npm run build` (no new test file; runtime already carries `weight_kg` from `enrichOrderItems`, `server/index.js:6249-6254`)
 
 **Interfaces:**
@@ -456,14 +456,13 @@ Expected: only the order-level `weight_kg` (line ~188), no item-level weight —
 
 - [ ] **Step 2: Make the type edits**
 
-In `src/components/OrdersTable.tsx`, extend the item interface:
+In `src/components/OrdersTable.tsx`, the shared `OrderItemSummary` stays unchanged (pinned weight-free by the shipping-label wiring test):
 
 ```ts
 interface OrderItemSummary {
   product_name: string | null;
   variant_name: string | null;
   quantity: number;
-  weight_kg?: number | null;
 }
 ```
 
@@ -490,7 +489,7 @@ Expected: PASS (no errors)
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/components/OrdersTable.tsx src/pages/Dashboard.tsx
+git add src/pages/Dashboard.tsx
 git commit -m "feat: carry item weight through order types"
 ```
 
