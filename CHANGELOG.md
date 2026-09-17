@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.6] - 2026-09-17
+
+### Added
+
+- Add an Approved-tab district filter with per-district order counts and automatic AI resolution of unknown addresses that learns into org settings without touching order data.
+
 ## [0.1.0.5] - 2026-09-17
 
 ### Added
