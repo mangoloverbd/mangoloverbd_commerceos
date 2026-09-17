@@ -40,7 +40,6 @@ SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 STOREFRONT_GIT_REPO=mangoloverbd/mangoloverbd_storefront
-DISTRICT_MODEL=            # optional: district auto-detect model (default gpt-4o-mini fallback chain)
 ```
 
 > **Before starting any new feature:** invoke the `brainstorming` skill to explore requirements and design before touching code. Invoke `writing-plans` after brainstorming to produce an implementation plan. Invoke `plan-ceo-review` if you want to pressure-test scope or ambition.

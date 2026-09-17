@@ -2,6 +2,10 @@
 
 **Status:** Draft — pending user review (2026-09-17)
 
+> **Revision (2026-09-17):** AI fallback removed per merchant request. Detection is built-in
+> matcher only (`src/lib/bdDistricts.ts`); no district API routes, no `DISTRICT_MODEL`,
+> no alias storage. Sections 3's routes and learning behavior no longer apply.
+
 ## Goal
 
 Add a district filter dropdown to the Dashboard Approved tab showing how many approved orders come from each জেলা (district), so the team can filter approved orders by district.

@@ -9,7 +9,7 @@ import { useLiveVisitors } from "@/hooks/useLiveVisitors";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
-import { detectDistrict, normalizeAddress, DISTRICT_UNKNOWN_SENTINEL } from "@/lib/bdDistricts";
+import { detectDistrict, DISTRICT_UNKNOWN_SENTINEL } from "@/lib/bdDistricts";
 import { matchesOrderSearch } from "@/lib/orderSearch";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
@@ -984,11 +984,6 @@ export default function Dashboard() {
   const isAbandonedQueue = fulfillmentTab === "abandoned";
   const activeOrderStatusFilter: OrderStatusFilter = isAbandonedQueue ? "all" : fulfillmentTab;
   const [districtFilter, setDistrictFilter] = useState("all");
-  const [learnedAliases, setLearnedAliases] = useState<Record<string, string | null>>({});
-  const [detectingDistricts, setDetectingDistricts] = useState(false);
-  const districtResolveSentRef = useRef<Set<string>>(new Set());
-  const learnedAliasesRef = useRef<Record<string, string | null>>({});
-  const aliasesLoadedRef = useRef(false);
   const warehouseOrders = useMemo(
     () => orders.filter((order) => warehouseFilter === "all" || order.warehouse_id === warehouseFilter),
     [orders, warehouseFilter],
@@ -1005,7 +1000,7 @@ export default function Dashboard() {
     );
   }, [activeOrderStatusFilter, debouncedSearch, warehouseOrders]);
 
-  const districtOf = (order: Order) => detectDistrict(order.address, learnedAliases);
+  const districtOf = (order: Order) => detectDistrict(order.address);
 
   const districtCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1019,8 +1014,7 @@ export default function Dashboard() {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "en"));
     return { ranked, unknown };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredOrders, learnedAliases]);
+  }, [filteredOrders]);
 
   const districtFilteredOrders = useMemo(() => {
     if (activeOrderStatusFilter !== "approved" || districtFilter === "all") return filteredOrders;
@@ -1028,52 +1022,7 @@ export default function Dashboard() {
       const district = districtOf(order);
       return districtFilter === DISTRICT_UNKNOWN_SENTINEL ? !district : district === districtFilter;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredOrders, districtFilter, activeOrderStatusFilter, learnedAliases]);
-
-  useEffect(() => {
-    if (activeOrderStatusFilter !== "approved" || isAbandonedQueue) return;
-    let cancelled = false;
-    const run = async () => {
-      try {
-        if (!aliasesLoadedRef.current) {
-          const aliasRes = await apiFetch("/api/orders/district-aliases");
-          if (!aliasRes.ok) return;
-          const aliasData = await aliasRes.json();
-          if (cancelled) return;
-          aliasesLoadedRef.current = true;
-          const merged: Record<string, string | null> = { ...(aliasData.aliases || {}) };
-          learnedAliasesRef.current = merged;
-          setLearnedAliases(merged);
-        }
-        const merged = learnedAliasesRef.current;
-        const unseen = [...new Set(
-          filteredOrders
-            .map((order) => normalizeAddress(order.address))
-            .filter((key) => key && !Object.hasOwn(merged, key) && !districtResolveSentRef.current.has(key)),
-        )].slice(0, 50);
-        if (!unseen.length) return;
-        unseen.forEach((key) => districtResolveSentRef.current.add(key));
-        setDetectingDistricts(true);
-        const resolveRes = await apiFetch("/api/orders/resolve-districts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ addresses: unseen }),
-        });
-        if (!resolveRes.ok || cancelled) return;
-        const resolveData = await resolveRes.json();
-        const next = { ...learnedAliasesRef.current, ...(resolveData.resolved || {}) };
-        learnedAliasesRef.current = next;
-        if (!cancelled) setLearnedAliases(next);
-      } catch {
-        // Detection is best-effort; the dropdown works on the built-in map.
-      } finally {
-        if (!cancelled) setDetectingDistricts(false);
-      }
-    };
-    void run();
-    return () => { cancelled = true; };
-  }, [activeOrderStatusFilter, isAbandonedQueue, filteredOrders]);
+  }, [filteredOrders, districtFilter, activeOrderStatusFilter]);
 
   const filteredAbandonedCheckouts = useMemo(
     () => abandonedCheckouts.filter((checkout) => matchesAbandonedCheckoutSearch(checkout, debouncedSearch)),
@@ -1535,9 +1484,8 @@ export default function Dashboard() {
                 selectedKey={districtFilter}
                 onSelectionChange={(key) => { setDistrictFilter(String(key)); setOrderPage(0); }}
                 triggerClassName="h-9"
-                isDisabled={detectingDistricts && districtCounts.unknown === 0 && districtCounts.ranked.length === 0}
               >
-                <SelectItem id="all">{detectingDistricts ? "Detecting…" : `All districts (${filteredOrders.length})`}</SelectItem>
+                <SelectItem id="all">{`All districts (${filteredOrders.length})`}</SelectItem>
                 {districtCounts.ranked.map((entry) => (
                   <SelectItem key={entry.name} id={entry.name}>{`${entry.name} (${entry.count})`}</SelectItem>
                 ))}
