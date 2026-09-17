@@ -14,7 +14,7 @@ import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { buildOverviewData } from "./overview.js";
 import { buildSalesTrend } from "./salesTrend.js";
-import { calculateStorefrontShippingCost } from "./shippingCalculation.js";
+import { calculateStorefrontShippingCost, cartHasFreeDeliveryProduct } from "./shippingCalculation.js";
 import {
   computeOrderWeightKg,
   parseOptionalWeightKg,
@@ -11149,13 +11149,17 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     if (settingsError) throw settingsError;
     shippingZones = settings?.shipping_zones || [];
     }
-    const shippingResult = calculateStorefrontShippingCost(subtotal, review.shipping_zone_id, shippingZones);
-    if (shippingResult.error) {
-      const err = new Error("Shipping configuration changed; review remains on hold");
-      err.statusCode = 409;
-      throw err;
+    if (cartHasFreeDeliveryProduct(orderItems)) {
+      shipping = 0;
+    } else {
+      const shippingResult = calculateStorefrontShippingCost(subtotal, review.shipping_zone_id, shippingZones);
+      if (shippingResult.error) {
+        const err = new Error("Shipping configuration changed; review remains on hold");
+        err.statusCode = 409;
+        throw err;
+      }
+      shipping = shippingResult.cost;
     }
-    shipping = shippingResult.cost;
 
     const routing = await resolveOrderRouting(supabase, orgId, orderItems);
     const orderNumber = await getNextManualOrderNumber(orgId);
@@ -11465,11 +11469,15 @@ async function handlePublicHandleOrderSubmit(req, res) {
 
       shippingZones = settings?.shipping_zones || [];
     }
-    const shippingResult = calculateStorefrontShippingCost(subtotal, shippingZoneId, shippingZones);
-    if (shippingResult.error) {
-      return res.status(400).json({ error: shippingResult.error });
+    if (cartHasFreeDeliveryProduct(orderItems)) {
+      shipping = 0;
+    } else {
+      const shippingResult = calculateStorefrontShippingCost(subtotal, shippingZoneId, shippingZones);
+      if (shippingResult.error) {
+        return res.status(400).json({ error: shippingResult.error });
+      }
+      shipping = shippingResult.cost;
     }
-    shipping = shippingResult.cost;
 
     const total = subtotal + shipping;
 
