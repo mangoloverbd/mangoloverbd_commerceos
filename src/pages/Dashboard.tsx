@@ -160,6 +160,12 @@ interface Order {
   warehouse_id?: string | null;
   warehouse_auto?: boolean | null;
   weight_kg?: number | null;
+  items?: Array<{
+    product_name: string | null;
+    variant_name: string | null;
+    quantity: number;
+    weight_kg?: number | null;
+  }>;
 }
 
 function fmtBDT(n: number) {
