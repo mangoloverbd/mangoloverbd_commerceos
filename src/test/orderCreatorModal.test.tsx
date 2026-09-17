@@ -69,7 +69,7 @@ describe("NewOrder", () => {
     await waitFor(() => {
       const call = apiFetch.mock.calls.find(([requestUrl, requestInit]) => requestUrl === "/api/orders" && requestInit?.method === "POST");
       expect(call).toBeDefined();
-      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ source: "phone" });
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ source: "phone", status: "confirmed" });
     });
   });
 
@@ -94,5 +94,14 @@ describe("NewOrder", () => {
     await user.click(await within(catalog).findByRole("button", { name: "Add Sundarbans Honey to cart" }));
     expect(within(screen.getByRole("region", { name: "Order cart" })).getByText("Sundarbans Honey")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /add a product/i })).not.toBeInTheDocument();
+  });
+
+  it("classifies a created manual order into the approved filter", async () => {
+    const { classifyOrderStatus, filterOrdersByStatus } = await import("@/lib/orderStatusFilters");
+    const created = { id: "order-1", status: "confirmed" };
+
+    expect(classifyOrderStatus(created)).toBe("approved");
+    expect(filterOrdersByStatus([created], "approved")).toHaveLength(1);
+    expect(filterOrdersByStatus([created], "pending")).toHaveLength(0);
   });
 });
