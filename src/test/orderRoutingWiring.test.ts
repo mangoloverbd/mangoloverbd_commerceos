@@ -146,6 +146,19 @@ describe("order routing wiring", () => {
     expect(checkout).toContain(".update({ stock_quantity: Math.max(0, variantMap[item.variantId].stock_quantity - item.quantity) })");
   });
 
+  it("applies product-specific free delivery before storing storefront shipping", () => {
+    const checkout = sectionBetween(
+      "async function handlePublicHandleOrderSubmit",
+      "async function handlePublicHandleProducts",
+    );
+
+    expect(source).toContain("cartHasFreeDeliveryProduct");
+    expect(checkout).toContain("if (cartHasFreeDeliveryProduct(orderItems)) {");
+    expect(checkout).toContain("shipping = 0;");
+    expect(checkout.indexOf("if (cartHasFreeDeliveryProduct(orderItems)"))
+      .toBeLessThan(checkout.indexOf("delivery_rate: shipping"));
+  });
+
   it("exposes separate legacy product lines in the dashboard order list", () => {
     const ordersList = sectionBetween(
       'app.get("/api/orders"',
