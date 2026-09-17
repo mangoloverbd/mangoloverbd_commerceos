@@ -27,3 +27,16 @@ describe("district alias API", () => {
     expect(postBody).not.toContain('from("orders")');
   });
 });
+
+describe("approved district filter wiring", () => {
+  it("renders a district filter only for Approved and auto-resolves unknowns", () => {
+    const dashboardSource = readFileSync(resolve(process.cwd(), "src/pages/Dashboard.tsx"), "utf8");
+
+    expect(dashboardSource).toContain('data-testid="select-district-filter"');
+    expect(dashboardSource).toContain('activeOrderStatusFilter === "approved"');
+    expect(dashboardSource).toContain('from "@/lib/bdDistricts"');
+    expect(dashboardSource).toContain('"/api/orders/district-aliases"');
+    expect(dashboardSource).toContain('"/api/orders/resolve-districts"');
+    expect(dashboardSource).toContain('setDistrictFilter("all")');
+  });
+});
