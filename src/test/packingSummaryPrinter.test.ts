@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPackingSummary } from "@/utils/packingSummaryPrinter";
+import { buildPackingSummary, buildPackingSummaryHtml } from "@/utils/packingSummaryPrinter";
 
 describe("buildPackingSummary", () => {
   it("groups by product and pack with order counts and kg totals", () => {
@@ -34,5 +34,28 @@ describe("buildPackingSummary", () => {
     expect(summary.rows).toHaveLength(1);
     expect(summary.rows[0]).toMatchObject({ product: "Dried Mango", pack: "—", orderCount: 1, totalKg: null });
     expect(summary.hasUnknownWeight).toBe(true);
+  });
+
+  it("builds a printable packing sheet with tick boxes and exception ticks", () => {
+    const summary = buildPackingSummary([
+      {
+        id: "o1", order_number: "#1041", product: null, quantity: null,
+        items: [
+          { product_name: "Katimon Mango", variant_name: "6KG", quantity: 1, weight_kg: 6 },
+          { product_name: "Himsagar", variant_name: "5KG", quantity: 1, weight_kg: 5 },
+        ],
+      },
+    ]);
+    const html = buildPackingSummaryHtml(summary, "Mango Lover BD", "Sep 17, 2026");
+
+    expect(html).toContain("@page { size: A4 portrait; margin: 0; }");
+    expect(html).toContain("PACKING SUMMARY");
+    expect(html).toContain("1 orders");
+    expect(html).toContain("Katimon Mango");
+    expect(html).toContain("6KG");
+    expect(html).toContain("Multi-item orders");
+    expect(html).toContain("#1041");
+    expect(html.match(/class="tick"/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain("do not pack twice");
   });
 });
