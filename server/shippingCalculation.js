@@ -57,3 +57,29 @@ export function calculateStorefrontShippingCost(subtotal, shippingZoneId, zones)
     : DEFAULT_STOREFRONT_DELIVERY_FEE;
   return { cost, error: null };
 }
+
+// ─── Per-product free delivery ──────────────────────────────────────────────
+// One-product promo: Black Seed Flower Honey always ships free when present
+// in the cart, even mixed with other products. Matched on the canonical
+// product id (authoritative) with a slug/name fallback for item shapes that
+// only carry display names.
+export const FREE_DELIVERY_PRODUCT_IDS = ["814979aa-8446-429b-917f-e6d94cf6b334"];
+export const FREE_DELIVERY_PRODUCT_SLUGS = ["black-seed-flower-honey"];
+const FREE_DELIVERY_PRODUCT_NAME_FRAGMENT = "কালোজিরা ফুলের মধু";
+
+/**
+ * @param {Array<{productId?: unknown, productName?: unknown}> | null | undefined} orderItems
+ * @returns {boolean} true when any item is the free-delivery product.
+ */
+export function cartHasFreeDeliveryProduct(orderItems) {
+  if (!Array.isArray(orderItems) || orderItems.length === 0) return false;
+  return orderItems.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    if (item.productId != null && FREE_DELIVERY_PRODUCT_IDS.includes(String(item.productId))) return true;
+    const name = String(item.productName ?? "");
+    if (!name) return false;
+    const lowered = name.toLowerCase();
+    if (FREE_DELIVERY_PRODUCT_SLUGS.some((slug) => lowered.includes(slug))) return true;
+    return name.includes(FREE_DELIVERY_PRODUCT_NAME_FRAGMENT);
+  });
+}
