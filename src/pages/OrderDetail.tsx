@@ -19,6 +19,7 @@ import {
   type DiscountType,
   type OrderEditorItem,
 } from "@/lib/orderEditor";
+import { normalizeOrderSource, type OrderSource } from "@/lib/orderSource";
 
 type Order = {
   id: string;
@@ -27,6 +28,8 @@ type Order = {
   contact_name?: string | null;
   phone?: string | null;
   address?: string | null;
+  source?: string | null;
+  landing_page_path?: string | null;
   notes?: string | null;
   status?: string | null;
   payment_method?: string | null;
@@ -136,6 +139,7 @@ export default function OrderDetail() {
   const [deliveryRate, setDeliveryRate] = useState(DEFAULT_DELIVERY_FEE);
   const [notesDraft, setNotesDraft] = useState("");
   const [statusDraft, setStatusDraft] = useState<string | null>(null);
+  const [sourceDraft, setSourceDraft] = useState<OrderSource>("manual_other");
   const initializedOrderId = useRef<string | null>(null);
   const initializedWithPlaceholder = useRef(false);
 
@@ -198,6 +202,7 @@ export default function OrderDetail() {
     setDeliveryOn(savedDeliveryRate > 0);
     setNotesDraft(detailQuery.data.order.notes ?? "");
     setStatusDraft(detailQuery.data.order.status ?? null);
+    setSourceDraft(normalizeOrderSource(detailQuery.data.order.source));
     initializedOrderId.current = id;
     initializedWithPlaceholder.current = detailQuery.isPlaceholderData;
   }, [detailQuery.data, detailQuery.isPlaceholderData, id]);
@@ -222,6 +227,7 @@ export default function OrderDetail() {
   const deliveryChanged = deliveryFee !== (Number(order?.delivery_rate) || 0);
   const notesChanged = notesDraft.trim() !== (order?.notes ?? "").trim();
   const statusChanged = statusDraft !== (order?.status ?? null);
+  const sourceChanged = sourceDraft !== normalizeOrderSource(order?.source);
   const canEditCart = Boolean(detail && !detailQuery.isPlaceholderData && detail.canEditItems);
   const cartLocked = Boolean(detail && !detailQuery.isPlaceholderData && !detail.canEditItems);
   const history = useMemo(() => {
@@ -256,7 +262,7 @@ export default function OrderDetail() {
     const originalCustomer = customerFromOrder(order);
     const detailsChanged = JSON.stringify(customer) !== JSON.stringify(originalCustomer);
     const cartChanged = !cartsMatch(draft, detail.items);
-    if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged && !notesChanged && !statusChanged) {
+    if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged && !notesChanged && !statusChanged && !sourceChanged) {
       navigate("/");
       return;
     }
@@ -298,8 +304,8 @@ export default function OrderDetail() {
         currentItems = savedDetail.items;
       }
 
-      if (overallChanged || deliveryChanged || notesChanged || statusChanged) {
-        const orderPatch: { discount?: number; delivery_rate?: number; notes?: string | null; status?: string } = {};
+      if (overallChanged || deliveryChanged || notesChanged || statusChanged || sourceChanged) {
+        const orderPatch: { discount?: number; delivery_rate?: number; notes?: string | null; status?: string; source?: OrderSource } = {};
         if (overallChanged) {
           const itemTotal = currentItems.reduce(
             (sum, item) => sum + (Number(item.unit_discount) || 0) * (Number(item.quantity) || 0),
@@ -313,6 +319,7 @@ export default function OrderDetail() {
         }
         if (notesChanged) orderPatch.notes = notesDraft.trim() || null;
         if (statusChanged && statusDraft) orderPatch.status = statusDraft;
+        if (sourceChanged) orderPatch.source = sourceDraft;
         if (Object.keys(orderPatch).length > 0) {
           const totalsRes = await apiFetch(`/api/orders/${id}`, {
             method: "PATCH",
@@ -334,6 +341,7 @@ export default function OrderDetail() {
       setDeliveryOn(savedDeliveryRate > 0);
       setNotesDraft(currentOrder.notes ?? "");
       setStatusDraft(currentOrder.status ?? null);
+      setSourceDraft(normalizeOrderSource(currentOrder.source));
       navigate("/");
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : "Failed to save order changes");
@@ -349,7 +357,7 @@ export default function OrderDetail() {
         <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
       </div>
 
-      {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={() => navigate("/")} className="mt-2 text-[13px] text-black/50 underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
+      {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={() => navigate("/")} className="mt-2 text-[13px] text-black underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
         <motion.div
           key={id}
           data-testid="order-detail-animated-content"
@@ -358,7 +366,7 @@ export default function OrderDetail() {
           transition={{ duration: 0.35 }}
           className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]"
         >
-          <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onApply={setCustomer} />
+          <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onApply={setCustomer} source={sourceDraft} onSourceChange={setSourceDraft} sourceDisabled={saving || detailQuery.isPlaceholderData} />
             <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
             <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
             <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} status={statusDraft} onStatusChange={setStatusDraft} notes={notesDraft} onNotesChange={setNotesDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={() => navigate("/")} />

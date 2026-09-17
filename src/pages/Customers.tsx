@@ -115,9 +115,9 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
       transition={{ duration: 0.35 }}
       className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
     >
-      <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
+      <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">{label}</p>
       <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
-      <p className="mt-0.5 text-[11px] text-black/40">{sub}</p>
+      <p className="mt-0.5 text-[11px] text-black">{sub}</p>
     </motion.div>
   );
 }
@@ -181,9 +181,9 @@ function CustomerBloomPopover({
             >
               <div className="flex items-center justify-between border-b border-black/10 bg-white px-5 py-4">
                 <div>
-                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/35">Customer Profile</p>
+                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Customer Profile</p>
                   <h2 className="mt-1 text-[22px] font-bold tracking-tight text-black">{customer.name}</h2>
-                  <p className="mt-1 text-[12px] text-black/45">{customer.phone || "No phone"} · {sourceLabels[customer.primarySource]}</p>
+                  <p className="mt-1 text-[12px] text-black">{customer.phone || "No phone"} · {sourceLabels[customer.primarySource]}</p>
                 </div>
                 <button
                   type="button"
@@ -209,26 +209,26 @@ function CustomerBloomPopover({
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black/55">{lifecycleLabels[customer.lifecycleStage] || customer.lifecycleStage}</span>
+                  <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black">{lifecycleLabels[customer.lifecycleStage] || customer.lifecycleStage}</span>
                   {customer.segments.map((segment) => <span key={segment} className="rounded-full bg-black px-2.5 py-1 text-[10px] font-medium text-white">{segmentLabels[segment] || segment}</span>)}
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {customer.campaignSegments.map((segment) => <span key={segment} className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[10px] font-medium text-black/55">{campaignLabels[segment] || segment}</span>)}
+                  {customer.campaignSegments.map((segment) => <span key={segment} className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[10px] font-medium text-black">{campaignLabels[segment] || segment}</span>)}
                 </div>
 
                 <RichButton type="button" onClick={() => onGenerateInsight(customer)} className="mt-6 h-10 w-full rounded-[10px] bg-black text-xs text-white shadow-[0_2px_4px_0_rgba(0,0,0,0.16),0_0_0_1px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.18)] hover:bg-black"><Sparkle weight="light" size={16} /> Generate AI Insight</RichButton>
 
                 {(insightLoading || insight) && (
                   <div className="mt-4 rounded-xl border border-black/10 bg-white p-4">
-                    {insightLoading ? <div className="flex items-center gap-2 text-sm text-black/45"><Spinner className="text-black/40" /> Thinking through customer behavior</div> : <div className="space-y-3 text-sm text-black/65"><p>{insight?.summary}</p><p>{insight?.riskExplanation}</p><p className="font-medium text-black">Next: {insight?.nextAction}</p></div>}
+                    {insightLoading ? <div className="flex items-center gap-2 text-sm text-black"><Spinner className="text-black" /> Thinking through customer behavior</div> : <div className="space-y-3 text-sm text-black"><p>{insight?.summary}</p><p>{insight?.riskExplanation}</p><p className="font-medium text-black">Next: {insight?.nextAction}</p></div>}
                   </div>
                 )}
 
                 <div className="mt-6">
-                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Timeline</p>
+                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Timeline</p>
                   <div className="mt-3 grid gap-2">
-                    {customer.timeline.map((entry, index) => <div key={`${entry.id}-${index}`} className="rounded-xl border border-black/[0.06] bg-white p-3"><p className="text-xs font-medium text-black">{entry.orderNumber || entry.kind} · {sourceLabels[entry.source]}</p><p className="mt-1 text-xs text-black/45">{entry.product || "No product"} · {money(entry.amount || 0)} · {entry.status}</p><p className="mt-1 text-[10px] text-black/35">{dateLabel(entry.createdAt)}</p></div>)}
+                    {customer.timeline.map((entry, index) => <div key={`${entry.id}-${index}`} className="rounded-xl border border-black/[0.06] bg-white p-3"><p className="text-xs font-medium text-black">{entry.orderNumber || entry.kind} · {sourceLabels[entry.source]}</p><p className="mt-1 text-xs text-black">{entry.product || "No product"} · {money(entry.amount || 0)} · {entry.status}</p><p className="mt-1 text-[10px] text-black/35">{dateLabel(entry.createdAt)}</p></div>)}
                   </div>
                 </div>
               </motion.div>
@@ -341,7 +341,7 @@ export default function Customers() {
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Customer Intelligence</h1>
-            <p className="mt-1 max-w-2xl text-[13px] text-black/45">Source-aware customer profiles from Shopify, website webhook, manual, and social inbox orders.</p>
+            <p className="mt-1 max-w-2xl text-[13px] text-black">Source-aware customer profiles from Shopify, website webhook, manual, and social inbox orders.</p>
           </div>
           <Button variant="ghost" size="medium" leadingIcon={RiDownloadLine} onClick={exportFilteredCustomers}>
             Export Audience

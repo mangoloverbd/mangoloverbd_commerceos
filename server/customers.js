@@ -11,7 +11,7 @@ export function detectCustomerOrderSource(row, tableKind) {
     if (["facebook", "instagram", "whatsapp"].includes(source)) return source;
     return "social_inbox";
   }
-  if (["custom_store", "custom_website", "webhook"].includes(source)) return "custom_website";
+  if (["custom_store", "custom_website", "custom_website_tracker", "storefront", "storefront_review", "webhook", "website"].includes(source)) return "custom_website";
   if (source === "shopify") return "shopify";
   if (Number(row?.shopify_order_id) > 0) return "shopify";
   if (Number(row?.shopify_order_id) < 0 && /^#\d+$/.test(String(row?.order_number || ""))) return "custom_website";

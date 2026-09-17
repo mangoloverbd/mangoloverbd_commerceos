@@ -63,11 +63,11 @@ const ABANDONED_STATUS_OPTIONS = [
 const actionChip =
   "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-caption-1-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:cursor-wait disabled:opacity-45";
 const actionChipNeutral =
-  "bg-background-secondary-default text-text-secondary hover:bg-background-secondary-hover hover:text-text-primary focus-visible:ring-black/30";
+  "bg-background-secondary-default text-black hover:bg-background-secondary-hover hover:text-black focus-visible:ring-black/30";
 const actionChipDanger =
-  "bg-status-rose-background text-status-rose-text hover:bg-background-quaternary-error focus-visible:ring-red-400/50";
+  "bg-status-rose-background text-black hover:bg-background-quaternary-error focus-visible:ring-red-400/50";
 const actionChipContacted =
-  "bg-status-lime-background text-status-lime-text hover:bg-status-lime-background/80 focus-visible:ring-black/30";
+  "bg-status-lime-background text-black hover:bg-status-lime-background/80 focus-visible:ring-black/30";
 
 /** Crossfades the copy glyph to a check while a copy is freshly confirmed. */
 function CopyGlyph({ copied, size = 13 }: { copied: boolean; size?: number }) {
@@ -179,8 +179,8 @@ export function AbandonedCheckoutQueue({
 
   if (loading) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 px-6 py-12 text-sm text-black/45" role="status">
-        <Spinner size="sm" className="text-black/55" />
+      <div className="flex min-h-48 items-center justify-center gap-2 px-6 py-12 text-sm text-black" role="status">
+        <Spinner size="sm" className="text-black" />
         Loading abandoned checkouts…
       </div>
     );
@@ -189,7 +189,7 @@ export function AbandonedCheckoutQueue({
   if (error) {
     return (
       <div className="flex min-h-48 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-        <p className="text-sm text-black/60">{error}</p>
+        <p className="text-sm text-black">{error}</p>
         {onRetry && (
           <button
             type="button"
@@ -206,8 +206,8 @@ export function AbandonedCheckoutQueue({
   if (!checkouts.length) {
     return (
       <div className="flex min-h-48 flex-col items-center justify-center px-6 py-12 text-center">
-        <p className="text-sm font-medium text-black/75">No active abandoned checkouts</p>
-        <p className="mt-1 text-xs text-black/45">New checkout drafts with a valid phone number will appear here.</p>
+        <p className="text-sm font-medium text-black">No active abandoned checkouts</p>
+        <p className="mt-1 text-xs text-black">New checkout drafts with a valid phone number will appear here.</p>
       </div>
     );
   }
@@ -249,7 +249,7 @@ export function AbandonedCheckoutQueue({
             </motion.svg>
           )}
         </div>
-        <span className="text-xs text-black/45">{selectedIds.size} selected</span>
+        <span className="text-xs text-black">{selectedIds.size} selected</span>
       </div>
       <div className="divide-y divide-black/[0.08]" data-testid="abandoned-checkout-queue">
         {checkouts.map((checkout) => {
@@ -316,12 +316,12 @@ export function AbandonedCheckoutQueue({
                   <p className="text-sm font-medium text-black">{checkout.customer_name || "Customer name not provided"}</p>
                   <span className={isNew
                     ? "rounded-full bg-rose-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-rose-600"
-                    : "rounded-full bg-black/[0.05] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-black/55"}
+                    : "rounded-full bg-black/[0.05] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-black"}
                   >
                     {isNew ? "New" : "Contacted"}
                   </span>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black/45">
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black">
                   <span>{abandonedCheckoutSourceLabel(checkout.source)}</span>
                   <span aria-hidden>·</span>
                   <span>{captureTime(checkout.created_at)}</span>
@@ -329,9 +329,9 @@ export function AbandonedCheckoutQueue({
                     {formatEstimatedTotal(checkout.total)}
                   </Chip>
                 </div>
-                <p className="mt-3 text-xs leading-5 text-black/70">{abandonedCheckoutCartSummary(checkout.cart)}</p>
+                <p className="mt-3 text-xs leading-5 text-black">{abandonedCheckoutCartSummary(checkout.cart)}</p>
                 {checkout.phone && (
-                  <p className="mt-1 flex items-center gap-1 text-xs text-black/70">
+                  <p className="mt-1 flex items-center gap-1 text-xs text-black">
                     <Chip variant="subtle" color="gray" className="tabular-nums">
                       {checkout.phone}
                     </Chip>
@@ -341,14 +341,14 @@ export function AbandonedCheckoutQueue({
                       onClick={() => {
                         if (checkout.phone) void copyField(checkout.phone, "Phone number", `${checkout.id}:phone`);
                       }}
-                      className="inline-flex items-center rounded-md p-1 text-black/40 transition-all duration-200 ease-out active:scale-[0.97] hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                      className="inline-flex items-center rounded-md p-1 text-black transition-all duration-200 ease-out active:scale-[0.97] hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                     >
                       <CopyGlyph copied={copiedKey === `${checkout.id}:phone`} />
                     </button>
                   </p>
                 )}
                 {checkout.address && (
-                  <p className="mt-1 text-xs leading-5 text-black/45">
+                  <p className="mt-1 text-xs leading-5 text-black">
                     {checkout.address}{" "}
                     <button
                       type="button"
@@ -356,7 +356,7 @@ export function AbandonedCheckoutQueue({
                       onClick={() => {
                         if (checkout.address) void copyField(checkout.address, "Address", `${checkout.id}:address`);
                       }}
-                      className="inline-flex items-center rounded-md p-1 text-black/40 transition-all duration-200 ease-out active:scale-[0.97] hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                      className="inline-flex items-center rounded-md p-1 text-black transition-all duration-200 ease-out active:scale-[0.97] hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
                     >
                       <CopyGlyph copied={copiedKey === `${checkout.id}:address`} />
                     </button>
@@ -429,7 +429,7 @@ export function AbandonedCheckoutQueue({
                     sideOffset={6}
                     className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0"
                   >
-                    <DropdownMenuLabel className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-black/40">
+                    <DropdownMenuLabel className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-black">
                       Mark as
                     </DropdownMenuLabel>
                     <DropdownMenuRadioGroup

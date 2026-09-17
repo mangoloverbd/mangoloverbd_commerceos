@@ -15,6 +15,7 @@ import type {
 } from "@/lib/abandonedCheckouts";
 import {
   calculateCartTotals,
+  upsertCartItem,
   variantLabel,
   type CatalogProduct,
   type CatalogVariant,
@@ -48,10 +49,6 @@ function draftLineToItem(line: AbandonedCheckout["cart"][number], index: number,
     unit_discount: 0,
     quantity: line.quantity,
   };
-}
-
-function variantLabelOf(variant: CatalogVariant): string | null {
-  return variantLabel(variant.attributes || {}) || null;
 }
 
 function capturedLabel(value: string) {
@@ -116,27 +113,45 @@ export default function AbandonedDetail() {
     setSaveError("");
   }, [checkout]);
 
+  // When products load, try to match existing cart items (product_id: null) to catalog products by name
+  useEffect(() => {
+    const products = productsQuery.data?.products;
+    if (!products?.length) return;
+    setDraft((items) => {
+      let changed = false;
+      const resolved = items.map((item) => {
+        if (item.product_id) return item;
+        const match = products.find(
+          (p) => p.name.trim().toLowerCase() === (item.product_name || "").trim().toLowerCase(),
+        );
+        if (!match) return item;
+        changed = true;
+        const variantMatch = match.variants.find((v) => {
+          const label = variantLabel(v.attributes || {});
+          return label && item.variant_name
+            && label.toLowerCase() === item.variant_name.toLowerCase();
+        });
+        return {
+          ...item,
+          product_id: match.id,
+          variant_id: variantMatch?.id || null,
+          product_slug: match.slug || null,
+          image_url: match.image_url || null,
+          weight_kg: variantMatch?.weight_kg ?? match.weight_kg ?? null,
+          available_stock: variantMatch?.stock_quantity ?? match.stock_quantity ?? null,
+        };
+      });
+      return changed ? resolved : items;
+    });
+  }, [productsQuery.data]);
+
   const totals = useMemo(
     () => calculateCartTotals(draft, deliveryOn ? deliveryRate : 0, 0),
     [draft, deliveryOn, deliveryRate],
   );
 
   function addCatalogItem(product: CatalogProduct, variant?: CatalogVariant) {
-    const variantName = variant ? variantLabelOf(variant) : null;
-    const unitPrice = (product.selling_price ?? 0) + (variant?.price_adjustment || 0);
-    setDraft((items) => {
-      const existing = items.find((item) => item.product_name === product.name && (item.variant_name || null) === variantName);
-      if (existing) {
-        return items.map((item) => item.id === existing.id ? { ...item, quantity: item.quantity + 1 } : item);
-      }
-      return [...items, {
-        id: `draft-${draftId}-custom-${Date.now()}`,
-        product_id: null, variant_id: null, product_name: product.name,
-        variant_name: variantName, product_slug: null, image_url: null,
-        weight_kg: null, available_stock: null, unit_price: unitPrice,
-        discount_type: null, discount_value: 0, unit_discount: 0, quantity: 1,
-      }];
-    });
+    setDraft((items) => upsertCartItem(items, product, variant));
   }
 
   function updateQuantity(itemId: string, quantity: number) {
@@ -221,7 +236,7 @@ export default function AbandonedDetail() {
         <div className="flex min-w-0 items-baseline gap-2.5">
           <h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Abandoned editor</h1>
           {checkout && (
-            <span className="truncate text-[13px] text-black/45">
+            <span className="truncate text-[13px] text-black">
               Captured {capturedLabel(checkout.created_at)}{checkout.phone ? ` · ${checkout.phone}` : ""}
             </span>
           )}
@@ -236,7 +251,7 @@ export default function AbandonedDetail() {
         ) : (
           <div className="py-24 text-center">
             <p className="text-[15px] font-medium text-black">Checkout not found.</p>
-            <button type="button" aria-label="Back to abandoned checkouts" onClick={goBack} className="mt-2 text-[13px] text-black/50 underline">Back to abandoned checkouts</button>
+            <button type="button" aria-label="Back to abandoned checkouts" onClick={goBack} className="mt-2 text-[13px] text-black underline">Back to abandoned checkouts</button>
           </div>
         )
       ) : (

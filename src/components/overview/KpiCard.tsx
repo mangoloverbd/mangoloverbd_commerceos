@@ -75,7 +75,7 @@ export function KpiCard({
       className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
     >
       <div className="flex items-center justify-between">
-        <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
+        <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">{label}</p>
         <IconComponent weight="light" size={16} className="text-black/30" />
       </div>
 
@@ -100,7 +100,7 @@ export function KpiCard({
             {isPositive ? "+" : ""}
             {(trend ?? 0).toFixed(1)}%
           </span>
-          <span className="text-[11px] text-black/40">vs prev</span>
+          <span className="text-[11px] text-black">vs prev</span>
         </div>
       )}
     </motion.div>

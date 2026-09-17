@@ -80,34 +80,34 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
   return (
     <div className="grid gap-3 rounded-[14px] border border-black/[0.08] bg-white p-3 md:grid-cols-[1fr_100px_100px_110px_110px_110px_auto] md:items-end">
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-black/40">Variant</p>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-black">Variant</p>
         <p className="mt-1 text-[14px] font-medium text-black">{attrLabel(variant.attributes)}</p>
       </div>
       <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-black/40">Price</p>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-black">Price</p>
         <p className="h-9 pt-2 font-mono text-[13px] tabular-nums text-black">{variantPriceDisplay(product, { price_adjustment: parseFloat(priceAdj) || 0 })}</p>
       </div>
       <div>
-        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Stock</label>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black">Stock</label>
         <input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} className={EDIT_INPUT_CLS} />
       </div>
       <div>
-        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">COG</label>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black">COG</label>
         <input type="number" min={0} value={cog} onChange={(e) => setCog(e.target.value)} className={EDIT_INPUT_CLS} />
       </div>
       <div>
-        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Price ±</label>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black">Price ±</label>
         <input type="number" value={priceAdj} onChange={(e) => setPriceAdj(e.target.value)} className={EDIT_INPUT_CLS} />
       </div>
       <div>
-        <label htmlFor={`variant-weight-${variant.id}`} className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black/40">Weight</label>
+        <label htmlFor={`variant-weight-${variant.id}`} className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black">Weight</label>
         <input id={`variant-weight-${variant.id}`} aria-label={`Weight for ${attrLabel(variant.attributes)}`} type="number" min={0} step="0.001" value={weight} onChange={(e) => setWeight(e.target.value)} className={EDIT_INPUT_CLS} />
       </div>
       <div className="flex gap-2">
         <RichButton aria-label={`Save variant ${attrLabel(variant.attributes)}`} color="default" size="default" type="button" onClick={saveVariant} disabled={saving} className="h-9 rounded-[8px] px-3">
           {saving ? <Spinner size="sm" /> : "Save"}
         </RichButton>
-        <button type="button" onClick={deleteVariant} disabled={saving} className="flex h-9 w-9 items-center justify-center rounded-[8px] text-black/40 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40">
+        <button type="button" onClick={deleteVariant} disabled={saving} className="flex h-9 w-9 items-center justify-center rounded-[8px] text-black transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40">
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
@@ -171,7 +171,7 @@ function AddVariantForm({ product }: { product: Product }) {
 
   return (
     <div className="rounded-[14px] border border-dashed border-black/[0.12] bg-black/[0.02] p-3">
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40">Add variant</p>
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-black">Add variant</p>
       <div className="space-y-2">
         {rows.map((row, index) => (
           <div key={index} className="flex items-center gap-2">
@@ -179,14 +179,14 @@ function AddVariantForm({ product }: { product: Product }) {
             <span className="text-black/25">:</span>
             <input type="text" placeholder="value" value={row.value} onChange={(e) => setRow(index, "value", e.target.value)} className={EDIT_INPUT_CLS} />
             {rows.length > 1 && (
-              <button type="button" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} className="rounded-lg p-1 text-black/40 hover:text-red-500">
+              <button type="button" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} className="rounded-lg p-1 text-black hover:text-red-500">
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
         ))}
       </div>
-      <button type="button" onClick={() => setRows((current) => [...current, { key: "", value: "" }])} className="mt-2 flex items-center gap-1.5 text-[12px] text-black/40 hover:text-black">
+      <button type="button" onClick={() => setRows((current) => [...current, { key: "", value: "" }])} className="mt-2 flex items-center gap-1.5 text-[12px] text-black hover:text-black">
         <Plus className="h-3 w-3" /> Add attribute
       </button>
       <div className="mt-3 grid gap-3 md:grid-cols-[100px_100px_110px_120px_auto] md:items-end">
@@ -206,14 +206,14 @@ function ProductVariantsEditor({ product }: { product: Product }) {
   return (
     <div className="mt-4 rounded-[14px] border border-black/[0.08] bg-white p-3">
       <div className="mb-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40">Existing variants</p>
-        <p className="text-[12px] text-black/40">Click a product row to manage variant stock, cost, and price adjustments here.</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-black">Existing variants</p>
+        <p className="text-[12px] text-black">Click a product row to manage variant stock, cost, and price adjustments here.</p>
       </div>
       <div className="space-y-2">
         {product.variants.length > 0 ? product.variants.map((variant) => (
           <VariantEditorRow key={variant.id} product={product} variant={variant} />
         )) : (
-          <p className="rounded-[12px] bg-black/[0.03] px-3 py-4 text-[13px] text-black/45">No variants yet.</p>
+          <p className="rounded-[12px] bg-black/[0.03] px-3 py-4 text-[13px] text-black">No variants yet.</p>
         )}
       </div>
       <div className="mt-3">
@@ -354,7 +354,7 @@ export default function ProductEdit() {
           <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={() => navigate("/products")} />
           <div>
             <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Edit Product</h1>
-            <p className="mt-1 text-[13px] text-black/45">{product?.name ?? ""}</p>
+            <p className="mt-1 text-[13px] text-black">{product?.name ?? ""}</p>
           </div>
         </div>
       </div>
@@ -366,7 +366,7 @@ export default function ProductEdit() {
       ) : !product ? (
         <div className="py-24 text-center">
           <p className="text-[15px] font-medium text-black">Product not found.</p>
-          <button type="button" onClick={() => navigate("/products")} className="mt-2 text-[13px] text-black/50 underline">
+          <button type="button" onClick={() => navigate("/products")} className="mt-2 text-[13px] text-black underline">
             Back to products
           </button>
         </div>

@@ -34,6 +34,13 @@ describe("OrderStatusSegmentedControl", () => {
     expect(radios[1]).toHaveAccessibleName(/^Abandoned:/);
   });
 
+  it("hides Ready To Ship when requested", () => {
+    render(<OrderStatusSegmentedControl counts={counts} hiddenStatuses={["ready_to_ship"]} value="all" onChange={vi.fn()} />);
+
+    expect(screen.queryByRole("radio", { name: /Ready To Ship/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(11);
+  });
+
   it("reports the selected status", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
@@ -56,14 +63,13 @@ describe("OrderStatusSegmentedControl", () => {
 
     expect(screen.getByTestId("order-status-scroll-container")).toHaveClass("w-full");
     expect(screen.getByTestId("order-status-control")).toHaveClass(
-      "xl:grid",
-      "xl:grid-cols-12",
+      "xl:flex",
       "xl:w-full",
       "rounded-xl",
       "bg-black/[0.045]",
       "p-1",
     );
-    expect(screen.getByRole("radio", { name: /Delivered.*37,678/ })).toHaveClass("xl:min-w-0");
+    expect(screen.getByRole("radio", { name: /Delivered.*37,678/ })).toHaveClass("xl:min-w-0", "xl:flex-1");
     expect(screen.getByTestId("order-status-count-delivered")).toHaveClass("text-black/80");
     expect(screen.getByTestId("order-status-count-delivered").className).not.toMatch(/text-emerald/);
   });

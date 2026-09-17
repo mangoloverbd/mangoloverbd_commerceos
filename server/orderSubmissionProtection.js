@@ -25,6 +25,11 @@ const reasonCodeValues = [
 export const ORDER_PROTECTION_DECISIONS = Object.freeze([...decisionValues]);
 export const ORDER_PROTECTION_REASON_CODES = Object.freeze([...reasonCodeValues]);
 
+export function isOrderProtectionEnabled(mode = process.env.ORDER_PROTECTION_MODE) {
+  const normalizedMode = typeof mode === "string" ? mode.trim().toLowerCase() : "";
+  return normalizedMode !== "off" && normalizedMode !== "disabled";
+}
+
 export const ORDER_PROTECTION_THRESHOLDS = Object.freeze({
   reviewScore: 40,
   checkoutTooFastSeconds: 8,

@@ -48,4 +48,8 @@ describe("order protection route wiring", () => {
     expect(source).toContain('app.post("/api/public/v1/:handle/orders", handlePublicHandleOrderSubmit)');
     expect(source).not.toContain('app.post("/api/public/v1/:handle/orders", rateLimitPublicRead');
   });
+
+  it("bypasses the order submission limiter when protection is disabled", () => {
+    expect(source).toContain("if (!isOrderProtectionEnabled() || !rlOrderSubmission) return true;");
+  });
 });

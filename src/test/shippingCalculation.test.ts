@@ -168,7 +168,6 @@ describe("cartHasFreeDeliveryProduct", () => {
   it("returns false for carts without Litchi Flower Honey", () => {
     expect(cartHasFreeDeliveryProduct([{ productId: "other-id", productName: "Other Product" }])).toBe(false);
   });
-
   it("returns true when the cart contains only Black Seed Flower Honey", () => {
     expect(cartHasFreeDeliveryProduct([
       { productId: "814979aa-8446-429b-917f-e6d94cf6b334", productName: "কালোজিরা ফুলের মধু | Black Seed Flower Honey" },

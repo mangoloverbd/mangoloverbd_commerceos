@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/.." && pwd)"
+cd -- "$repo_root"
+
+node_version_spec="$(tr -d '[:space:]' <"$repo_root/.nvmrc")"
+node_major_target="${node_version_spec%%.*}"
+node_toolchain_root="$HOME/.cache/merchant-suite/node-$node_version_spec"
+node_bin_dir="$node_toolchain_root/node_modules/node/bin"
+if [[ -x "$node_bin_dir/node" ]]; then
+  export PATH="$node_bin_dir:$PATH"
+fi
+if ! command -v node >/dev/null 2>&1; then
+  printf '[orb-resume] error: Node.js is unavailable.\n' >&2
+  exit 1
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  printf '[orb-resume] error: npm is unavailable.\n' >&2
+  exit 1
+fi
+
+node_version="$(node --version)"
+node_major="$(node -p 'process.versions.node.split(".")[0]')"
+if [[ "$node_major" != "$node_major_target" ]]; then
+  printf '[orb-resume] error: expected Node.js %s (found %s); run .agents/setup.\n' "$node_version_spec" "$node_version" >&2
+  exit 1
+fi
+if [[ ! -x "$repo_root/node_modules/.bin/vite" ]] || [[ ! -d "$repo_root/node_modules/@supabase/supabase-js" ]]; then
+  printf '[orb-resume] error: npm dependencies are missing; run .agents/setup.\n' >&2
+  exit 1
+fi
+
+printf '[orb-resume] Node.js %s and npm dependencies are ready.\n' "$node_version"

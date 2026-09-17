@@ -102,6 +102,7 @@ export function Select<T extends object>({
         <>
           <AriaButton
             ref={triggerRef}
+            aria-label={props["aria-label"]}
             className={cx(
               "flex w-full cursor-pointer items-center justify-between rounded-2lg",
               "border border-border-button-default bg-background-primary-default shadow-xs",

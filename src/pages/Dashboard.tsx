@@ -4,10 +4,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useOrgName } from "@/hooks/useOrgName";
 import { useLiveVisitors } from "@/hooks/useLiveVisitors";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
+import { detectDistrict, DISTRICT_UNKNOWN_SENTINEL } from "@/lib/bdDistricts";
 import { matchesOrderSearch } from "@/lib/orderSearch";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
@@ -29,7 +31,7 @@ import {
   Search, AlertTriangle,
   Info, Check, X, Plus,
 } from "lucide-react";
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown, Printer } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -156,9 +158,16 @@ interface Order {
   fulfillment_status: string | null;
   sent_to_courier?: boolean | null;
   courier_status?: string | null;
+  courier_name?: string | null;
   warehouse_id?: string | null;
   warehouse_auto?: boolean | null;
   weight_kg?: number | null;
+  items?: Array<{
+    product_name: string | null;
+    variant_name: string | null;
+    quantity: number;
+    weight_kg?: number | null;
+  }>;
 }
 
 function fmtBDT(n: number) {
@@ -432,7 +441,7 @@ const FinanceMetric = memo(function FinanceMetric({
                     {isPositive ? "+" : ""}
                     {(trend ?? 0).toFixed(2)}%
                   </span>{" "}
-                  <span className="text-black/40">vs prev</span>
+                  <span className="text-black">vs prev</span>
                 </p>
               ) : (
                 <span className="text-[12px] text-black/30">—</span>
@@ -505,6 +514,7 @@ export default function Dashboard() {
   const [orderPageSize, setOrderPageSize] = useOrderPageSize("dashboard-order-page-size");
   const [orderPage, setOrderPage] = useState(0);
   const { isAdmin, loading: roleLoading } = useUserRole();
+  const { orgName } = useOrgName();
   const liveVisitors = useLiveVisitors();
   const isMobile = useIsMobile();
 
@@ -973,6 +983,7 @@ export default function Dashboard() {
 
   const isAbandonedQueue = fulfillmentTab === "abandoned";
   const activeOrderStatusFilter: OrderStatusFilter = isAbandonedQueue ? "all" : fulfillmentTab;
+  const [districtFilter, setDistrictFilter] = useState("all");
   const warehouseOrders = useMemo(
     () => orders.filter((order) => warehouseFilter === "all" || order.warehouse_id === warehouseFilter),
     [orders, warehouseFilter],
@@ -989,18 +1000,53 @@ export default function Dashboard() {
     );
   }, [activeOrderStatusFilter, debouncedSearch, warehouseOrders]);
 
+  const districtOf = (order: Order) => detectDistrict(order.address);
+
+  const districtCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    let unknown = 0;
+    for (const order of filteredOrders) {
+      const district = districtOf(order);
+      if (district) counts.set(district, (counts.get(district) || 0) + 1);
+      else unknown += 1;
+    }
+    const ranked = [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "en"));
+    return { ranked, unknown };
+  }, [filteredOrders]);
+
+  const districtFilteredOrders = useMemo(() => {
+    if (activeOrderStatusFilter !== "approved" || districtFilter === "all") return filteredOrders;
+    return filteredOrders.filter((order) => {
+      const district = districtOf(order);
+      return districtFilter === DISTRICT_UNKNOWN_SENTINEL ? !district : district === districtFilter;
+    });
+  }, [filteredOrders, districtFilter, activeOrderStatusFilter]);
+
   const filteredAbandonedCheckouts = useMemo(
     () => abandonedCheckouts.filter((checkout) => matchesAbandonedCheckoutSearch(checkout, debouncedSearch)),
     [abandonedCheckouts, debouncedSearch],
   );
 
+  const handlePackingSummary = async () => {
+    if (filteredOrders.length === 0) return;
+    try {
+      const { printPackingSummary } = await import("@/utils/packingSummaryPrinter");
+      printPackingSummary(filteredOrders, orgName);
+    } catch (error) {
+      console.error("Packing summary printing failed:", error);
+      toast.error("Failed to prepare packing summary for printing");
+    }
+  };
+
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
-  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / orderPageSize));
+  const orderTotalPages = Math.max(1, Math.ceil(districtFilteredOrders.length / orderPageSize));
   const orderSafePage = Math.min(orderPage, orderTotalPages - 1);
   const visibleOrders = useMemo(
-    () => filteredOrders.slice(orderSafePage * orderPageSize, (orderSafePage + 1) * orderPageSize),
-    [filteredOrders, orderPageSize, orderSafePage],
+    () => districtFilteredOrders.slice(orderSafePage * orderPageSize, (orderSafePage + 1) * orderPageSize),
+    [districtFilteredOrders, orderPageSize, orderSafePage],
   );
 
   const metricSparklines = useMemo(() => {
@@ -1275,7 +1321,7 @@ export default function Dashboard() {
           >
             {`${getDhakaGreeting()}!`}
           </TextShimmer>
-          <p className="mt-2 text-base font-light text-black/45">
+          <p className="mt-2 text-base font-light text-black">
             Manage your operations and every profit under one roof.
           </p>
 
@@ -1431,7 +1477,39 @@ export default function Dashboard() {
               {warehouses.map((warehouse) => <SelectItem key={warehouse.id} id={warehouse.id}>{warehouse.name}</SelectItem>)}
             </Select>
 
+            {!isAbandonedQueue && activeOrderStatusFilter === "approved" && (
+              <Select
+                aria-label="Filter approved orders by district"
+                data-testid="select-district-filter"
+                selectedKey={districtFilter}
+                onSelectionChange={(key) => { setDistrictFilter(String(key)); setOrderPage(0); }}
+                triggerClassName="h-9"
+              >
+                <SelectItem id="all">{`All districts (${filteredOrders.length})`}</SelectItem>
+                {districtCounts.ranked.map((entry) => (
+                  <SelectItem key={entry.name} id={entry.name}>{`${entry.name} (${entry.count})`}</SelectItem>
+                ))}
+                {districtCounts.unknown > 0 && (
+                  <SelectItem id={DISTRICT_UNKNOWN_SENTINEL}>{`Unknown (${districtCounts.unknown})`}</SelectItem>
+                )}
+              </Select>
+            )}
+
             <div className="w-px h-4 bg-black/10" />
+
+            {!isAbandonedQueue && activeOrderStatusFilter === "print" && (
+              <PopButton
+                color="sky"
+                size="sm"
+                onClick={() => void handlePackingSummary()}
+                disabled={filteredOrders.length === 0}
+                className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
+                data-testid="button-packing-summary"
+              >
+                <Printer weight="light" className="h-3.5 w-3.5" />
+                Packing Summary
+              </PopButton>
+            )}
 
             <PopButton
               color="yellow"
@@ -1525,12 +1603,14 @@ export default function Dashboard() {
 
         <OrderStatusSegmentedControl
           counts={orderStatusCounts}
+          hiddenStatuses={["ready_to_ship"]}
           abandonedCount={abandonedActiveCount}
           value={fulfillmentTab}
           loading={isAbandonedQueue ? abandonedLoading : loading}
           onChange={(nextTab) => {
             setFulfillmentTab(nextTab);
             setOrderPage(0);
+            setDistrictFilter("all");
             setSelectedAbandonedIds(new Set());
             if (nextTab === "abandoned") setSelectedOrderIds(new Set());
           }}
@@ -1575,7 +1655,7 @@ export default function Dashboard() {
             <OrderTablePagination
               page={orderSafePage}
               pageSize={orderPageSize}
-              totalItems={filteredOrders.length}
+              totalItems={districtFilteredOrders.length}
               onPageChange={setOrderPage}
             />
           </>

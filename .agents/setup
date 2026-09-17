@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/.." && pwd)"
+cd -- "$repo_root"
+
+step_started=$SECONDS
+printf '[orb-setup] checking Node.js toolchain...\n'
+node_version_spec="$(tr -d '[:space:]' <"$repo_root/.nvmrc")"
+node_major_target="${node_version_spec%%.*}"
+if [[ ! "$node_version_spec" =~ ^[0-9]+([.][0-9]+){0,2}$ ]] || [[ "$node_major_target" != "20" ]]; then
+  printf '[orb-setup] error: .nvmrc must pin a Node.js 20 version (found %s).\n' "$node_version_spec" >&2
+  exit 1
+fi
+if ! command -v node >/dev/null 2>&1; then
+  printf '[orb-setup] error: Node.js is required but was not found.\n' >&2
+  exit 1
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  printf '[orb-setup] error: npm is required but was not found.\n' >&2
+  exit 1
+fi
+
+node_toolchain_root="$HOME/.cache/merchant-suite/node-$node_version_spec"
+node_bin_dir="$node_toolchain_root/node_modules/node/bin"
+if [[ ! -x "$node_bin_dir/node" ]]; then
+  node_install_started=$SECONDS
+  printf '[orb-setup] installing cached Node.js %s runtime...\n' "$node_version_spec"
+  mkdir -p "$node_toolchain_root"
+  npm install \
+    --prefix "$node_toolchain_root" \
+    --no-save \
+    --no-package-lock \
+    --no-audit \
+    --no-fund \
+    "node@$node_version_spec"
+  printf '[orb-setup] Node.js runtime installed (%ss).\n' "$((SECONDS - node_install_started))"
+fi
+if [[ ! -x "$node_bin_dir/node" ]]; then
+  printf '[orb-setup] error: cached Node.js runtime was not found after installation.\n' >&2
+  exit 1
+fi
+export PATH="$node_bin_dir:$PATH"
+
+node_version="$(node --version)"
+npm_version="$(npm --version)"
+node_major="$(node -p 'process.versions.node.split(".")[0]')"
+if [[ "$node_major" != "$node_major_target" ]]; then
+  printf '[orb-setup] error: expected Node.js %s (found %s).\n' "$node_version_spec" "$node_version" >&2
+  exit 1
+fi
+printf '[orb-setup] Node.js %s and npm %s found (%ss).\n' "$node_version" "$npm_version" "$((SECONDS - step_started))"
+
+find_postgres_bin() {
+  local candidate
+  for candidate in /usr/lib/postgresql/*/bin; do
+    if [[ -x "$candidate/initdb" \
+      && -x "$candidate/pg_ctl" \
+      && -x "$candidate/psql" \
+      && -x "$candidate/pg_config" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+postgres_bin_dir="$(find_postgres_bin || true)"
+if [[ -z "$postgres_bin_dir" ]]; then
+  postgres_started=$SECONDS
+  printf '[orb-setup] installing PostgreSQL tools required by the local test suite...\n'
+  if (( EUID == 0 )); then
+    root_command=()
+  else
+    if ! sudo -n true 2>/dev/null; then
+      printf '[orb-setup] error: passwordless sudo is required to install PostgreSQL.\n' >&2
+      exit 1
+    fi
+    root_command=(sudo -n)
+  fi
+  "${root_command[@]}" apt-get update
+  DEBIAN_FRONTEND=noninteractive "${root_command[@]}" apt-get install -y postgresql
+  # The package may start a system cluster during installation. Orb snapshots
+  # do not preserve daemons, and the tests start an isolated temporary cluster.
+  "${root_command[@]}" systemctl stop postgresql >/dev/null 2>&1 || true
+  postgres_bin_dir="$(find_postgres_bin || true)"
+  if [[ -z "$postgres_bin_dir" ]]; then
+    printf '[orb-setup] error: PostgreSQL tools were not found after installation.\n' >&2
+    exit 1
+  fi
+  printf '[orb-setup] PostgreSQL tools installed (%ss).\n' "$((SECONDS - postgres_started))"
+else
+  printf '[orb-setup] reusing PostgreSQL tools from %s.\n' "$postgres_bin_dir"
+fi
+
+# Keep the PostgreSQL commands available to non-login agent shells too. Do not
+# replace a real user-owned executable, but refresh symlinks when a prior orb
+# setup pointed at an older PostgreSQL installation.
+local_bin="$HOME/.local/bin"
+mkdir -p "$local_bin"
+for postgres_tool in initdb pg_ctl psql pg_config; do
+  tool_link="$local_bin/$postgres_tool"
+  if [[ ! -e "$tool_link" || -L "$tool_link" ]]; then
+    ln -sfn "$postgres_bin_dir/$postgres_tool" "$tool_link"
+  fi
+done
+
+# Persist the pinned Node.js runtime in the non-interactive login shells Amp
+# and supervised services use, but only when they start in this repository.
+node_profile_marker="# Merchant-Suite orb Node.js toolchain"
+profile_file="$HOME/.bash_profile"
+if ! grep -Fqx "$node_profile_marker" "$profile_file" 2>/dev/null; then
+  cat >>"$profile_file" <<EOF
+
+$node_profile_marker
+if [[ -z "\${MERCHANT_SUITE_NODE_ENV:-}" && "\${PWD}" == "$repo_root" ]]; then
+  export PATH="$node_bin_dir:\$PATH"
+  export MERCHANT_SUITE_NODE_ENV=1
+fi
+EOF
+fi
+
+# Debian keeps PostgreSQL binaries outside PATH. Persist the test toolchain in
+# the non-interactive login shells Amp and supervised services use, but only
+# when they start in this repository. The guard also prevents recursive or
+# duplicate activation if a profile is sourced more than once.
+profile_marker="# Merchant-Suite orb PostgreSQL tools"
+if ! grep -Fqx "$profile_marker" "$profile_file" 2>/dev/null; then
+  cat >>"$profile_file" <<EOF
+
+$profile_marker
+if [[ -z "\${MERCHANT_SUITE_ORB_ENV:-}" && "\${PWD}" == "$repo_root" ]]; then
+  for pg_bin in /usr/lib/postgresql/*/bin; do
+    if [[ -x "\${pg_bin}/initdb" && -x "\${pg_bin}/pg_ctl" && -x "\${pg_bin}/psql" && -x "\${pg_bin}/pg_config" ]]; then
+      export PATH="\${pg_bin}:\$PATH"
+      export MERCHANT_SUITE_ORB_ENV=1
+      break
+    fi
+  done
+fi
+EOF
+fi
+export PATH="$postgres_bin_dir:$PATH"
+
+# npm ci is deterministic but removes node_modules on every run. Keep a small
+# fingerprint inside the ignored dependency tree so warm snapshots can reuse a
+# verified install without paying that cost again. The fingerprint includes
+# the lockfiles, package-manager/runtime versions, and native-module platform.
+fingerprint="$({
+  printf 'node=%s\n' "$node_version"
+  printf 'npm=%s\n' "$npm_version"
+  printf 'platform=%s\n' "$(node -p 'process.platform')"
+  printf 'arch=%s\n' "$(node -p 'process.arch')"
+  sha256sum package.json package-lock.json
+} | sha256sum | awk '{print $1}')"
+fingerprint_file="$repo_root/node_modules/.amp-setup-fingerprint"
+
+dependencies_started=$SECONDS
+if [[ -f "$fingerprint_file" ]] \
+  && [[ "$(<"$fingerprint_file")" == "$fingerprint" ]] \
+  && [[ -x "$repo_root/node_modules/.bin/vite" ]] \
+  && [[ -d "$repo_root/node_modules/@supabase/supabase-js" ]]; then
+  printf '[orb-setup] reusing verified npm dependencies (%ss).\n' "$((SECONDS - dependencies_started))"
+else
+  printf '[orb-setup] installing npm dependencies from package-lock.json...\n'
+  npm ci --include=dev --prefer-offline --no-audit --no-fund
+  printf '%s\n' "$fingerprint" >"$fingerprint_file"
+  printf '[orb-setup] npm dependencies installed (%ss).\n' "$((SECONDS - dependencies_started))"
+fi
+
+printf '[orb-setup] complete (%ss total).\n' "$((SECONDS - step_started))"

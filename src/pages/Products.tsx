@@ -137,7 +137,7 @@ function StatCard({
 }: { label: string; value: React.ReactNode; sub: string; accent?: string }) {
   return (
       <div className="flex flex-col min-w-0 overflow-hidden rounded-2xl bg-black/[0.04] p-2.5">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-black/50">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-black">
         {label}
       </p>
       <p
@@ -146,7 +146,7 @@ function StatCard({
       >
         {value}
       </p>
-      <p className="mt-0.5 text-[12px] text-black/40" style={{ fontFamily: SYS }}>{sub}</p>
+      <p className="mt-0.5 text-[12px] text-black" style={{ fontFamily: SYS }}>{sub}</p>
     </div>
   );
 }
@@ -562,10 +562,10 @@ function ProductsDataTable({ products, warehouses, isAdmin, isLoading, onAddProd
       <div className="flex flex-col gap-3 border-b border-[color:var(--color-separator-border)] px-5 py-4 max-md:px-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <PackageSearch className="h-4 w-4 text-black/60" />
+            <PackageSearch className="h-4 w-4 text-black" />
             <span className="text-[14px] font-semibold text-black">Products</span>
             {!isLoading && (
-              <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black/60">{filteredCount}</span>
+              <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black">{filteredCount}</span>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -671,7 +671,7 @@ function ProductsDataTable({ products, warehouses, isAdmin, isLoading, onAddProd
             renderActions={(product) => (
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => onEditProduct(product.id)} className="min-h-10 rounded-xl bg-black px-3 text-[10px] font-semibold uppercase tracking-wide text-white">Edit product</button>
-                {isAdmin && <button type="button" onClick={() => draftMutation.mutate(product.id)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black/65">Move to draft</button>}
+                {isAdmin && <button type="button" onClick={() => draftMutation.mutate(product.id)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black">Move to draft</button>}
               </div>
             )}
           />
@@ -894,7 +894,7 @@ export default function Products() {
           </div>
           <div           className="hidden rounded-2xl bg-black/[0.04] px-5 py-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-[13px] text-black/60">
+              <span className="text-[13px] text-black">
                 Total cost value: <span className="font-semibold text-black">{fmt(totalCog)}</span>
                 <span className="mx-2 text-black/20">/</span>
                 Published: <span className="font-semibold text-black">{publishedCount}</span>

@@ -28,11 +28,11 @@ export function CourierPanel({ data }: { data: CourierData }) {
     >
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Delivery</p>
+          <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Delivery</p>
           <p className="text-[15px] font-semibold text-black mt-0.5">Courier Performance</p>
         </div>
         <div className="text-right">
-          <p className="text-[10px] text-black/40">Success Rate</p>
+          <p className="text-[10px] text-black">Success Rate</p>
           <p className="text-[18px] font-semibold text-black tabular-nums">{overallSuccess.toFixed(1)}%</p>
         </div>
       </div>
@@ -42,7 +42,7 @@ export function CourierPanel({ data }: { data: CourierData }) {
           <div key={c.name} className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[12px] font-medium text-black">{c.name}</span>
-              <span className="text-[11px] text-black/50 tabular-nums">{c.successRate}%</span>
+              <span className="text-[11px] text-black tabular-nums">{c.successRate}%</span>
             </div>
             <div className="flex h-2 w-full overflow-hidden rounded-full bg-black/[0.04]">
               {c.delivered > 0 && (
@@ -58,7 +58,7 @@ export function CourierPanel({ data }: { data: CourierData }) {
                 <div className="bg-red-400 transition-all" style={{ width: `${(c.failed / c.total) * 100}%` }} />
               )}
             </div>
-            <div className="flex gap-3 text-[9px] text-black/40">
+            <div className="flex gap-3 text-[9px] text-black">
               <span>{c.delivered} delivered</span>
               <span>{c.in_transit} in transit</span>
               <span>{c.failed} failed</span>

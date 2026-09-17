@@ -1,5 +1,6 @@
 import {
   evaluateProtection,
+  isOrderProtectionEnabled,
   normalizeProtectionInput,
   serializeProtectionResponse,
 } from "./orderSubmissionProtection.js";
@@ -39,6 +40,20 @@ function buildEvent(input, requestMeta, protection, reviewId = null) {
 }
 
 export async function protectOrderSubmission({ input: rawInput, requestMeta = {}, dependencies = {} }) {
+  if (!isOrderProtectionEnabled()) {
+    return {
+      protection: {
+        decision: "ALLOW",
+        score: 0,
+        reasonCodes: [],
+        customerMessage: "Order details accepted.",
+        retryable: false,
+      },
+      response: { decision: "allow" },
+      fingerprint: null,
+    };
+  }
+
   const input = normalizeProtectionInput(rawInput);
   const secret = getProtectionSecret(dependencies);
   if (!secret) {

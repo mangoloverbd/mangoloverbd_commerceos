@@ -47,7 +47,7 @@ import { planBulkStatusChange } from "@/lib/orderTransitions";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 
 const SYS = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
-const headClass = "h-11 px-4 text-left text-[11px] font-medium uppercase tracking-wider text-black/45";
+const headClass = "h-11 px-4 text-left text-[11px] font-medium uppercase tracking-wider text-black";
 
 type Product = {
   id: string;
@@ -204,8 +204,8 @@ export default function WarehouseDetail() {
         <div>
           <WarningCircle size={34} weight="light" className="mx-auto text-black/25" />
           <h1 className="mt-3 text-[15px] font-semibold text-black">Warehouse not found</h1>
-          <p className="mt-1 text-[12px] text-black/40">This location may have been removed or is temporarily unavailable.</p>
-          <button type="button" onClick={() => navigate("/warehouses")} className="mt-4 text-[12px] font-medium text-black/55 underline underline-offset-4">Back to warehouses</button>
+          <p className="mt-1 text-[12px] text-black">This location may have been removed or is temporarily unavailable.</p>
+          <button type="button" onClick={() => navigate("/warehouses")} className="mt-4 text-[12px] font-medium text-black underline underline-offset-4">Back to warehouses</button>
         </div>
       </main>
     );
@@ -217,7 +217,7 @@ export default function WarehouseDetail() {
     <div className="min-h-full" style={{ fontFamily: SYS }}>
       <div className="min-h-full space-y-5 bg-white p-1 lg:p-2">
         <motion.header initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0 : 0.3 }} className="rounded-2xl bg-black/[0.025] px-5 py-5 sm:px-6">
-          <button type="button" aria-label="Back to warehouses" onClick={() => navigate("/warehouses")} className="mb-5 inline-flex items-center gap-1.5 rounded-lg py-1 text-[12px] font-medium text-black/45 transition-colors hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15">
+          <button type="button" aria-label="Back to warehouses" onClick={() => navigate("/warehouses")} className="mb-5 inline-flex items-center gap-1.5 rounded-lg py-1 text-[12px] font-medium text-black transition-colors hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15">
             <ArrowLeft size={15} weight="light" /> Warehouses
           </button>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -231,7 +231,7 @@ export default function WarehouseDetail() {
                     {data.warehouse.is_default ? "Default" : "Active"}
                   </Chip>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-black/45">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px] text-black">
                   <span className="inline-flex items-center gap-1.5"><MapPin size={13} weight="light" />{data.warehouse.address || "No address added"}</span>
                   <span className="inline-flex items-center gap-1.5"><UserCircle size={13} weight="light" />{data.warehouse.contact_person || "No contact person"}</span>
                   {data.warehouse.phone ? <span>{data.warehouse.phone}</span> : null}
@@ -252,16 +252,16 @@ export default function WarehouseDetail() {
 
         <motion.section initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduce ? 0 : 0.3, delay: reduce ? 0 : 0.1 }} className="overflow-hidden rounded-2xl bg-white">
           <div className="flex items-center gap-2 border-b border-[color:var(--color-separator-border)] px-5 py-4">
-            <Package size={17} weight="light" className="text-black/60" />
+            <Package size={17} weight="light" className="text-black" />
             <h2 className="text-[14px] font-semibold text-black">Inventory at this warehouse</h2>
-            <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black/60">{data.products.length}</span>
+            <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-black">{data.products.length}</span>
             <span className="flex-1" />
             <RichButton type="button" onClick={() => setAddOpen(true)} aria-label="Add products" className="h-8 rounded-lg px-2.5 text-[11px]">
               <Plus size={14} weight="light" /> Add products
             </RichButton>
           </div>
           {data.products.length === 0 ? (
-            <div className="py-20 text-center"><Package size={30} weight="light" className="mx-auto text-black/20" /><p className="mt-3 text-[13px] font-semibold text-black">No products assigned</p><p className="mt-1 text-[12px] text-black/40">Assign products from the Products page.</p></div>
+            <div className="py-20 text-center"><Package size={30} weight="light" className="mx-auto text-black/20" /><p className="mt-3 text-[13px] font-semibold text-black">No products assigned</p><p className="mt-1 text-[12px] text-black">Assign products from the Products page.</p></div>
           ) : (
             <div data-testid="warehouse-products-table" className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left">
@@ -269,9 +269,9 @@ export default function WarehouseDetail() {
                 <tbody>
                   {data.products.map((product) => (
                     <tr key={product.id} className="border-b border-[color:var(--color-separator-border)] transition-colors hover:bg-background-secondary-default">
-                      <td className="px-4 py-3.5"><p className="text-[13px] font-semibold text-black">{product.name}</p><p className="mt-0.5 text-[11px] text-black/40">{product.selling_price == null ? "Price not set" : `৳${product.selling_price.toLocaleString()}`}</p></td>
+                      <td className="px-4 py-3.5"><p className="text-[13px] font-semibold text-black">{product.name}</p><p className="mt-0.5 text-[11px] text-black">{product.selling_price == null ? "Price not set" : `৳${product.selling_price.toLocaleString()}`}</p></td>
                       <td className="px-4 py-3.5"><Chip variant="caption" color={product.assigned_explicitly ? "blue" : "yellow"} className="gap-1.5"><span className={`h-[5px] w-[5px] shrink-0 rounded-full ${product.assigned_explicitly ? "bg-status-blue-text" : "bg-status-yellow-text"}`} />{product.assigned_explicitly ? "Direct assignment" : "Default fallback"}</Chip></td>
-                      <td className="px-4 py-3.5 text-center text-[12px] text-black/55">{product.weight_kg == null ? "No weight" : `${product.weight_kg} kg`}</td>
+                      <td className="px-4 py-3.5 text-center text-[12px] text-black">{product.weight_kg == null ? "No weight" : `${product.weight_kg} kg`}</td>
                       <td className="px-4 py-3.5 text-center"><span className="text-[13px] font-semibold tabular-nums text-black">{product.stock_quantity ?? 0}</span><p className="text-[10px] text-black/35">units</p></td>
                       <td className="px-4 py-3.5 text-center"><Chip variant="caption" color={product.published ? "lime" : "gray"} className="gap-1.5"><span className={`h-[5px] w-[5px] shrink-0 rounded-full ${product.published ? "bg-status-lime-text" : "bg-background-tertiary-default"}`} />{product.published ? "Published" : "Draft"}</Chip></td>
                       <td className="px-4 py-3.5 text-right">
@@ -369,6 +369,7 @@ export default function WarehouseDetail() {
           </div>
           <OrderStatusSegmentedControl
             counts={orderStatusCounts}
+            hiddenStatuses={["ready_to_ship"]}
             value={statusFilter}
             loading={orders.isLoading}
             onChange={(nextStatus) => {
@@ -377,10 +378,10 @@ export default function WarehouseDetail() {
             }}
           />
           {orders.isError ? (
-            <div className="py-16 text-center"><WarningCircle size={28} weight="light" className="mx-auto text-black/20" /><p className="mt-2 text-[12px] text-black/45">Couldn’t load warehouse orders.</p><button type="button" onClick={() => void orders.refetch()} className="mt-3 text-[12px] font-medium underline underline-offset-4">Try again</button></div>
+            <div className="py-16 text-center"><WarningCircle size={28} weight="light" className="mx-auto text-black/20" /><p className="mt-2 text-[12px] text-black">Couldn’t load warehouse orders.</p><button type="button" onClick={() => void orders.refetch()} className="mt-3 text-[12px] font-medium underline underline-offset-4">Try again</button></div>
           ) : (
             <>
-              <OrdersTable orders={visibleWarehouseOrders} loading={orders.isLoading} onStatusUpdate={() => void orders.refetch()} onOrderUpdate={() => void orders.refetch()} selectedIds={selectedOrderIds} onSelectionChange={setSelectedOrderIds} />
+              <OrdersTable orders={visibleWarehouseOrders} loading={orders.isLoading} onStatusUpdate={() => void orders.refetch()} onOrderUpdate={() => void orders.refetch()} showRiskColumn={false} selectedIds={selectedOrderIds} onSelectionChange={setSelectedOrderIds} />
               <OrderTablePagination
                 page={orderSafePage}
                 pageSize={orderPageSize}

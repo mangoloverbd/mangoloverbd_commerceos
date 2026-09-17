@@ -28,7 +28,9 @@ dist-ssr
 .env.*
 
 # Local tooling
-.agents/
+.agents/*
+!.agents/setup
+!.agents/resume
 .claude/
 .gstack/
 .superpowers/
@@ -36,3 +38,6 @@ dist-ssr
 .commandcode/
 .worktrees/
 supabase/.temp/
+
+# Amp portal metadata
+.amp/portals/*

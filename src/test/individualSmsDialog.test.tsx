@@ -73,4 +73,28 @@ describe("IndividualSmsDialog", () => {
     expect(props.onOpenChange).not.toHaveBeenCalledWith(false);
     expect(toast.error).toHaveBeenCalled();
   });
+
+  it("fills the courier unreachable template", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(response({ settings: { contactPhone: "01799999999" } }));
+    render(<IndividualSmsDialog {...props} />);
+
+    await user.click(screen.getByRole("radio", { name: /courier unreachable/i }));
+
+    expect(screen.getByRole("textbox", { name: /message/i })).toHaveValue(
+      "প্রিয় Ayesha Rahman, কুরিয়ার আপনার অর্ডার #ML-1001 নিয়ে আপনাকে পাচ্ছে না। অনুগ্রহ করে কলটি রিসিভ করুন অথবা 01799999999-এ কল করুন।",
+    );
+  });
+
+  it("uses the Mango Lover BD phone when storefront settings do not have one", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(response({ settings: { contactPhone: null } }));
+    render(<IndividualSmsDialog {...props} />);
+
+    await user.click(screen.getByRole("radio", { name: /courier unreachable/i }));
+
+    expect(screen.getByRole("textbox", { name: /message/i })).toHaveValue(
+      "প্রিয় Ayesha Rahman, কুরিয়ার আপনার অর্ডার #ML-1001 নিয়ে আপনাকে পাচ্ছে না। অনুগ্রহ করে কলটি রিসিভ করুন অথবা +8801301636461-এ কল করুন।",
+    );
+  });
 });

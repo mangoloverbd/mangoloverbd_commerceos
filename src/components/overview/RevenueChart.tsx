@@ -28,12 +28,12 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 
   return (
     <div className="rounded-lg border border-black/[0.08] bg-white px-3 py-2 shadow-lg">
-      <p className="text-[10px] font-medium text-black/50 mb-1.5">{label}</p>
+      <p className="text-[10px] font-medium text-black mb-1.5">{label}</p>
       {payload.map((entry) => (
         <div key={entry.dataKey} className="flex items-center justify-between gap-4 text-[11px]">
           <div className="flex items-center gap-1.5">
             <div className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
-            <span className="text-black/60 capitalize">{entry.dataKey}</span>
+            <span className="text-black capitalize">{entry.dataKey}</span>
           </div>
           <span className="font-medium text-black tabular-nums">{fmtBDT(entry.value)}</span>
         </div>
@@ -52,7 +52,7 @@ export function RevenueChart({ data }: { data: RevenueData[] }) {
     >
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-[8px] font-medium tracking-[0.3em] text-black/40 uppercase">Financials</p>
+          <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Financials</p>
           <p className="text-[15px] font-semibold text-black mt-0.5">Revenue vs Costs</p>
         </div>
       </div>

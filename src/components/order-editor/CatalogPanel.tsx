@@ -31,24 +31,24 @@ export function CatalogPanel({ products, search, loading, error, canEdit, locked
   return (
     <section aria-label="Product catalog" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/40">Product catalog</p>
+        <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Product catalog</p>
         <h2 className="text-[15px] font-medium text-black">{filtered.length} product{filtered.length === 1 ? "" : "s"}</h2>
       </div>
       {locked && <p className="mt-4 rounded-lg bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-800">Editing is locked after courier dispatch.</p>}
       <label className="relative mx-3 mt-3 block">
         <span className="sr-only">Search products</span>
-        <MagnifyingGlass weight="light" size={19} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black/35" />
+        <MagnifyingGlass weight="light" size={19} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black" />
         <input type="search" aria-label="Search products" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search name, slug, or variant" className="h-12 w-full rounded-full bg-black/[0.04] pl-11 pr-4 text-[14px] outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
       </label>
 
       <div data-testid="catalog-scroll-region" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-auto pr-1.5 [scrollbar-gutter:stable] [scrollbar-width:thin]">
-        {loading ? <p className="py-12 text-center text-[13px] text-black/45">Loading catalog…</p> : error ? (
+        {loading ? <p className="py-12 text-center text-[13px] text-black">Loading catalog…</p> : error ? (
           <div className="grid place-items-center gap-3 py-12 text-center">
             <WarningCircle weight="light" size={24} className="text-red-500" />
-            <p className="text-[13px] text-black/55">Could not load the product catalog.</p>
+            <p className="text-[13px] text-black">Could not load the product catalog.</p>
             <button type="button" onClick={onRetry} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black px-3 text-[12px] text-white"><ArrowClockwise weight="light" size={15} /> Retry</button>
           </div>
-        ) : filtered.length === 0 ? <p className="py-12 text-center text-[13px] text-black/45">No products match your search.</p> : filtered.map((product) => {
+        ) : filtered.length === 0 ? <p className="py-12 text-center text-[13px] text-black">No products match your search.</p> : filtered.map((product) => {
           const image = catalogImage(product);
           return (
             <article key={product.id} className="rounded-xl bg-white p-5 ring-1 ring-inset ring-black/[0.06]">
@@ -58,14 +58,14 @@ export function CatalogPanel({ products, search, loading, error, canEdit, locked
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-[16px] font-medium text-black">{product.name}</h3>
-                  {product.slug && <p className="mt-1 truncate font-mono text-[11px] text-black/35">{product.slug}</p>}
-                  {product.variants.length === 0 && <div className="mt-2.5 flex items-center justify-between gap-2"><div><p className="font-mono text-[14px] tabular-nums">{formatTaka(product.selling_price)}</p><p className="mt-0.5 text-[11px] text-black/40">{product.weight_kg ? `${product.weight_kg} kg · ` : ""}{stockLabel(product.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name} to cart`} onClick={() => onAdd(product)} disabled={!canEdit || product.stock_quantity <= 0} className="grid h-9 w-9 place-items-center rounded-full bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={15} /></button></div>}
+                  {product.slug && <p className="mt-1 truncate font-mono text-[11px] text-black">{product.slug}</p>}
+                  {product.variants.length === 0 && <div className="mt-2.5 flex items-center justify-between gap-2"><div><p className="font-mono text-[14px] tabular-nums">{formatTaka(product.selling_price)}</p><p className="mt-0.5 text-[11px] text-black">{product.weight_kg ? `${product.weight_kg} kg · ` : ""}{stockLabel(product.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name} to cart`} onClick={() => onAdd(product)} disabled={!canEdit || product.stock_quantity <= 0} className="grid h-9 w-9 place-items-center rounded-full bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={15} /></button></div>}
                 </div>
               </div>
               {product.variants.length > 0 && <div className="mt-4 space-y-3 border-t border-black/[0.06] pt-4">{product.variants.map((variant) => {
                 const label = variantLabel(variant.attributes);
                 const price = (product.selling_price || 0) + (variant.price_adjustment || 0);
-                return <div key={variant.id} className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-[14px] text-black">{label || "Default variant"}</p><p className="mt-1 text-[11px] text-black/40">{formatTaka(price)}{variant.weight_kg ? ` · ${variant.weight_kg} kg` : ""} · {stockLabel(variant.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name}, ${label || "Default variant"} to cart`} onClick={() => onAdd(product, variant)} disabled={!canEdit || variant.stock_quantity <= 0} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={14} /></button></div>;
+                return <div key={variant.id} className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-[14px] text-black">{label || "Default variant"}</p><p className="mt-1 text-[11px] text-black">{formatTaka(price)}{variant.weight_kg ? ` · ${variant.weight_kg} kg` : ""} · {stockLabel(variant.stock_quantity)}</p></div><button type="button" aria-label={`Add ${product.name}, ${label || "Default variant"} to cart`} onClick={() => onAdd(product, variant)} disabled={!canEdit || variant.stock_quantity <= 0} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-black text-white disabled:cursor-not-allowed disabled:opacity-25"><Plus weight="light" size={14} /></button></div>;
               })}</div>}
             </article>
           );

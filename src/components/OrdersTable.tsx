@@ -33,6 +33,7 @@ import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldChe
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { classifyOrderStatus } from "@/lib/orderStatusFilters";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isPrintStatus } from "@/lib/orderTransitions";
@@ -187,11 +188,13 @@ export interface Order {
   weight_kg?: number | null;
   sent_to_courier?: boolean | null;
   courier_status?: string | null;
+  courier_name?: string | null;
   consignment_id?: number | null;
   tracking_code?: string | null;
   courier_message?: string | null;
   notes?: string | null;
   fulfillment_status?: string | null;
+  landing_page_path?: string | null;
   items?: OrderItemSummary[];
 }
 
@@ -1149,7 +1152,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         renderActions={(order) => (
           <div className="flex flex-wrap gap-2">
             {!order.fraud_checked && (
-              <button type="button" onClick={() => handleCheckFraud(order)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black/65">
+              <button type="button" onClick={() => handleCheckFraud(order)} className="min-h-10 rounded-xl border border-black/10 px-3 text-[10px] font-semibold uppercase tracking-wide text-black">
                 Check fraud
               </button>
             )}
@@ -1477,9 +1480,10 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                         (() => {
                           const rawStatus = (order.courier_status || "").toLowerCase().trim();
                           const isInitialState = !rawStatus || rawStatus === "in_review" || rawStatus === "pending";
+                          const isSteadfastProcessing = order.courier_name === "steadfast" && classifyOrderStatus(order) === "processing";
                           const id = order.consignment_id || order.tracking_code;
 
-                          if (isInitialState) {
+                          if (isInitialState || isSteadfastProcessing) {
                             return (
                               <PopButton color="sky" size="sm" className="cursor-default gap-1.5 text-[10px] font-bold tracking-widest uppercase w-36 justify-center">
                                 <span className="opacity-70">ID</span>

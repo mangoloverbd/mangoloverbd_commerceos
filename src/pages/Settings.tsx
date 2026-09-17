@@ -32,12 +32,12 @@ const AI_CHANNELS = [
 function PageHeader({ title, description }: { title: string; description: string }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black/[0.05] text-black/55">
+      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black/[0.05] text-black">
         <SlidersHorizontal className="h-[18px] w-[18px]" strokeWidth={1.8} />
       </span>
       <div className="min-w-0">
         <h1 className="font-sf-display text-[22px] font-semibold tracking-tight text-black leading-tight">{title}</h1>
-        <p className="mt-0.5 text-[13px] text-black/45 leading-tight">{description}</p>
+        <p className="mt-0.5 text-[13px] text-black leading-tight">{description}</p>
       </div>
     </div>
   );
@@ -59,12 +59,12 @@ function GroupCard({
   return (
     <section className={cn("space-y-3", className)}>
       <div className="flex items-center gap-2.5 px-1">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/[0.05] text-black/55">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/[0.05] text-black">
           <Icon className="h-4 w-4" strokeWidth={1.8} />
         </span>
         <div className="min-w-0">
           <h2 className="text-[14px] font-semibold text-black leading-none">{title}</h2>
-          {description && <p className="mt-1 text-[12px] text-black/45 leading-none">{description}</p>}
+          {description && <p className="mt-1 text-[12px] text-black leading-none">{description}</p>}
         </div>
       </div>
       <div className="overflow-hidden rounded-2xl bg-black/[0.04] pl-3">
@@ -90,12 +90,12 @@ function GroupSection({
   return (
     <section className={cn("space-y-3", className)}>
       <div className="flex items-center gap-2.5 px-1">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/[0.05] text-black/55">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/[0.05] text-black">
           <Icon className="h-4 w-4" strokeWidth={1.8} />
         </span>
         <div className="min-w-0">
           <h2 className="text-[14px] font-semibold text-black leading-none">{title}</h2>
-          {description && <p className="mt-1 text-[12px] text-black/45 leading-none">{description}</p>}
+          {description && <p className="mt-1 text-[12px] text-black leading-none">{description}</p>}
         </div>
       </div>
       {children}
@@ -111,7 +111,7 @@ function Row({ children, className }: { children: React.ReactNode; className?: s
 
 function IconTile({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/[0.04] text-black/55", className)}>
+    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/[0.04] text-black", className)}>
       {children}
     </span>
   );
@@ -182,7 +182,7 @@ function AIAutoReplySection() {
         <Row>
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-black">Enable AI Auto-Reply</p>
-            <p className="text-[11px] text-black/40 mt-0.5">Master switch — turns off AI replies on all channels when disabled.</p>
+            <p className="text-[11px] text-black mt-0.5">Master switch — turns off AI replies on all channels when disabled.</p>
           </div>
           <Switch
             checked={enabled}
@@ -352,9 +352,9 @@ function StorefrontDomainSection() {
         <Row>
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-black">Deploy Storefront</p>
-            <p className="text-[11px] text-black/40 mt-0.5">
+            <p className="text-[11px] text-black mt-0.5">
               {provisioned
-                ? <>Live at <a href={provisioned.url} target="_blank" rel="noreferrer" className="underline text-black/60">{provisioned.url}</a></>
+                ? <>Live at <a href={provisioned.url} target="_blank" rel="noreferrer" className="underline text-black">{provisioned.url}</a></>
                 : "Automatically creates your storefront from our default template."}
             </p>
           </div>
@@ -375,7 +375,7 @@ function StorefrontDomainSection() {
         <Row>
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-black">Custom Domain</p>
-            <p className="text-[11px] text-black/40 mt-0.5">e.g. shop.stepprs.com — we attach it to your storefront on Save.</p>
+            <p className="text-[11px] text-black mt-0.5">e.g. shop.stepprs.com — we attach it to your storefront on Save.</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Input
@@ -390,13 +390,13 @@ function StorefrontDomainSection() {
 
         {dns ? (
           <div className="px-5 py-4">
-            <p className="text-[11px] font-medium text-black/50 uppercase tracking-[0.12em] mb-2">DNS record to set</p>
-            <div className="font-mono text-[12px] text-black/70 space-y-1">
-              <p><span className="text-black/40">Type:</span> {dns.type}</p>
-              <p><span className="text-black/40">Host/Name:</span> {dns.host}</p>
-              <p><span className="text-black/40">Value:</span> {dns.value}</p>
+            <p className="text-[11px] font-medium text-black uppercase tracking-[0.12em] mb-2">DNS record to set</p>
+            <div className="font-mono text-[12px] text-black space-y-1">
+              <p><span className="text-black">Type:</span> {dns.type}</p>
+              <p><span className="text-black">Host/Name:</span> {dns.host}</p>
+              <p><span className="text-black">Value:</span> {dns.value}</p>
             </div>
-            <p className="mt-2 text-[11px] text-black/40">
+            <p className="mt-2 text-[11px] text-black">
               Set this at your DNS provider, then click "Check status". It may take a few minutes to propagate.
             </p>
             <div className="mt-3 flex gap-2">
@@ -481,7 +481,7 @@ function WorkspaceSection() {
         <Row>
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-black">Display name</p>
-            <p className="text-[11px] text-black/40 mt-0.5">This is your organisation's public name.</p>
+            <p className="text-[11px] text-black mt-0.5">This is your organisation's public name.</p>
           </div>
           {isLoading ? (
             <Spinner className="h-4 w-4 text-black/30 shrink-0" />
@@ -523,7 +523,7 @@ function TabNav({ items, value, onChange }: { items: typeof NAV; value: Section;
               "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-medium transition-colors",
               value === id
                 ? "bg-white text-black shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                : "text-black/50 hover:text-black/80"
+                : "text-black hover:text-black/80"
             )}
           >
             <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />

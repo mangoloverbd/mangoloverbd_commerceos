@@ -15,6 +15,7 @@ describe("customer intelligence aggregation", () => {
 
   it("detects Shopify, custom website webhook, manual, and social sources", () => {
     expect(detectCustomerOrderSource({ source: "custom_store" }, "order")).toBe("custom_website");
+    expect(detectCustomerOrderSource({ source: "storefront_review" }, "order")).toBe("custom_website");
     expect(detectCustomerOrderSource({ platform: "facebook" }, "social")).toBe("facebook");
     expect(detectCustomerOrderSource({ shopify_order_id: 12345 }, "order")).toBe("shopify");
     expect(detectCustomerOrderSource({ shopify_order_id: -12345, order_number: "#1002" }, "order")).toBe("custom_website");

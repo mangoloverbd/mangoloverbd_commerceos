@@ -10,6 +10,7 @@ type TestOrder = {
   status: string;
   fulfillment_status?: string | null;
   courier_status?: string | null;
+  courier_name?: string | null;
   sent_to_courier?: boolean | null;
   fraud_checked?: boolean | null;
   fraud_data?: {
@@ -25,6 +26,7 @@ function order(id: string, overrides: Partial<TestOrder> = {}): TestOrder {
     status: "pending",
     fulfillment_status: null,
     courier_status: null,
+    courier_name: null,
     sent_to_courier: false,
     fraud_checked: false,
     fraud_data: null,
@@ -49,6 +51,16 @@ describe("order status filters", () => {
       fraud_data: { total_parcels: 10, total_delivered: 4, total_cancel: 6 },
     }), "print"],
     [order("processing", { status: "confirmed", sent_to_courier: true, courier_status: "Pickup Requested" }), "processing"],
+    [order("steadfast-pending", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Pending" }), "print"],
+    [order("steadfast-in-review", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "In Review" }), "print"],
+    [order("steadfast-pickup-requested", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Pickup Requested" }), "print"],
+    [order("steadfast-warehouse-movement", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Consignment received at CHITTAGONG WAREHOUSE" }), "print"],
+    [order("steadfast-destination-dispatch", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Consignment sent to HATHAZARI. Dispatch ID: 17332372" }), "print"],
+    [order("steadfast-destination-received", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Consignment has been received at HATHAZARI" }), "print"],
+    [order("steadfast-picked-up", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Picked Up" }), "print"],
+    [order("steadfast-fraud", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Pending", fraud_checked: true, fraud_data: { total_parcels: 10, total_delivered: 4, total_cancel: 6 } }), "print"],
+    [order("steadfast-exception", { status: "print", sent_to_courier: true, courier_name: "steadfast", courier_status: "Unknown Approval Pending" }), "print"],
+    [order("legacy-steadfast-transit", { status: "print", sent_to_courier: true, courier_message: "Sent to Steadfast successfully", courier_status: "In Transit" }), "in_transit"],
     [order("ready", { status: "confirmed", fulfillment_status: "fulfilled" }), "ready_to_ship"],
     [order("explicit-ready", { status: "ready-to-ship" }), "ready_to_ship"],
     [order("flagged", {
@@ -68,6 +80,65 @@ describe("order status filters", () => {
       courier_status: "delivered",
       sent_to_courier: true,
     }))).toBe("delivered");
+  });
+
+  it("lets a Steadfast exception override an active transit state after manual processing", () => {
+    expect(classifyOrderStatus(order("steadfast-transit-fraud", {
+      status: "processing",
+      sent_to_courier: true,
+      courier_name: "steadfast",
+      courier_status: "in_transit",
+      fraud_checked: true,
+      fraud_data: { total_parcels: 10, total_delivered: 4, total_cancel: 6 },
+    }))).toBe("flagged");
+  });
+
+  it("keeps Print until manual handoff, except for terminal courier outcomes", () => {
+    expect(classifyOrderStatus(order("delivered", {
+      status: "print",
+      sent_to_courier: true,
+      courier_name: "steadfast",
+      courier_status: "Delivered",
+    }))).toBe("delivered");
+
+    expect(classifyOrderStatus(order("cancelled", {
+      status: "print",
+      sent_to_courier: true,
+      courier_name: "steadfast",
+      courier_status: "Cancelled",
+    }))).toBe("cancelled");
+
+    expect(classifyOrderStatus(order("returned", {
+      status: "print",
+      sent_to_courier: true,
+      courier_name: "steadfast",
+      courier_status: "Returned",
+    }))).toBe("cancelled");
+
+    expect(classifyOrderStatus(order("manual-processing", {
+      status: "processing",
+      sent_to_courier: true,
+      courier_name: "steadfast",
+      courier_status: "Pending",
+    }))).toBe("processing");
+
+    expect(classifyOrderStatus(order("manual-transit", {
+      status: "processing",
+      sent_to_courier: true,
+      courier_name: "steadfast",
+      courier_status: "Picked Up",
+    }))).toBe("in_transit");
+
+    expect(classifyOrderStatus(order("manual-flagged", {
+      status: "processing",
+      sent_to_courier: true,
+      courier_name: "steadfast",
+      courier_status: "Unknown Approval Pending",
+    }))).toBe("flagged");
+  });
+
+  it("keeps non-Steadfast processing behavior unchanged", () => {
+    expect(classifyOrderStatus(order("pathao-pending", { status: "print", sent_to_courier: true, courier_name: "pathao", courier_status: "Pending", fraud_checked: true, fraud_data: { total_parcels: 10, total_delivered: 4, total_cancel: 6 } }))).toBe("print");
   });
 
   it("counts every order once and keeps all equal to the bucket sum", () => {

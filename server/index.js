@@ -75,6 +75,7 @@ import {
   hashProtectionSignal,
   listProtectionReviews,
 } from "./orderProtectionStore.js";
+import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { validateAddressWithAI } from "./addressValidation.js";
 
@@ -400,7 +401,7 @@ function getClientIp(req) {
 }
 
 async function allowOrderSubmission(req, res, orgId, handle = "*") {
-  if (!rlOrderSubmission) return true;
+  if (!isOrderProtectionEnabled() || !rlOrderSubmission) return true;
   const limiterSecret = process.env.ORDER_PROTECTION_HASH_SECRET || "order-protection-unconfigured";
   const ipHash = hashProtectionSignal(getClientIp(req), limiterSecret);
   try {
@@ -737,6 +738,21 @@ function delay(ms) {
 // Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
 function normalizeBusinessStatus(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+const ORDER_SOURCE_VALUES = new Set(["website", "facebook", "instagram", "whatsapp", "phone", "manual_other"]);
+
+function isCanonicalOrderSource(value) {
+  return typeof value === "string" && ORDER_SOURCE_VALUES.has(value.trim().toLowerCase());
+}
+
+const LANDING_PAGE_PATH_RE = /^\/step\/[a-z0-9]+(?:-[a-z0-9]+)*$/i;
+
+function normalizeLandingPagePath(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const path = value.trim().split(/[?#]/, 1)[0].replace(/\/+$/, "");
+  return path.length <= 120 && LANDING_PAGE_PATH_RE.test(path) ? path : undefined;
 }
 
 function parseFraudShieldError(status, body) {
@@ -5781,6 +5797,16 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
   }
 });
 
+// PostgREST receives list filters as GET query params, so a single .in()
+// with hundreds of UUIDs blows past URL length limits and the request dies
+// with "fetch failed". Chunk all unbounded id-list fetches (batch size 100
+// keeps URLs at ~4KB).
+function chunkIds(ids, size = 100) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
 app.get("/api/orders", async (req, res) => {
   try {
     const token = getToken(req);
@@ -5789,8 +5815,7 @@ app.get("/api/orders", async (req, res) => {
     console.log(`[Orders] user=${user.id}`);
 
     const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-    const warehouseFilter = typeof req.query.warehouse_id === "string"
+    const { orgId } = await getUserOrg(supabase, user.id);    const warehouseFilter = typeof req.query.warehouse_id === "string"
       ? req.query.warehouse_id.trim()
       : "";
     let ordersQuery = supabase
@@ -5806,11 +5831,13 @@ app.get("/api/orders", async (req, res) => {
 
     const allOrders = allData || [];
     const orderIds = allOrders.map((order) => order.id).filter(Boolean);
-    const { data: orderItems, error: itemsError } = orderIds.length
-      ? await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", orderIds).eq("org_id", orgId).order("created_at", { ascending: true })
-      : { data: [], error: null };
-    if (itemsError) throw itemsError;
-    const enrichedItems = await enrichOrderItems(supabase, orgId, orderItems || []);
+    const itemRows = [];
+    for (const idBatch of chunkIds(orderIds)) {
+      const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+      if (itemsError) throw itemsError;
+      itemRows.push(...(batchItems || []));
+    }
+    const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
     const itemsByOrder = new Map();
     for (const item of enrichedItems) {
       const list = itemsByOrder.get(item.order_id) || [];
@@ -6061,6 +6088,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         warehouse_auto: true,
         weight_kg: routing.weightKg,
         abandoned_checkout_id: draft.id,
+        source: "website",
       })
       .select("*")
       .single();
@@ -6671,7 +6699,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       "status",
       "notes",
     ];
-    const row = { org_id: orgId, source: "custom_store" };
+    const row = { org_id: orgId, source: "website" };
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
@@ -7168,11 +7196,17 @@ app.post("/api/orders", async (req, res) => {
       "payment_method",
       "discount",
       "advanced_payment",
+      "source",
     ];
     const row = { org_id: orgId };
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
+    if (req.body?.source !== undefined && !isCanonicalOrderSource(req.body.source)) {
+      return res.status(400).json({ error: "Invalid order source" });
+    }
+    if (row.source) row.source = row.source.trim().toLowerCase();
+    if (!row.source) row.source = "manual_other";
     if (!row.shopify_order_id) {
       row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
@@ -7222,9 +7256,13 @@ app.patch("/api/orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
+    if (update.source !== undefined && !isCanonicalOrderSource(update.source)) {
+      return res.status(400).json({ error: "Invalid order source" });
+    }
+    if (update.source !== undefined) update.source = update.source.trim().toLowerCase();
     if (update.customer_name !== undefined && (typeof update.customer_name !== "string" || !update.customer_name.trim())) {
       return res.status(400).json({ error: "Customer name is required" });
     }
@@ -7365,12 +7403,17 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
       return res.status(500).json({ error: "Steadfast credentials not configured. Go to Settings → Integrations." });
     }
 
-    const { data: orders, error: fetchError } = await supabase
-      .from("orders")
-      .select("*")
-      .in("id", orderIds)
-      .eq("org_id", orgId);
-    if (fetchError) throw fetchError;
+    const orderRows = [];
+    for (const idBatch of chunkIds(orderIds)) {
+      const { data: batchOrders, error: fetchError } = await supabase
+        .from("orders")
+        .select("*")
+        .in("id", idBatch)
+        .eq("org_id", orgId);
+      if (fetchError) throw fetchError;
+      orderRows.push(...(batchOrders || []));
+    }
+    const orders = orderRows;
 
     const failures = [];
     const succeeded = [];
@@ -7859,7 +7902,9 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     const payload = req.body;
     const consignmentId = String(payload?.consignment_id || "");
     const status = payload?.status || payload?.delivery_status || "";
-    if (!consignmentId || !status) {
+    const trackingMessage = String(payload?.tracking_message || payload?.message || "").trim();
+    const effectiveStatus = String(status || trackingMessage).trim();
+    if (!consignmentId || !effectiveStatus) {
       return res.status(400).json({ error: "Missing consignment_id or status" });
     }
 
@@ -7888,12 +7933,15 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
       }
     }
 
-    const normalizedStatus = status.toLowerCase();
-    if (normalizedStatus === (order.courier_status || "").toLowerCase()) {
+    const normalizedStatus = effectiveStatus.toLowerCase();
+    if (!trackingMessage && normalizedStatus === (order.courier_status || "").toLowerCase()) {
       return res.status(200).json({ ok: true, skipped: "status unchanged" });
     }
 
-    const patch = { courier_status: status };
+    const patch = {
+      courier_status: status || "in_transit",
+      ...(trackingMessage ? { courier_message: trackingMessage } : {}),
+    };
     if (normalizedStatus === "delivered" || normalizedStatus === "partial_delivered") {
       patch.status = "confirmed";
       patch.fulfillment_status = "delivered";
@@ -11145,7 +11193,7 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
       price: subtotal,
       delivery_rate: shipping,
       status: "pending",
-      source: "storefront_review",
+      source: "website",
       warehouse_id: routing.warehouseId,
       warehouse_auto: true,
       weight_kg: routing.weightKg,
@@ -11301,6 +11349,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const items = body.items;
     const shippingZoneId = body.shippingZoneId ?? body.shipping_zone_id;
     const notes = body.notes;
+    const landingPagePath = normalizeLandingPagePath(body.landingPagePath ?? body.landing_page_path);
+    if ((body.landingPagePath !== undefined || body.landing_page_path !== undefined) && !landingPagePath) {
+      return res.status(400).json({ error: "Invalid landing page path" });
+    }
 
     // ── Validate required fields ─────────────────────────────────────────
     if (!customerName || typeof customerName !== "string") {
@@ -11497,7 +11549,8 @@ async function handlePublicHandleOrderSubmit(req, res) {
       price: subtotal,
       delivery_rate: shipping,
       status: "pending",
-      source: "storefront",
+      source: "website",
+      landing_page_path: landingPagePath,
       warehouse_id: routing.warehouseId,
       warehouse_auto: true,
       weight_kg: routing.weightKg,

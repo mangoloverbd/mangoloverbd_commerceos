@@ -44,6 +44,35 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("order protection pipeline", () => {
+  test("bypasses protection when ORDER_PROTECTION_MODE is off", async () => {
+    const previousMode = process.env.ORDER_PROTECTION_MODE;
+    process.env.ORDER_PROTECTION_MODE = "off";
+    const deps = dependencies({
+      validateAddress: vi.fn(),
+      verifyTurnstile: vi.fn(),
+    });
+
+    try {
+      const result = await protectOrderSubmission({
+        input: { ...input, website: "spam" },
+        requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
+        dependencies: deps,
+      });
+
+      expect(result.protection).toMatchObject({
+        decision: "ALLOW",
+        score: 0,
+        reasonCodes: [],
+      });
+      expect(result.fingerprint).toBeNull();
+      expect(deps.validateAddress).not.toHaveBeenCalled();
+      expect(deps.verifyTurnstile).not.toHaveBeenCalled();
+    } finally {
+      if (previousMode === undefined) delete process.env.ORDER_PROTECTION_MODE;
+      else process.env.ORDER_PROTECTION_MODE = previousMode;
+    }
+  });
+
   test("fails closed when the server-side hash secret is missing", async () => {
     const result = await protectOrderSubmission({
       input,

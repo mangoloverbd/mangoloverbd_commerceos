@@ -43,7 +43,8 @@ describe("print status wiring", () => {
     expect(server).toContain("data: JSON.stringify(");
     expect(server).toContain("normalizeBdPhone");
     expect(server).toContain("item_description");
-    expect(server).toContain('.in("id", orderIds)');
+    expect(server).toContain("chunkIds(orderIds)");
+    expect(server).toContain('.in("id", idBatch)');
     expect(server).toContain('.eq("org_id", orgId)');
     expect(server).toContain('sendBulkSms(orgId, "dispatch", updated)');
   });

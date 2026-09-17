@@ -67,7 +67,7 @@ function SectionHeader({
           title
         )}
       </h2>
-      <p className="mt-0.5 text-[13px] text-black/45">{subtitle}</p>
+      <p className="mt-0.5 text-[13px] text-black">{subtitle}</p>
     </div>
   );
 }
@@ -114,7 +114,7 @@ function StorefrontPreview({ settings }: { settings: StorefrontSettings }) {
               {name}
             </p>
             {settings.tagline && (
-              <p className="text-[11px] text-black/45 truncate">{settings.tagline}</p>
+              <p className="text-[11px] text-black truncate">{settings.tagline}</p>
             )}
           </div>
         </div>
@@ -130,7 +130,7 @@ function StorefrontPreview({ settings }: { settings: StorefrontSettings }) {
         <h3 className="text-[20px] font-light tracking-tight" style={{ color: accent }}>
           {settings.tagline || "Welcome to " + name}
         </h3>
-        <p className="mt-1 text-[12px] text-black/45">
+        <p className="mt-1 text-[12px] text-black">
           Browse our latest collection
         </p>
       </div>
@@ -161,13 +161,13 @@ function StorefrontPreview({ settings }: { settings: StorefrontSettings }) {
         className="px-5 py-4 text-center"
         style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}
       >
-        <div className="flex items-center justify-center gap-4 text-[11px] text-black/40">
+        <div className="flex items-center justify-center gap-4 text-[11px] text-black">
           {settings.socialFacebook && <span>Facebook</span>}
           {settings.socialInstagram && <span>Instagram</span>}
           {settings.socialTiktok && <span>TikTok</span>}
         </div>
         {(settings.contactPhone || settings.contactEmail) && (
-          <p className="mt-1 text-[10px] text-black/35">
+          <p className="mt-1 text-[10px] text-black">
             {[settings.contactPhone, settings.contactEmail].filter(Boolean).join(" · ")}
           </p>
         )}
@@ -289,7 +289,7 @@ export default function OnlineStore() {
               href={previewUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="mx-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-black/45 hover:text-black/70 transition-colors"
+              className="mx-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-black hover:text-black/70 transition-colors"
             >
               <ExternalLink size={12} />
               Open the live published storefront

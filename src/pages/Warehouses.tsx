@@ -18,9 +18,9 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
       transition={{ duration: 0.35 }}
       className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
     >
-      <p className="text-[8px] font-medium tracking-[0.3em] text-black/45 uppercase">{label}</p>
+      <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">{label}</p>
       <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
-      <p className="mt-0.5 text-[11px] text-black/40">{sub}</p>
+      <p className="mt-0.5 text-[11px] text-black">{sub}</p>
     </motion.div>
   );
 }
@@ -92,7 +92,7 @@ export default function Warehouses() {
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Warehouses</h1>
-            <p className="mt-1 max-w-2xl text-[13px] text-black/45">Inventory locations routing products and orders.</p>
+            <p className="mt-1 max-w-2xl text-[13px] text-black">Inventory locations routing products and orders.</p>
           </div>
           <RichButton type="button" onClick={openCreate} className="h-9 shrink-0 rounded-xl bg-black px-3 text-[11px] font-semibold text-white hover:bg-black">
             <Plus size={14} weight="light" /> New Warehouse
@@ -122,7 +122,7 @@ export default function Warehouses() {
         <div className="flex flex-col gap-3 border-b border-black/[0.07] py-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">
             <MagnifyingGlass weight="light" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input data-testid="input-search-warehouses" aria-label="Search warehouses" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search warehouses…" className="h-9 w-full rounded-full border-0 bg-black/[0.05] pl-9 pr-3 text-sm outline-none placeholder:text-black/35 focus:ring-1 focus:ring-black/20" />
+            <input data-testid="input-search-warehouses" aria-label="Search warehouses" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search warehouses…" className="h-9 w-full rounded-full border-0 bg-black/[0.05] pl-9 pr-3 text-sm outline-none placeholder:text-black focus:ring-1 focus:ring-black/20" />
           </div>
         </div>
 
@@ -158,7 +158,7 @@ export default function Warehouses() {
               </span>
               <p className="text-sm font-semibold text-foreground">No matching warehouses</p>
               <p className="mt-1 text-[12px] text-muted-foreground">Try a different search.</p>
-              <button type="button" onClick={() => setSearch("")} className="mt-2 text-[12px] font-medium text-black/45 underline underline-offset-4">Clear search</button>
+              <button type="button" onClick={() => setSearch("")} className="mt-2 text-[12px] font-medium text-black underline underline-offset-4">Clear search</button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -184,10 +184,10 @@ export default function Warehouses() {
                     }} className="group cursor-pointer border-b border-black/[0.02] transition-colors hover:bg-black/[0.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 focus-visible:ring-inset">
                       <td className="py-3 pl-4">
                         <div className="flex min-w-0 items-center gap-3">
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/[0.04] text-black/45"><Buildings size={19} weight="light" /></span>
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/[0.04] text-black"><Buildings size={19} weight="light" /></span>
                           <div className="min-w-0">
                             <p className="truncate font-medium text-sm tracking-tight">{warehouse.name}</p>
-                            <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-black/45"><MapPin size={12} weight="light" className="shrink-0" />{warehouse.address || "No address added"}</p>
+                            <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-black"><MapPin size={12} weight="light" className="shrink-0" />{warehouse.address || "No address added"}</p>
                           </div>
                         </div>
                       </td>
@@ -199,7 +199,7 @@ export default function Warehouses() {
                       </td>
                       <td className="py-3 text-center">
                         <span className="text-[13px] font-semibold tabular-nums text-black">{warehouse.product_count ?? 0}</span>
-                        <p className="text-[10px] text-black/35">assigned</p>
+                        <p className="text-[10px] text-black">assigned</p>
                       </td>
                       <td className="py-3 text-center">
                         <Chip variant="caption" color={warehouse.is_default ? "lime" : "cyan"} className="gap-1.5">
@@ -209,7 +209,7 @@ export default function Warehouses() {
                       </td>
                       <td className="py-3 pr-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button type="button" aria-label={`Edit ${warehouse.name}`} onClick={(event) => { event.stopPropagation(); openEdit(warehouse); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-black/40 transition-colors hover:bg-black/[0.05] hover:text-black"><PencilSimple size={15} weight="light" /></button>
+                          <button type="button" aria-label={`Edit ${warehouse.name}`} onClick={(event) => { event.stopPropagation(); openEdit(warehouse); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-black transition-colors hover:bg-black/[0.05] hover:text-black"><PencilSimple size={15} weight="light" /></button>
                           <button type="button" aria-label={`Delete ${warehouse.name}`} disabled={warehouse.is_default || deletingId === warehouse.id} title={warehouse.is_default ? "The default warehouse cannot be deleted" : `Delete ${warehouse.name}`} onClick={(event) => { event.stopPropagation(); void remove(warehouse); }} className="flex h-8 w-8 items-center justify-center rounded-lg text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-25"><Trash size={15} weight="light" /></button>
                         </div>
                       </td>

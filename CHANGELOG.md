@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.1.0.8] - 2026-09-17
+
+### Changed
+
+- Manual Create Order submissions save directly as Approved instead of Pending.
+
+## [0.1.0.7] - 2026-09-17
+
+### Fixed
+
+- Batch unbounded order id fetches that failed past URL limits, restoring the orders queue at higher order volumes.
+- Remove the AI district fallback; harden the built-in matcher for misspellings, Bengali unicode variants, inserted spaces, and Bengali area names.
+
+## [0.1.0.6] - 2026-09-17
+
+### Added
+
+- Add an Approved-tab district filter with per-district order counts and automatic AI resolution of unknown addresses that learns into org settings without touching order data.
+
+## [0.1.0.5] - 2026-09-17
+
+### Added
+
+- Add a Packing Summary print action to the Dashboard Print tab: per-product/pack totals with order counts, total kg, and tick boxes, plus a multi-item exception list with order IDs and ticks.
+
+## [0.1.0.4] - 2026-09-14
+
+### Added
+
+- Let staff choose an order source when creating an order and edit it later, including after courier dispatch.
+
+### Changed
+
+- Validate canonical order sources, normalize legacy Website values, and preserve source metadata across storefront order flows.
+
+## [0.1.0.3] - 2026-09-14
+
+### Changed
+
+- Add a reversible `ORDER_PROTECTION_MODE=off` switch for temporarily bypassing storefront order protection.
+
+## [0.1.0.2] - 2026-09-13
+
+### Changed
+
+- Prepare fresh Amp orbs with the pinned Node.js toolchain, cached npm dependencies, and PostgreSQL test tools.
+
+## [0.1.0.1] - 2026-09-13
+
+### Changed
+
+- Hide the Ready To Ship tab from Dashboard and Warehouse Detail.
+- Classify dispatched Steadfast orders into Processing, In-Transit, or Flagged while showing their consignment ID in Processing.
+
 ## [0.1.0.0] - 2026-09-13
 
 ### Added
@@ -12,6 +66,7 @@
 ### Fixed
 
 - Apply the standard ৳100 delivery charge to public storefront orders below the free-delivery threshold when no shipping zone is selected.
+
 
 ## [0.0.2.4] - 2026-09-12
 
