@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useOrgName } from "@/hooks/useOrgName";
 import { useLiveVisitors } from "@/hooks/useLiveVisitors";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { Select, SelectItem } from "@/components/base/select/select";
@@ -29,7 +30,7 @@ import {
   Search, AlertTriangle,
   Info, Check, X, Plus,
 } from "lucide-react";
-import { CaretDown } from "@phosphor-icons/react";
+import { CaretDown, Printer } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -512,6 +513,7 @@ export default function Dashboard() {
   const [orderPageSize, setOrderPageSize] = useOrderPageSize("dashboard-order-page-size");
   const [orderPage, setOrderPage] = useState(0);
   const { isAdmin, loading: roleLoading } = useUserRole();
+  const { orgName } = useOrgName();
   const liveVisitors = useLiveVisitors();
   const isMobile = useIsMobile();
 
@@ -1001,6 +1003,17 @@ export default function Dashboard() {
     [abandonedCheckouts, debouncedSearch],
   );
 
+  const handlePackingSummary = async () => {
+    if (filteredOrders.length === 0) return;
+    try {
+      const { printPackingSummary } = await import("@/utils/packingSummaryPrinter");
+      printPackingSummary(filteredOrders, orgName);
+    } catch (error) {
+      console.error("Packing summary printing failed:", error);
+      toast.error("Failed to prepare packing summary for printing");
+    }
+  };
+
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
   const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / orderPageSize));
@@ -1439,6 +1452,20 @@ export default function Dashboard() {
             </Select>
 
             <div className="w-px h-4 bg-black/10" />
+
+            {!isAbandonedQueue && activeOrderStatusFilter === "print" && (
+              <PopButton
+                color="sky"
+                size="sm"
+                onClick={() => void handlePackingSummary()}
+                disabled={filteredOrders.length === 0}
+                className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
+                data-testid="button-packing-summary"
+              >
+                <Printer weight="light" className="h-3.5 w-3.5" />
+                Packing Summary
+              </PopButton>
+            )}
 
             <PopButton
               color="yellow"
