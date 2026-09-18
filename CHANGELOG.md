@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0.10] - 2026-09-19
+
+### Changed
+
+- Review staff performance in a full-width, ranked regular-order card queue with team snapshots, color-coded outcome counts, and expandable operational detail.
+- Keep Social Inbox metrics out of the Staff Performance page while preserving the underlying report response for future reporting work.
+- Show the Dashboard / Staff Performance breadcrumb and a streamlined Staff Performance page header.
+
 ## [0.1.0.9] - 2026-09-18
 
 ### Added
