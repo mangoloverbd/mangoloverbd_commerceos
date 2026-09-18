@@ -44,6 +44,7 @@ const runtimeTables = Object.freeze([
   "abandoned_checkouts",
   "order_protection_events",
   "order_protection_reviews",
+  "order_status_events",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
@@ -226,6 +227,9 @@ begin
   if not has_table_privilege('service_role', 'public.meta_connections', 'select,insert,update,delete') then
     raise exception 'service_role lacks server-table privileges';
   end if;
+  if not has_table_privilege('service_role', 'public.order_status_events', 'select,insert') then
+    raise exception 'service_role lacks order status event privileges';
+  end if;
   if not exists (
     select 1 from storage.buckets
     where id = 'product-images'
@@ -241,6 +245,12 @@ begin
       ('orders', 'courier_fee'),
       ('orders', 'abandoned_checkout_id'),
       ('orders', 'abandoned_draft_key_hash'),
+      ('orders', 'created_by'),
+      ('orders', 'assigned_to'),
+      ('orders', 'confirmed_by'),
+      ('orders', 'confirmed_at'),
+      ('orders', 'cancelled_by'),
+      ('orders', 'cancelled_at'),
       ('abandoned_checkouts', 'draft_key'),
       ('abandoned_checkouts', 'expires_at'),
       ('products', 'selling_price'),
@@ -250,7 +260,22 @@ begin
       ('product_variants', 'attributes'),
       ('storefront_settings', 'shipping_zones'),
       ('social_conversations', 'order_fields'),
-      ('social_inbox_orders', 'courier_name')
+      ('social_inbox_orders', 'courier_name'),
+      ('social_inbox_orders', 'created_by'),
+      ('social_inbox_orders', 'assigned_to'),
+      ('social_inbox_orders', 'confirmed_by'),
+      ('social_inbox_orders', 'confirmed_at'),
+      ('social_inbox_orders', 'cancelled_by'),
+      ('social_inbox_orders', 'cancelled_at'),
+      ('user_roles', 'display_name'),
+      ('order_status_events', 'org_id'),
+      ('order_status_events', 'order_id'),
+      ('order_status_events', 'order_table'),
+      ('order_status_events', 'from_status'),
+      ('order_status_events', 'to_status'),
+      ('order_status_events', 'actor_id'),
+      ('order_status_events', 'actor_kind'),
+      ('order_status_events', 'created_at')
     except
     select table_name, column_name
     from information_schema.columns
