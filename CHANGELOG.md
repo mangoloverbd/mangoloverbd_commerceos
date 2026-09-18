@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.9] - 2026-09-18
+
+### Added
+
+- Attribute manually created and social inbox orders to the staff member who creates, is assigned, confirms, or cancels them, with immutable status-transition history.
+- Add the Staff Performance report with role-safe staff filtering, Dhaka-local date ranges, and separate regular-order and social-inbox metrics.
+
+### Fixed
+
+- Keep staff reporting accurate for historical activity, courier-driven status changes, malformed legacy inbox items, and high-volume report queries.
+
 ## [0.1.0.8] - 2026-09-17
 
 ### Changed

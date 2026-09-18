@@ -1,6 +1,8 @@
 // AI action tool schemas, dispatcher, and helpers for Order Chat mutations.
 // Imported by server/index.js. Pure logic lives here so it's unit-testable.
 
+import { buildAttributionPatch } from "./orderAttribution.js";
+
 export const AI_ACTION_TOOLS = [
   {
     type: "function",
@@ -480,11 +482,26 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       const update = {};
       for (const k of allowed) if (args.fields?.[k] != null) update[k] = args.fields[k];
       if (!Object.keys(update).length) throw new Error("Nothing to update");
-      const { error: updErr } = await supabase
-        .from("orders").update(update).eq("id", before.id).eq("org_id", orgId);
-      if (updErr) throw updErr;
-      const { data, error } = await supabase.from("orders").select("*").eq("id", before.id).eq("org_id", orgId).single();
+
+      if (update.status !== undefined) {
+        Object.assign(update, buildAttributionPatch({
+          fromStatus: before.status,
+          toStatus: update.status,
+          actorId: userId,
+          actorKind: "user",
+          now: new Date().toISOString(),
+        }));
+      }
+
+      const { data, error } = await supabase
+        .from("orders")
+        .update(update)
+        .eq("id", before.id)
+        .eq("org_id", orgId)
+        .select("*")
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error("Order not found in your organization");
       return { before, after: data };
     }
 

@@ -18,7 +18,7 @@ describe("order routing wiring", () => {
     expect(source).toContain("resolveWarehouseId");
     expect(source).toContain("computeOrderWeightKg");
     expect(source.match(/async function resolveOrderRouting\(/g)).toHaveLength(1);
-    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(7);
+    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(9);
   });
 
   it("org-scopes every routing lookup and throws lookup errors", () => {
@@ -319,5 +319,48 @@ describe("order routing wiring", () => {
     expect(socialCapture).toContain("warehouse_id: routing.warehouseId");
     expect(socialCapture).toContain("warehouse_auto: true");
     expect(socialCapture).toContain("weight_kg: routing.weightKg");
+  });
+
+  it("preserves only exact, workspace-verified product IDs on every social item write path", () => {
+    const normalizer = sectionBetween(
+      "async function normalizeSocialInboxItems",
+      "async function saveMetaInboxOrder",
+    );
+    const socialCapture = sectionBetween(
+      "async function saveMetaInboxOrder",
+      "// ─── Platform send helpers",
+    );
+    const metaHandler = sectionBetween(
+      "async function handleMetaMessage",
+      "// ─── Order capture: pre-filter",
+    );
+    const inboxPatch = sectionBetween(
+      'app.patch("/api/social/inbox-orders/:id"',
+      'app.delete("/api/social/inbox-orders/:id"',
+    );
+
+    expect(normalizer).toContain('.from("products")');
+    expect(normalizer).toContain('.eq("org_id", orgId)');
+    expect(normalizer).toContain("product_id");
+    expect(normalizer).toContain("normalizeOrderProductName");
+    expect(normalizer).toContain("ambiguousProductNames");
+    expect(socialCapture).toContain("await normalizeSocialInboxItems(supabase, orgId, items)");
+    expect(metaHandler).toContain("await normalizeSocialInboxItems(supabase, orgId, items)");
+    expect(inboxPatch).toContain("await normalizeSocialInboxItems(supabase, orgId, update.items)");
+    expect(metaHandler).toContain("weight_kg: routing.weightKg");
+    expect(inboxPatch).toContain("update.weight_kg = routing.weightKg");
+  });
+
+  it("bounds and allowlists social inbox items before resolving them against the catalog", () => {
+    const normalizer = sectionBetween(
+      "async function normalizeSocialInboxItems",
+      "async function saveMetaInboxOrder",
+    );
+
+    expect(normalizer).toContain("MAX_SOCIAL_INBOX_ITEMS");
+    expect(normalizer).toContain("if (!Array.isArray(items)) return []");
+    expect(normalizer).toMatch(/if \(items\.length > MAX_SOCIAL_INBOX_ITEMS\)[\s\S]*?const list = items\.map\(sanitizeSocialInboxItem\)/);
+    expect(normalizer).toContain("sanitizeSocialInboxItem");
+    expect(source).toContain("SOCIAL_INBOX_ITEM_FIELDS");
   });
 });

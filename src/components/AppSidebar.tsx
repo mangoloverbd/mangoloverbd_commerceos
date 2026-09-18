@@ -152,8 +152,22 @@ export function AppSidebar() {
             ],
         };
 
+        const reports: NavSection = {
+            label: "Reports",
+            collapsible: true,
+            routes: [
+                {
+                    id: "staff-performance",
+                    title: "Staff Performance",
+                    icon: <ChartLineUp size={15} weight="light" className={iconCls} />,
+                    link: "/reports/staff",
+                },
+            ],
+        };
+
         const sections = [product];
         sections.push(workspace);
+        sections.push(reports);
         sections.push(socialInbox);
         return sections;
     }, [isAdmin]);
