@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -161,6 +161,29 @@ describe("StaffPerformance", () => {
     expect(teamList).toHaveClass("grid-cols-1");
     expect(teamList).not.toHaveClass("md:grid-cols-2");
     expect(teamList).not.toHaveClass("xl:grid-cols-3");
+  });
+
+  it("highlights regular-order outcomes with colorful chips", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [
+        reportRow({
+          orders: metrics({
+            assigned_count: 4,
+            delivered_count: 3,
+            cancelled_count: 2,
+            returned_count: 1,
+          }),
+        }),
+      ],
+    })));
+
+    renderPage();
+
+    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
+    expect(within(card).getByText("Assigned 4")).toHaveClass("bg-status-blue-background");
+    expect(within(card).getByText("Delivered 3")).toHaveClass("bg-status-lime-background");
+    expect(within(card).getByText("Cancelled 2")).toHaveClass("bg-status-rose-background");
+    expect(within(card).getByText("RTO 1")).toHaveClass("bg-status-yellow-background");
   });
 
   it("expands regular-order staff details inline", async () => {

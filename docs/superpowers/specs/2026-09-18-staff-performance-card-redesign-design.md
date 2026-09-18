@@ -74,8 +74,9 @@ not averages of the staff-level percentages.
 - Each card shows the staff member name, former-staff marker when appropriate,
   confirmed order count, confirmation rate, and confirmed value as the primary
   ranking figure.
-- Include a compact outcome line for assigned, delivered, cancelled, and RTO
-  work so operators can compare staff without expanding every card.
+- Include a compact row of color-coded BoardUI chips for assigned (blue),
+  delivered (lime), cancelled (rose), and RTO (yellow) work so operators can
+  compare staff without expanding every card.
 - A card is an accessible disclosure control. Activating it expands details
   inline in the same card, with `aria-expanded` and a meaningful label.
 - The inline detail reveals the regular-order operational metrics already

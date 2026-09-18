@@ -276,6 +276,7 @@ In `src/pages/StaffPerformance.tsx`:
 3. Add focused page-local components:
    - `SnapshotCard` for the four top-level metrics.
    - `StaffPerformanceCard` for one regular-order row and its inline disclosure detail.
+   - A row of BoardUI `Chip` components for Assigned (blue), Delivered (lime), Cancelled (rose), and RTO (yellow) outcome counts.
    - A small grouped detail grid inside the expanded card for Assigned, Confirmed, Cancelled, Delivered, and Return/RTO values; retain confirmed product rows below it.
 4. Derive `rankedRows` and `snapshot` with `useMemo`:
 

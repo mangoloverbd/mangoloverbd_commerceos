@@ -12,6 +12,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { Chip } from "@/components/base/badges/chip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Button } from "@/components/ui/button";
@@ -289,9 +290,12 @@ function StaffPerformanceCard({
       </div>
 
       <div className="mx-5 border-t border-black/[0.08]" />
-      <p className="px-5 py-3 text-[10px] leading-relaxed text-black/60">
-        Assigned {formatNumber(metrics.assigned_count)} · Delivered {formatNumber(metrics.delivered_count)} · Cancelled {formatNumber(metrics.cancelled_count)} · RTO {formatNumber(metrics.returned_count)}
-      </p>
+      <div className="flex flex-wrap gap-1.5 px-5 py-3">
+        <Chip variant="caption" color="blue" className="gap-1 tabular-nums">Assigned {formatNumber(metrics.assigned_count)}</Chip>
+        <Chip variant="caption" color="lime" className="gap-1 tabular-nums">Delivered {formatNumber(metrics.delivered_count)}</Chip>
+        <Chip variant="caption" color="rose" className="gap-1 tabular-nums">Cancelled {formatNumber(metrics.cancelled_count)}</Chip>
+        <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">RTO {formatNumber(metrics.returned_count)}</Chip>
+      </div>
 
       <AnimatePresence initial={false}>
         {expanded && (
