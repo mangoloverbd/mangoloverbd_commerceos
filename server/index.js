@@ -1232,6 +1232,32 @@ async function getAuthUserEmail(supabase, userId) {
   }
 }
 
+// Minimal authenticated roster for the New Order assignee selector.
+app.get("/api/staff", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("user_id, display_name")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+
+    return res.json({
+      staff: (data || []).map((member) => ({
+        user_id: member.user_id,
+        display_name: member.display_name || "Unnamed member",
+      })),
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 app.get("/api/team-members", async (req, res) => {
   try {
     const admin = await requireAdmin(req, res);
@@ -1240,7 +1266,7 @@ app.get("/api/team-members", async (req, res) => {
 
     const { data: roles, error } = await supabase
       .from("user_roles")
-      .select("id, user_id, role, org_id, created_at")
+      .select("id, user_id, role, org_id, display_name, created_at")
       .eq("org_id", orgId)
       .order("created_at", { ascending: true });
 
@@ -1282,7 +1308,7 @@ async function createTeamMemberHandler(req, res) {
         { user_id: newUser.user.id, role: "team_member", org_id: orgId },
         { onConflict: "user_id" }
       )
-      .select("id, user_id, role, org_id, created_at")
+      .select("id, user_id, role, org_id, display_name, created_at")
       .single();
 
     if (roleError) throw roleError;
@@ -1301,6 +1327,34 @@ async function createTeamMemberHandler(req, res) {
 
 app.post("/api/team-members", createTeamMemberHandler);
 app.post("/api/create-team-member", createTeamMemberHandler);
+
+app.patch("/api/team-members/:id", async (req, res) => {
+  try {
+    const admin = await requireAdmin(req, res);
+    if (!admin) return;
+    const { supabase, orgId } = admin;
+
+    const raw = req.body?.display_name;
+    if (raw !== null && typeof raw !== "string") {
+      return res.status(400).json({ error: "display_name must be text or null" });
+    }
+    const displayName = raw === null ? null : raw.trim().slice(0, 80) || null;
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .update({ display_name: displayName })
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .select("id, user_id, display_name")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Team member not found" });
+
+    return res.json({ success: true, member: data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
 
 app.delete("/api/team-members/:id", async (req, res) => {
   try {
