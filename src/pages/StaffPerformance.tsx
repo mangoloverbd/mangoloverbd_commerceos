@@ -1,60 +1,30 @@
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth } from "date-fns";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { DateRange } from "react-day-picker";
 import { Link } from "react-router-dom";
 import {
+  ArrowsClockwise,
   CaretDown,
   CaretRight,
   Funnel,
   WarningCircle,
-  ArrowsClockwise,
 } from "@phosphor-icons/react";
-import { apiFetch } from "@/lib/api";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/base/badges/chip";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/ios-spinner";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { apiFetch } from "@/lib/api";
+import {
+  buildStaffPerformanceSnapshot,
+  sortStaffPerformanceRows,
+  type StaffMetrics,
+  type StaffRow,
+} from "@/lib/staffPerformancePresentation";
 import { cn } from "@/lib/utils";
-
-type ProductDetail = {
-  product_id: string | null;
-  product_name: string;
-  packs: number;
-  kg: number;
-};
-
-type StaffMetrics = {
-  assigned_count: number;
-  confirmed_count: number;
-  confirmed_assigned_count: number;
-  confirmed_value: number;
-  confirmed_kg: number;
-  confirmation_rate: number | null;
-  average_order_value: number | null;
-  cancelled_count: number;
-  cancelled_assigned_count: number;
-  cancelled_value: number;
-  cancellation_rate: number | null;
-  delivered_count: number;
-  delivered_value: number;
-  delivered_rate: number | null;
-  returned_count: number;
-  returned_value: number;
-  telesales_confirmed_count: number;
-  telesales_confirmed_value: number;
-  telesales_confirmed_kg: number;
-  products: ProductDetail[];
-};
-
-type StaffRow = {
-  user_id: string;
-  display_name: string;
-  is_active: boolean;
-  orders: StaffMetrics;
-  social_inbox_orders: StaffMetrics;
-};
 
 type StaffOption = {
   user_id: string;
@@ -68,12 +38,6 @@ type StaffReportResponse = {
   selected_user_ids: string[];
   rows: StaffRow[];
   missing_weight_products: Array<{ id: string; name: string }>;
-};
-
-type Column = {
-  group: string;
-  label: string;
-  value: (metrics: StaffMetrics) => string;
 };
 
 function dhakaToday(): Date {
@@ -97,49 +61,6 @@ function formatRate(value: number | null) {
 
 function formatNumber(value: number) {
   return Number(value || 0).toLocaleString("en-BD");
-}
-
-const orderColumns: Column[] = [
-  { group: "Assigned", label: "Work", value: (metrics) => formatNumber(metrics.assigned_count) },
-  { group: "Assigned", label: "Confirm rate", value: (metrics) => formatRate(metrics.confirmation_rate) },
-  { group: "Confirmed", label: "Orders", value: (metrics) => formatNumber(metrics.confirmed_count) },
-  { group: "Confirmed", label: "Value", value: (metrics) => formatTaka(metrics.confirmed_value) },
-  { group: "Confirmed", label: "Weight", value: (metrics) => formatKg(metrics.confirmed_kg) },
-  { group: "Confirmed", label: "AOV", value: (metrics) => metrics.average_order_value === null ? "—" : formatTaka(metrics.average_order_value) },
-  { group: "Cancelled", label: "Orders", value: (metrics) => formatNumber(metrics.cancelled_count) },
-  { group: "Cancelled", label: "Value", value: (metrics) => formatTaka(metrics.cancelled_value) },
-  { group: "Cancelled", label: "Cancel rate", value: (metrics) => formatRate(metrics.cancellation_rate) },
-  { group: "Delivered", label: "Orders", value: (metrics) => formatNumber(metrics.delivered_count) },
-  { group: "Delivered", label: "Value", value: (metrics) => formatTaka(metrics.delivered_value) },
-  { group: "Delivered", label: "Rate", value: (metrics) => formatRate(metrics.delivered_rate) },
-  { group: "Return/RTO", label: "Orders", value: (metrics) => formatNumber(metrics.returned_count) },
-  { group: "Return/RTO", label: "Value", value: (metrics) => formatTaka(metrics.returned_value) },
-  { group: "Telesales", label: "Confirmed", value: (metrics) => formatNumber(metrics.telesales_confirmed_count) },
-  { group: "Telesales", label: "Value", value: (metrics) => formatTaka(metrics.telesales_confirmed_value) },
-  { group: "Telesales", label: "Weight", value: (metrics) => formatKg(metrics.telesales_confirmed_kg) },
-];
-
-const socialColumns: Column[] = [
-  { group: "Confirmed", label: "Orders", value: (metrics) => formatNumber(metrics.confirmed_count) },
-  { group: "Confirmed", label: "Value", value: (metrics) => formatTaka(metrics.confirmed_value) },
-  { group: "Confirmed", label: "Weight", value: (metrics) => formatKg(metrics.confirmed_kg) },
-  { group: "Confirmed", label: "AOV", value: (metrics) => metrics.average_order_value === null ? "—" : formatTaka(metrics.average_order_value) },
-  { group: "Cancelled", label: "Orders", value: (metrics) => formatNumber(metrics.cancelled_count) },
-  { group: "Cancelled", label: "Value", value: (metrics) => formatTaka(metrics.cancelled_value) },
-  { group: "Delivered", label: "Orders", value: (metrics) => formatNumber(metrics.delivered_count) },
-  { group: "Delivered", label: "Value", value: (metrics) => formatTaka(metrics.delivered_value) },
-  { group: "Delivered", label: "Rate", value: (metrics) => formatRate(metrics.delivered_rate) },
-  { group: "Return/RTO", label: "Orders", value: (metrics) => formatNumber(metrics.returned_count) },
-  { group: "Return/RTO", label: "Value", value: (metrics) => formatTaka(metrics.returned_value) },
-];
-
-function groupedColumns(columns: Column[]) {
-  return columns.reduce<Array<{ label: string; count: number }>>((groups, column) => {
-    const previous = groups[groups.length - 1];
-    if (previous?.label === column.group) previous.count += 1;
-    else groups.push({ label: column.group, count: 1 });
-    return groups;
-  }, []);
 }
 
 function StaffFilter({
@@ -209,110 +130,220 @@ function StaffFilter({
   );
 }
 
-function ReportTable({
-  title,
+function SnapshotCard({
+  label,
+  value,
   description,
-  rows,
-  columns,
-  metricsKey,
+  testId,
+  delay,
+  reduceMotion,
+}: {
+  label: string;
+  value: string;
+  description: string;
+  testId: string;
+  delay: number;
+  reduceMotion: boolean | null;
+}) {
+  return (
+    <motion.div
+      data-testid={testId}
+      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: reduceMotion ? 0 : delay, duration: 0.35 }}
+      className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
+    >
+      <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{label}</p>
+      <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
+      <p className="mt-0.5 text-[11px] text-black">{description}</p>
+    </motion.div>
+  );
+}
+
+function DetailGroup({
+  title,
+  items,
 }: {
   title: string;
-  description?: string;
-  rows: StaffRow[];
-  columns: Column[];
-  metricsKey: "orders" | "social_inbox_orders";
+  items: Array<{ label: string; value: string }>;
 }) {
-  const [expandedIds, setExpandedIds] = useState<string[]>([]);
-  const groups = groupedColumns(columns);
-  const isSocial = metricsKey === "social_inbox_orders";
-  const toggle = (userId: string) => setExpandedIds((current) => (
-    current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId]
-  ));
+  return (
+    <div className="rounded-xl bg-white p-3">
+      <p className="text-[8px] font-medium uppercase tracking-[0.25em] text-black/60">{title}</p>
+      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+        {items.map((item) => (
+          <div key={item.label}>
+            <dt className="text-[10px] text-black/55">{item.label}</dt>
+            <dd className="mt-0.5 text-[12px] font-medium tabular-nums text-black">{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function StaffPerformanceCard({
+  row,
+  index,
+  reduceMotion,
+}: {
+  row: StaffRow;
+  index: number;
+  reduceMotion: boolean | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const metrics = row.orders;
+  const detailsId = `staff-performance-details-${row.user_id}`;
+  const action = expanded ? "Hide" : "Show";
+  const detailGroups: Array<{ title: string; items: Array<{ label: string; value: string }> }> = [
+    {
+      title: "Assigned",
+      items: [
+        { label: "Work", value: formatNumber(metrics.assigned_count) },
+        { label: "Confirmation rate", value: formatRate(metrics.confirmation_rate) },
+      ],
+    },
+    {
+      title: "Confirmed",
+      items: [
+        { label: "Orders", value: formatNumber(metrics.confirmed_count) },
+        { label: "Value", value: formatTaka(metrics.confirmed_value) },
+        { label: "Weight", value: formatKg(metrics.confirmed_kg) },
+        { label: "AOV", value: metrics.average_order_value === null ? "—" : formatTaka(metrics.average_order_value) },
+      ],
+    },
+    {
+      title: "Cancelled",
+      items: [
+        { label: "Orders", value: formatNumber(metrics.cancelled_count) },
+        { label: "Value", value: formatTaka(metrics.cancelled_value) },
+        { label: "Cancellation rate", value: formatRate(metrics.cancellation_rate) },
+      ],
+    },
+    {
+      title: "Delivered",
+      items: [
+        { label: "Orders", value: formatNumber(metrics.delivered_count) },
+        { label: "Value", value: formatTaka(metrics.delivered_value) },
+        { label: "Delivered rate", value: formatRate(metrics.delivered_rate) },
+      ],
+    },
+    {
+      title: "Return / RTO",
+      items: [
+        { label: "Orders", value: formatNumber(metrics.returned_count) },
+        { label: "Value", value: formatTaka(metrics.returned_value) },
+      ],
+    },
+    {
+      title: "Telesales",
+      items: [
+        { label: "Confirmed", value: formatNumber(metrics.telesales_confirmed_count) },
+        { label: "Value", value: formatTaka(metrics.telesales_confirmed_value) },
+        { label: "Weight", value: formatKg(metrics.telesales_confirmed_kg) },
+      ],
+    },
+  ];
 
   return (
-    <section aria-labelledby={`${metricsKey}-heading`} className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-2">
+    <motion.article
+      data-testid={`staff-performance-card-${row.user_id}`}
+      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: reduceMotion ? 0 : Math.min(index * 0.04, 0.2), duration: 0.3 }}
+      className="overflow-hidden rounded-2xl bg-black/[0.04] transition-colors hover:bg-black/[0.055]"
+    >
+      <button
+        type="button"
+        aria-label={`${action} details for ${row.display_name}`}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        onClick={() => setExpanded((current) => !current)}
+        className="group flex w-full items-start justify-between gap-4 px-5 pb-3 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/25"
+      >
+        <span className="min-w-0">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[15px] font-semibold tracking-tight text-black">
+              {row.display_name}{!row.is_active ? " · Former staff" : ""}
+            </span>
+          </span>
+          <span className="mt-1 block text-[11px] text-black/60">Ranked by confirmed value</span>
+        </span>
+        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-black/60 transition-colors group-hover:text-black">
+          {expanded ? <CaretDown size={15} weight="light" /> : <CaretRight size={15} weight="light" />}
+        </span>
+      </button>
+
+      <div className="grid grid-cols-3 gap-2 px-5 pb-4">
         <div>
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Performance</p>
-          <h2 id={`${metricsKey}-heading`} className="mt-1 text-xl font-light text-black">{title}</h2>
+          <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Confirmed</p>
+          <p className="mt-1 text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatNumber(metrics.confirmed_count)}</p>
         </div>
-        {description && <p className="text-[11px] text-black/60">{description}</p>}
+        <div>
+          <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Rate</p>
+          <p className="mt-1 text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatRate(metrics.confirmation_rate)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Value</p>
+          <p className="mt-1 truncate text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatTaka(metrics.confirmed_value)}</p>
+        </div>
       </div>
-      <div className="overflow-x-auto border-y border-black/[0.08]">
-        <table className="min-w-max w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-black/[0.08]">
-              <th rowSpan={2} className="sticky left-0 z-10 min-w-48 bg-[#FAFAF8] px-3 py-2 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Staff</th>
-              {groups.map((group) => (
-                <th key={group.label} colSpan={group.count} className="border-l border-black/[0.06] px-3 py-2 text-center text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">
-                  {group.label}
-                </th>
-              ))}
-            </tr>
-            <tr className="border-b border-black/[0.08]">
-              {columns.map((column) => (
-                <th key={`${column.group}-${column.label}`} className="border-l border-black/[0.06] px-3 py-2 text-right text-[8px] font-medium uppercase tracking-[0.2em] text-black/60">
-                  {column.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const metrics = row[metricsKey];
-              const expanded = expandedIds.includes(row.user_id);
-              const action = expanded ? "Hide" : "Show";
-              const detailLabel = `${action} ${isSocial ? "social" : "order"} products for ${row.display_name}`;
-              return (
-                <Fragment key={row.user_id}>
-                  <tr className="border-b border-black/[0.06] hover:bg-black/[0.015]">
-                    <td className="sticky left-0 z-10 bg-[#FAFAF8] px-3 py-2.5 align-top">
-                      <button
-                        type="button"
-                        aria-label={detailLabel}
-                        aria-expanded={expanded}
-                        onClick={() => toggle(row.user_id)}
-                        className="flex items-center gap-1.5 text-left text-[12px] font-medium text-black hover:text-black/60"
+
+      <div className="mx-5 border-t border-black/[0.08]" />
+      <div className="flex flex-wrap gap-1.5 px-5 py-3">
+        <Chip variant="caption" color="blue" className="gap-1 tabular-nums">Assigned {formatNumber(metrics.assigned_count)}</Chip>
+        <Chip variant="caption" color="lime" className="gap-1 tabular-nums">Delivered {formatNumber(metrics.delivered_count)}</Chip>
+        <Chip variant="caption" color="rose" className="gap-1 tabular-nums">Cancelled {formatNumber(metrics.cancelled_count)}</Chip>
+        <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">RTO {formatNumber(metrics.returned_count)}</Chip>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            id={detailsId}
+            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+            transition={{ duration: reduceMotion ? 0 : 0.22, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-black/[0.08] px-5 py-4">
+              <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Operational detail</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {detailGroups.map((group) => <DetailGroup key={group.title} {...group} />)}
+              </div>
+
+              <div className="mt-4">
+                <div className="flex items-center gap-2">
+                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Confirmed products</p>
+                  <div className="h-px flex-1 bg-black/[0.08]" />
+                </div>
+                {metrics.products.length === 0 ? (
+                  <p className="mt-3 text-[11px] text-black/60">No confirmed product items in this range.</p>
+                ) : (
+                  <div className="mt-3 grid gap-2">
+                    {metrics.products.map((product) => (
+                      <div
+                        key={`${row.user_id}-${product.product_id || product.product_name}`}
+                        className="flex min-w-0 items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5"
                       >
-                        {expanded ? <CaretDown size={13} weight="light" /> : <CaretRight size={13} weight="light" />}
-                        <span>{row.display_name}{!row.is_active ? " · Former staff" : ""}</span>
-                      </button>
-                    </td>
-                    {columns.map((column) => (
-                      <td key={`${row.user_id}-${column.group}-${column.label}`} className="border-l border-black/[0.04] px-3 py-2.5 text-right text-[11px] tabular-nums text-black/70">
-                        {column.value(metrics)}
-                      </td>
+                        <span className="truncate text-[11px] font-medium text-black">{product.product_name}</span>
+                        <span className="shrink-0 text-[10px] tabular-nums text-black/60">{formatNumber(product.packs)} packs · {formatKg(product.kg)}</span>
+                      </div>
                     ))}
-                  </tr>
-                  {expanded && (
-                    <tr className="border-b border-black/[0.06] bg-black/[0.015]">
-                      <td colSpan={columns.length + 1} className="px-6 py-3">
-                        {metrics.products.length === 0 ? (
-                          <p className="text-[11px] text-black/60">No confirmed product items in this range.</p>
-                        ) : (
-                          <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                            {metrics.products.map((product) => (
-                              <div key={`${row.user_id}-${product.product_id || product.product_name}`} className="flex items-center justify-between gap-3 py-1 text-[11px]">
-                                <span className="truncate text-black/70">{product.product_name}</span>
-                                <span className="shrink-0 tabular-nums text-black/60">{formatNumber(product.packs)} packs · {formatKg(product.kg)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.article>
   );
 }
 
 export default function StaffPerformance() {
+  const reduceMotion = useReducedMotion();
   const defaultRange = useMemo<DateRange>(() => {
     const today = dhakaToday();
     return { from: startOfMonth(today), to: today };
@@ -342,6 +373,15 @@ export default function StaffPerformance() {
     },
   });
 
+  const rankedRows = useMemo(
+    () => reportQuery.data ? sortStaffPerformanceRows(reportQuery.data.rows) : [],
+    [reportQuery.data],
+  );
+  const snapshot = useMemo(
+    () => buildStaffPerformanceSnapshot(rankedRows),
+    [rankedRows],
+  );
+
   if (reportQuery.isLoading) {
     return (
       <div className="flex min-h-[calc(100vh-96px)] items-center justify-center bg-[#FAFAF8]">
@@ -367,34 +407,76 @@ export default function StaffPerformance() {
   const data = reportQuery.data;
   const missingWeightPreview = data.missing_weight_products.slice(0, 3);
   const remainingMissingWeightCount = data.missing_weight_products.length - missingWeightPreview.length;
+
   return (
-    <div className="min-h-full space-y-8 bg-[#FAFAF8] p-1 lg:p-2">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Reports</p>
-          <h1 className="mt-1 text-2xl font-light text-black">Staff Performance</h1>
-          <p className="mt-1 text-[11px] text-black/60">Human-attributed confirmation and cancellation work, using Asia/Dhaka dates.</p>
+    <div className="min-h-full space-y-6 bg-[#FAFAF8] p-1 lg:p-2">
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="space-y-4"
+      >
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Staff Performance</h1>
+            <p className="mt-1 max-w-2xl text-[13px] text-black/60">Human-attributed regular-order performance, using Asia/Dhaka dates.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {data.available_staff.length > 1 && (
+              <StaffFilter
+                staff={data.available_staff}
+                selectedUserIds={selectedUserIds}
+                onChange={setSelectedUserIds}
+              />
+            )}
+            <DateRangePicker value={dateRange} onChange={setDateRange} />
+            <button
+              type="button"
+              aria-label="Refresh report"
+              onClick={() => reportQuery.refetch()}
+              disabled={reportQuery.isFetching}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-black/50 transition-colors hover:bg-black/[0.05] hover:text-black disabled:opacity-40"
+            >
+              <ArrowsClockwise size={17} weight="light" className={reportQuery.isFetching ? "animate-spin" : ""} />
+            </button>
+          </div>
+        </header>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <SnapshotCard
+            label="Confirmed value"
+            value={formatTaka(snapshot.confirmedValue)}
+            description="Regular-order value"
+            testId="staff-performance-summary-confirmed-value"
+            delay={0.02}
+            reduceMotion={reduceMotion}
+          />
+          <SnapshotCard
+            label="Confirmed orders"
+            value={formatNumber(snapshot.confirmedCount)}
+            description="Attributed confirmations"
+            testId="staff-performance-summary-confirmed-orders"
+            delay={0.06}
+            reduceMotion={reduceMotion}
+          />
+          <SnapshotCard
+            label="Confirmation rate"
+            value={formatRate(snapshot.confirmationRate)}
+            description="Of assigned work"
+            testId="staff-performance-summary-confirmation-rate"
+            delay={0.1}
+            reduceMotion={reduceMotion}
+          />
+          <SnapshotCard
+            label="Delivered rate"
+            value={formatRate(snapshot.deliveredRate)}
+            description="Of confirmed orders"
+            testId="staff-performance-summary-delivered-rate"
+            delay={0.14}
+            reduceMotion={reduceMotion}
+          />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {data.available_staff.length > 1 && (
-            <StaffFilter
-              staff={data.available_staff}
-              selectedUserIds={selectedUserIds}
-              onChange={setSelectedUserIds}
-            />
-          )}
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
-          <button
-            type="button"
-            aria-label="Refresh report"
-            onClick={() => reportQuery.refetch()}
-            disabled={reportQuery.isFetching}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-black/50 transition-colors hover:bg-black/[0.05] hover:text-black disabled:opacity-40"
-          >
-            <ArrowsClockwise size={17} weight="light" className={reportQuery.isFetching ? "animate-spin" : ""} />
-          </button>
-        </div>
-      </header>
+      </motion.div>
 
       {data.missing_weight_products.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-y border-amber-500/20 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-950/70">
@@ -406,21 +488,29 @@ export default function StaffPerformance() {
         </div>
       )}
 
-      {data.rows.length === 0 ? (
+      {rankedRows.length === 0 ? (
         <div className="border-y border-black/[0.08] py-12 text-center text-[12px] text-black/60">
           No staff attribution is available for this range yet.
         </div>
       ) : (
-        <div className="space-y-10">
-          <ReportTable title="Orders" rows={data.rows} columns={orderColumns} metricsKey="orders" />
-          <ReportTable
-            title="Social Inbox"
-            description="Value may include delivery. Assignment and telesales rates do not apply to AI-captured social orders."
-            rows={data.rows}
-            columns={socialColumns}
-            metricsKey="social_inbox_orders"
-          />
-        </div>
+        <motion.section
+          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: reduceMotion ? 0 : 0.1, duration: 0.4 }}
+          aria-labelledby="team-performance-heading"
+        >
+          <div className="flex items-center gap-2.5 py-3">
+            <h2 id="team-performance-heading" className="font-sf-display text-[15px] font-semibold tracking-normal text-black">Team performance</h2>
+            <div className="h-3.5 w-px bg-black/10" />
+            <span className="text-[13px] tabular-nums text-black/60">{rankedRows.length} staff</span>
+            <span className="hidden text-[11px] text-black/45 sm:inline">Ranked by confirmed value</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            {rankedRows.map((row, index) => (
+              <StaffPerformanceCard key={row.user_id} row={row} index={index} reduceMotion={reduceMotion} />
+            ))}
+          </div>
+        </motion.section>
       )}
     </div>
   );
