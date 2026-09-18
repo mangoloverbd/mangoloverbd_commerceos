@@ -27,6 +27,7 @@ describe("order attribution wiring", () => {
 
     expect(create).toContain("row.created_by = user.id");
     expect(create).toContain("requestedAssignee");
+    expect(create).toContain("STAFF_USER_ID_RE.test(requestedAssignee.trim())");
     expect(create).toContain("assertWorkspaceMember");
     expect(create).toContain('return res.status(400).json({ error: "Invalid assigned_to" })');
     expect(create).toContain("row.assigned_to = user.id");

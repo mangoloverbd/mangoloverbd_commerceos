@@ -7212,6 +7212,8 @@ app.post("/api/customers/ai-insight", rateLimitAI, async (req, res) => {
 
 // ── Order attribution ────────────────────────────────────────────────────────
 
+const STAFF_USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Confirms a supplied user id belongs to the resolved workspace before it is
 // stored as an assignee. The client-controlled id is never trusted directly.
 async function assertWorkspaceMember(supabase, orgId, userId) {
@@ -7303,13 +7305,14 @@ app.post("/api/orders", async (req, res) => {
     // belongs to the same fixed Mango Lover BD workspace.
     const requestedAssignee = req.body?.assigned_to;
     if (requestedAssignee !== undefined && requestedAssignee !== null) {
-      if (typeof requestedAssignee !== "string" || !requestedAssignee.trim()) {
+      if (typeof requestedAssignee !== "string" || !STAFF_USER_ID_RE.test(requestedAssignee.trim())) {
         return res.status(400).json({ error: "Invalid assigned_to" });
       }
-      if (!(await assertWorkspaceMember(supabase, orgId, requestedAssignee))) {
+      const assigneeId = requestedAssignee.trim();
+      if (!(await assertWorkspaceMember(supabase, orgId, assigneeId))) {
         return res.status(400).json({ error: "Assigned staff member not found in this workspace" });
       }
-      row.assigned_to = requestedAssignee;
+      row.assigned_to = assigneeId;
     } else {
       row.assigned_to = user.id;
     }
