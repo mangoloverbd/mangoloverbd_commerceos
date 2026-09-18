@@ -40,6 +40,7 @@ describe("steadfast webhook attribution isolation", () => {
     expect(section).toContain("buildStatusEvent");
     expect(section).toContain('actorKind: "courier_webhook"');
     expect(section).toContain("actorId: null");
+    expect(section).toContain("includeEquivalentBusinessState: true");
   });
 
   it("keeps both the update and event workspace-scoped", () => {

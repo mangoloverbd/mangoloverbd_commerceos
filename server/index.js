@@ -8111,6 +8111,7 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
         toStatus: patch.status,
         actorId: null,
         actorKind: "courier_webhook",
+        includeEquivalentBusinessState: true,
       }));
     }
     console.log(`[Steadfast Webhook] Order ${order.id} status updated: ${order.courier_status} → ${status}`);

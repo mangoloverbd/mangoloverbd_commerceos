@@ -69,6 +69,7 @@ export function buildStatusEvent({
   toStatus,
   actorId,
   actorKind,
+  includeEquivalentBusinessState = false,
 }) {
   if (!orgId || !orderId || !ORDER_TABLES.includes(orderTable)) return null;
   if (!ACTOR_KINDS.has(actorKind)) return null;
@@ -79,7 +80,7 @@ export function buildStatusEvent({
 
   const isCreation = fromStatus === null || fromStatus === undefined;
   const from = isCreation ? null : normalizeAttributionStatus(fromStatus);
-  if (!isCreation && businessState(from) === businessState(to)) return null;
+  if (!isCreation && !includeEquivalentBusinessState && businessState(from) === businessState(to)) return null;
 
   return {
     org_id: orgId,

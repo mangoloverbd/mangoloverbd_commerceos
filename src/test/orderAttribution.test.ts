@@ -178,6 +178,26 @@ describe("buildStatusEvent", () => {
     ).toBeNull();
   });
 
+  it("allows an explicit courier audit event when delivery keeps an order confirmed", () => {
+    expect(
+      buildStatusEvent({
+        orgId: "org-1",
+        orderId: "order-1",
+        orderTable: "orders",
+        fromStatus: "confirmed",
+        toStatus: "confirmed",
+        actorId: null,
+        actorKind: "courier_webhook",
+        includeEquivalentBusinessState: true,
+      }),
+    ).toMatchObject({
+      from_status: "confirmed",
+      to_status: "confirmed",
+      actor_id: null,
+      actor_kind: "courier_webhook",
+    });
+  });
+
   it("rejects malformed event rows before they can reach the database", () => {
     expect(
       buildStatusEvent({
