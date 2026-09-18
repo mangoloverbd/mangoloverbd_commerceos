@@ -149,6 +149,20 @@ describe("StaffPerformance", () => {
     expect(screen.getByRole("link", { name: "Review products" })).toHaveAttribute("href", "/products");
   });
 
+  it("stacks team performance cards in a single column", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    const [firstCard] = await screen.findAllByTestId(/staff-performance-card-/);
+    const teamList = firstCard.parentElement;
+    if (!teamList) throw new Error("Team performance card list is missing");
+
+    expect(teamList).toHaveClass("grid-cols-1");
+    expect(teamList).not.toHaveClass("md:grid-cols-2");
+    expect(teamList).not.toHaveClass("xl:grid-cols-3");
+  });
+
   it("expands regular-order staff details inline", async () => {
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
     const user = userEvent.setup();

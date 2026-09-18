@@ -289,7 +289,7 @@ const snapshot = useMemo(() => buildStaffPerformanceSnapshot(rankedRows), [ranke
    - Four metric trays: Confirmed value, Confirmed orders, Confirmation rate, Delivered rate.
    - Existing missing-weight disclosure.
    - `Team performance` heading with the returned staff count.
-   - Responsive `grid gap-3 md:grid-cols-2 xl:grid-cols-3` of ranked `StaffPerformanceCard` components.
+   - A single-column `grid grid-cols-1 gap-3` queue of ranked `StaffPerformanceCard` components at every breakpoint.
 6. Give each summary tile the IDs `staff-performance-summary-confirmed-value`, `staff-performance-summary-confirmed-orders`, `staff-performance-summary-confirmation-rate`, and `staff-performance-summary-delivered-rate`. Give each card `data-testid={`staff-performance-card-${row.user_id}`}`. The top card control must carry `aria-expanded`, `aria-controls`, and labels exactly matching the test contract.
 7. Use `AnimatePresence`, `motion`, and `useReducedMotion()` for the page/card entrance and inline-detail transition. Keep motion short and avoid animation when reduced motion is preferred.
 8. Preserve the current missing-weight, empty, loading, and retry states. Update only their container styling/copy as needed to match the new white page surface. Do not mention Social Inbox in any UI copy.

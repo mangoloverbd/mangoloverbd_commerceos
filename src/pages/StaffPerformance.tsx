@@ -297,9 +297,9 @@ function StaffPerformanceCard({
         {expanded && (
           <motion.div
             id={detailsId}
-            initial={reduceMotion ? false : { opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
             transition={{ duration: reduceMotion ? 0 : 0.22, ease: "easeOut" }}
             className="overflow-hidden"
           >
@@ -502,7 +502,7 @@ export default function StaffPerformance() {
             <span className="text-[13px] tabular-nums text-black/60">{rankedRows.length} staff</span>
             <span className="hidden text-[11px] text-black/45 sm:inline">Ranked by confirmed value</span>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3">
             {rankedRows.map((row, index) => (
               <StaffPerformanceCard key={row.user_id} row={row} index={index} reduceMotion={reduceMotion} />
             ))}

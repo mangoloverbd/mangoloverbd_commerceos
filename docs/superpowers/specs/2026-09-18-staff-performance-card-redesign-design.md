@@ -88,8 +88,9 @@ not averages of the staff-level percentages.
 
 ### Responsive and motion behavior
 
-- Use one column on narrow screens, two columns at medium widths, and a
-  three-column card grid where space permits.
+- Keep the team performance cards in one vertical queue at every screen width,
+  so each staff member has a full-width row and expanded detail remains easy
+  to scan.
 - Do not create horizontal page overflow. Long names and monetary values must
   truncate or wrap gracefully within a card.
 - Use the restrained Framer Motion entrance pattern used by Customers and
