@@ -149,6 +149,15 @@ describe("StaffPerformance", () => {
     expect(screen.getByRole("link", { name: "Review products" })).toHaveAttribute("href", "/products");
   });
 
+  it("starts the page header directly with Staff Performance", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Staff Performance" })).toBeInTheDocument();
+    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
+  });
+
   it("stacks team performance cards in a single column", async () => {
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
 

@@ -418,8 +418,7 @@ export default function StaffPerformance() {
       >
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Reports</p>
-            <h1 className="mt-1 font-sf-display text-[22px] font-bold tracking-tight text-black">Staff Performance</h1>
+            <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Staff Performance</h1>
             <p className="mt-1 max-w-2xl text-[13px] text-black/60">Human-attributed regular-order performance, using Asia/Dhaka dates.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
