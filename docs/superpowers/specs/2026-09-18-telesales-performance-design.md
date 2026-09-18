@@ -1,6 +1,6 @@
 # Telesales / User Performance Report Design
 
-**Status:** Draft — pending user review (2026-09-18)
+**Status:** Approved for implementation (2026-09-18)
 
 ## Goal
 
