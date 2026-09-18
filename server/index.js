@@ -9451,6 +9451,15 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
       if (cancelErr) {
         console.error("[Meta AI] order cancel failed:", cancelErr.message);
       } else {
+        await recordStatusEvent(supabase, buildStatusEvent({
+          orgId,
+          orderId: existingOrder.id,
+          orderTable: "social_inbox_orders",
+          fromStatus: existingOrder.status,
+          toStatus: "cancelled",
+          actorId: null,
+          actorKind: "system",
+        }));
         const shortId = existingOrder.id.slice(-6).toUpperCase();
         reply = reply || `Your order IO-${shortId} has been cancelled.`;
         console.log("[Meta AI] order cancelled:", existingOrder.id);
