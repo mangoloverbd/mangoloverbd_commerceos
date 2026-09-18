@@ -4,6 +4,7 @@ export const ORDER_SOURCE_OPTIONS = [
   { value: "instagram", label: "Instagram" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "phone", label: "Phone" },
+  { value: "telesales", label: "Telesales" },
   { value: "manual_other", label: "Manual / Other" },
 ] as const;
 

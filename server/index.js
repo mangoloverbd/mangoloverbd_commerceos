@@ -740,7 +740,7 @@ function normalizeBusinessStatus(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
-const ORDER_SOURCE_VALUES = new Set(["website", "facebook", "instagram", "whatsapp", "phone", "manual_other"]);
+const ORDER_SOURCE_VALUES = new Set(["website", "facebook", "instagram", "whatsapp", "phone", "telesales", "manual_other"]);
 
 function isCanonicalOrderSource(value) {
   return typeof value === "string" && ORDER_SOURCE_VALUES.has(value.trim().toLowerCase());
