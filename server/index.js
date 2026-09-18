@@ -8005,7 +8005,7 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     // Find the order by consignment_id
     const { data: order } = await supabase
       .from("orders")
-      .select("id, org_id, courier_status")
+      .select("id, org_id, courier_status, status")
       .eq("consignment_id", consignmentId)
       .eq("sent_to_courier", true)
       .maybeSingle();
@@ -8043,6 +8043,17 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     }
 
     await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", order.org_id);
+    if (patch.status !== undefined) {
+      await recordStatusEvent(supabase, buildStatusEvent({
+        orgId: order.org_id,
+        orderId: order.id,
+        orderTable: "orders",
+        fromStatus: order.status,
+        toStatus: patch.status,
+        actorId: null,
+        actorKind: "courier_webhook",
+      }));
+    }
     console.log(`[Steadfast Webhook] Order ${order.id} status updated: ${order.courier_status} → ${status}`);
     return res.status(200).json({ ok: true, updated: true });
   } catch (e) {
@@ -9121,6 +9132,16 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
     .update({ order_fields: {} })
     .eq("id", conversation.id)
     .eq("org_id", orgId);
+
+  await recordStatusEvent(supabase, buildStatusEvent({
+    orgId,
+    orderId: data.id,
+    orderTable: "social_inbox_orders",
+    fromStatus: null,
+    toStatus: data.status,
+    actorId: null,
+    actorKind: "system",
+  }));
 
   console.log("[OrderFields] order saved and notepad cleared:", data.id);
   return { order: data, duplicate: false };
@@ -10333,6 +10354,26 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
       update.warehouse_auto = false;
     }
     if (!Object.keys(update).length) return res.status(400).json({ error: "Nothing to update" });
+
+    const { data: currentOrder, error: currentOrderError } = await supabase
+      .from("social_inbox_orders")
+      .select("id, status")
+      .eq("id", req.params.id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (currentOrderError) throw currentOrderError;
+    if (!currentOrder) return res.status(404).json({ error: "Inbox order not found" });
+
+    if (update.status !== undefined) {
+      Object.assign(update, buildAttributionPatch({
+        fromStatus: currentOrder.status,
+        toStatus: update.status,
+        actorId: user.id,
+        actorKind: "user",
+        now: new Date().toISOString(),
+      }));
+    }
+
     const { data, error } = await supabase
       .from("social_inbox_orders")
       .update(update)
@@ -10342,6 +10383,19 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: "Inbox order not found" });
+
+    if (update.status !== undefined) {
+      await recordStatusEvent(supabase, buildStatusEvent({
+        orgId,
+        orderId: currentOrder.id,
+        orderTable: "social_inbox_orders",
+        fromStatus: currentOrder.status,
+        toStatus: update.status,
+        actorId: user.id,
+        actorKind: "user",
+      }));
+    }
+
     return res.json({ success: true, order: data });
   } catch (err) {
     return sendError(res, err);
