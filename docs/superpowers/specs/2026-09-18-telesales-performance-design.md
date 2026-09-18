@@ -240,7 +240,11 @@ Confirmation rate = `confirmed_assigned ÷ assigned`. Cancellation rate = `cance
 
 ## 2.3 Page
 
-New route `/reports/staff` in `src/App.tsx` (React Router v6), inside `ProtectedRoute` → `DashboardLayout`. Sidebar entry under a new **Reports** group in `src/components/AppSidebar.tsx`.
+New route `/reports/staff` in `src/App.tsx` (React Router v6), inside `ProtectedRoute` → `DashboardLayout`.
+
+**Sidebar:** a new collapsible `Reports` section in `src/components/AppSidebar.tsx`, added as a fourth `NavSection` alongside the existing `Intelligence` and `Social Inbox` groups. It holds `Staff Performance` now and gains `Business Report` when Feature A ships.
+
+**Visibility (decided 2026-09-18):** the page is open to every authenticated member, but a `team_member` receives only their own row from the API. Admins see all staff. The filter is enforced server-side in the route, not in the UI — a team member editing the request cannot widen it.
 
 - Date range: reuse `src/components/DateRangePicker.tsx`, which already has Today / Last 7 / Last 30 / This Month presets and Dhaka-correct boundaries. Add **This Week** and **Last Month** presets to cover the daily/weekly/monthly requirement.
 - Staff selector: multi-select, defaults to all
