@@ -20,8 +20,8 @@ Today the system records *what* happened to an order but never *who* did it. `pu
 **Out of scope (Feature A, a later spec)**
 - The admin Business Report (today's intake, by-source breakdown, approved/cancelled totals, courier charge). It consumes the same attribution layer but ships separately.
 
-**Deferred**
-- Assigning a staff member to an order *after* creation (storefront/Shopify orders picked up by phone later). The schema supports it; no UI in v1.
+**Decided against (2026-09-18)**
+- Assigning a staff member to a storefront or Shopify order after it arrives. Those orders stay unassigned permanently. Confirmation Rate measures manually created work only. The schema still supports it if this is revisited.
 
 ## Agreed decisions
 
@@ -225,16 +225,18 @@ Grouped exactly as the requirement lists them:
 - Delivered and Return/RTO are credited to `confirmed_by`, not to the courier
 - Rates return `null`, not `0`, when the denominator is zero, so the UI can render `—` instead of a misleading `0%`
 
-**Confirmation rate can exceed 100%, and that is expected.** Only manually created orders get an `assigned_to` (§1.4); storefront and Shopify orders arrive with `assigned_to = null`. A staff member who confirms unassigned storefront orders will show more confirmations than assignments.
+**Rates are computed over assigned orders only — decided 2026-09-18.** Storefront and Shopify orders arrive with `assigned_to = null` and are deliberately never assigned. Only orders created by hand through the New Order form carry a staff name.
 
 The report therefore shows **three** counts rather than a single misleading ratio:
-- `assigned` — orders assigned to them
+- `assigned` — orders assigned to them (manually created orders)
 - `confirmed_assigned` — confirmations among their assigned orders
-- `confirmed_total` — all their confirmations
+- `confirmed_total` — all their confirmations, including unassigned storefront orders they picked up
 
-Confirmation rate = `confirmed_assigned ÷ assigned`, capped at a real ratio. `confirmed_total` is displayed alongside so the unassigned work is visible rather than distorting the rate. The same split applies to cancellation rate.
+Confirmation rate = `confirmed_assigned ÷ assigned`. Cancellation rate = `cancelled_assigned ÷ assigned`. Both are therefore always a real ratio between 0 and 1.
 
-This resolves itself if the deferred post-creation assignment UI is built later; the metric definitions do not change.
+`confirmed_total` sits beside the rate so work on unassigned storefront orders stays visible instead of either distorting the rate or vanishing from the report.
+
+**Ruling on non-telesales manual orders.** The staff dropdown is on the New Order form, so it applies to every manually created order regardless of source — Facebook, WhatsApp, Phone, Manual/Other all get an `assigned_to` too, at no extra cost. Telesales is reported both inside these totals and as its own filtered column group (`source = 'telesales'`). Cost if this reading is wrong: the rate denominator is slightly wider than intended, fixable by adding one `source` filter in `buildStaffReport` with no schema or UI change.
 
 ## 2.3 Page
 
