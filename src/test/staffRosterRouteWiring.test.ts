@@ -59,3 +59,14 @@ describe("PATCH /api/team-members/:id", () => {
     expect(section).not.toContain("org_id:");
   });
 });
+
+describe("DELETE /api/team-members/:id", () => {
+  it("soft-deletes the Auth user so attributed order history remains valid", () => {
+    const section = routeSection(
+      'app.delete("/api/team-members/:id"',
+      '// ─── App Settings Endpoints',
+    );
+
+    expect(section).toContain("supabase.auth.admin.deleteUser(member.user_id, true)");
+  });
+});

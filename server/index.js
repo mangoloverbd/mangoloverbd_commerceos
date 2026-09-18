@@ -1373,7 +1373,9 @@ app.delete("/api/team-members/:id", async (req, res) => {
     if (member.user_id === user.id) return res.status(400).json({ error: "You cannot remove yourself" });
     if (member.role === "admin") return res.status(400).json({ error: "Admin users cannot be removed from Team Management" });
 
-    const { error: deleteUserError } = await supabase.auth.admin.deleteUser(member.user_id);
+    // Keep historical order attribution intact while immediately revoking access.
+    // Hard-deleting this Auth row would violate the attribution foreign keys.
+    const { error: deleteUserError } = await supabase.auth.admin.deleteUser(member.user_id, true);
     if (deleteUserError) throw deleteUserError;
 
     await supabase
