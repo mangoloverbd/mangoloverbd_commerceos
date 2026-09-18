@@ -78,6 +78,7 @@ import {
 import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { validateAddressWithAI } from "./addressValidation.js";
+import { buildAttributionPatch, buildStatusEvent } from "./orderAttribution.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -7155,6 +7156,35 @@ app.post("/api/customers/ai-insight", rateLimitAI, async (req, res) => {
   }
 });
 
+// ── Order attribution ────────────────────────────────────────────────────────
+
+// Confirms a supplied user id belongs to the resolved workspace before it is
+// stored as an assignee. The client-controlled id is never trusted directly.
+async function assertWorkspaceMember(supabase, orgId, userId) {
+  if (!userId) return false;
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("user_id")
+    .eq("org_id", orgId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+// The event log is an audit trail, not a source of truth for order state. A
+// logging failure must never make a successfully persisted order fail its API
+// request or cause a client to retry the write.
+async function recordStatusEvent(supabase, event) {
+  if (!event) return;
+  try {
+    const { error } = await supabase.from("order_status_events").insert(event);
+    if (error) console.error("[attribution] event insert failed:", error.message);
+  } catch (error) {
+    console.error("[attribution] event insert failed:", errorMessage(error));
+  }
+}
+
 app.post("/api/orders", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -7212,6 +7242,33 @@ app.post("/api/orders", async (req, res) => {
     }
     row.order_number = await getNextManualOrderNumber(orgId);
     if (!row.status) row.status = "pending";
+    row.created_by = user.id;
+
+    // Manually created orders default to the operator who is entering them.
+    // A telesales lead can assign another staff member, but only if that person
+    // belongs to the same fixed Mango Lover BD workspace.
+    const requestedAssignee = req.body?.assigned_to;
+    if (requestedAssignee !== undefined && requestedAssignee !== null) {
+      if (typeof requestedAssignee !== "string" || !requestedAssignee.trim()) {
+        return res.status(400).json({ error: "Invalid assigned_to" });
+      }
+      if (!(await assertWorkspaceMember(supabase, orgId, requestedAssignee))) {
+        return res.status(400).json({ error: "Assigned staff member not found in this workspace" });
+      }
+      row.assigned_to = requestedAssignee;
+    } else {
+      row.assigned_to = user.id;
+    }
+
+    // New Order submits "confirmed" today. Derive the confirmation attribution
+    // from that initial transition rather than hard-coding a parallel rule.
+    Object.assign(row, buildAttributionPatch({
+      fromStatus: null,
+      toStatus: row.status,
+      actorId: user.id,
+      actorKind: "user",
+      now: new Date().toISOString(),
+    }));
 
     const routingItems = orderItems.map((item) => ({
       productId: item.product_id || undefined,
@@ -7243,6 +7300,15 @@ app.post("/api/orders", async (req, res) => {
         throw itemsError;
       }
     }
+    await recordStatusEvent(supabase, buildStatusEvent({
+      orgId,
+      orderId: data.id,
+      orderTable: "orders",
+      fromStatus: null,
+      toStatus: data.status,
+      actorId: user.id,
+      actorKind: "user",
+    }));
     await sendBulkSms(orgId, "confirmation", data);
     return res.status(201).json({ success: true, order: data });
   } catch (e) {
@@ -7316,8 +7382,32 @@ app.patch("/api/orders/:id", async (req, res) => {
         return res.status(400).json({ error: "Print orders can only move to Processing, Approved, On Hold, or Cancelled" });
       }
     }
+
+    if (update.status !== undefined) {
+      Object.assign(update, buildAttributionPatch({
+        fromStatus: orderCheck.status,
+        toStatus: update.status,
+        actorId: user.id,
+        actorKind: "user",
+        now: new Date().toISOString(),
+      }));
+    }
+
     const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
     if (updErr) throw updErr;
+
+    if (update.status !== undefined) {
+      await recordStatusEvent(supabase, buildStatusEvent({
+        orgId,
+        orderId: req.params.id,
+        orderTable: "orders",
+        fromStatus: orderCheck.status,
+        toStatus: update.status,
+        actorId: user.id,
+        actorKind: "user",
+      }));
+    }
+
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     return res.json({ success: true, order: data });
   } catch (e) {
