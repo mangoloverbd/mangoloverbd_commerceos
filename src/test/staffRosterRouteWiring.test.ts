@@ -27,6 +27,7 @@ describe("GET /api/staff", () => {
     const section = staff();
     expect(section).toContain("getUserOrg(supabase, user.id)");
     expect(section).toContain('.eq("org_id", orgId)');
+    expect(section).toContain('.is("deleted_at", null)');
   });
 
   it("returns only dropdown-safe staff details", () => {
@@ -61,12 +62,34 @@ describe("PATCH /api/team-members/:id", () => {
 });
 
 describe("DELETE /api/team-members/:id", () => {
-  it("soft-deletes the Auth user so attributed order history remains valid", () => {
+  it("archives the role before soft-deleting Auth so named attribution survives", () => {
     const section = routeSection(
       'app.delete("/api/team-members/:id"',
       '// ─── App Settings Endpoints',
     );
 
     expect(section).toContain("supabase.auth.admin.deleteUser(member.user_id, true)");
+    expect(section).toContain("deleted_at");
+    expect(section).toMatch(/\.from\("user_roles"\)[\s\S]*?\.update\(\{ deleted_at:/);
+    expect(section).toContain("update({ deleted_at: null })");
+    expect(section).not.toMatch(/\.from\("user_roles"\)\s*\.delete\(\)/);
+  });
+});
+
+describe("active staff authorization", () => {
+  it("does not grant archived roles access or assignment eligibility", () => {
+    const authHelpers = routeSection(
+      "async function findFirstAdminOrg",
+      "function customStoreApiKeyFromRequest",
+    );
+    const assigneeGuard = routeSection(
+      "async function assertWorkspaceMember",
+      "async function recordStatusEvent",
+    );
+
+    expect(authHelpers).toContain('select("org_id, role, deleted_at")');
+    expect(authHelpers).toContain("if (existingRole?.deleted_at) return null;");
+    expect(authHelpers).toContain('.is("deleted_at", null)');
+    expect(assigneeGuard).toContain('.is("deleted_at", null)');
   });
 });

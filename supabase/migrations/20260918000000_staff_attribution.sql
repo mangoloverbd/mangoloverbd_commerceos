@@ -39,6 +39,14 @@ create index if not exists social_inbox_orders_org_assigned_to_idx
   on public.social_inbox_orders (org_id, assigned_to, created_at desc)
   where assigned_to is not null;
 
+create index if not exists orders_org_cancelled_by_idx
+  on public.orders (org_id, cancelled_by, cancelled_at desc)
+  where cancelled_by is not null;
+
+create index if not exists social_inbox_orders_org_cancelled_by_idx
+  on public.social_inbox_orders (org_id, cancelled_by, cancelled_at desc)
+  where cancelled_by is not null;
+
 -- Foreign keys are not indexed automatically. These narrow partial indexes
 -- keep Auth user deletion checks from scanning every order table.
 create index if not exists orders_created_by_idx
@@ -102,6 +110,15 @@ alter table public.order_status_events enable row level security;
 revoke all on table public.order_status_events from public;
 revoke all on table public.order_status_events from anon, authenticated;
 grant all on public.order_status_events to service_role;
+
+-- Retain a former staff member's display name for historical attribution while
+-- allowing active-role lookups to exclude their archived membership.
+alter table public.user_roles
+  add column if not exists deleted_at timestamptz;
+
+create index if not exists user_roles_active_org_idx
+  on public.user_roles (org_id, created_at)
+  where deleted_at is null;
 
 alter table public.user_roles
   add column if not exists display_name text;

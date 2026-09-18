@@ -6,6 +6,10 @@ const migrationPath = resolve(
   process.cwd(),
   "supabase/migrations/20260918000000_staff_attribution.sql",
 );
+const baselineVerifierPath = resolve(
+  process.cwd(),
+  "scripts/verify-supabase-baseline.mjs",
+);
 
 function alterTableBlock(sql: string, table: string) {
   const match = sql.match(
@@ -88,6 +92,29 @@ describe("staff attribution schema", () => {
     ]) {
       expect(sql).toMatch(new RegExp(`create index if not exists ${index}`, "i"));
     }
+  });
+
+  it("keeps former staff names while indexing active rosters and cancellation reports", async () => {
+    const sql = await readFile(migrationPath, "utf8");
+
+    expect(sql).toMatch(
+      /alter table public\.user_roles\s+add column if not exists deleted_at timestamptz/i,
+    );
+    expect(sql).toMatch(
+      /create index if not exists user_roles_active_org_idx[\s\S]*?where deleted_at is null/i,
+    );
+    expect(sql).toMatch(
+      /create index if not exists orders_org_cancelled_by_idx[\s\S]*?\(org_id, cancelled_by, cancelled_at desc\)[\s\S]*?where cancelled_by is not null/i,
+    );
+    expect(sql).toMatch(
+      /create index if not exists social_inbox_orders_org_cancelled_by_idx[\s\S]*?\(org_id, cancelled_by, cancelled_at desc\)[\s\S]*?where cancelled_by is not null/i,
+    );
+  });
+
+  it("includes the former-staff marker in the baseline runtime contract", async () => {
+    const verifier = await readFile(baselineVerifierPath, "utf8");
+
+    expect(verifier).toContain("('user_roles', 'deleted_at')");
   });
 
   it("keeps the event log server-only and adds staff display names", async () => {

@@ -268,6 +268,7 @@ begin
       ('social_inbox_orders', 'cancelled_by'),
       ('social_inbox_orders', 'cancelled_at'),
       ('user_roles', 'display_name'),
+      ('user_roles', 'deleted_at'),
       ('order_status_events', 'org_id'),
       ('order_status_events', 'order_id'),
       ('order_status_events', 'order_table'),

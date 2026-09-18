@@ -79,6 +79,7 @@ import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { validateAddressWithAI } from "./addressValidation.js";
 import { buildAttributionPatch, buildStatusEvent } from "./orderAttribution.js";
+import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -539,6 +540,7 @@ async function findFirstAdminOrg(supabase) {
     .select("user_id, org_id")
     .eq("role", "admin")
     .not("org_id", "is", null)
+    .is("deleted_at", null)
     .limit(1)
     .maybeSingle();
   if (error) throw error;
@@ -550,6 +552,7 @@ async function hasAnyAdmin(supabase) {
     .from("user_roles")
     .select("user_id")
     .eq("role", "admin")
+    .is("deleted_at", null)
     .limit(1);
   if (error) throw error;
   return Array.isArray(data) && data.length > 0;
@@ -558,11 +561,14 @@ async function hasAnyAdmin(supabase) {
 async function ensureUserRole(supabase, user) {
   const { data: existingRole, error: roleError } = await supabase
     .from("user_roles")
-    .select("org_id, role")
+    .select("org_id, role, deleted_at")
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (roleError) throw roleError;
+  // A soft-deleted Auth user can retain an old JWT briefly. Never revive or
+  // authorize the archived role during that window.
+  if (existingRole?.deleted_at) return null;
 
   const configuredAdmin = isConfiguredAdmin(user);
   if (existingRole?.role && existingRole?.org_id && !configuredAdmin) {
@@ -629,6 +635,7 @@ async function getUserOrg(supabase, userId) {
     .from("user_roles")
     .select("org_id, role")
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw error;
   const orgId = roleRow?.org_id || null;
@@ -1116,6 +1123,7 @@ app.post("/api/admin/assign-role", async (req, res) => {
       .from("user_roles")
       .select("user_id")
       .eq("role", "admin")
+      .is("deleted_at", null)
       .limit(1);
 
     const noAdminsYet = !existingAdmins || existingAdmins.length === 0;
@@ -1126,6 +1134,7 @@ app.post("/api/admin/assign-role", async (req, res) => {
         .from("user_roles")
         .select("org_id, role")
         .eq("user_id", user.id)
+        .is("deleted_at", null)
         .maybeSingle();
       if (callerRole?.role !== "admin") {
         return res.status(403).json({ error: "Only admins can assign roles" });
@@ -1169,6 +1178,7 @@ async function getCurrentUserContext(token) {
     .from("user_roles")
     .select("org_id, role")
     .eq("user_id", user.id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw error;
 
@@ -1244,6 +1254,7 @@ app.get("/api/staff", async (req, res) => {
       .from("user_roles")
       .select("user_id, display_name")
       .eq("org_id", orgId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: true });
     if (error) throw error;
 
@@ -1268,6 +1279,7 @@ app.get("/api/team-members", async (req, res) => {
       .from("user_roles")
       .select("id, user_id, role, org_id, display_name, created_at")
       .eq("org_id", orgId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
@@ -1345,6 +1357,7 @@ app.patch("/api/team-members/:id", async (req, res) => {
       .update({ display_name: displayName })
       .eq("id", req.params.id)
       .eq("org_id", orgId)
+      .is("deleted_at", null)
       .select("id, user_id, display_name")
       .maybeSingle();
     if (error) throw error;
@@ -1367,6 +1380,7 @@ app.delete("/api/team-members/:id", async (req, res) => {
       .select("id, user_id, role, org_id")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
+      .is("deleted_at", null)
       .single();
 
     if (fetchError || !member) return res.status(404).json({ error: "Team member not found" });
@@ -1374,15 +1388,31 @@ app.delete("/api/team-members/:id", async (req, res) => {
     if (member.role === "admin") return res.status(400).json({ error: "Admin users cannot be removed from Team Management" });
 
     // Keep historical order attribution intact while immediately revoking access.
+    // The role marker blocks an already-issued JWT before Auth soft deletion.
+    const archivedAt = new Date().toISOString();
+    const { data: archivedMember, error: archiveError } = await supabase
+      .from("user_roles")
+      .update({ deleted_at: archivedAt })
+      .eq("id", member.id)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+    if (archiveError) throw archiveError;
+    if (!archivedMember) return res.status(404).json({ error: "Team member not found" });
+
     // Hard-deleting this Auth row would violate the attribution foreign keys.
     const { error: deleteUserError } = await supabase.auth.admin.deleteUser(member.user_id, true);
-    if (deleteUserError) throw deleteUserError;
-
-    await supabase
-      .from("user_roles")
-      .delete()
-      .eq("id", member.id)
-      .eq("org_id", orgId);
+    if (deleteUserError) {
+      const { error: restoreError } = await supabase
+        .from("user_roles")
+        .update({ deleted_at: null })
+        .eq("id", member.id)
+        .eq("org_id", orgId)
+        .eq("deleted_at", archivedAt);
+      if (restoreError) console.error("[Team] could not restore archived role:", restoreError.message);
+      throw deleteUserError;
+    }
 
     return res.json({ success: true, id: member.id });
   } catch (err) {
@@ -4007,6 +4037,156 @@ app.get("/api/overview", async (req, res) => {
   } catch (err) {
     console.error("[Overview] Error:", err.message);
     res.status(500).json({ error: "Failed to load overview data" });
+  }
+});
+
+async function fetchStaffReportPages(createQuery, { pageSize = 500 } = {}) {
+  const allRows = [];
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await createQuery()
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+
+    const rows = data || [];
+    allRows.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return allRows;
+}
+
+function mergeStaffReportRows(...groups) {
+  const rowsById = new Map();
+  for (const group of groups) {
+    for (const row of group || []) {
+      if (!row?.id) continue;
+      rowsById.set(row.id, { ...rowsById.get(row.id), ...row });
+    }
+  }
+  return [...rowsById.values()];
+}
+
+// ─── Staff Performance Report ────────────────────────────────────────────────
+
+app.get("/api/reports/staff", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    const staffRows = await fetchStaffReportPages(() => supabase
+      .from("user_roles")
+      .select("user_id, display_name, deleted_at")
+      .eq("org_id", orgId));
+
+    const staff = staffRows.map((member) => ({
+      user_id: member.user_id,
+      display_name: member.display_name || "Unnamed member",
+      deleted_at: member.deleted_at,
+    }));
+    const request = resolveStaffReportRequest({
+      from: req.query.from,
+      to: req.query.to,
+      users: req.query.users,
+      role,
+      userId: user.id,
+      staff,
+    });
+    const selectedStaff = staff.filter((member) => request.selectedUserIds.includes(member.user_id));
+    const visibleStaff = role === "team_member" ? selectedStaff : staff;
+    const availableStaff = visibleStaff.map((member) => ({
+      user_id: member.user_id,
+      display_name: member.display_name,
+      is_active: !member.deleted_at,
+    }));
+
+    if (request.selectedUserIds.length === 0) {
+      const report = buildStaffReport([], [], [], [], selectedStaff, request);
+      return res.json({
+        range: request.range,
+        available_staff: availableStaff,
+        selected_user_ids: request.selectedUserIds,
+        ...report,
+      });
+    }
+
+    const regularOrderFields = "id, assigned_to, confirmed_by, confirmed_at, cancelled_by, cancelled_at, created_at, price, weight_kg, source, courier_status, return_status";
+    const inboxOrderFields = "id, confirmed_by, confirmed_at, cancelled_by, cancelled_at, total_price, weight_kg, items, courier_status, return_status";
+    const fetchRegularRows = async (actorColumn, timestampColumn) => {
+      const rows = [];
+      for (const staffIds of chunkIds(request.selectedUserIds)) {
+        rows.push(...await fetchStaffReportPages(() => {
+          let query = supabase
+            .from("orders")
+            .select(regularOrderFields)
+            .eq("org_id", orgId)
+            .in(actorColumn, staffIds);
+          if (request.since) query = query.gte(timestampColumn, request.since);
+          if (request.until) query = query.lt(timestampColumn, request.until);
+          return query;
+        }));
+      }
+      return rows;
+    };
+    const fetchInboxRows = async (actorColumn, timestampColumn) => {
+      const rows = [];
+      for (const staffIds of chunkIds(request.selectedUserIds)) {
+        rows.push(...await fetchStaffReportPages(() => {
+          let query = supabase
+            .from("social_inbox_orders")
+            .select(inboxOrderFields)
+            .eq("org_id", orgId)
+            .in(actorColumn, staffIds);
+          if (request.since) query = query.gte(timestampColumn, request.since);
+          if (request.until) query = query.lt(timestampColumn, request.until);
+          return query;
+        }));
+      }
+      return rows;
+    };
+
+    const [assignedOrders, confirmedOrders, cancelledOrders, confirmedInboxOrders, cancelledInboxOrders, products] = await Promise.all([
+      fetchRegularRows("assigned_to", "created_at"),
+      fetchRegularRows("confirmed_by", "confirmed_at"),
+      fetchRegularRows("cancelled_by", "cancelled_at"),
+      fetchInboxRows("confirmed_by", "confirmed_at"),
+      fetchInboxRows("cancelled_by", "cancelled_at"),
+      fetchStaffReportPages(() => supabase
+        .from("products")
+        .select("id, name, weight_kg")
+        .eq("org_id", orgId)),
+    ]);
+    const orders = mergeStaffReportRows(assignedOrders, confirmedOrders, cancelledOrders);
+    const inboxOrders = mergeStaffReportRows(confirmedInboxOrders, cancelledInboxOrders);
+    const confirmedOrderIds = [...new Set(confirmedOrders.map((order) => order.id).filter(Boolean))];
+    const orderItems = [];
+    for (const orderIdBatch of chunkIds(confirmedOrderIds)) {
+      orderItems.push(...await fetchStaffReportPages(() => supabase
+        .from("order_items")
+        .select("order_id, product_id, product_name, quantity")
+        .eq("org_id", orgId)
+        .in("order_id", orderIdBatch)));
+    }
+
+    const report = buildStaffReport(
+      orders,
+      inboxOrders,
+      orderItems,
+      products,
+      selectedStaff,
+      request,
+    );
+    return res.json({
+      range: request.range,
+      available_staff: availableStaff,
+      selected_user_ids: request.selectedUserIds,
+      ...report,
+    });
+  } catch (err) {
+    return sendError(res, err);
   }
 });
 
@@ -7225,6 +7405,7 @@ async function assertWorkspaceMember(supabase, orgId, userId) {
     .select("user_id")
     .eq("org_id", orgId)
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw error;
   return Boolean(data);
@@ -9103,6 +9284,83 @@ Or when customer wants to cancel:
 
 // ─── Save confirmed order to social_inbox_orders ──────────────────────────────
 
+// Social items live as JSON, so they do not receive the database-level
+// workspace foreign key that regular order_items have. Preserve a product ID
+// only when it belongs to this workspace; otherwise fill it from a unique,
+// normalized exact catalog-name match. Routing deliberately remains separate:
+// its fuzzy text match is useful for operations but must never become a report
+// attribution fact.
+async function normalizeSocialInboxItems(supabase, orgId, items) {
+  const list = Array.isArray(items) ? items : [];
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const requestedProductIds = [...new Set(
+    list
+      .map((item) => item?.product_id)
+      .filter((id) => typeof id === "string" && uuidPattern.test(id)),
+  )];
+  const productsById = new Map();
+
+  for (const productIdBatch of chunkIds(requestedProductIds)) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name")
+      .in("id", productIdBatch)
+      .eq("org_id", orgId);
+    if (error) throw error;
+    for (const product of data || []) productsById.set(product.id, product);
+  }
+
+  const unresolvedNames = new Set(
+    list
+      .filter((item) => !productsById.has(item?.product_id))
+      .map((item) => normalizeOrderProductName(item?.product ?? item?.product_name))
+      .filter(Boolean),
+  );
+  const productsByName = new Map();
+  const ambiguousProductNames = new Set();
+
+  if (unresolvedNames.size > 0) {
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name")
+        .eq("org_id", orgId)
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+
+      const rows = data || [];
+      for (const product of rows) {
+        const normalizedName = normalizeOrderProductName(product.name);
+        if (!unresolvedNames.has(normalizedName) || ambiguousProductNames.has(normalizedName)) continue;
+        if (productsByName.has(normalizedName)) {
+          productsByName.delete(normalizedName);
+          ambiguousProductNames.add(normalizedName);
+        } else {
+          productsByName.set(normalizedName, product);
+        }
+      }
+      if (rows.length < pageSize) break;
+    }
+  }
+
+  return list.map((item) => {
+    const source = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+    const productName = typeof source.product === "string"
+      ? source.product.trim()
+      : typeof source.product_name === "string" ? source.product_name.trim() : "";
+    const verifiedProduct = productsById.get(source.product_id);
+    const exactProduct = productsByName.get(normalizeOrderProductName(productName));
+
+    return {
+      ...source,
+      product: productName,
+      product_id: verifiedProduct?.id || exactProduct?.id || null,
+    };
+  });
+}
+
 async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, contactId, contactName, order }) {
   // Deduplicate: same phone in this conversation within 5 min = duplicate
   const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -9128,22 +9386,30 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
     `Source: ${platform} AI auto-capture`,
   ].join("\n");
 
-  const { data: catalogProduct } = await supabase.from("products").select("id").eq("org_id", orgId).eq("name", order.product_name).maybeSingle();
   let resolvedVariantId = order.variant_id || null;
-  if (!resolvedVariantId && catalogProduct && order.variant_label) {
-    const { data: candidates } = await supabase.from("product_variants").select("id, attributes").eq("org_id", orgId).eq("product_id", catalogProduct.id);
-    resolvedVariantId = matchVariantId({ label: order.variant_label, variants: candidates || [] });
-  }
   const items = [{
     product: order.product_name,
     quantity: order.quantity,
     unit_price: order.unit_price,
     variant_id: resolvedVariantId,
   }];
+  const normalizedItems = await normalizeSocialInboxItems(supabase, orgId, items);
+  const catalogProductId = normalizedItems[0]?.product_id || null;
+  if (!resolvedVariantId && catalogProductId && order.variant_label) {
+    const { data: candidates, error: variantsError } = await supabase
+      .from("product_variants")
+      .select("id, attributes")
+      .eq("org_id", orgId)
+      .eq("product_id", catalogProductId);
+    if (variantsError) throw variantsError;
+    resolvedVariantId = matchVariantId({ label: order.variant_label, variants: candidates || [] });
+    normalizedItems[0].variant_id = resolvedVariantId;
+  }
   const routing = await resolveOrderRouting(
     supabase,
     orgId,
-    items.map((item) => ({
+    normalizedItems.map((item) => ({
+      productId: item.product_id || undefined,
       productName: item.product,
       variantId: item.variant_id || undefined,
       quantity: item.quantity,
@@ -9158,7 +9424,7 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
       platform,
       contact_name: order.customer_name,
       contact_id: contactId,
-      items,
+      items: normalizedItems,
       notes,
       total_price: totalPrice,
       delivery_rate: deliveryRate,
@@ -9386,7 +9652,7 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
   const [historyResult, products, existingOrdersResult] = await Promise.all([
     getRecentConversationHistory(supabase, conversation.id, 20),
     getMetaReplyProductContext(orgId),
-    supabase.from("social_inbox_orders").select("id, items, total_price, status, delivery_rate, notes, contact_name").eq("conversation_id", conversation.id).eq("org_id", orgId).order("created_at", { ascending: false }).limit(1),
+    supabase.from("social_inbox_orders").select("id, items, total_price, status, delivery_rate, notes, contact_name, warehouse_id, warehouse_auto").eq("conversation_id", conversation.id).eq("org_id", orgId).order("created_at", { ascending: false }).limit(1),
   ]);
   const { history: conversationHistory, isNewSession, priorSessionHistory } = historyResult;
   const existingOrder = existingOrdersResult.data?.[0] || null;
@@ -9483,6 +9749,17 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
         const items = Array.isArray(orderData.items) && orderData.items.length > 0
           ? orderData.items.map((i) => ({ product: i.product, quantity: Number(i.quantity) || 1, unit_price: Number(i.unit_price) || 0 }))
           : [{ product: orderData.product_name, quantity: orderData.quantity, unit_price: orderData.unit_price }];
+        const normalizedItems = await normalizeSocialInboxItems(supabase, orgId, items);
+        const routing = await resolveOrderRouting(
+          supabase,
+          orgId,
+          normalizedItems.map((item) => ({
+            productId: item.product_id || undefined,
+            productName: item.product,
+            variantId: item.variant_id || undefined,
+            quantity: item.quantity,
+          })),
+        );
         const itemsTotal = items.reduce((sum, i) => sum + (i.unit_price * i.quantity), 0);
         const totalPrice = Number(orderData.confirmed_total) > 0
           ? Number(orderData.confirmed_total)
@@ -9498,10 +9775,15 @@ async function handleMetaMessage({ supabase, orgId, platform, channel, senderId,
           .from("social_inbox_orders")
           .update({
             contact_name: orderData.customer_name,
-            items,
+            items: normalizedItems,
             notes,
             total_price: totalPrice,
             delivery_rate: deliveryRate,
+            weight_kg: routing.weightKg,
+            ...(existingOrder.warehouse_auto !== false ? {
+              warehouse_id: routing.warehouseId,
+              warehouse_auto: true,
+            } : {}),
           })
           .eq("id", existingOrder.id)
           .eq("org_id", orgId)
@@ -10412,6 +10694,9 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) update[key] = req.body[key];
     }
+    if (update.items !== undefined && !Array.isArray(update.items)) {
+      return res.status(400).json({ error: "items must be an array" });
+    }
     if (update.weight_kg !== undefined) update.weight_kg = parseOptionalWeightKg(update.weight_kg);
     if (update.warehouse_id !== undefined) {
       if (typeof update.warehouse_id !== "string" || !update.warehouse_id.trim()) {
@@ -10426,12 +10711,31 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
 
     const { data: currentOrder, error: currentOrderError } = await supabase
       .from("social_inbox_orders")
-      .select("id, status")
+      .select("id, status, warehouse_auto")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .maybeSingle();
     if (currentOrderError) throw currentOrderError;
     if (!currentOrder) return res.status(404).json({ error: "Inbox order not found" });
+
+    if (update.items !== undefined) {
+      update.items = await normalizeSocialInboxItems(supabase, orgId, update.items);
+      const routing = await resolveOrderRouting(
+        supabase,
+        orgId,
+        update.items.map((item) => ({
+          productId: item.product_id || undefined,
+          productName: item.product,
+          variantId: item.variant_id || undefined,
+          quantity: item.quantity,
+        })),
+      );
+      if (update.weight_kg === undefined) update.weight_kg = routing.weightKg;
+      if (update.warehouse_id === undefined && currentOrder.warehouse_auto !== false) {
+        update.warehouse_id = routing.warehouseId;
+        update.warehouse_auto = true;
+      }
+    }
 
     if (update.status !== undefined) {
       Object.assign(update, buildAttributionPatch({

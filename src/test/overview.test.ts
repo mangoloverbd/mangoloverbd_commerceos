@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildOverviewData } from "../../server/overview.js";
+import { buildOverviewData, toDayKey } from "../../server/overview.js";
+
+describe("toDayKey", () => {
+  it("uses the Dhaka calendar date at the UTC+6 midnight boundary", () => {
+    expect(toDayKey("2026-09-17T18:00:00.000Z")).toBe("2026-09-18");
+  });
+});
 
 describe("buildOverviewData", () => {
   const now = new Date("2026-08-13T12:00:00.000Z");
