@@ -48,6 +48,16 @@ describe("steadfast webhook attribution isolation", () => {
     expect(webhook()).toContain("orgId: order.org_id");
   });
 
+  it("requires a configured secret and logs only a persisted courier update", () => {
+    const section = webhook();
+
+    expect(section).toContain('const cfg = await getOrgSettings(order.org_id, ["courier_webhook_secret"])');
+    expect(section).toContain("if (secret && bearerToken !== secret)");
+    expect(section).toContain("const { data: updatedOrder, error: updateError } = await supabase");
+    expect(section).toContain('.select("id, status")');
+    expect(section).toContain("if (!updatedOrder)");
+  });
+
   it("logs bot-created inbox orders as system without fabricating a user", () => {
     const save = routeSection(
       "async function saveMetaInboxOrder",

@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }));
 vi.mock("@/components/DateRangePicker", () => ({
-  DateRangePicker: () => <button type="button">Date range</button>,
+  DateRangePicker: ({ onChange }: { onChange: (range: { from: Date; to: Date } | null) => void }) => (
+    <button type="button" onClick={() => onChange(null)}>All time</button>
+  ),
 }));
 
 import { apiFetch } from "@/lib/api";
@@ -42,7 +44,7 @@ function metrics(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function reportResponse() {
+function reportResponse(overrides: Record<string, unknown> = {}) {
   return {
     range: { from: "2026-09-01", to: "2026-09-18" },
     available_staff: [
@@ -74,6 +76,7 @@ function reportResponse() {
       },
     ],
     missing_weight_products: [{ id: "p2", name: "Green Mango" }],
+    ...overrides,
   };
 }
 
@@ -121,6 +124,23 @@ describe("StaffPerformance", () => {
     expect(screen.getByText("2 packs · 2 kg")).toBeInTheDocument();
   });
 
+  it("keeps the missing-weight warning compact and readable for a large catalog", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      missing_weight_products: [
+        { id: "p1", name: "Alpha Mango" },
+        { id: "p2", name: "Beta Mango" },
+        { id: "p3", name: "Gamma Mango" },
+        { id: "p4", name: "Delta Mango" },
+      ],
+    })));
+
+    renderPage();
+
+    expect(await screen.findByText(/4 products are missing a catalog weight: Alpha Mango, Beta Mango, Gamma Mango, and 1 more/)).toBeInTheDocument();
+    expect(screen.queryByText(/Delta Mango/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Human-attributed confirmation and cancellation work/)).toHaveClass("text-black/60");
+  });
+
   it("requests a narrowed report after an admin selects one staff member", async () => {
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
     const user = userEvent.setup();
@@ -135,6 +155,40 @@ describe("StaffPerformance", () => {
       expect(apiFetch).toHaveBeenLastCalledWith(
         expect.stringContaining(`users=${RafiId}`),
       );
+    });
+  });
+
+  it("removes date parameters when the date picker switches to all time", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Staff Performance" });
+    await user.click(screen.getByRole("button", { name: "All time" }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenLastCalledWith("/api/reports/staff");
+    });
+  });
+
+  it("restores the all-staff query after clearing a narrowed staff filter", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Staff Performance" });
+    await user.click(screen.getByRole("button", { name: "Filter staff" }));
+    await user.click(screen.getByRole("checkbox", { name: "Rafi" }));
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenLastCalledWith(expect.stringContaining(`users=${RafiId}`));
+    });
+
+    await user.click(screen.getByRole("button", { name: "Filter staff" }));
+    await user.click(screen.getByRole("button", { name: "All staff" }));
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenLastCalledWith(expect.not.stringContaining("users="));
     });
   });
 

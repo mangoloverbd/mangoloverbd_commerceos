@@ -150,6 +150,21 @@ describe("buildStatusEvent", () => {
     });
   });
 
+  it("uses the supplied transition timestamp so an audit event can be matched to attribution", () => {
+    expect(
+      buildStatusEvent({
+        orgId: "org-1",
+        orderId: "order-1",
+        orderTable: "orders",
+        fromStatus: "pending",
+        toStatus: "approved",
+        actorId: ACTOR,
+        actorKind: "user",
+        occurredAt: NOW,
+      }),
+    ).toMatchObject({ created_at: NOW });
+  });
+
   it("logs courier transitions with a null actor", () => {
     expect(
       buildStatusEvent({

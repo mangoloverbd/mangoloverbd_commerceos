@@ -50,26 +50,32 @@ describe("GET /api/reports/staff", () => {
     expect(section).toContain("available_staff");
   });
 
-  it("pages every report source and batches unbounded id filters", () => {
+  it("uses workspace-scoped user status events for historical activity and batches id filters", () => {
     const section = route();
 
     expect(section).toContain("fetchStaffReportPages");
     expect(section).toMatch(/fetchStaffReportPages\(\(\) => supabase[\s\S]*?\.from\("user_roles"\)[\s\S]*?\.eq\("org_id", orgId\)/);
     expect(section).toContain("chunkIds(request.selectedUserIds)");
-    expect(section).toContain("chunkIds(confirmedOrderIds)");
-    expect(section).toContain("mergeStaffReportRows");
+    expect(section).toContain('.from("order_status_events")');
+    expect(section).toContain('.eq("actor_kind", "user")');
+    expect(section).toContain("regularActivities");
+    expect(section).toContain("socialActivities");
+    expect(section).toContain("chunkIds(regularConfirmedOrderIds)");
   });
 });
 
 describe("staff report pagination helper", () => {
-  it("uses a stable id order and fixed Supabase ranges", () => {
+  it("uses a stable id keyset instead of offset pagination", () => {
     const helper = sectionBetween(
       "async function fetchStaffReportPages",
       'app.get("/api/reports/staff"',
     );
 
     expect(helper).toContain('.order("id", { ascending: true })');
-    expect(helper).toContain(".range(from, to)");
+    expect(helper).toContain("let lastId = null");
+    expect(helper).toContain('.gt("id", lastId)');
+    expect(helper).toContain(".limit(pageSize)");
+    expect(helper).not.toContain(".range(from, to)");
     expect(helper).toContain("if (rows.length < pageSize) break;");
   });
 });

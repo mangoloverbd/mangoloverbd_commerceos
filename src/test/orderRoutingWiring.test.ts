@@ -350,4 +350,17 @@ describe("order routing wiring", () => {
     expect(metaHandler).toContain("weight_kg: routing.weightKg");
     expect(inboxPatch).toContain("update.weight_kg = routing.weightKg");
   });
+
+  it("bounds and allowlists social inbox items before resolving them against the catalog", () => {
+    const normalizer = sectionBetween(
+      "async function normalizeSocialInboxItems",
+      "async function saveMetaInboxOrder",
+    );
+
+    expect(normalizer).toContain("MAX_SOCIAL_INBOX_ITEMS");
+    expect(normalizer).toContain("if (!Array.isArray(items)) return []");
+    expect(normalizer).toMatch(/if \(items\.length > MAX_SOCIAL_INBOX_ITEMS\)[\s\S]*?const list = items\.map\(sanitizeSocialInboxItem\)/);
+    expect(normalizer).toContain("sanitizeSocialInboxItem");
+    expect(source).toContain("SOCIAL_INBOX_ITEM_FIELDS");
+  });
 });

@@ -63,7 +63,7 @@ describe("order attribution wiring", () => {
     expect(patch).not.toMatch(/"(?:created_by|assigned_to|confirmed_by|cancelled_by)"/);
   });
 
-  it("uses a workspace-scoped assignee guard and a non-blocking event writer", () => {
+  it("uses a workspace-scoped assignee guard and retries a non-blocking event writer", () => {
     const guard = routeSection(
       "async function assertWorkspaceMember",
       "async function recordStatusEvent",
@@ -77,6 +77,10 @@ describe("order attribution wiring", () => {
     expect(guard).toContain('.eq("org_id", orgId)');
     expect(guard).toContain('.eq("user_id", userId)');
     expect(eventWriter).toContain('.from("order_status_events")');
+    expect(eventWriter).toContain("MAX_EVENT_INSERT_ATTEMPTS");
+    expect(eventWriter).toContain("crypto.randomUUID()");
+    expect(eventWriter).toContain('error?.code === "23505"');
+    expect(eventWriter).toContain("await delay(");
     expect(eventWriter).toContain("console.error");
     expect(eventWriter).not.toContain("throw");
   });

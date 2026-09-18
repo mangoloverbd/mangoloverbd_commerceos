@@ -42,6 +42,10 @@ describe("order chat AI mutations (source inspection)", () => {
     expect(applySrc).toContain("AI_ACTION_TOOLS");
     expect(applySrc).toContain("executeAiAction");
     expect(applySrc).toContain("requestStorefrontSeoRefresh");
+    expect(applySrc).toContain("buildStatusEvent");
+    expect(applySrc).toContain('orderTable: "orders"');
+    expect(applySrc).toContain('actorKind: "user"');
+    expect(applySrc).toContain("recordStatusEvent");
     expect(applySrc).toContain("ai_action_log");
   });
 

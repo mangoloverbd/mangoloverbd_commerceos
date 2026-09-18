@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
@@ -43,6 +43,12 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<DateRange | undefined>(value ?? undefined);
+  const valueFrom = value?.from?.getTime();
+  const valueTo = value?.to?.getTime();
+
+  useEffect(() => {
+    if (open) setPending(value ?? undefined);
+  }, [open, value, valueFrom, valueTo]);
 
   const activePreset = PRESETS.find((p) => {
     if (!p.range && !value) return true;

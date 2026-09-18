@@ -133,6 +133,16 @@ describe("resolveStaffReportRequest", () => {
       staff: [{ user_id: ADMIN_ID, display_name: "Admin" }],
     })).toThrow("Report start date must not be after the end date");
   });
+
+  it("rejects an impossible calendar date before resolving the staff filter", () => {
+    expect(() => resolveStaffReportRequest({
+      from: "2026-13-01",
+      to: "2026-09-18",
+      role: "admin",
+      userId: ADMIN_ID,
+      staff: [{ user_id: ADMIN_ID, display_name: "Admin" }],
+    })).toThrow("Invalid report date");
+  });
 });
 
 describe("buildStaffReport", () => {
@@ -214,6 +224,199 @@ describe("buildStaffReport", () => {
       telesales_confirmed_value: 1200,
       telesales_confirmed_kg: 2.5,
       products: [{ product_id: "product-1", product_name: "Mango", packs: 2, kg: 2 }],
+    });
+  });
+
+  it("keeps confirmation rates within the selected assigned-work cohort", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [
+        {
+          id: "assigned-in-range",
+          assigned_to: TEAM_MEMBER_ID,
+          created_at: "2026-09-18T03:00:00.000Z",
+          confirmed_by: TEAM_MEMBER_ID,
+          confirmed_at: "2026-09-18T04:00:00.000Z",
+        },
+        {
+          id: "assigned-before-range-1",
+          assigned_to: TEAM_MEMBER_ID,
+          created_at: "2026-09-17T03:00:00.000Z",
+          confirmed_by: TEAM_MEMBER_ID,
+          confirmed_at: "2026-09-18T05:00:00.000Z",
+        },
+        {
+          id: "assigned-before-range-2",
+          assigned_to: TEAM_MEMBER_ID,
+          created_at: "2026-09-16T03:00:00.000Z",
+          confirmed_by: TEAM_MEMBER_ID,
+          confirmed_at: "2026-09-18T06:00:00.000Z",
+        },
+      ],
+      [],
+      [],
+      [],
+      [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }],
+      interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      assigned_count: 1,
+      confirmed_count: 3,
+      confirmed_assigned_count: 1,
+      confirmation_rate: 1,
+    });
+  });
+
+  it("preserves historical confirmation and cancellation work from status events", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [{
+        id: "re-approved-order",
+        assigned_to: TEAM_MEMBER_ID,
+        created_at: "2026-09-18T03:00:00.000Z",
+        confirmed_by: ADMIN_ID,
+        confirmed_at: "2026-09-19T04:00:00.000Z",
+        price: 900,
+      }],
+      [],
+      [],
+      [],
+      [
+        { user_id: TEAM_MEMBER_ID, display_name: "Rafi" },
+        { user_id: ADMIN_ID, display_name: "Admin" },
+      ],
+      {
+        ...interval,
+        regularActivities: [
+          {
+            action: "confirmed",
+            actor_id: TEAM_MEMBER_ID,
+            occurred_at: "2026-09-18T04:00:00.000Z",
+            order: {
+              id: "re-approved-order",
+              assigned_to: TEAM_MEMBER_ID,
+              created_at: "2026-09-18T03:00:00.000Z",
+              price: 900,
+            },
+          },
+          {
+            action: "cancelled",
+            actor_id: ADMIN_ID,
+            occurred_at: "2026-09-18T05:00:00.000Z",
+            order: {
+              id: "re-approved-order",
+              assigned_to: TEAM_MEMBER_ID,
+              created_at: "2026-09-18T03:00:00.000Z",
+              price: 900,
+            },
+          },
+        ],
+      },
+    );
+
+    expect(report.rows.find((row) => row.user_id === TEAM_MEMBER_ID)?.orders).toMatchObject({
+      confirmed_count: 1,
+      confirmed_value: 900,
+      confirmed_assigned_count: 1,
+    });
+    expect(report.rows.find((row) => row.user_id === ADMIN_ID)?.orders).toMatchObject({
+      cancelled_count: 1,
+      cancelled_value: 900,
+      cancelled_assigned_count: 0,
+    });
+  });
+
+  it("uses a verified product ID instead of a conflicting historic item name", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [{
+        id: "id-precedence-order",
+        confirmed_by: TEAM_MEMBER_ID,
+        confirmed_at: "2026-09-18T04:00:00.000Z",
+      }],
+      [],
+      [{
+        order_id: "id-precedence-order",
+        product_id: "green-mango",
+        product_name: "Ripe Mango",
+        quantity: 2,
+      }],
+      [
+        { id: "green-mango", name: "Green Mango", weight_kg: 1.25 },
+        { id: "ripe-mango", name: "Ripe Mango", weight_kg: 0.25 },
+      ],
+      [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }],
+      interval,
+    );
+
+    expect(report.rows[0].orders.products).toEqual([
+      { product_id: "green-mango", product_name: "Green Mango", packs: 2, kg: 2.5 },
+    ]);
+  });
+
+  it("keeps a regular confirmation rate unavailable for an unassigned confirmation", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [{
+        id: "unassigned-confirmation",
+        confirmed_by: TEAM_MEMBER_ID,
+        confirmed_at: "2026-09-18T04:00:00.000Z",
+        price: 800,
+        courier_status: "delivered",
+      }],
+      [],
+      [],
+      [],
+      [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }],
+      interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      assigned_count: 0,
+      confirmed_count: 1,
+      confirmation_rate: null,
+      delivered_rate: 1,
+    });
+  });
+
+  it("credits a later human cancellation separately from the original confirmation", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [{
+        id: "confirmed-then-cancelled",
+        assigned_to: TEAM_MEMBER_ID,
+        confirmed_by: TEAM_MEMBER_ID,
+        confirmed_at: "2026-09-18T04:00:00.000Z",
+        created_at: "2026-09-18T03:00:00.000Z",
+        cancelled_by: ADMIN_ID,
+        cancelled_at: "2026-09-18T05:00:00.000Z",
+        price: 900,
+      }],
+      [],
+      [],
+      [],
+      [
+        { user_id: TEAM_MEMBER_ID, display_name: "Rafi" },
+        { user_id: ADMIN_ID, display_name: "Admin" },
+      ],
+      interval,
+    );
+    const rafi = report.rows.find((row) => row.user_id === TEAM_MEMBER_ID)?.orders;
+    const admin = report.rows.find((row) => row.user_id === ADMIN_ID)?.orders;
+
+    expect(rafi).toMatchObject({
+      assigned_count: 1,
+      confirmed_count: 1,
+      confirmed_assigned_count: 1,
+      cancelled_count: 0,
+    });
+    expect(admin).toMatchObject({
+      assigned_count: 0,
+      confirmed_count: 0,
+      cancelled_count: 1,
+      cancelled_assigned_count: 0,
+      cancelled_value: 900,
     });
   });
 
@@ -446,6 +649,29 @@ describe("buildStaffReport", () => {
       { product_id: "product-1", product_name: "Mango", packs: 2, kg: 1 },
     ]);
     expect(report.missing_weight_products).toEqual([]);
+  });
+
+  it("ignores a malformed historic social items value without failing the report", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [],
+      [{
+        id: "malformed-social-items",
+        confirmed_by: TEAM_MEMBER_ID,
+        confirmed_at: "2026-09-18T04:00:00.000Z",
+        total_price: 600,
+        items: { product: "Mango", quantity: 1 },
+      }],
+      [],
+      [{ id: "product-1", name: "Mango", weight_kg: 0.5 }],
+      [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }],
+      interval,
+    );
+
+    expect(report.rows[0].social_inbox_orders).toMatchObject({
+      confirmed_count: 1,
+      products: [],
+    });
   });
 });
 

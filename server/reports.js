@@ -9,7 +9,8 @@ function invalidReportRequest(message) {
 
 function isValidYmd(value) {
   if (typeof value !== "string" || !YMD_RE.test(value)) return false;
-  return new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function addDaysYmd(ymd, days) {
@@ -151,13 +152,8 @@ function normalizeProductName(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-function addProductDetails(metrics, items, productsById, productsByName, missingWeightProducts) {
-  const productRows = new Map(metrics.products.map((product) => [
-    product.product_id || `name:${normalizeProductName(product.product_name)}`,
-    product,
-  ]));
-
-  for (const item of items || []) {
+function addProductDetails(productRows, items, productsById, productsByName, missingWeightProducts) {
+  for (const item of Array.isArray(items) ? items : []) {
     const packs = toValidQuantity(item?.quantity);
     if (!packs) continue;
 
@@ -179,11 +175,50 @@ function addProductDetails(metrics, items, productsById, productsByName, missing
     }
     productRows.set(key, detail);
   }
-
-  metrics.products = [...productRows.values()];
 }
 
-export function buildStaffReport(orders, inboxOrders, orderItems, products, staff, { since = null, until = null } = {}) {
+function currentAttributionActivities(orders, action) {
+  const actorField = action === "confirmed" ? "confirmed_by" : "cancelled_by";
+  const timestampField = action === "confirmed" ? "confirmed_at" : "cancelled_at";
+  return (orders || []).map((order) => ({
+    action,
+    actor_id: order?.[actorField],
+    occurred_at: order?.[timestampField],
+    order,
+  }));
+}
+
+function activityOrder(activity) {
+  return activity?.order || activity || {};
+}
+
+function activityOrderId(activity, order) {
+  return activity?.order_id || order?.id || null;
+}
+
+function activityActorId(activity, action, order) {
+  const actorField = action === "confirmed" ? "confirmed_by" : "cancelled_by";
+  return activity?.actor_id || order?.[actorField] || null;
+}
+
+function activityTimestamp(activity, action, order) {
+  const timestampField = action === "confirmed" ? "confirmed_at" : "cancelled_at";
+  return activity?.occurred_at || order?.[timestampField] || null;
+}
+
+function selectActivities(activities, orders, action) {
+  if (!Array.isArray(activities)) return currentAttributionActivities(orders, action);
+  return activities.filter((activity) => activity?.action === action);
+}
+
+export function buildStaffReport(
+  orders,
+  inboxOrders,
+  orderItems,
+  products,
+  staff,
+  { since = null, until = null, regularActivities, socialActivities } = {},
+) {
   const productsById = new Map((products || []).filter((product) => product?.id).map((product) => [product.id, product]));
   const productsByName = new Map();
   const ambiguousProductNames = new Set();
@@ -215,23 +250,50 @@ export function buildStaffReport(orders, inboxOrders, orderItems, products, staf
   }));
   const rowsByUserId = new Map(rows.map((row) => [row.user_id, row]));
   const missingWeightProducts = new Map();
+  const productRowsByMetrics = new Map();
+  const confirmedAssignedOrderKeys = new Set();
+  const cancelledAssignedOrderKeys = new Set();
+
+  const productsForMetrics = (metrics) => {
+    if (!productRowsByMetrics.has(metrics)) productRowsByMetrics.set(metrics, new Map());
+    return productRowsByMetrics.get(metrics);
+  };
 
   for (const order of orders || []) {
     const assignedRow = rowsByUserId.get(order?.assigned_to);
     if (assignedRow && isInInterval(order.created_at, since, until)) {
       assignedRow.orders.assigned_count += 1;
     }
+  }
 
-    const cancelledRow = rowsByUserId.get(order?.cancelled_by);
-    if (cancelledRow && isInInterval(order.cancelled_at, since, until)) {
-      const metrics = cancelledRow.orders;
-      metrics.cancelled_count += 1;
-      metrics.cancelled_value += toNumber(order.price);
-      if (order.assigned_to === order.cancelled_by) metrics.cancelled_assigned_count += 1;
+  for (const activity of selectActivities(regularActivities, orders, "cancelled")) {
+    const order = activityOrder(activity);
+    const actorId = activityActorId(activity, "cancelled", order);
+    const occurredAt = activityTimestamp(activity, "cancelled", order);
+    const cancelledRow = rowsByUserId.get(actorId);
+    if (!cancelledRow || !isInInterval(occurredAt, since, until)) continue;
+
+    const metrics = cancelledRow.orders;
+    metrics.cancelled_count += 1;
+    metrics.cancelled_value += toNumber(order.price);
+    const orderId = activityOrderId(activity, order);
+    const assignedKey = `${actorId}:${orderId || "unknown"}`;
+    if (
+      order.assigned_to === actorId &&
+      isInInterval(order.created_at, since, until) &&
+      !cancelledAssignedOrderKeys.has(assignedKey)
+    ) {
+      cancelledAssignedOrderKeys.add(assignedKey);
+      metrics.cancelled_assigned_count += 1;
     }
+  }
 
-    const confirmedRow = rowsByUserId.get(order?.confirmed_by);
-    if (!confirmedRow || !isInInterval(order.confirmed_at, since, until)) continue;
+  for (const activity of selectActivities(regularActivities, orders, "confirmed")) {
+    const order = activityOrder(activity);
+    const actorId = activityActorId(activity, "confirmed", order);
+    const occurredAt = activityTimestamp(activity, "confirmed", order);
+    const confirmedRow = rowsByUserId.get(actorId);
+    if (!confirmedRow || !isInInterval(occurredAt, since, until)) continue;
 
     const metrics = confirmedRow.orders;
     const value = toNumber(order.price);
@@ -239,7 +301,16 @@ export function buildStaffReport(orders, inboxOrders, orderItems, products, staf
     metrics.confirmed_count += 1;
     metrics.confirmed_value += value;
     metrics.confirmed_kg += weightKg;
-    if (order.assigned_to === order.confirmed_by) metrics.confirmed_assigned_count += 1;
+    const orderId = activityOrderId(activity, order);
+    const assignedKey = `${actorId}:${orderId || "unknown"}`;
+    if (
+      order.assigned_to === actorId &&
+      isInInterval(order.created_at, since, until) &&
+      !confirmedAssignedOrderKeys.has(assignedKey)
+    ) {
+      confirmedAssignedOrderKeys.add(assignedKey);
+      metrics.confirmed_assigned_count += 1;
+    }
     const outcome = classifyCourierOutcome(order);
     if (outcome === "delivered") {
       metrics.delivered_count += 1;
@@ -255,19 +326,33 @@ export function buildStaffReport(orders, inboxOrders, orderItems, products, staf
       metrics.telesales_confirmed_kg += weightKg;
     }
 
-    addProductDetails(metrics, itemsByOrderId.get(order.id), productsById, productsByName, missingWeightProducts);
+    addProductDetails(
+      productsForMetrics(metrics),
+      itemsByOrderId.get(orderId),
+      productsById,
+      productsByName,
+      missingWeightProducts,
+    );
   }
 
-  for (const order of inboxOrders || []) {
-    const cancelledRow = rowsByUserId.get(order?.cancelled_by);
-    if (cancelledRow && isInInterval(order.cancelled_at, since, until)) {
-      const metrics = cancelledRow.social_inbox_orders;
-      metrics.cancelled_count += 1;
-      metrics.cancelled_value += toNumber(order.total_price);
-    }
+  for (const activity of selectActivities(socialActivities, inboxOrders, "cancelled")) {
+    const order = activityOrder(activity);
+    const actorId = activityActorId(activity, "cancelled", order);
+    const occurredAt = activityTimestamp(activity, "cancelled", order);
+    const cancelledRow = rowsByUserId.get(actorId);
+    if (!cancelledRow || !isInInterval(occurredAt, since, until)) continue;
 
-    const confirmedRow = rowsByUserId.get(order?.confirmed_by);
-    if (!confirmedRow || !isInInterval(order.confirmed_at, since, until)) continue;
+    const metrics = cancelledRow.social_inbox_orders;
+    metrics.cancelled_count += 1;
+    metrics.cancelled_value += toNumber(order.total_price);
+  }
+
+  for (const activity of selectActivities(socialActivities, inboxOrders, "confirmed")) {
+    const order = activityOrder(activity);
+    const actorId = activityActorId(activity, "confirmed", order);
+    const occurredAt = activityTimestamp(activity, "confirmed", order);
+    const confirmedRow = rowsByUserId.get(actorId);
+    if (!confirmedRow || !isInInterval(occurredAt, since, until)) continue;
 
     const metrics = confirmedRow.social_inbox_orders;
     const value = toNumber(order.total_price);
@@ -283,10 +368,18 @@ export function buildStaffReport(orders, inboxOrders, orderItems, products, staf
       metrics.returned_count += 1;
       metrics.returned_value += value;
     }
-    addProductDetails(metrics, order.items, productsById, productsByName, missingWeightProducts);
+    addProductDetails(
+      productsForMetrics(metrics),
+      order.items,
+      productsById,
+      productsByName,
+      missingWeightProducts,
+    );
   }
 
   for (const row of rows) {
+    row.orders.products = [...(productRowsByMetrics.get(row.orders) || new Map()).values()];
+    row.social_inbox_orders.products = [...(productRowsByMetrics.get(row.social_inbox_orders) || new Map()).values()];
     row.orders.products.sort((a, b) => b.packs - a.packs || a.product_name.localeCompare(b.product_name));
     row.social_inbox_orders.products.sort((a, b) => b.packs - a.packs || a.product_name.localeCompare(b.product_name));
     finalizeMetrics(row.orders);

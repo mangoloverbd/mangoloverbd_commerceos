@@ -236,7 +236,7 @@ function ReportTable({
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Performance</p>
           <h2 id={`${metricsKey}-heading`} className="mt-1 text-xl font-light text-black">{title}</h2>
         </div>
-        {description && <p className="text-[11px] text-black/45">{description}</p>}
+        {description && <p className="text-[11px] text-black/60">{description}</p>}
       </div>
       <div className="overflow-x-auto border-y border-black/[0.08]">
         <table className="min-w-max w-full border-collapse text-left">
@@ -251,7 +251,7 @@ function ReportTable({
             </tr>
             <tr className="border-b border-black/[0.08]">
               {columns.map((column) => (
-                <th key={`${column.group}-${column.label}`} className="border-l border-black/[0.06] px-3 py-2 text-right text-[8px] font-medium uppercase tracking-[0.2em] text-black/45">
+                <th key={`${column.group}-${column.label}`} className="border-l border-black/[0.06] px-3 py-2 text-right text-[8px] font-medium uppercase tracking-[0.2em] text-black/60">
                   {column.label}
                 </th>
               ))}
@@ -288,13 +288,13 @@ function ReportTable({
                     <tr className="border-b border-black/[0.06] bg-black/[0.015]">
                       <td colSpan={columns.length + 1} className="px-6 py-3">
                         {metrics.products.length === 0 ? (
-                          <p className="text-[11px] text-black/45">No confirmed product items in this range.</p>
+                          <p className="text-[11px] text-black/60">No confirmed product items in this range.</p>
                         ) : (
                           <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
                             {metrics.products.map((product) => (
                               <div key={`${row.user_id}-${product.product_id || product.product_name}`} className="flex items-center justify-between gap-3 py-1 text-[11px]">
                                 <span className="truncate text-black/70">{product.product_name}</span>
-                                <span className="shrink-0 tabular-nums text-black/50">{formatNumber(product.packs)} packs · {formatKg(product.kg)}</span>
+                                <span className="shrink-0 tabular-nums text-black/60">{formatNumber(product.packs)} packs · {formatKg(product.kg)}</span>
                               </div>
                             ))}
                           </div>
@@ -365,13 +365,15 @@ export default function StaffPerformance() {
   }
 
   const data = reportQuery.data;
+  const missingWeightPreview = data.missing_weight_products.slice(0, 3);
+  const remainingMissingWeightCount = data.missing_weight_products.length - missingWeightPreview.length;
   return (
     <div className="min-h-full space-y-8 bg-[#FAFAF8] p-1 lg:p-2">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Reports</p>
           <h1 className="mt-1 text-2xl font-light text-black">Staff Performance</h1>
-          <p className="mt-1 text-[11px] text-black/45">Human-attributed confirmation and cancellation work, using Asia/Dhaka dates.</p>
+          <p className="mt-1 text-[11px] text-black/60">Human-attributed confirmation and cancellation work, using Asia/Dhaka dates.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {data.available_staff.length > 1 && (
@@ -397,13 +399,15 @@ export default function StaffPerformance() {
       {data.missing_weight_products.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-y border-amber-500/20 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-950/70">
           <WarningCircle size={16} weight="light" className="text-amber-700" />
-          <span>{data.missing_weight_products.length} product{data.missing_weight_products.length === 1 ? " is" : "s are"} missing a catalog weight: {data.missing_weight_products.map((product) => product.name).join(", ")}.</span>
+          <span>
+            {data.missing_weight_products.length} product{data.missing_weight_products.length === 1 ? " is" : "s are"} missing a catalog weight: {missingWeightPreview.map((product) => product.name).join(", ")}{remainingMissingWeightCount > 0 ? `, and ${remainingMissingWeightCount} more` : ""}.
+          </span>
           <Link to="/products" className="font-medium text-amber-950 underline underline-offset-2">Review products</Link>
         </div>
       )}
 
       {data.rows.length === 0 ? (
-        <div className="border-y border-black/[0.08] py-12 text-center text-[12px] text-black/45">
+        <div className="border-y border-black/[0.08] py-12 text-center text-[12px] text-black/60">
           No staff attribution is available for this range yet.
         </div>
       ) : (
