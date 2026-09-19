@@ -55,6 +55,8 @@ One row per phone, upserted. No revision history — the current snapshot plus a
 
 `summary` preserves the exact shape written to `orders.fraud_data` today, so `OrdersTable.FraudCell`, `server/ai-actions.js:5304`, and the analytics text dump continue working unchanged.
 
+**One value-level fix.** `courierData` includes a `summary` entry that is FraudShield's own cross-courier aggregate, not a courier. The current loop counts it as one, so every stored total is roughly double the truth — a phone with 45 real parcels is stored as 80, and `FraudCell` renders the percentage off that. The derivation filters the key out. The object shape is unchanged; only the numbers become correct.
+
 `orders.fraud_data` and `orders.fraud_checked` keep being written on every check. No downstream consumer changes.
 
 **Freshness window: 30 days**, as a named constant `FRAUD_CACHE_TTL_DAYS`. Courier history moves slowly and a manual re-check is always available; shorter windows spend requests without improving the decision.
@@ -67,11 +69,16 @@ New file `server/fraudShield.js`. Move `checkFraudStatus()` and `parseFraudShiel
 
 Exported functions:
 
-- **`lookupCached(supabase, orgId, phone)`** — cache read only. Never issues a FraudShield request. Returns `{ status, payload, summary, checkedAt, stale }` or `null` when the phone has never been checked.
-- **`checkPhone(supabase, orgId, phone, { force = false })`** — read-through. Returns the cached row when it is inside the freshness window and `force` is false. Otherwise calls FraudShield, upserts, and returns.
-- **`getUsage(supabase, orgId)`** — proxies `GET /api/usage/daily-limit`, memoized for 5 minutes in `app_settings` under `{orgId}:fraudshield_usage_cache`.
+- **`fetchFraudShield(cleanedPhone, apiKey, fetchImpl)`** — the network call. Returns `{ payload, summary, errorMessage }`, where `payload` is the complete upstream body and `summary` is the legacy derived shape. `fetchImpl` is injected so tests never touch the network.
+- **`cacheState(row, now)`** — `"missing" | "fresh" | "stale" | "claimed"`.
+- **`resolveFraudCheck({ readCache, writeCache, callApi, now, force })`** — the read-through orchestration, with all I/O injected.
+- **`shouldWarm(usage, reserve)`** and **`selectPhonesToWarm({ orders, cachedRows, now, limit })`** — cron drain policy.
 
-**Double-call guard.** Before issuing a request, `checkPhone` upserts a row with `status = 'pending'`. A caller that observes a `pending` row younger than 60 seconds waits for it rather than issuing a second request. This prevents the cron drain and an operator's click from both paying for the same phone.
+`server/index.js` binds these to Supabase through thin adapters: `readFraudCache`, `writeFraudCache`, `runFraudCheck`, and `readFraudUsage` (which proxies `GET /api/usage/daily-limit`, memoized for 5 minutes in `app_settings` under `{orgId}:fraudshield_usage_cache`).
+
+**Double-call guard.** Before issuing a request, `resolveFraudCheck` upserts a row with `status = 'pending'`. A caller that observes a `pending` row younger than 60 seconds returns without issuing a second request. This prevents the cron drain and an operator's click from both paying for the same phone.
+
+**Failed re-checks preserve data.** If the cached row was `ok` and a new call fails, the previous `payload` and `summary` are kept alongside `status = 'error'` and the message. A transient FraudShield outage degrades the panel to stale-with-a-note rather than blanking it.
 
 The API key continues to come from `process.env.FRAUDSHIELD_API_KEY`, never from `app_settings` and never from the client.
 
@@ -118,7 +125,7 @@ Expected steady-state consumption at 1200 orders/day with a 20–40% repeat-cust
 
 New component: `src/components/order-editor/FraudPanel.tsx`. **Design: Strip** (option C, selected 2026-09-19 from `docs/superpowers/specs/assets/2026-09-19-fraud-panel-demo.html`).
 
-One shell used on every surface — a single collapsed row that expands in place. No size variants; the same component renders everywhere, differing only in whether it starts expanded.
+One shell used on all three editing surfaces — a single collapsed row that expands in place. No size variants; the same component renders everywhere, differing only in whether it starts expanded.
 
 Design language per `CLAUDE.md` §8: background `bg-[#FAFAF8]`, labels `text-[8px] font-medium tracking-[0.3em] text-black uppercase`, Phosphor Icons with `weight="light"`, borderless. Status colours reuse the existing order-pill palette already in `CustomerPanel.tsx:108` — `#2e9e5b`/`#e3f5e9` safe, `#b97f1f`/`#fdf3e3` caution, `#d05555`/`#fdecec` high risk. **No new design tokens are introduced.**
 
@@ -155,7 +162,9 @@ Two columns, stacking below ~640px:
 3. **OK** — as above.
 4. **New customer** — `summary.total_parcels === 0`: a neutral grey `New customer` pill. Not a warning; there is simply no signal.
 5. **Error** — `Check failed` in red plus Retry, with the parsed message on the expanded row.
-6. **Quota exhausted** — `Daily limit reached`, Check button disabled, reset time from `limit_resets_at`.
+6. **Quota exhausted** — `Daily limit reached`, Check button disabled.
+
+The panel deliberately does **not** fetch `/api/fraud/usage` — one request per panel instance would make the meter its own load source. It enters the quota-exhausted state when a check *returns* a quota error. The standalone Settings meter (§7) is the only consumer of that endpoint.
 
 ### Placement
 
@@ -164,7 +173,7 @@ Two columns, stacking below ~640px:
 | `src/pages/OrderDetail.tsx` | Strip inside `CustomerPanel`, after the "Last orders" block. Deletes the permanently blank `<DetailField label="Fraud" value={order.fraud_data?.risk_level} />` at `CustomerPanel.tsx:316` and the dead `risk_level` entries in the `CustomerOrder` type (`CustomerPanel.tsx:37`) and the `Order` type (`OrderDetail.tsx:42`). |
 | `src/pages/NewOrder.tsx` | Strip under the phone input, with a debounced cache-only lookup once the field holds a valid 11-digit BD number. Removes the write-only "Run fraud check" checkbox and its `runFraudCheck` state, so the operator sees the risk *before* creating the order. |
 | `src/pages/AbandonedDetail.tsx` | Pass the checkout's phone through to `CustomerPanel` so the strip resolves. |
-| `src/pages/InboxOrders.tsx` | Strip in the detail view, replacing the bare fraud check button. |
+| `src/pages/InboxOrders.tsx` | **No change.** It is a table, not an editing surface — `InboxFraudCell` (line 193) is the same hover-card pattern as `OrdersTable.FraudCell`. Rerouting `POST /api/inbox-orders/check-fraud` through the cache (§5) is the benefit that mattered: its checks now populate the same phone cache the editors read. |
 
 `OrdersTable.FraudCell` is left exactly as-is.
 
