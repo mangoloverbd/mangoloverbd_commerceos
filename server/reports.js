@@ -152,13 +152,16 @@ function normalizeProductName(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-function addProductDetails(productRows, items, productsById, productsByName, missingWeightProducts) {
+function addProductDetails(productRows, items, productsById, productsByName, missingWeightProducts, variantsById) {
   for (const item of Array.isArray(items) ? items : []) {
     const packs = toValidQuantity(item?.quantity);
     if (!packs) continue;
 
     const itemName = item?.product_name ?? item?.product;
-    const product = productsById.get(item?.product_id) || productsByName.get(normalizeProductName(itemName));
+    const variant = (variantsById && item?.variant_id) ? variantsById.get(item.variant_id) : null;
+    const product = productsById.get(item?.product_id)
+      || (variant?.product_id ? productsById.get(variant.product_id) : null)
+      || productsByName.get(normalizeProductName(itemName));
     const productId = product?.id || null;
     const productName = product?.name || itemName || "Unknown product";
     const key = productId || `name:${normalizeProductName(productName)}`;
@@ -168,9 +171,10 @@ function addProductDetails(productRows, items, productsById, productsByName, mis
       packs: 0,
       kg: 0,
     };
+    const resolvedWeight = variant?.weight_kg ?? product?.weight_kg ?? null;
     detail.packs += packs;
-    detail.kg += packs * toNumber(product?.weight_kg);
-    if (product?.id && product.weight_kg === null) {
+    detail.kg += packs * toNumber(resolvedWeight);
+    if (product?.id && resolvedWeight === null) {
       missingWeightProducts.set(product.id, { id: product.id, name: product.name });
     }
     productRows.set(key, detail);
@@ -217,8 +221,11 @@ export function buildStaffReport(
   orderItems,
   products,
   staff,
-  { since = null, until = null, regularActivities, socialActivities } = {},
+  { since = null, until = null, regularActivities, socialActivities, variants = null } = {},
+  variantsArg = null,
 ) {
+  const variantsList = Array.isArray(variantsArg) ? variantsArg : (Array.isArray(variants) ? variants : []);
+  const variantsById = new Map((variantsList || []).filter((variant) => variant?.id).map((variant) => [variant.id, variant]));
   const productsById = new Map((products || []).filter((product) => product?.id).map((product) => [product.id, product]));
   const productsByName = new Map();
   const ambiguousProductNames = new Set();
@@ -332,6 +339,7 @@ export function buildStaffReport(
       productsById,
       productsByName,
       missingWeightProducts,
+      variantsById,
     );
   }
 
@@ -374,6 +382,7 @@ export function buildStaffReport(
       productsById,
       productsByName,
       missingWeightProducts,
+      variantsById,
     );
   }
 
