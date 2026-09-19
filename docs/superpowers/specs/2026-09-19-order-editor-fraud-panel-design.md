@@ -3,6 +3,7 @@
 **Date:** 2026-09-19
 **Status:** Approved
 **Scope:** Surface full FraudShield customer risk data on every order editing surface, backed by a phone-keyed cache.
+**UI option selected:** C — Strip (see `docs/superpowers/specs/assets/2026-09-19-fraud-panel-demo.html`)
 
 ---
 
@@ -115,40 +116,59 @@ Expected steady-state consumption at 1200 orders/day with a 20–40% repeat-cust
 
 ## 8. UI
 
-New component: `src/components/order-editor/FraudPanel.tsx`, with `variant="full" | "compact"`.
+New component: `src/components/order-editor/FraudPanel.tsx`. **Design: Strip** (option C, selected 2026-09-19 from `docs/superpowers/specs/assets/2026-09-19-fraud-panel-demo.html`).
 
-Design language per `CLAUDE.md` §8: background `bg-[#FAFAF8]`, labels `text-[8px] font-medium tracking-[0.3em] text-black uppercase`, hero values `text-2xl font-light`, Phosphor Icons with `weight="light"`, `৳` for currency, borderless panels.
+One shell used on every surface — a single collapsed row that expands in place. No size variants; the same component renders everywhere, differing only in whether it starts expanded.
 
-### Content (full variant)
+Design language per `CLAUDE.md` §8: background `bg-[#FAFAF8]`, labels `text-[8px] font-medium tracking-[0.3em] text-black uppercase`, Phosphor Icons with `weight="light"`, borderless. Status colours reuse the existing order-pill palette already in `CustomerPanel.tsx:108` — `#2e9e5b`/`#e3f5e9` safe, `#b97f1f`/`#fdf3e3` caution, `#d05555`/`#fdecec` high risk. **No new design tokens are introduced.**
 
-- Risk pill — Safe / Caution / High risk, driven by `fraudRiskScore.level`, with the Bangla `fraudRiskScore.label` as subtitle and `fraudRiskScore.score` out of 100.
-- Hero: success ratio. Below it, Total / Delivered / Cancelled counts.
-- Per-courier rows: courier `logo`, `name`, `success_parcel/total_parcel`, `success_ratio`, and a thin progress bar. Only couriers present in the response are rendered.
-- Score breakdown chips from `fraudRiskScore.breakdown`: success, reports, cancel, volume.
-- Reviews — collapsible list of rating, comment, and date, with the reviewer phone masked (`018****0000`). Rendered only when `reviews` is present; the API omits the key entirely when there are none.
-- Footer: relative "Checked N days ago" plus a Re-check button.
+### Collapsed row (the default, ~44px)
 
-The compact variant renders the risk pill, success ratio, and counts, and expands to the full content on demand.
+Left to right, on one line, wrapping on narrow viewports:
+
+1. `Customer risk` label
+2. Risk pill — Safe / Caution / High risk from `fraudRiskScore.level`, with a shield-check or shield-warning icon
+3. Success ratio at `text-[15px] font-medium`, tabular numerals
+4. `42 delivered · 3 cancelled · 45 total`
+5. `7 couriers · 1 review` (review count omitted when the API omits `reviews`)
+6. Right-aligned: relative check age (`3d ago`), an icon-only Re-check button, and a `Details` disclosure toggle
+
+### Risk tinting
+
+The collapsed row is untinted for **safe**. For **caution** it takes the amber background, for **high risk** the red background, with the label and figures shifted to the matching foreground colour. Risk escalation is therefore visible without reading a single word — which matters because this row sits inside an already-dense editor.
+
+### Expansion
+
+Collapsed by default, **except when `fraudRiskScore.level` is high**, in which case the panel renders expanded on mount. The state that needs attention presents itself; the 90% safe case stays one quiet row. Expansion is local component state and is not persisted.
+
+### Expanded body
+
+Two columns, stacking below ~640px:
+
+- **Left — By courier.** One row per courier present in the response: `logo` from the payload, `name`, `success_parcel/total_parcel`, and `success_ratio` coloured by threshold. Below it, score breakdown chips from `fraudRiskScore.breakdown` (success, reports, cancel, volume); the reports and cancel chips take the red treatment when non-zero.
+- **Right — Reviews from other merchants.** Rating, comment, and date per review, with the reviewer phone masked to `018****0000`. Rendered only when `reviews` is present — the API omits the key entirely rather than sending an empty array.
 
 ### States
 
-1. **Not checked** — "Not checked yet" plus a Check button.
-2. **Loading** — spinner.
-3. **OK** — full content.
-4. **New customer** — `summary.total_parcels === 0`: "New customer — no courier history".
-5. **Error** — the parsed message plus Retry.
-6. **Quota exhausted** — button disabled with the reset time as the reason.
+1. **Not checked** — `Not checked yet` plus a solid Check button. The only control that spends a FraudShield request.
+2. **Loading** — spinner in place of the figures.
+3. **OK** — as above.
+4. **New customer** — `summary.total_parcels === 0`: a neutral grey `New customer` pill. Not a warning; there is simply no signal.
+5. **Error** — `Check failed` in red plus Retry, with the parsed message on the expanded row.
+6. **Quota exhausted** — `Daily limit reached`, Check button disabled, reset time from `limit_resets_at`.
 
 ### Placement
 
 | Page | Change |
 |---|---|
-| `src/pages/OrderDetail.tsx` | Full variant inside `CustomerPanel`, after the "Last orders" block. Deletes the permanently blank `<DetailField label="Fraud" value={order.fraud_data?.risk_level} />` at `CustomerPanel.tsx:316` and the dead `risk_level` entries in the `CustomerOrder` type (`CustomerPanel.tsx:37`) and the `Order` type (`OrderDetail.tsx:42`). |
-| `src/pages/NewOrder.tsx` | Compact variant under the phone input, with a debounced cache-only lookup on a valid 11-digit BD number. Removes the write-only "Run fraud check" checkbox and its `runFraudCheck` state, so the operator sees the risk *before* creating the order. |
-| `src/pages/AbandonedDetail.tsx` | Pass the checkout's phone through to `CustomerPanel` so the panel resolves. |
-| `src/pages/InboxOrders.tsx` | Full variant in the detail view, replacing the bare fraud check button. |
+| `src/pages/OrderDetail.tsx` | Strip inside `CustomerPanel`, after the "Last orders" block. Deletes the permanently blank `<DetailField label="Fraud" value={order.fraud_data?.risk_level} />` at `CustomerPanel.tsx:316` and the dead `risk_level` entries in the `CustomerOrder` type (`CustomerPanel.tsx:37`) and the `Order` type (`OrderDetail.tsx:42`). |
+| `src/pages/NewOrder.tsx` | Strip under the phone input, with a debounced cache-only lookup once the field holds a valid 11-digit BD number. Removes the write-only "Run fraud check" checkbox and its `runFraudCheck` state, so the operator sees the risk *before* creating the order. |
+| `src/pages/AbandonedDetail.tsx` | Pass the checkout's phone through to `CustomerPanel` so the strip resolves. |
+| `src/pages/InboxOrders.tsx` | Strip in the detail view, replacing the bare fraud check button. |
 
 `OrdersTable.FraudCell` is left exactly as-is.
+
+Rejected alternatives, both mocked in `docs/superpowers/specs/assets/2026-09-19-fraud-panel-demo.html`: **Ledger** (flat, all couriers always visible — most house-consistent but ~300px tall, which pushes the cart below the fold) and **Scorecard** (tinted verdict block with a 44px score — fastest to read, but introduces tinted panels and card shadows the editor deliberately avoids).
 
 ## 9. Error handling
 
@@ -164,7 +184,7 @@ Network failures and non-JSON responses continue to map to their current message
 
 - `server/fraudShield.js` unit tests: full payload retention; response with `reviews` absent; response with most per-courier keys absent; 400 / 401 / 429 / 502 / 503 shapes; freshness window honored; stale row triggers a call; `force` bypasses a fresh row; `pending` row younger than 60s suppresses a second call.
 - Quota guard halts the cron drain at the reserve threshold.
-- `FraudPanel` component tests covering all six states.
+- `FraudPanel` component tests covering all six states, plus: collapsed by default on a safe customer; auto-expanded on mount when `fraudRiskScore.level` is high; the review count is omitted from the collapsed row when the payload has no `reviews` key.
 - Route tests: `GET /api/fraud/lookup` never calls FraudShield; `POST /api/fraud/check` does; both return 401 without auth; both filter `fraud_checks` by `org_id`.
 - Regression: the `summary` object written to `orders.fraud_data` is shape-identical to today's, verified against the existing `FraudCell` rendering.
 
