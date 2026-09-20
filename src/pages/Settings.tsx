@@ -3,6 +3,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { TeamManagement } from "@/components/TeamManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
+import { FraudUsageMeter } from "@/components/FraudUsageMeter";
 import { BulkSmsSection } from "@/components/BulkSmsSection";
 import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
@@ -567,7 +568,12 @@ export default function Settings() {
             >
               {section === "workspace" && <WorkspaceSection />}
               {section === "integrations" && (
-                isAdmin ? <IntegrationSettings /> : (
+                isAdmin ? (
+                  <>
+                    <FraudUsageMeter />
+                    <IntegrationSettings />
+                  </>
+                ) : (
                   <div className="flex flex-col items-center justify-center py-20 gap-3 text-black/30">
                     <Lock className="h-6 w-6" strokeWidth={1.5} />
                     <p className="text-[13px]">Only admins can manage integrations.</p>

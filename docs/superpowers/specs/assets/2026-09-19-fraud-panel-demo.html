@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FraudShield panel — design options</title>
+<style>
+@font-face{font-family:'Geist Sans';src:url('../../../../public/fonts/GeistSans-Variable.woff2') format('woff2');font-weight:100 900;font-display:swap}
+
+:root{
+  --bg:#FAFAF8;
+  --line:rgba(0,0,0,.07);
+  --line-soft:rgba(0,0,0,.06);
+  --fill:rgba(0,0,0,.04);
+  --safe-fg:#2e9e5b;  --safe-bg:#e3f5e9;
+  --warn-fg:#b97f1f;  --warn-bg:#fdf3e3;
+  --risk-fg:#d05555;  --risk-bg:#fdecec;
+  --mute:rgba(0,0,0,.45);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Geist Sans',system-ui,-apple-system,sans-serif;
+  background:#EFEEEA;color:#000;
+  padding:48px 24px 96px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1040px;margin:0 auto}
+
+.lbl{font-size:8px;font-weight:500;letter-spacing:.3em;text-transform:uppercase;color:#000}
+.mutelbl{font-size:8px;font-weight:500;letter-spacing:.3em;text-transform:uppercase;color:var(--mute)}
+
+h1{font-size:30px;font-weight:500;letter-spacing:-.02em}
+.sub{margin-top:8px;font-size:14px;color:var(--mute);line-height:1.55;max-width:70ch}
+
+.variant{margin-top:56px}
+.vhead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.vname{font-size:20px;font-weight:500;letter-spacing:-.01em}
+.vtag{font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.vdesc{font-size:13px;color:var(--mute);line-height:1.6;max-width:78ch;margin-bottom:16px}
+.statecap{margin:18px 0 8px;font-size:10px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--mute)}
+
+/* the panel frame — mirrors the real editor: rounded-xl, ring, #FAFAF8 */
+.panel{background:var(--bg);border-radius:12px;box-shadow:0 0 0 1px var(--line);overflow:hidden}
+.pad{padding:18px 20px}
+
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 11px;font-size:11px;font-weight:600;letter-spacing:.01em}
+.pill.safe{background:var(--safe-bg);color:var(--safe-fg)}
+.pill.warn{background:var(--warn-bg);color:var(--warn-fg)}
+.pill.risk{background:var(--risk-bg);color:var(--risk-fg)}
+
+.bn{font-size:12px;color:#000;font-variant-numeric:tabular-nums}
+.hero{font-size:24px;font-weight:300;line-height:1.1;font-variant-numeric:tabular-nums}
+.heroXL{font-size:44px;font-weight:300;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:0;border-radius:8px;
+  background:transparent;font:inherit;font-size:12px;color:#000;cursor:pointer;transition:background .15s}
+.btn:hover{background:rgba(0,0,0,.05)}
+.btn.solid{background:#000;color:#fff}
+.btn.solid:hover{background:rgba(0,0,0,.88)}
+
+.bar{height:3px;border-radius:999px;background:rgba(0,0,0,.08);overflow:hidden}
+.bar > i{display:block;height:100%;border-radius:999px}
+.bar.safe > i{background:var(--safe-fg)} .bar.warn > i{background:var(--warn-fg)} .bar.risk > i{background:var(--risk-fg)}
+
+.logo{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:9px;font-weight:700;color:#fff;flex:none;letter-spacing:.02em}
+.hr{height:1px;background:var(--line);}
+
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:6px;background:var(--fill);padding:4px 8px;font-size:11px;color:#000;font-variant-numeric:tabular-nums}
+.chip b{font-weight:600}
+
+svg{display:block}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.rev{display:flex;gap:10px;padding:10px 0}
+.stars{font-size:11px;letter-spacing:.06em;flex:none}
+
+/* ---------- A: Ledger ---------- */
+.A-couriers{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 28px}
+.A-c{display:flex;align-items:center;gap:9px}
+.A-c .nm{font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.A-c .n{font-size:12px;font-variant-numeric:tabular-nums;color:var(--mute)}
+.A-c .p{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;width:38px;text-align:right}
+
+/* ---------- B: Scorecard ---------- */
+.B-split{display:grid;grid-template-columns:200px 1fr;gap:0}
+.B-score{padding:20px;display:flex;flex-direction:column;justify-content:space-between;gap:14px}
+.B-right{padding:20px;border-left:1px solid var(--line)}
+.B-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:18px}
+.B-cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}
+.B-cc{display:flex;align-items:center;gap:8px;background:#fff;border-radius:8px;padding:8px 10px;box-shadow:0 0 0 1px var(--line-soft)}
+.B-cc .nm{font-size:11.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.B-cc .p{font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ---------- C: Strip ---------- */
+.C-row{display:flex;align-items:center;gap:16px;padding:12px 20px;flex-wrap:wrap}
+.C-sep{width:1px;height:20px;background:var(--line);flex:none}
+.C-body{border-top:1px solid var(--line);padding:16px 20px}
+.C-couriers{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:9px}
+.C-cc{display:flex;align-items:center;gap:8px}
+.C-cc .nm{font-size:11.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.C-cc .p{font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+
+footer{margin-top:72px;padding-top:28px;border-top:1px solid rgba(0,0,0,.12)}
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:16px}
+.st{background:var(--bg);border-radius:10px;box-shadow:0 0 0 1px var(--line);padding:14px 16px}
+.st p{font-size:12.5px;color:var(--mute);margin-top:7px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>FraudShield panel — three options</h1>
+  <p class="sub">
+    Same real data in all three, straight from the API doc example: 45 parcels, 42 delivered, 3 cancelled,
+    93.33% success, risk score 12 (<i>নিরাপদ</i>), seven couriers, one review. Each variant is shown twice —
+    the safe customer, then the same layout with a high-risk customer, because that second one is the state
+    that actually changes what your team does.
+  </p>
+  <p class="sub" style="margin-top:14px">
+    Real Geist Sans, real house tokens: <code>#FAFAF8</code> panels, 8px <span class="lbl">tracking-[0.3em]</span> labels,
+    <span style="font-weight:300">font-light</span> hero numbers. The status colours are the ones already in
+    <code>CustomerPanel.tsx</code> for order pills, so nothing new enters the palette.
+    Courier logos are placeholders here — the real ones come down in the payload.
+  </p>
+
+  <!-- ===================== VARIANT A ===================== -->
+  <section class="variant">
+    <div class="vhead"><span class="vname">A — Ledger</span><span class="vtag">most house-consistent</span></div>
+    <p class="vdesc">
+      Flat and borderless, exactly like the existing detail grid it sits under. No tinted blocks, no cards —
+      the only colour in the whole panel is the risk pill. All seven couriers visible at once.
+      Quietest option; also the tallest.
+    </p>
+
+    <div class="statecap">Safe customer</div>
+    <div class="panel">
+      <div class="pad">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span class="lbl">Customer risk</span>
+          <span class="pill safe">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.7-7 8.5-4.1-.8-7-4.3-7-8.5V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            Safe
+          </span>
+          <span style="font-size:12px;color:var(--mute)">নিরাপদ · risk 12/100</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--mute)">Checked 3 days ago</span>
+            <button class="btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>Re-check</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;margin-top:18px">
+          <div><p class="lbl">Success ratio</p><p class="hero" style="margin-top:6px">93.3%</p></div>
+          <div><p class="lbl">Total parcels</p><p class="hero" style="margin-top:6px">45</p></div>
+          <div><p class="lbl">Delivered</p><p class="hero" style="margin-top:6px;color:var(--safe-fg)">42</p></div>
+          <div><p class="lbl">Cancelled</p><p class="hero" style="margin-top:6px;color:var(--risk-fg)">3</p></div>
+        </div>
+
+        <div class="bar safe" style="margin-top:16px"><i style="width:93.3%"></i></div>
+
+        <div class="hr" style="margin:18px 0"></div>
+
+        <p class="lbl">By courier</p>
+        <div class="A-couriers" style="margin-top:12px">
+          <div class="A-c"><span class="logo" style="background:#1b9e57">S</span><span class="nm">Steadfast</span><span class="n">24/25</span><span class="p">96%</span></div>
+          <div class="A-c"><span class="logo" style="background:#e1342c">P</span><span class="nm">Pathao</span><span class="n">9/10</span><span class="p">90%</span></div>
+          <div class="A-c"><span class="logo" style="background:#c8102e">R</span><span class="nm">Redx</span><span class="n">5/5</span><span class="p">100%</span></div>
+          <div class="A-c"><span class="logo" style="background:#0f4c9b">Pf</span><span class="nm">Paperfly</span><span class="n">3/3</span><span class="p">100%</span></div>
+          <div class="A-c"><span class="logo" style="background:#f2a30f">C</span><span class="nm">Carrybee</span><span class="n">1/1</span><span class="p">100%</span></div>
+          <div class="A-c"><span class="logo" style="background:#6b4ea8">Pd</span><span class="nm">Parceldex</span><span class="n">0/1</span><span class="p" style="color:var(--risk-fg)">0%</span></div>
+          <div class="A-c"><span class="logo" style="background:#2b7a78">Cf</span><span class="nm">CourrierFast</span><span class="n">2/2</span><span class="p">100%</span></div>
+        </div>
+
+        <div class="hr" style="margin:18px 0"></div>
+
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <p class="lbl" style="margin-right:4px">Score breakdown</p>
+          <span class="chip">success <b>6</b></span>
+          <span class="chip">reports <b>0</b></span>
+          <span class="chip">cancel <b>4</b></span>
+          <span class="chip">volume <b>2</b></span>
+          <button class="btn" style="margin-left:auto">1 review <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="statecap">High-risk customer — same layout</div>
+    <div class="panel">
+      <div class="pad">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span class="lbl">Customer risk</span>
+          <span class="pill risk">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.7-7 8.5-4.1-.8-7-4.3-7-8.5V6l7-3z"/><path d="M12 8v4.5"/><path d="M12 15.5v.01"/></svg>
+            High risk
+          </span>
+          <span style="font-size:12px;color:var(--mute)">ঝুঁকিপূর্ণ · risk 78/100</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--mute)">Checked 1 hour ago</span>
+            <button class="btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>Re-check</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;margin-top:18px">
+          <div><p class="lbl">Success ratio</p><p class="hero" style="margin-top:6px;color:var(--risk-fg)">33.3%</p></div>
+          <div><p class="lbl">Total parcels</p><p class="hero" style="margin-top:6px">18</p></div>
+          <div><p class="lbl">Delivered</p><p class="hero" style="margin-top:6px;color:var(--safe-fg)">6</p></div>
+          <div><p class="lbl">Cancelled</p><p class="hero" style="margin-top:6px;color:var(--risk-fg)">12</p></div>
+        </div>
+        <div class="bar risk" style="margin-top:16px"><i style="width:33.3%"></i></div>
+        <div class="hr" style="margin:18px 0"></div>
+        <p class="lbl">By courier</p>
+        <div class="A-couriers" style="margin-top:12px">
+          <div class="A-c"><span class="logo" style="background:#1b9e57">S</span><span class="nm">Steadfast</span><span class="n">2/8</span><span class="p" style="color:var(--risk-fg)">25%</span></div>
+          <div class="A-c"><span class="logo" style="background:#e1342c">P</span><span class="nm">Pathao</span><span class="n">3/6</span><span class="p" style="color:var(--warn-fg)">50%</span></div>
+          <div class="A-c"><span class="logo" style="background:#c8102e">R</span><span class="nm">Redx</span><span class="n">1/4</span><span class="p" style="color:var(--risk-fg)">25%</span></div>
+        </div>
+        <div class="hr" style="margin:18px 0"></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <p class="lbl" style="margin-right:4px">Score breakdown</p>
+          <span class="chip">success <b>1</b></span>
+          <span class="chip" style="background:var(--risk-bg);color:var(--risk-fg)">reports <b>3</b></span>
+          <span class="chip" style="background:var(--risk-bg);color:var(--risk-fg)">cancel <b>24</b></span>
+          <span class="chip">volume <b>2</b></span>
+        </div>
+        <div class="hr" style="margin:16px 0 4px"></div>
+        <div class="rev">
+          <span class="stars" style="color:var(--risk-fg)">★☆☆☆☆</span>
+          <div><p style="font-size:12.5px;line-height:1.5">Refused delivery twice, never picked up calls.</p>
+            <p style="font-size:11px;color:var(--mute);margin-top:3px">018****4421 · 12 Aug 2026</p></div>
+        </div>
+        <div class="rev" style="border-top:1px solid var(--line)">
+          <span class="stars" style="color:var(--risk-fg)">★★☆☆☆</span>
+          <div><p style="font-size:12.5px;line-height:1.5">Ordered 3 items, returned all on delivery.</p>
+            <p style="font-size:11px;color:var(--mute);margin-top:3px">017****8890 · 2 Jul 2026</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== VARIANT B ===================== -->
+  <section class="variant">
+    <div class="vhead"><span class="vname">B — Scorecard</span><span class="vtag">fastest to read</span></div>
+    <p class="vdesc">
+      A tinted verdict block on the left carries the whole decision — colour, level, big score — so a
+      confirmation agent can judge without reading anything. Stats and couriers sit to the right as white cards.
+      Most scannable at speed, but it introduces tinted panels and card shadows that the rest of the editor avoids.
+    </p>
+
+    <div class="statecap">Safe customer</div>
+    <div class="panel">
+      <div class="B-split">
+        <div class="B-score" style="background:var(--safe-bg)">
+          <div>
+            <p class="lbl" style="color:var(--safe-fg);opacity:.8">Customer risk</p>
+            <p class="heroXL" style="margin-top:10px;color:var(--safe-fg)">12</p>
+            <p style="font-size:11px;color:var(--safe-fg);opacity:.75;margin-top:2px">risk score / 100</p>
+          </div>
+          <div>
+            <p style="font-size:17px;font-weight:600;color:var(--safe-fg)">Safe</p>
+            <p style="font-size:13px;color:var(--safe-fg);opacity:.8;margin-top:1px">নিরাপদ</p>
+          </div>
+        </div>
+        <div class="B-right">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:16px">
+            <span class="lbl">Courier history</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--mute)">Checked 3 days ago</span>
+            <button class="btn" style="height:26px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>Re-check</button>
+          </div>
+          <div class="B-stats">
+            <div><p class="lbl">Success</p><p class="hero" style="margin-top:5px">93.3%</p></div>
+            <div><p class="lbl">Delivered</p><p class="hero" style="margin-top:5px">42<span style="font-size:14px;color:var(--mute)">/45</span></p></div>
+            <div><p class="lbl">Cancelled</p><p class="hero" style="margin-top:5px">3</p></div>
+          </div>
+          <div class="B-cg">
+            <div class="B-cc"><span class="logo" style="background:#1b9e57">S</span><span class="nm">Steadfast</span><span class="p" style="color:var(--safe-fg)">96%</span></div>
+            <div class="B-cc"><span class="logo" style="background:#e1342c">P</span><span class="nm">Pathao</span><span class="p" style="color:var(--safe-fg)">90%</span></div>
+            <div class="B-cc"><span class="logo" style="background:#c8102e">R</span><span class="nm">Redx</span><span class="p" style="color:var(--safe-fg)">100%</span></div>
+            <div class="B-cc"><span class="logo" style="background:#0f4c9b">Pf</span><span class="nm">Paperfly</span><span class="p" style="color:var(--safe-fg)">100%</span></div>
+            <div class="B-cc"><span class="logo" style="background:#f2a30f">C</span><span class="nm">Carrybee</span><span class="p" style="color:var(--safe-fg)">100%</span></div>
+            <div class="B-cc"><span class="logo" style="background:#6b4ea8">Pd</span><span class="nm">Parceldex</span><span class="p" style="color:var(--risk-fg)">0%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px">
+            <span class="chip">success <b>6</b></span><span class="chip">reports <b>0</b></span>
+            <span class="chip">cancel <b>4</b></span><span class="chip">volume <b>2</b></span>
+            <button class="btn" style="margin-left:auto;height:26px">1 review <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statecap">High-risk customer — same layout</div>
+    <div class="panel">
+      <div class="B-split">
+        <div class="B-score" style="background:var(--risk-bg)">
+          <div>
+            <p class="lbl" style="color:var(--risk-fg);opacity:.8">Customer risk</p>
+            <p class="heroXL" style="margin-top:10px;color:var(--risk-fg)">78</p>
+            <p style="font-size:11px;color:var(--risk-fg);opacity:.75;margin-top:2px">risk score / 100</p>
+          </div>
+          <div>
+            <p style="font-size:17px;font-weight:600;color:var(--risk-fg)">High risk</p>
+            <p style="font-size:13px;color:var(--risk-fg);opacity:.8;margin-top:1px">ঝুঁকিপূর্ণ</p>
+          </div>
+        </div>
+        <div class="B-right">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:16px">
+            <span class="lbl">Courier history</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--mute)">Checked 1 hour ago</span>
+            <button class="btn" style="height:26px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>Re-check</button>
+          </div>
+          <div class="B-stats">
+            <div><p class="lbl">Success</p><p class="hero" style="margin-top:5px;color:var(--risk-fg)">33.3%</p></div>
+            <div><p class="lbl">Delivered</p><p class="hero" style="margin-top:5px">6<span style="font-size:14px;color:var(--mute)">/18</span></p></div>
+            <div><p class="lbl">Cancelled</p><p class="hero" style="margin-top:5px;color:var(--risk-fg)">12</p></div>
+          </div>
+          <div class="B-cg">
+            <div class="B-cc"><span class="logo" style="background:#1b9e57">S</span><span class="nm">Steadfast</span><span class="p" style="color:var(--risk-fg)">25%</span></div>
+            <div class="B-cc"><span class="logo" style="background:#e1342c">P</span><span class="nm">Pathao</span><span class="p" style="color:var(--warn-fg)">50%</span></div>
+            <div class="B-cc"><span class="logo" style="background:#c8102e">R</span><span class="nm">Redx</span><span class="p" style="color:var(--risk-fg)">25%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px">
+            <span class="chip">success <b>1</b></span>
+            <span class="chip" style="background:var(--risk-bg);color:var(--risk-fg)">reports <b>3</b></span>
+            <span class="chip" style="background:var(--risk-bg);color:var(--risk-fg)">cancel <b>24</b></span>
+            <span class="chip">volume <b>2</b></span>
+            <button class="btn" style="margin-left:auto;height:26px">2 reviews <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== VARIANT C ===================== -->
+  <section class="variant">
+    <div class="vhead"><span class="vname">C — Strip</span><span class="vtag">smallest footprint</span></div>
+    <p class="vdesc">
+      Collapsed to a single row by default: pill, ratio, counts, re-check. Everything else is one click away.
+      The order editor is already a tall stack — catalog, cart, customer, history — and this costs it 44px
+      instead of ~300. Trade-off: the courier breakdown and reviews are hidden until asked for.
+    </p>
+
+    <div class="statecap">Safe customer — collapsed (the default)</div>
+    <div class="panel">
+      <div class="C-row">
+        <span class="lbl">Customer risk</span>
+        <span class="pill safe"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.7-7 8.5-4.1-.8-7-4.3-7-8.5V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>Safe</span>
+        <span class="C-sep"></span>
+        <span class="bn" style="font-size:15px;font-weight:500">93.3%</span>
+        <span class="bn" style="color:var(--mute)">42 delivered · 3 cancelled · 45 total</span>
+        <span class="C-sep"></span>
+        <span class="bn" style="color:var(--mute)">7 couriers · 1 review</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--mute)">3d ago</span>
+          <button class="btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg></button>
+          <button class="btn">Details <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="statecap">High-risk customer — expanded</div>
+    <div class="panel">
+      <div class="C-row" style="background:var(--risk-bg)">
+        <span class="lbl" style="color:var(--risk-fg)">Customer risk</span>
+        <span class="pill risk" style="background:rgba(255,255,255,.7)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.7-7 8.5-4.1-.8-7-4.3-7-8.5V6l7-3z"/><path d="M12 8v4.5"/><path d="M12 15.5v.01"/></svg>High risk</span>
+        <span class="C-sep" style="background:rgba(208,85,85,.25)"></span>
+        <span class="bn" style="font-size:15px;font-weight:500;color:var(--risk-fg)">33.3%</span>
+        <span class="bn" style="color:var(--risk-fg);opacity:.8">6 delivered · 12 cancelled · 18 total</span>
+        <span class="C-sep" style="background:rgba(208,85,85,.25)"></span>
+        <span class="bn" style="color:var(--risk-fg);opacity:.8">risk 78/100 · ঝুঁকিপূর্ণ</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--risk-fg);opacity:.8">1h ago</span>
+          <button class="btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg></button>
+          <button class="btn">Hide <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+        </div>
+      </div>
+      <div class="C-body">
+        <div style="display:flex;gap:28px;flex-wrap:wrap">
+          <div style="flex:1;min-width:280px">
+            <p class="lbl">By courier</p>
+            <div class="C-couriers" style="margin-top:11px">
+              <div class="C-cc"><span class="logo" style="background:#1b9e57">S</span><span class="nm">Steadfast</span><span class="bn" style="color:var(--mute)">2/8</span><span class="p" style="color:var(--risk-fg)">25%</span></div>
+              <div class="C-cc"><span class="logo" style="background:#e1342c">P</span><span class="nm">Pathao</span><span class="bn" style="color:var(--mute)">3/6</span><span class="p" style="color:var(--warn-fg)">50%</span></div>
+              <div class="C-cc"><span class="logo" style="background:#c8102e">R</span><span class="nm">Redx</span><span class="bn" style="color:var(--mute)">1/4</span><span class="p" style="color:var(--risk-fg)">25%</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px">
+              <span class="chip">success <b>1</b></span>
+              <span class="chip" style="background:var(--risk-bg);color:var(--risk-fg)">reports <b>3</b></span>
+              <span class="chip" style="background:var(--risk-bg);color:var(--risk-fg)">cancel <b>24</b></span>
+              <span class="chip">volume <b>2</b></span>
+            </div>
+          </div>
+          <div style="flex:1;min-width:280px">
+            <p class="lbl">Reviews from other merchants</p>
+            <div class="rev" style="padding-top:9px">
+              <span class="stars" style="color:var(--risk-fg)">★☆☆☆☆</span>
+              <div><p style="font-size:12.5px;line-height:1.5">Refused delivery twice, never picked up calls.</p>
+                <p style="font-size:11px;color:var(--mute);margin-top:3px">018****4421 · 12 Aug 2026</p></div>
+            </div>
+            <div class="rev" style="border-top:1px solid var(--line)">
+              <span class="stars" style="color:var(--risk-fg)">★★☆☆☆</span>
+              <div><p style="font-size:12.5px;line-height:1.5">Ordered 3 items, returned all on delivery.</p>
+                <p style="font-size:11px;color:var(--mute);margin-top:3px">017****8890 · 2 Jul 2026</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="lbl">The other four states</span>
+    <p class="sub" style="margin-top:10px">Whichever variant you pick, these render in the same shell.</p>
+    <div class="states">
+      <div class="st">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="lbl">Customer risk</span>
+          <span class="bn" style="color:var(--mute)">Not checked yet</span>
+          <button class="btn solid" style="margin-left:auto;height:28px">Check</button>
+        </div>
+        <p>New phone, nothing cached. The only button that spends a FraudShield request.</p>
+      </div>
+      <div class="st">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="lbl">Customer risk</span>
+          <span class="pill" style="background:var(--fill);color:var(--mute)">New customer</span>
+        </div>
+        <p>Checked, but zero courier history anywhere. Not a red flag — just no signal.</p>
+      </div>
+      <div class="st">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="lbl">Customer risk</span>
+          <span class="bn" style="color:var(--risk-fg)">Check failed</span>
+          <button class="btn" style="margin-left:auto;height:28px">Retry</button>
+        </div>
+        <p>FraudShield 502. Message explains it, retries after an hour on its own.</p>
+      </div>
+      <div class="st">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="lbl">Customer risk</span>
+          <span class="bn" style="color:var(--mute)">Daily limit reached</span>
+          <button class="btn" style="margin-left:auto;height:28px;opacity:.35">Check</button>
+        </div>
+        <p>Quota gone. Button disabled, resets 11:59pm.</p>
+      </div>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

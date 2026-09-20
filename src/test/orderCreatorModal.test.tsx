@@ -43,12 +43,32 @@ describe("NewOrder", () => {
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create order/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Order source")).toHaveTextContent("Manual / Other");
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/products"));
     expect(screen.getByLabelText("Telesales staff")).toBeInTheDocument();
     expect(consoleWarn).not.toHaveBeenCalledWith(
       expect.stringContaining("A component changed from uncontrolled to controlled"),
     );
-    expect(screen.getByText("Run fraud check")).toBeInTheDocument();
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/products"));
+  });
+
+  it("checks fraud in the background once a valid phone is entered", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/orders/new"]}>
+          <NewOrder />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByRole("textbox", { name: "Phone" }), "01712345678");
+
+    await waitFor(() => {
+      const call = apiFetch.mock.calls.find(([requestUrl, requestInit]) => requestUrl === "/api/fraud/check" && requestInit?.method === "POST");
+      expect(call).toBeDefined();
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ phone: "01712345678" });
+    });
   });
 
   it("submits the selected order source and staff assignee", async () => {

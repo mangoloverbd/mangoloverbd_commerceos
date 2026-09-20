@@ -377,7 +377,7 @@ export function buildRecommendation(tool, args, ctx = {}) {
 
 // ── executeAiAction: the single dispatcher the /apply route calls ──
 // helpers = { saveProductStock, getUniqueProductSlug, purgeProductCache,
-//             generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
+//             generateProductEmbedding, fetchFraudShield, normalizeBdPhone,
 //             sendBulkSms, requestStorefrontSeoRefresh, getOrgSettings }
 // All queries filter by orgId. Throws if the target row is missing in this org.
 
@@ -530,8 +530,13 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
       if (!apiKey) throw new Error("FraudShield API key not configured in environment");
       const results = [];
       for (const phone of args.phones) {
-        const { fraudData, errorMessage } = await helpers.checkFraudStatus(phone, apiKey);
-        results.push({ phone, fraudData, errorMessage });
+        const cleanedPhone = helpers.normalizeBdPhone(phone);
+        if (!cleanedPhone) {
+          results.push({ phone, fraudData: null, errorMessage: `Invalid phone format: "${phone}"` });
+          continue;
+        }
+        const { summary, errorMessage } = await helpers.fetchFraudShield(cleanedPhone, apiKey);
+        results.push({ phone, fraudData: summary, errorMessage });
       }
       return { before: { phones: args.phones }, after: { results } };
     }

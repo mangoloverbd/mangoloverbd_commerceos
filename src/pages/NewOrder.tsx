@@ -1,19 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, Minus, Package, Plus, ShieldCheck, Sparkle, Trash, Truck } from "@phosphor-icons/react";
+import { ArrowLeft, CheckCircle, Minus, Package, Plus, ShieldCheck, Trash, Truck } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { RichButton } from "@/components/ui/rich-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/base/switch/switch";
 import { DarkToast, toast } from "@/components/ui/sonner";
 import { catalogImage, variantLabel, type CatalogProduct, type CatalogVariant } from "@/lib/orderEditor";
 import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
+import { FraudPanel } from "@/components/order-editor/FraudPanel";
+import { useFraudCheckMutation } from "@/hooks/useFraudCheck";
+import { normalizeBdPhone } from "@/lib/bdPhone";
 import { StaffSelect } from "@/components/order-editor/StaffSelect";
 import { useAuth } from "@/hooks/useAuth";
 import type { OrderSource } from "@/lib/orderSource";
@@ -28,15 +29,6 @@ type Line = {
   unitPrice: number;
   quantity: number;
   image?: string | null;
-};
-
-type ExtractedOrder = {
-  customer_name: string;
-  phone: string;
-  address: string;
-  product: string;
-  quantity: number;
-  price: number;
 };
 
 type ProductsResponse = { products: CatalogProduct[] };
@@ -60,8 +52,6 @@ export default function NewOrder() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const returnTo = typeof location.state?.from === "string" ? location.state.from : "/";
-  const [orderText, setOrderText] = useState("");
-  const [extracting, setExtracting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -73,7 +63,6 @@ export default function NewOrder() {
   const [advance, setAdvance] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [notes, setNotes] = useState("");
-  const [runFraudCheck, setRunFraudCheck] = useState(false);
   const [source, setSource] = useState<OrderSource>("manual_other");
   const [assignedTo, setAssignedTo] = useState<string | null>(null);
 
@@ -139,34 +128,19 @@ export default function NewOrder() {
     setLines((current) => current.filter((line) => line.id !== lineId));
   }
 
-  async function extractOrder() {
-    if (!orderText.trim()) {
-      toast.error("Please paste the order text first");
-      return;
+  const normalizedPhone = normalizeBdPhone(phone);
+  const fraudCheck = useFraudCheckMutation(phone);
+  const autoCheckedPhone = useRef<string | null>(null);
+
+  // Check the number in the background as soon as it becomes a valid BD
+  // phone. resolveFraudCheck returns fresh cache without spending a request,
+  // so re-typing a known number costs nothing.
+  useEffect(() => {
+    if (normalizedPhone && autoCheckedPhone.current !== normalizedPhone) {
+      autoCheckedPhone.current = normalizedPhone;
+      fraudCheck.mutate({ force: false });
     }
-    setExtracting(true);
-    try {
-      const response = await apiFetch("/api/extract-order-from-text", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderText }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Extraction failed");
-      const order = data.extractedOrder as ExtractedOrder | undefined;
-      if (!order) throw new Error(data.error || "Could not extract order details");
-      setCustomerName(order.customer_name || "");
-      setPhone(order.phone || "");
-      setAddress(order.address || "");
-      setLines([{ id: crypto.randomUUID(), name: order.product || "", productId: null, variantId: null, variantName: null, variants: [], unitPrice: order.price || 0, quantity: order.quantity || 1 }]);
-      toast.success("Order details extracted!");
-    } catch (error) {
-      console.error("Error extracting order:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to extract order details");
-    } finally {
-      setExtracting(false);
-    }
-  }
+  }, [normalizedPhone, fraudCheck]);
 
   async function createOrder() {
     if (!phone.trim()) {
@@ -219,18 +193,6 @@ export default function NewOrder() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Failed to create order");
 
-      if (runFraudCheck && data?.order?.id) {
-        try {
-          await apiFetch("/api/check-fraud", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: data.order.id }),
-          });
-        } catch {
-          // The order is saved even if the optional manual fraud check fails.
-        }
-      }
-
       await queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       toast.custom(() => <DarkToast className="flex items-center gap-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15"><CheckCircle weight="light" size={20} className="text-emerald-400" /></div><div><span className="block text-[10px] font-semibold uppercase tracking-widest text-white/50">Order created</span><span className="text-sm font-semibold text-white">{customerName || "Order"}</span></div></DarkToast>, { fit: true });
       navigate(returnTo, { replace: true });
@@ -268,9 +230,7 @@ export default function NewOrder() {
                 <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Telesales staff<div className="mt-2"><StaffSelect value={assignedTo} onChange={setAssignedTo} disabled={creating} /></div></label>
              </div>
              <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
-              <div className="flex items-center gap-2"><Sparkle weight="light" size={17} className="text-black" /><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-black">AI capture</p></div>
-              <Textarea aria-label="Order message" value={orderText} onChange={(event) => setOrderText(event.target.value)} placeholder="Paste an inbox message…" className="mt-3 min-h-16 resize-none rounded-lg border-0 bg-black/[0.04] text-[13px] shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20" />
-              <RichButton color="default" size="default" onClick={() => void extractOrder()} disabled={extracting || !orderText.trim()} className="mt-3 w-full">{extracting ? <Spinner size="sm" /> : <Sparkle weight="light" size={16} />}{extracting ? "Extracting…" : "Extract details"}</RichButton>
+               <FraudPanel phone={phone} defaultExpanded compact alignHeader="left" className="flex h-full flex-col justify-between gap-3" />
             </div>
           </div>
         </section>
@@ -300,7 +260,7 @@ export default function NewOrder() {
 
               <div className="grid gap-3 rounded-lg bg-white p-4 ring-1 ring-inset ring-black/[0.06] sm:grid-cols-2"><label className="space-y-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-black">Payment method<Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger className="mt-1 h-10 rounded-lg border-0 bg-black/[0.04] text-[13px] normal-case tracking-normal shadow-none"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_METHODS.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}</SelectContent></Select></label><label className="space-y-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-black">Internal note<Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional note" className="mt-1 h-10 rounded-lg border-0 bg-black/[0.04] text-[13px] normal-case tracking-normal shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20" /></label></div>
             </div>
-            <div className="mt-3 flex shrink-0 flex-col gap-3 border-t border-black/[0.08] pt-3 sm:flex-row sm:items-center"><label className="flex flex-1 cursor-pointer items-center gap-2 text-[12px] text-black"><input type="checkbox" checked={runFraudCheck} onChange={(event) => setRunFraudCheck(event.target.checked)} className="h-4 w-4 rounded border-black/20 accent-black" /><ShieldCheck weight="light" size={16} /> Run fraud check</label><button type="button" onClick={() => navigate(returnTo)} disabled={creating} className="h-10 rounded-lg px-3 text-[12px] text-black hover:bg-black/[0.05] disabled:opacity-40">Cancel</button><button type="button" onClick={() => void createOrder()} disabled={creating} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-40">{creating ? <Spinner size="sm" /> : <Plus weight="light" size={15} />}{creating ? "Creating…" : "Create order"}</button></div>
+            <div className="mt-3 flex shrink-0 flex-col gap-3 border-t border-black/[0.08] pt-3 sm:flex-row sm:items-center sm:justify-end"><button type="button" onClick={() => navigate(returnTo)} disabled={creating} className="h-10 rounded-lg px-3 text-[12px] text-black hover:bg-black/[0.05] disabled:opacity-40">Cancel</button><button type="button" onClick={() => void createOrder()} disabled={creating} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-40">{creating ? <Spinner size="sm" /> : <Plus weight="light" size={15} />}{creating ? "Creating…" : "Create order"}</button></div>
           </section>
         </div>
       </div>

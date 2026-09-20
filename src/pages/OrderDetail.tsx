@@ -39,7 +39,6 @@ type Order = {
   courier_name?: string | null;
   courier_status?: string | null;
   consignment_id?: string | null;
-  fraud_data?: { risk_level?: string } | null;
   created_at?: string | null;
   updated_at?: string | null;
   sent_to_courier?: boolean | null;

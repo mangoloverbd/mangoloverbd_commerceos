@@ -7,6 +7,7 @@ import WhatsappLogo from "@/components/WhatsappLogo";
 import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
 import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
+import { FraudPanel } from "@/components/order-editor/FraudPanel";
 import type { OrderSource } from "@/lib/orderSource";
 
 export type CustomerDraft = {
@@ -34,7 +35,6 @@ type CustomerOrder = {
   courier_name?: string | null;
   courier_status?: string | null;
   consignment_id?: string | null;
-  fraud_data?: { risk_level?: string } | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -56,6 +56,15 @@ function DetailField({ label, value }: { label: string; value: string | number |
     <div className="min-w-0">
       <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{label}</p>
       <p className="mt-1 break-words text-[14px] text-black">{value || "—"}</p>
+    </div>
+  );
+}
+
+function CardMetric({ label, value }: { label: string; value: string | number | null | undefined }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">{label}</p>
+      <p className="mt-1 truncate text-[16px] font-light tabular-nums tracking-[-0.04em] text-black" title={typeof value === "string" ? value : undefined}>{value || "—"}</p>
     </div>
   );
 }
@@ -309,14 +318,20 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
       </div>
 
       <div className="mb-4 mt-4 h-px bg-black/[0.07]" />
-      <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-        <DetailField label="Payment" value={order.payment_method} />
-        <DetailField label="Order total" value={formatTaka(order.price)} />
-        <DetailField label="Delivery fee" value={formatTaka(order.delivery_rate)} />
-        <DetailField label="Fraud" value={order.fraud_data?.risk_level} />
-        <DetailField label="Created" value={dateTime(order.created_at)} />
-        <DetailField label="Updated" value={dateTime(order.updated_at)} />
-        <DetailField label="Consignment" value={order.consignment_id} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="min-w-0 rounded-2xl bg-black/[0.04] px-5 py-4">
+          <div className="flex h-full flex-col justify-between gap-4">
+            <CardMetric label="Payment" value={order.payment_method} />
+            <CardMetric label="Order total" value={formatTaka(order.price)} />
+            <CardMetric label="Delivery fee" value={formatTaka(order.delivery_rate)} />
+            <CardMetric label="Created" value={dateTime(order.created_at)} />
+            <CardMetric label="Updated" value={dateTime(order.updated_at)} />
+            <CardMetric label="Consignment" value={order.consignment_id} />
+          </div>
+        </div>
+        <div className="min-w-0 rounded-2xl bg-black/[0.04] px-5 py-4">
+          <FraudPanel phone={customer.phone} defaultExpanded />
+        </div>
       </div>
 
       {order.id && whatsappHref && (

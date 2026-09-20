@@ -79,6 +79,16 @@ import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { validateAddressWithAI } from "./addressValidation.js";
 import {
+  FRAUD_QUOTA_RESERVE,
+  FRAUD_WARM_BATCH,
+  FRAUD_WARM_SPACING_MS,
+  FRAUD_WARM_LOOKBACK_DAYS,
+  fetchFraudShield,
+  resolveFraudCheck,
+  selectPhonesToWarm,
+  shouldWarm,
+} from "./fraudShield.js";
+import {
   buildAttributionPatch,
   buildStatusEvent,
   isApprovedStatus,
@@ -767,134 +777,6 @@ function normalizeLandingPagePath(value) {
   if (typeof value !== "string") return undefined;
   const path = value.trim().split(/[?#]/, 1)[0].replace(/\/+$/, "");
   return path.length <= 120 && LANDING_PAGE_PATH_RE.test(path) ? path : undefined;
-}
-
-function parseFraudShieldError(status, body) {
-  let message = body;
-  try {
-    const parsed = JSON.parse(body);
-    message = parsed.message || parsed.error || parsed.details || body;
-  } catch {
-    // FraudShield sometimes returns plain text/HTML on upstream failures.
-  }
-
-  if (status === 502) {
-    return "FraudShield server returned a 502 Bad Gateway. This usually indicates their origin database or upstream courier sync service is down.";
-  }
-  if (status === 504) {
-    return "FraudShield server returned a 504 Gateway Timeout. The request timed out while querying courier records.";
-  }
-
-  if (/BdCourierService|transformApiResponse|null returned/i.test(message)) {
-    return "FraudShield is temporarily failing while reading BD Courier data. Please try again later or contact FraudShield support if it continues.";
-  }
-
-  const hint =
-    status === 401 || status === 403
-      ? "Invalid or expired API key"
-      : `HTTP ${status}`;
-  return `${hint}: ${String(message).substring(0, 200) || "(no body)"}`;
-}
-
-async function checkFraudStatus(phone, apiKey) {
-  const cleanedPhone = normalizeBdPhone(phone);
-  if (!cleanedPhone) {
-    return { fraudData: null, successRate: null, errorMessage: `Invalid phone format: "${phone}"` };
-  }
-  if (!apiKey) {
-    return { fraudData: null, successRate: null, errorMessage: "No API key provided" };
-  }
-
-  const trimmedApiKey = apiKey.trim();
-
-  try {
-    const response = await fetch("https://fraudshield.bd/api/customer/check", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${trimmedApiKey}`,
-        "X-API-Key": trimmedApiKey,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ phone: cleanedPhone }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`[FraudShield] API returned error for ${cleanedPhone}: status ${response.status}, body: ${errorBody}`);
-      return {
-        fraudData: null,
-        successRate: null,
-        errorMessage: parseFraudShieldError(response.status, errorBody),
-      };
-    }
-
-    let result;
-    try {
-      result = await response.json();
-    } catch {
-      return {
-        fraudData: null,
-        successRate: null,
-        errorMessage: "FraudShield returned an invalid JSON response. Please try again later.",
-      };
-    }
-
-    if (!result.courierData) {
-      return {
-        fraudData: null,
-        successRate: null,
-        errorMessage: `Unexpected response: ${JSON.stringify(result).substring(0, 200)}`,
-      };
-    }
-
-    // API returns courierData as a keyed object: { pathao: {...}, steadfast: {...} }
-    // Each entry has: total_parcel, success_parcel, cancelled_parcel, success_ratio, name, logo
-    const courierEntries = Object.entries(result.courierData);
-
-    let totalParcels = 0;
-    let totalDelivered = 0;
-    let totalCancelled = 0;
-    const apis = {};
-
-    for (const [key, c] of courierEntries) {
-      const total = c.total_parcel ?? c.total ?? 0;
-      const delivered = c.success_parcel ?? c.successful ?? 0;
-      const cancelled = c.cancelled_parcel ?? c.cancelled ?? 0;
-      totalParcels += total;
-      totalDelivered += delivered;
-      totalCancelled += cancelled;
-      apis[c.name ?? key] = {
-        total_parcels: total,
-        total_delivered_parcels: delivered,
-        total_cancelled_parcels: cancelled,
-      };
-    }
-
-    const successRate = totalParcels > 0
-      ? Math.round((totalDelivered / totalParcels) * 100)
-      : 0;
-
-    const riskLevel =
-      result.fraudRiskScore?.level ??
-      (successRate >= 70 ? "low" : successRate >= 50 ? "medium" : "high");
-
-    const fraudData = {
-      mobile_number: cleanedPhone,
-      total_parcels: totalParcels,
-      total_delivered: totalDelivered,
-      total_cancel: totalCancelled,
-      fraud_risk: riskLevel,
-      success_rate: successRate,
-      last_delivery: "",
-      apis,
-    };
-
-    return { fraudData, successRate, errorMessage: null };
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { fraudData: null, successRate: null, errorMessage: `Network error: ${msg}` };
-  }
 }
 
 const MAX_MANUAL_SMS_LENGTH = 1000;
@@ -3072,6 +2954,79 @@ app.get("/api/internal/abandoned-checkouts-maintenance", async (req, res) => {
   } catch {
     console.warn("[AbandonedCheckout] maintenance failed");
     return res.status(500).json({ error: "Could not maintain abandoned checkouts" });
+  }
+});
+
+// Pre-fetches risk data for phones on recent orders so the order editor is
+// already populated when an operator opens it. Holds back FRAUD_QUOTA_RESERVE
+// requests for interactive re-checks.
+async function warmFraudChecksForOrg(supabase, orgId) {
+  const usage = await readFraudUsage(orgId);
+  if (!shouldWarm(usage, FRAUD_QUOTA_RESERVE)) return { checked: 0, skipped: "quota" };
+
+  const since = new Date(Date.now() - FRAUD_WARM_LOOKBACK_DAYS * 86_400_000).toISOString();
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select("phone, created_at")
+    .eq("org_id", orgId)
+    .gte("created_at", since)
+    .not("phone", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (ordersError) throw ordersError;
+
+  const candidates = [...new Set((orders || []).map((o) => normalizeBdPhone(o.phone)).filter(Boolean))];
+  if (candidates.length === 0) return { checked: 0, skipped: null };
+
+  const { data: cachedRows, error: cacheError } = await supabase
+    .from("fraud_checks")
+    .select("phone, status, checked_at")
+    .eq("org_id", orgId)
+    .in("phone", candidates);
+  if (cacheError) throw cacheError;
+
+  const phones = selectPhonesToWarm({
+    orders: orders || [],
+    cachedRows: cachedRows || [],
+    now: new Date(),
+    limit: FRAUD_WARM_BATCH,
+  });
+
+  let checked = 0;
+  for (const phone of phones) {
+    if (checked > 0) await delay(FRAUD_WARM_SPACING_MS);
+    const { spentRequest } = await runFraudCheck(supabase, orgId, phone);
+    if (spentRequest) {
+      checked += 1;
+      incrementUsage(orgId, "fraud_checks").catch(() => {});
+    }
+  }
+  return { checked, skipped: null };
+}
+
+app.get("/api/internal/fraud-warm", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const supabase = getServiceSupabase();
+    const { data: roleRows, error } = await supabase.from("user_roles").select("org_id").limit(1000);
+    if (error) throw error;
+
+    const orgIds = [...new Set((roleRows || []).map((row) => row.org_id).filter(Boolean))];
+    let checked = 0;
+    let skipped = null;
+    for (const orgId of orgIds) {
+      const result = await warmFraudChecksForOrg(supabase, orgId);
+      checked += result.checked;
+      skipped = skipped || result.skipped;
+    }
+
+    return res.json({ ok: true, scannedWorkspaces: orgIds.length, checked, skipped });
+  } catch {
+    console.warn("[FraudShield] warm run failed");
+    return res.status(500).json({ error: "Could not warm fraud checks" });
   }
 });
 
@@ -5717,7 +5672,7 @@ app.post("/api/order-chat/apply", rateLimitAI, async (req, res) => {
 
     const helpers = {
       saveProductStock, getUniqueProductSlug, purgeProductCache,
-      generateProductEmbedding, checkFraudStatus, normalizeBdPhone,
+      generateProductEmbedding, fetchFraudShield, normalizeBdPhone,
       sendBulkSms, requestStorefrontSeoRefresh,
       getOrgSettings: (k, keys) => getOrgSettings(k, keys),
     };
@@ -8787,6 +8742,154 @@ app.post("/api/returns/backfill-fees", async (req, res) => {
   }
 });
 
+// ─── FraudShield cache adapters ─────────────────────────────────────────────
+
+async function readFraudCache(supabase, orgId, phone) {
+  const { data } = await supabase
+    .from("fraud_checks")
+    .select("phone, status, payload, summary, error_message, checked_at")
+    .eq("org_id", orgId)
+    .eq("phone", phone)
+    .maybeSingle();
+  return data || null;
+}
+
+async function writeFraudCache(supabase, orgId, phone, patch) {
+  const { error } = await supabase
+    .from("fraud_checks")
+    .upsert({ org_id: orgId, phone, ...patch }, { onConflict: "org_id,phone" });
+  if (error) throw error;
+}
+
+// Single entry point for anything that may spend a FraudShield request.
+async function runFraudCheck(supabase, orgId, phone, force = false) {
+  const apiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
+  return resolveFraudCheck({
+    now: new Date(),
+    force,
+    readCache: () => readFraudCache(supabase, orgId, phone),
+    writeCache: (patch) => writeFraudCache(supabase, orgId, phone, patch),
+    callApi: () => fetchFraudShield(phone, apiKey),
+  });
+}
+
+// Fire-and-forget background check for newly placed storefront orders. Never
+// throws and never delays the shopper's response — a failure stays silent and
+// the 5-minute warm cron plus manual checks fill the gap later.
+function checkStorefrontOrderFraud(supabase, orgId, orderId, phone) {
+  runFraudCheck(supabase, orgId, phone, false).then(async ({ row, spentRequest }) => {
+    if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
+    if (row?.summary) {
+      await supabase
+        .from("orders")
+        .update({ fraud_checked: true, fraud_data: row.summary })
+        .eq("id", orderId)
+        .eq("org_id", orgId);
+    }
+  }).catch((error) => console.warn("[FraudShield] background storefront check deferred:", error?.message || error));
+}
+
+async function readFraudUsage(orgId) {
+  const apiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
+  if (!apiKey) return null;
+
+  const cacheKey = `${orgId}:fraudshield_usage_cache`;
+  const cached = await getSettings([cacheKey]);
+  try {
+    const parsed = JSON.parse(cached[cacheKey] || "null");
+    if (parsed && Date.now() - parsed.at < 5 * 60_000) return parsed.data;
+  } catch {
+    // Corrupt memo — fall through and refetch.
+  }
+
+  try {
+    const response = await fetch("https://fraudshield.bd/api/usage/daily-limit", {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const body = await response.json();
+    const data = body?.data ?? null;
+    if (data) await saveSettings({ [cacheKey]: JSON.stringify({ at: Date.now(), data }) });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+// Cache-only. Deliberately never calls FraudShield — opening an order editor
+// must not consume the daily request budget.
+app.get("/api/fraud/lookup", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const phone = normalizeBdPhone(req.query.phone);
+    if (!phone) return res.status(400).json({ error: "Invalid phone number" });
+
+    const row = await readFraudCache(supabase, orgId, phone);
+    if (!row) return res.json({ phone, status: null });
+
+    return res.json({
+      phone,
+      status: row.status,
+      payload: row.payload,
+      summary: row.summary,
+      checkedAt: row.checked_at,
+      errorMessage: row.error_message,
+    });
+  } catch (e) {
+    return res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
+app.post("/api/fraud/check", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const phone = normalizeBdPhone(req.body?.phone);
+    if (!phone) return res.status(400).json({ error: "Invalid phone number" });
+
+    const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, req.body?.force === true);
+    if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
+
+    return res.json({
+      phone,
+      status: row?.status ?? null,
+      payload: row?.payload ?? null,
+      summary: row?.summary ?? null,
+      checkedAt: row?.checked_at ?? null,
+      errorMessage: row?.error_message ?? null,
+      spentRequest,
+    });
+  } catch (e) {
+    return res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
+app.get("/api/fraud/usage", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    return res.json(await readFraudUsage(orgId) ?? {});
+  } catch (e) {
+    return res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
 app.post("/api/check-fraud", async (req, res) => {
   try {
     const { orderId } = req.body || {};
@@ -8795,9 +8898,6 @@ app.post("/api/check-fraud", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    incrementUsage(orgId, "fraud_checks").catch(() => {});
-    const fraudShieldApiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
-    if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
 
     if (orderId) {
       const { data: order, error: fetchError } = await supabase
@@ -8810,8 +8910,13 @@ app.post("/api/check-fraud", async (req, res) => {
       if (fetchError || !order) return res.status(404).json({ error: "Order not found" });
       if (!order.phone) return res.status(400).json({ error: "Order has no phone number" });
 
-      const { fraudData, errorMessage } = await checkFraudStatus(order.phone, fraudShieldApiKey);
-      const dataToStore = fraudData ?? { _error: errorMessage ?? "Unknown error" };
+      const phone = normalizeBdPhone(order.phone);
+      if (!phone) return res.status(400).json({ error: "Order has no valid phone number" });
+
+      const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, true);
+      if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
+      const errorMessage = row?.error_message ?? null;
+      const dataToStore = row?.summary ?? { _error: errorMessage ?? "Unknown error" };
 
       await supabase
         .from("orders")
@@ -8845,17 +8950,28 @@ app.post("/api/check-fraud", async (req, res) => {
     for (const order of ordersToCheck) {
       if (checkedCount > 0) await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      const { fraudData, errorMessage } = await checkFraudStatus(order.phone, fraudShieldApiKey);
+      const phone = normalizeBdPhone(order.phone);
       checkedCount++;
+      if (!phone) {
+        await supabase
+          .from("orders")
+          .update({ fraud_checked: true, fraud_data: { _error: `Invalid phone format: "${order.phone}"` } })
+          .eq("id", order.id)
+          .eq("org_id", orgId);
+        continue;
+      }
 
-      const dataToStore = fraudData ?? { _error: errorMessage ?? "Unknown error" };
+      const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, true);
+      if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
+
+      const dataToStore = row?.summary ?? { _error: row?.error_message ?? "Unknown error" };
       const { error: updateError } = await supabase
         .from("orders")
         .update({ fraud_checked: true, fraud_data: dataToStore })
         .eq("id", order.id)
         .eq("org_id", orgId);
 
-      if (!updateError && fraudData) successCount++;
+      if (!updateError && row?.summary) successCount++;
     }
 
     const { data: allOrders } = await supabase
@@ -8879,18 +8995,19 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    incrementUsage(orgId, "fraud_checks").catch(() => {});
     const { data: order, error: fetchError } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
     if (fetchError || !order) return res.status(404).json({ error: "Inbox order not found" });
 
     const { phone: rawPhone } = parseInboxOrderNotes(order.notes);
     if (!rawPhone) return res.status(400).json({ error: "No phone number found in this order's notes" });
 
-    const fraudShieldApiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
-    if (!fraudShieldApiKey) return res.status(400).json({ error: "FraudShield API key not configured in environment" });
+    const phone = normalizeBdPhone(rawPhone);
+    if (!phone) return res.status(400).json({ error: "Invalid phone number in this order's notes" });
 
-    const { fraudData, errorMessage } = await checkFraudStatus(rawPhone, fraudShieldApiKey);
-    const dataToStore = fraudData ?? { _error: errorMessage ?? "Unknown error" };
+    const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, true);
+    if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
+    const errorMessage = row?.error_message ?? null;
+    const dataToStore = row?.summary ?? { _error: errorMessage ?? "Unknown error" };
 
     await supabase.from("social_inbox_orders").update({ fraud_checked: true, fraud_data: dataToStore }).eq("id", orderId).eq("org_id", orgId);
     const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
@@ -12423,6 +12540,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
 
     // ── Purge inventory cache so storefront reflects new stock ───────────
     await purgeProductCache(orgId, null, { listChanged: false, warm: false });
+
+    // Fraud-check the landing-page number in the background without delaying
+    // the shopper's confirmation. Cached numbers cost no request.
+    checkStorefrontOrderFraud(supabase, orgId, order.id, cleanPhone);
 
     return res.json({
       success: true,
