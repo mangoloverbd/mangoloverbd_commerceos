@@ -4256,7 +4256,7 @@ app.get("/api/reports/staff", async (req, res) => {
         .from("products")
         .select("id, name, weight_kg")
         .eq("org_id", orgId)),
-      fetchStaffReportPages(() => supabase
+      fetchReportPages(() => supabase
         .from("product_variants")
         .select("id, product_id, weight_kg")
         .eq("org_id", orgId)),
@@ -4352,7 +4352,7 @@ app.get("/api/reports/business", async (req, res) => {
       from: req.query.from,
       to: req.query.to,
     });
-    const fields = "id, created_at, source, landing_page_path, status, price, delivery_rate, courier_fee, courier_status, return_status";
+    const fields = "id, created_at, source, landing_page_path, status, fulfillment_status, price, delivery_rate, courier_fee, courier_status, return_status";
     const orders = await fetchReportPages(() => {
       let query = supabase
         .from("orders")

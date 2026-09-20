@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildBusinessReport,
   classifyBusinessReportOutcome,
@@ -14,6 +14,7 @@ function order(overrides: Record<string, unknown> = {}) {
     source: "website",
     landing_page_path: null,
     status: "pending",
+    fulfillment_status: null,
     price: 0,
     delivery_rate: 0,
     courier_fee: null,
@@ -31,6 +32,10 @@ function dayRequest() {
 }
 
 describe("business report request", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("uses exact inclusive Dhaka date bounds and supports All Time", () => {
     expect(dayRequest()).toEqual({
       range: { from: "2026-09-18", to: "2026-09-18" },
@@ -51,6 +56,18 @@ describe("business report request", () => {
       .toThrow("Invalid report date");
     expect(() => resolveBusinessReportRequest({ from: "2026-09-19", to: "2026-09-18" }))
       .toThrow("Report start date must not be after the end date");
+  });
+
+  it("rejects future dates and bounded ranges too large for the daily series", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-20T06:00:00.000Z"));
+
+    expect(() => resolveBusinessReportRequest({ from: "2025-09-19", to: "2026-09-20" }))
+      .toThrow("Report date range must not exceed 366 days");
+    expect(() => resolveBusinessReportRequest({ from: "2026-09-20", to: "2026-09-21" }))
+      .toThrow("Report date cannot be in the future");
+    expect(resolveBusinessReportRequest({ from: "2025-09-20", to: "2026-09-20" }).range)
+      .toEqual({ from: "2025-09-20", to: "2026-09-20" });
   });
 });
 
@@ -80,9 +97,14 @@ describe("business report normalization", () => {
     [order({ status: "processing", return_status: "completed" }), "returned"],
     [order({ status: "approved", courier_status: "Return To Hub" }), "returned"],
     [order({ status: "processing", courier_status: "return_requested" }), "approved"],
-    [order({ status: "cancelled", return_status: "completed" }), "cancelled"],
+    [order({ status: "cancelled", return_status: "completed" }), "returned"],
+    [order({ status: "cancelled", courier_status: "returned" }), "returned"],
     [order({ status: "processing", courier_status: "rejected" }), "cancelled"],
     [order({ status: "processing", courier_status: "cancelled_approval_pending" }), "approved"],
+    [order({ status: "cancelled", courier_status: "cancelled", return_status: "completed" }), "cancelled"],
+    [order({ status: "pending", fulfillment_status: "fulfilled" }), "approved"],
+    [order({ status: "pending", fulfillment_status: "partial" }), "approved"],
+    [order({ status: "pending", fulfillment_status: "cancelled" }), "cancelled"],
   ])("classifies the current order state as %s", (row, expected) => {
     expect(classifyBusinessReportOutcome(row)).toBe(expected);
   });
@@ -213,6 +235,29 @@ describe("buildBusinessReport", () => {
         ["2026-09-19", 0, 0],
         ["2026-09-20", 1, 200],
       ]);
+  });
+
+  it("stops at the requested final day near the calendar maximum", () => {
+    const originalToISOString = Date.prototype.toISOString;
+    let toISOStringCalls = 0;
+    const toISOStringSpy = vi.spyOn(Date.prototype, "toISOString").mockImplementation(function toISOString() {
+      toISOStringCalls += 1;
+      if (toISOStringCalls > 5) throw new Error("Date series exceeded the requested range");
+      return originalToISOString.call(this);
+    });
+
+    try {
+      const report = buildBusinessReport([], {
+        range: { from: "9999-12-30", to: "9999-12-31" },
+        since: "9999-12-29T18:00:00.000Z",
+        until: "9999-12-31T18:00:00.000Z",
+      });
+
+      expect(report.series.buckets.map((bucket) => bucket.key))
+        .toEqual(["9999-12-30", "9999-12-31"]);
+    } finally {
+      toISOStringSpy.mockRestore();
+    }
   });
 
   it("keeps the most recent 30 active Dhaka days in chronological order for All Time", () => {

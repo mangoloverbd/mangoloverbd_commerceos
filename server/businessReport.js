@@ -30,8 +30,17 @@ const APPROVED_STATES = new Set([
   "delivered",
   "partial_delivered",
 ]);
+const FULFILLMENT_APPROVED_STATES = new Set([
+  "fulfilled",
+  "partial",
+  "partial_fulfilled",
+  "delivered",
+  "partial_delivered",
+]);
 const PENDING_RETURN_MARKERS = ["request", "pending", "approval", "review"];
 const LANDING_PAGE_PATH_RE = /^\/step\/[a-z0-9]+(?:-[a-z0-9]+)*$/i;
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+const MAX_BOUNDED_REPORT_DAYS = 366;
 
 const dhakaDateHourFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Dhaka",
@@ -91,10 +100,24 @@ function toDhakaParts(value) {
   };
 }
 
-function addDaysYmd(day, days) {
-  const date = new Date(`${day}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+function utcMidnightTimestamp(day) {
+  return new Date(`${day}T00:00:00Z`).getTime();
+}
+
+function inclusiveDayCount(from, to) {
+  const fromTimestamp = utcMidnightTimestamp(from);
+  const toTimestamp = utcMidnightTimestamp(to);
+  if (!Number.isFinite(fromTimestamp) || !Number.isFinite(toTimestamp)) return 0;
+  return Math.floor((toTimestamp - fromTimestamp) / MILLISECONDS_PER_DAY) + 1;
+}
+
+function dayAtOffset(day, offset) {
+  const timestamp = utcMidnightTimestamp(day) + offset * MILLISECONDS_PER_DAY;
+  return new Date(timestamp).toISOString().split("T", 1)[0];
+}
+
+function dhakaToday() {
+  return toDhakaParts(new Date())?.day || null;
 }
 
 function dayLabel(day) {
@@ -228,8 +251,14 @@ function buildSeries(seriesRows, request) {
   }
 
   if (request.range.from && request.range.to) {
+    const dayCount = inclusiveDayCount(request.range.from, request.range.to);
+    if (dayCount > MAX_BOUNDED_REPORT_DAYS) {
+      throw invalidBusinessReportRequest(`Report date range must not exceed ${MAX_BOUNDED_REPORT_DAYS} days`);
+    }
+
     const buckets = [];
-    for (let day = request.range.from; day <= request.range.to; day = addDaysYmd(day, 1)) {
+    for (let offset = 0; offset < dayCount; offset += 1) {
+      const day = dayAtOffset(request.range.from, offset);
       buckets.push(bucketsByDay.get(day) || createSeriesBucket(day, dayLabel(day)));
     }
     return { granularity: "day", label: "Intake by day", buckets };
@@ -273,6 +302,13 @@ export function resolveBusinessReportRequest({ from, to } = {}) {
   if (interval.from > interval.to) {
     throw invalidBusinessReportRequest("Report start date must not be after the end date");
   }
+  const today = dhakaToday();
+  if (today && interval.to > today) {
+    throw invalidBusinessReportRequest("Report date cannot be in the future");
+  }
+  if (inclusiveDayCount(interval.from, interval.to) > MAX_BOUNDED_REPORT_DAYS) {
+    throw invalidBusinessReportRequest(`Report date range must not exceed ${MAX_BOUNDED_REPORT_DAYS} days`);
+  }
   return {
     range: { from: interval.from, to: interval.to },
     since: interval.since,
@@ -294,10 +330,11 @@ export function normalizeBusinessReportLandingPage(value) {
 
 export function classifyBusinessReportOutcome(order) {
   const status = normalizeStatus(order?.status);
+  const fulfillmentStatus = normalizeStatus(order?.fulfillment_status);
   const courierStatus = normalizeStatus(order?.courier_status);
   const returnStatus = normalizeStatus(order?.return_status);
 
-  if (CANCELLED_STATES.has(status) || CANCELLED_STATES.has(courierStatus)) {
+  if (CANCELLED_STATES.has(courierStatus)) {
     return "cancelled";
   }
   if (
@@ -308,7 +345,12 @@ export function classifyBusinessReportOutcome(order) {
   ) {
     return "returned";
   }
-  return APPROVED_STATES.has(status) ? "approved" : "pending";
+  if (CANCELLED_STATES.has(status) || CANCELLED_STATES.has(fulfillmentStatus)) {
+    return "cancelled";
+  }
+  return APPROVED_STATES.has(status) || FULFILLMENT_APPROVED_STATES.has(fulfillmentStatus)
+    ? "approved"
+    : "pending";
 }
 
 export function buildBusinessReport(orders, request) {

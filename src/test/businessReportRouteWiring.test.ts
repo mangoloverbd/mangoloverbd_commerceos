@@ -35,6 +35,7 @@ describe("GET /api/reports/business", () => {
     expect(section).toContain("delivery_rate");
     expect(section).toContain("courier_fee");
     expect(section).toContain("return_status");
+    expect(section).toContain("fulfillment_status");
     expect(section).toContain("request.since");
     expect(section).toContain("request.until");
     expect(section).not.toContain('from("social_inbox_orders")');
