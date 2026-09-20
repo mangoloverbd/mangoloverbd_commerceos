@@ -85,6 +85,7 @@ import {
   isCancelledStatus,
 } from "./orderAttribution.js";
 import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
+import { buildBusinessReport, resolveBusinessReportRequest } from "./businessReport.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -4045,7 +4046,7 @@ app.get("/api/overview", async (req, res) => {
   }
 });
 
-async function fetchStaffReportPages(createQuery, { pageSize = 500 } = {}) {
+async function fetchReportPages(createQuery, { pageSize = 500 } = {}) {
   const allRows = [];
   let lastId = null;
   for (;;) {
@@ -4143,7 +4144,7 @@ app.get("/api/reports/staff", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId, role } = await getUserOrg(supabase, user.id);
-    const staffRows = await fetchStaffReportPages(() => supabase
+    const staffRows = await fetchReportPages(() => supabase
       .from("user_roles")
       .select("id, user_id, display_name, deleted_at")
       .eq("org_id", orgId));
@@ -4185,7 +4186,7 @@ app.get("/api/reports/staff", async (req, res) => {
     const fetchRegularRows = async (actorColumn, timestampColumn) => {
       const rows = [];
       for (const staffIds of chunkIds(request.selectedUserIds)) {
-        rows.push(...await fetchStaffReportPages(() => {
+        rows.push(...await fetchReportPages(() => {
           let query = supabase
             .from("orders")
             .select(regularOrderFields)
@@ -4201,7 +4202,7 @@ app.get("/api/reports/staff", async (req, res) => {
     const fetchInboxRows = async (actorColumn, timestampColumn) => {
       const rows = [];
       for (const staffIds of chunkIds(request.selectedUserIds)) {
-        rows.push(...await fetchStaffReportPages(() => {
+        rows.push(...await fetchReportPages(() => {
           let query = supabase
             .from("social_inbox_orders")
             .select(inboxOrderFields)
@@ -4217,7 +4218,7 @@ app.get("/api/reports/staff", async (req, res) => {
     const fetchStatusEvents = async (orderTable) => {
       const rows = [];
       for (const staffIds of chunkIds(request.selectedUserIds)) {
-        rows.push(...await fetchStaffReportPages(() => {
+        rows.push(...await fetchReportPages(() => {
           let query = supabase
             .from("order_status_events")
             .select(statusEventFields)
@@ -4251,11 +4252,11 @@ app.get("/api/reports/staff", async (req, res) => {
       fetchInboxRows("cancelled_by", "cancelled_at"),
       fetchStatusEvents("orders"),
       fetchStatusEvents("social_inbox_orders"),
-      fetchStaffReportPages(() => supabase
+      fetchReportPages(() => supabase
         .from("products")
         .select("id, name, weight_kg")
         .eq("org_id", orgId)),
-      fetchStaffReportPages(() => supabase
+      fetchReportPages(() => supabase
         .from("product_variants")
         .select("id, product_id, weight_kg")
         .eq("org_id", orgId)),
@@ -4275,7 +4276,7 @@ app.get("/api/reports/staff", async (req, res) => {
     )];
     const regularEventOrders = [];
     for (const orderIdBatch of chunkIds(regularEventOrderIds)) {
-      regularEventOrders.push(...await fetchStaffReportPages(() => supabase
+      regularEventOrders.push(...await fetchReportPages(() => supabase
         .from("orders")
         .select(regularOrderFields)
         .eq("org_id", orgId)
@@ -4283,7 +4284,7 @@ app.get("/api/reports/staff", async (req, res) => {
     }
     const socialEventOrders = [];
     for (const orderIdBatch of chunkIds(socialEventOrderIds)) {
-      socialEventOrders.push(...await fetchStaffReportPages(() => supabase
+      socialEventOrders.push(...await fetchReportPages(() => supabase
         .from("social_inbox_orders")
         .select(inboxOrderFields)
         .eq("org_id", orgId)
@@ -4308,7 +4309,7 @@ app.get("/api/reports/staff", async (req, res) => {
     )];
     const orderItems = [];
     for (const orderIdBatch of chunkIds(regularConfirmedOrderIds)) {
-      orderItems.push(...await fetchStaffReportPages(() => supabase
+      orderItems.push(...await fetchReportPages(() => supabase
         .from("order_items")
         .select("id, order_id, product_id, variant_id, product_name, quantity")
         .eq("org_id", orgId)
@@ -4330,6 +4331,39 @@ app.get("/api/reports/staff", async (req, res) => {
       selected_user_ids: request.selectedUserIds,
       ...report,
     });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ─── Business Report ─────────────────────────────────────────────────────────
+
+app.get("/api/reports/business", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin") return res.status(403).json({ error: "Admin only" });
+
+    const request = resolveBusinessReportRequest({
+      from: req.query.from,
+      to: req.query.to,
+    });
+    const fields = "id, created_at, source, landing_page_path, status, fulfillment_status, price, delivery_rate, courier_fee, courier_status, return_status";
+    const orders = await fetchReportPages(() => {
+      let query = supabase
+        .from("orders")
+        .select(fields)
+        .eq("org_id", orgId);
+      if (request.since) query = query.gte("created_at", request.since);
+      if (request.until) query = query.lt("created_at", request.until);
+      return query;
+    });
+
+    return res.json(buildBusinessReport(orders, request));
   } catch (err) {
     return sendError(res, err);
   }

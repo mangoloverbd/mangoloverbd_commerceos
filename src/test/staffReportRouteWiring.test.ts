@@ -15,7 +15,7 @@ function sectionBetween(startMarker: string, endMarker: string) {
 describe("GET /api/reports/staff", () => {
   const route = () => sectionBetween(
     'app.get("/api/reports/staff"',
-    "// ─── Analytics",
+    "// ─── Business Report",
   );
 
   it("authenticates first and resolves the fixed workspace before every report read", () => {
@@ -53,8 +53,8 @@ describe("GET /api/reports/staff", () => {
   it("uses workspace-scoped user status events for historical activity and batches id filters", () => {
     const section = route();
 
-    expect(section).toContain("fetchStaffReportPages");
-    expect(section).toMatch(/fetchStaffReportPages\(\(\) => supabase[\s\S]*?\.from\("user_roles"\)[\s\S]*?\.eq\("org_id", orgId\)/);
+    expect(section).toContain("fetchReportPages");
+    expect(section).toMatch(/fetchReportPages\(\(\) => supabase[\s\S]*?\.from\("user_roles"\)[\s\S]*?\.eq\("org_id", orgId\)/);
     expect(section).toContain("chunkIds(request.selectedUserIds)");
     expect(section).toContain('.from("order_status_events")');
     expect(section).toContain('.eq("actor_kind", "user")');
@@ -67,7 +67,7 @@ describe("GET /api/reports/staff", () => {
 describe("staff report pagination helper", () => {
   it("uses a stable id keyset instead of offset pagination", () => {
     const helper = sectionBetween(
-      "async function fetchStaffReportPages",
+      "async function fetchReportPages",
       'app.get("/api/reports/staff"',
     );
 
