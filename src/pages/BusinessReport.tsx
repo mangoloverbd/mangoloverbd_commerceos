@@ -135,6 +135,7 @@ function DetailGroup({
 
 function IntakeSeries({ series }: { series: BusinessReportResponse["series"] }) {
   const maximum = Math.max(1, ...series.buckets.map((bucket) => bucket.intake_count));
+  const stretch = series.granularity === "day";
 
   return (
     <section aria-label={series.label} className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5">
@@ -146,7 +147,7 @@ function IntakeSeries({ series }: { series: BusinessReportResponse["series"] }) 
         <span className="shrink-0 text-[11px] tabular-nums text-black/55">{formatNumber(series.buckets.reduce((sum, bucket) => sum + bucket.intake_count, 0))} orders</span>
       </div>
       <div className="mt-4 overflow-x-auto pb-1">
-        <ul className="flex min-w-max items-end gap-1.5" aria-label={`${series.label} buckets`}>
+        <ul className={`flex items-end gap-1.5 ${stretch ? "w-full" : "min-w-max"}`} aria-label={`${series.label} buckets`}>
           {series.buckets.map((bucket) => {
             const height = bucket.intake_count > 0
               ? Math.max(8, (bucket.intake_count / maximum) * 84)
@@ -155,7 +156,7 @@ function IntakeSeries({ series }: { series: BusinessReportResponse["series"] }) 
               <li
                 key={bucket.key}
                 aria-label={`${bucket.label}: ${bucket.intake_count} orders`}
-                className="flex w-6 flex-col items-center gap-1"
+                className={`flex flex-col items-center gap-1 ${stretch ? "min-w-9 flex-1" : "w-6"}`}
               >
                 <span className="flex h-[88px] w-full items-end rounded-sm bg-black/[0.05]" aria-hidden="true">
                   <span
@@ -163,7 +164,7 @@ function IntakeSeries({ series }: { series: BusinessReportResponse["series"] }) 
                     style={{ height: `${height}px` }}
                   />
                 </span>
-                <span className="text-[9px] tabular-nums text-black/55">{bucket.label}</span>
+                <span className="whitespace-nowrap text-center text-[9px] tabular-nums text-black/55">{bucket.label}</span>
               </li>
             );
           })}

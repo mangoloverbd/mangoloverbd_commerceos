@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.12] - 2026-09-20
+
+### Fixed
+
+- Stretch Business Report day-granularity intake bars across the full chart width with single-line labels, so multi-day ranges read as clean as the hourly Today view.
+
 ## [0.1.0.11] - 2026-09-20
 
 ### Added
