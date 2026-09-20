@@ -8898,7 +8898,9 @@ app.post("/api/check-fraud", async (req, res) => {
       const phone = normalizeBdPhone(order.phone);
       if (!phone) return res.status(400).json({ error: "Order has no valid phone number" });
 
-      const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, true);
+      // Bulk callers pass force:false to reuse fresh cache instead of
+      // re-spending a request per order. Single checks default to force.
+      const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, req.body?.force !== false);
       if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
       const errorMessage = row?.error_message ?? null;
       const dataToStore = row?.summary ?? { _error: errorMessage ?? "Unknown error" };
@@ -8916,7 +8918,7 @@ app.post("/api/check-fraud", async (req, res) => {
         .eq("org_id", orgId)
         .single();
 
-      return res.json({ success: true, order: updatedOrder, fraudError: errorMessage });
+      return res.json({ success: true, order: updatedOrder, fraudError: errorMessage, spentRequest });
     }
 
     const { data: orders, error: fetchError } = await supabase
@@ -8989,14 +8991,16 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
     const phone = normalizeBdPhone(rawPhone);
     if (!phone) return res.status(400).json({ error: "Invalid phone number in this order's notes" });
 
-    const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, true);
+    // Bulk callers pass force:false to reuse fresh cache instead of
+    // re-spending a request per order. Single checks default to force.
+    const { row, spentRequest } = await runFraudCheck(supabase, orgId, phone, req.body?.force !== false);
     if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
     const errorMessage = row?.error_message ?? null;
     const dataToStore = row?.summary ?? { _error: errorMessage ?? "Unknown error" };
 
     await supabase.from("social_inbox_orders").update({ fraud_checked: true, fraud_data: dataToStore }).eq("id", orderId).eq("org_id", orgId);
     const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
-    return res.json({ success: true, order: updated, fraudError: errorMessage });
+    return res.json({ success: true, order: updated, fraudError: errorMessage, spentRequest });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

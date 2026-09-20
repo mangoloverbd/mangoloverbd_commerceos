@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.17] - 2026-09-21
+
+### Fixed
+
+- Make bulk fraud verification cache-aware: the bulk buttons now send `force: false`, so numbers checked within the last 30 days reuse cache instead of re-spending a request each. Single checks still force a fresh lookup. The toast reports how many were reused from cache.
+
 ## [0.1.0.16] - 2026-09-21
 
 ### Changed
