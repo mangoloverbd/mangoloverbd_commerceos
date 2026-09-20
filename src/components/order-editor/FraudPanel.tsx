@@ -93,8 +93,13 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
   const reviews = payload?.reviews;
   const couriers = courierRows(payload);
   const hasReviews = Array.isArray(reviews) && reviews.length > 0;
-  const visibleCouriers = compact ? couriers.filter((courier) => courier.total > 0) : couriers;
-  const hiddenCourierCount = couriers.length - visibleCouriers.length;
+  // Couriers with real parcel history float to the top; only the first 4 show
+  // by default so the list never dwarfs the summary above it. The rest are a
+  // hover-away, not a scroll — see the "+N more" trigger below.
+  const sortedCouriers = [...couriers].sort((a, b) => b.total - a.total);
+  const visibleCouriers = sortedCouriers.slice(0, 4);
+  const hiddenCouriers = sortedCouriers.slice(4);
+  const hiddenAllEmpty = hiddenCouriers.every((courier) => courier.total === 0);
   const showDetails = hasData && !isNewCustomer && !expanded;
 
   return (
@@ -197,7 +202,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
         <div className={`mt-4 grid gap-7 border-t border-black/[0.08] pt-4 ${hasReviews ? "sm:grid-cols-2" : ""}`}>
           <div className="min-w-0">
             <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">By courier</p>
-            <ul className={`mt-3 grid gap-2.5 ${compact ? "max-h-56 overflow-y-auto pr-1" : ""}`}>
+            <ul className="mt-3 grid gap-2.5">
               {visibleCouriers.map((courier) => (
                 <li key={courier.key} className="flex items-center gap-2.5">
                   <CourierLogo key={`${courier.key}-${data?.checkedAt ?? "none"}`} src={courier.logo} />
@@ -211,8 +216,23 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
                 </li>
               ))}
             </ul>
-            {hiddenCourierCount > 0 && (
-              <p className="mt-2 text-[11px] tabular-nums text-black/40">+{hiddenCourierCount} more couriers with no parcels</p>
+            {hiddenCouriers.length > 0 && (
+              <div className="group relative mt-2 inline-block">
+                <p className="cursor-default text-[11px] tabular-nums text-black/40">
+                  +{hiddenCouriers.length} more courier{hiddenCouriers.length === 1 ? "" : "s"}{hiddenAllEmpty ? " with no parcels" : ""}
+                </p>
+                <div className="invisible absolute left-0 top-full z-20 mt-1.5 w-60 rounded-lg border border-black/[0.08] bg-white p-2.5 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+                  <ul className="grid gap-2">
+                    {hiddenCouriers.map((courier) => (
+                      <li key={courier.key} className="flex items-center gap-2">
+                        <CourierLogo src={courier.logo} />
+                        <span className="min-w-0 flex-1 truncate text-[12px] text-black">{courier.name}</span>
+                        <span className="text-[11px] tabular-nums text-black/45">{courier.success}/{courier.total}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             )}
           </div>
 

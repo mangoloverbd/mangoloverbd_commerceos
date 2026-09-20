@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, Minus, Package, Plus, ShieldCheck, Trash, Truck } from "@phosphor-icons/react";
+import { ArrowLeft, CheckCircle, MapPin, Minus, Package, Phone as PhoneIcon, Plus, ShieldCheck, ShoppingCartSimple, Trash, Truck, User, UserPlus } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
@@ -128,6 +128,12 @@ export default function NewOrder() {
     setLines((current) => current.filter((line) => line.id !== lineId));
   }
 
+  function resetCustomer() {
+    setCustomerName("");
+    setPhone("");
+    setAddress("");
+  }
+
   const normalizedPhone = normalizeBdPhone(phone);
   const fraudCheck = useFraudCheckMutation(phone);
   const autoCheckedPhone = useRef<string | null>(null);
@@ -217,20 +223,71 @@ export default function NewOrder() {
 
       <div className="min-h-0 overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
         <section aria-label="Customer and order" className="bg-[#FAFAF8] px-5 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div><p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Customer and order</p><h2 className="mt-1 text-[18px] font-medium text-black">{customerName || "New customer"}</h2></div>
-            <span className="hidden text-[12px] text-black sm:block">Enter details or paste a message to start</span>
-          </div>
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Customer name<input aria-label="Customer name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Rahim Uddin" className="mt-2 h-12 w-full rounded-lg bg-black/[0.04] px-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
-              <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Phone <span className="text-red-500">*</span><input aria-label="Phone" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="01712345678" className="mt-2 h-12 w-full rounded-lg bg-black/[0.04] px-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
-              <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black sm:col-span-2">Delivery address<textarea aria-label="Delivery address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="House 12, Road 5, Dhanmondi, Dhaka" rows={2} className="mt-2 min-h-16 w-full resize-none rounded-lg bg-black/[0.04] px-3.5 py-2.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
-                <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Order source<div className="mt-2"><OrderSourceSelect value={source} onChange={setSource} disabled={creating} /></div></label>
-                <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Telesales staff<div className="mt-2"><StaffSelect value={assignedTo} onChange={setAssignedTo} disabled={creating} /></div></label>
-             </div>
-             <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
-               <FraudPanel phone={phone} defaultExpanded compact alignHeader="left" className="flex h-full flex-col justify-between gap-3" />
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
+            <div className="flex flex-col gap-4">
+              <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eaf7ef]">
+                      <User weight="light" size={19} className="text-[#2e9e5b]" />
+                    </span>
+                    <div>
+                      <p className="text-[15px] font-semibold text-black">Customer details</p>
+                      <p className="text-[11.5px] text-black/45">Enter customer information to create the order</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetCustomer}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#eaf7ef] px-2.5 py-1.5 text-[12px] font-medium text-[#2e9e5b] transition hover:bg-[#dcf0e4]"
+                  >
+                    <UserPlus weight="light" size={14} />
+                    New customer
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">
+                    Customer name
+                    <div className="relative mt-2">
+                      <User weight="light" size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black/35" />
+                      <input aria-label="Customer name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Rahim Uddin" className="h-12 w-full rounded-lg bg-black/[0.04] pl-10 pr-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
+                    </div>
+                  </label>
+                  <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">
+                    Phone <span className="text-red-500">*</span>
+                    <div className="relative mt-2">
+                      <PhoneIcon weight="light" size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black/35" />
+                      <input aria-label="Phone" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="01712345678" className="h-12 w-full rounded-lg bg-black/[0.04] pl-10 pr-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
+                    </div>
+                  </label>
+                  <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black sm:col-span-2">
+                    Delivery address
+                    <div className="relative mt-2">
+                      <MapPin weight="light" size={16} className="pointer-events-none absolute left-3.5 top-3 text-black/35" />
+                      <textarea aria-label="Delivery address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="House 12, Road 5, Dhanmondi, Dhaka" rows={4} className="min-h-32 w-full resize-none rounded-lg bg-black/[0.04] py-2.5 pl-10 pr-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eaf7ef]">
+                    <ShoppingCartSimple weight="light" size={19} className="text-[#2e9e5b]" />
+                  </span>
+                  <div>
+                    <p className="text-[15px] font-semibold text-black">Order settings</p>
+                    <p className="text-[11.5px] text-black/45">Set order source and assign telesales staff</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Order source<div className="mt-2"><OrderSourceSelect value={source} onChange={setSource} disabled={creating} /></div></label>
+                  <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Telesales staff<div className="mt-2"><StaffSelect value={assignedTo} onChange={setAssignedTo} disabled={creating} /></div></label>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
+              <FraudPanel phone={phone} defaultExpanded compact alignHeader="left" className="flex h-full flex-col justify-between gap-3" />
             </div>
           </div>
         </section>
