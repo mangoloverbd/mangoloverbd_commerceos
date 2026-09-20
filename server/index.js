@@ -4243,6 +4243,7 @@ app.get("/api/reports/staff", async (req, res) => {
       regularStatusEvents,
       socialStatusEvents,
       products,
+      variants,
     ] = await Promise.all([
       fetchRegularRows("assigned_to", "created_at"),
       fetchRegularRows("confirmed_by", "confirmed_at"),
@@ -4254,6 +4255,10 @@ app.get("/api/reports/staff", async (req, res) => {
       fetchReportPages(() => supabase
         .from("products")
         .select("id, name, weight_kg")
+        .eq("org_id", orgId)),
+      fetchStaffReportPages(() => supabase
+        .from("product_variants")
+        .select("id, product_id, weight_kg")
         .eq("org_id", orgId)),
     ]);
 
@@ -4306,7 +4311,7 @@ app.get("/api/reports/staff", async (req, res) => {
     for (const orderIdBatch of chunkIds(regularConfirmedOrderIds)) {
       orderItems.push(...await fetchReportPages(() => supabase
         .from("order_items")
-        .select("id, order_id, product_id, product_name, quantity")
+        .select("id, order_id, product_id, variant_id, product_name, quantity")
         .eq("org_id", orgId)
         .in("order_id", orderIdBatch)));
     }
@@ -4318,6 +4323,7 @@ app.get("/api/reports/staff", async (req, res) => {
       products,
       selectedStaff,
       { ...request, regularActivities, socialActivities },
+      variants,
     );
     return res.json({
       range: request.range,
