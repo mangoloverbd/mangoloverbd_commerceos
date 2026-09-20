@@ -70,7 +70,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
 
   return (
     <section aria-label="Customer risk" className={className}>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5">
         {busy ? (
           <span className="text-[12px] text-black/50">Loading…</span>
         ) : quotaBlocked && !hasData ? (
@@ -96,43 +96,6 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
             <Chip variant="caption" color="neutral" className="font-semibold tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
           </>
         )}
-
-        <span className="ml-auto inline-flex items-center gap-1.5">
-          {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/45">{relativeAge(data.checkedAt)}</span>}
-
-          {hasData || failed ? (
-            <button
-              type="button"
-              aria-label={failed ? "Retry" : "Re-check"}
-              disabled={busy || quotaBlocked}
-              onClick={() => check.mutate({ force: true })}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40"
-            >
-              <RefreshIcon size={16} />
-              {failed ? "Retry" : null}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={busy || quotaBlocked}
-              onClick={() => check.mutate({ force: false })}
-              className="inline-flex h-7 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
-            >
-              Check
-            </button>
-          )}
-
-          {hasData && !isNewCustomer && !expanded && (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="inline-flex h-6 items-center gap-1 rounded-md bg-black/[0.04] px-2 py-1 text-[12px] font-medium text-black transition hover:bg-black/[0.08]"
-            >
-              Details
-              <CaretDown weight="light" size={12} />
-            </button>
-          )}
-        </span>
       </div>
 
       {hasData && !isNewCustomer && payload?.fraudRiskScore && (
@@ -194,6 +157,43 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
           )}
         </div>
       )}
+
+      <div className="mt-3 flex items-center justify-end gap-1.5">
+        {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/45">{relativeAge(data.checkedAt)}</span>}
+
+        {hasData || failed ? (
+          <button
+            type="button"
+            aria-label={failed ? "Retry" : "Re-check"}
+            disabled={busy || quotaBlocked}
+            onClick={() => check.mutate({ force: true })}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40"
+          >
+            <RefreshIcon size={16} />
+            {failed ? "Retry" : null}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy || quotaBlocked}
+            onClick={() => check.mutate({ force: false })}
+            className="inline-flex h-7 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
+          >
+            Check
+          </button>
+        )}
+
+        {hasData && !isNewCustomer && !expanded && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="inline-flex h-6 items-center gap-1 rounded-md bg-black/[0.04] px-2 py-1 text-[12px] font-medium text-black transition hover:bg-black/[0.08]"
+          >
+            Details
+            <CaretDown weight="light" size={12} />
+          </button>
+        )}
+      </div>
     </section>
   );
 }
