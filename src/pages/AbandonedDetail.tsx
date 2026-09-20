@@ -230,7 +230,7 @@ export default function AbandonedDetail() {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-4 pb-4 pt-1 lg:px-5 lg:pt-2">
+    <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
       <div data-testid="abandoned-editor-toolbar" className="sticky top-0 z-30 flex items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5">

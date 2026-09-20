@@ -22,7 +22,7 @@ function RefreshIcon({ size = 14 }: { size?: number }) {
 function CourierLogo({ src }: { src: string | null }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
-    return <span className="h-5 w-5 shrink-0 rounded bg-black/[0.08]" />;
+    return <span className="h-7 w-[68px] shrink-0 rounded bg-black/[0.06]" />;
   }
   return (
     <img
@@ -31,7 +31,7 @@ function CourierLogo({ src }: { src: string | null }) {
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      className="h-5 w-5 shrink-0 rounded-sm object-contain"
+      className="h-7 w-[68px] shrink-0 object-contain object-left mix-blend-multiply"
     />
   );
 }

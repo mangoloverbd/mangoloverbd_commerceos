@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.18] - 2026-09-21
+
+### Changed
+
+- Make FraudShield courier logos in the order-editor risk panel bigger and legible (wide wordmark slot with multiply blending instead of a cramped 20px square).
+- Tighten the left/right/top page margins on the Order editor, Abandoned order editor, and New order pages so more of the panel is visible without scrolling.
+
 ## [0.1.0.17] - 2026-09-21
 
 ### Fixed
