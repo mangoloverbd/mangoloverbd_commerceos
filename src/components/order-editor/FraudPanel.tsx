@@ -67,6 +67,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
   const hasReviews = Array.isArray(reviews) && reviews.length > 0;
   const visibleCouriers = compact ? couriers.filter((courier) => courier.total > 0) : couriers;
   const hiddenCourierCount = couriers.length - visibleCouriers.length;
+  const breakdown = breakdownRows(payload?.fraudRiskScore?.breakdown);
 
   return (
     <section aria-label="Customer risk" className={className}>
@@ -166,9 +167,9 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
               <p className="mt-2 text-[11px] tabular-nums text-black/40">+{hiddenCourierCount} more couriers with no parcels</p>
             )}
 
-            {payload?.fraudRiskScore?.breakdown && (
+            {breakdown.length > 0 && (
               <p className="mt-4 text-[12px] tabular-nums text-black/55">
-                {breakdownRows(payload.fraudRiskScore.breakdown).map((row, index) => (
+                {breakdown.map((row, index) => (
                   <span key={row.key}>
                     {index > 0 && <span className="mx-1.5 text-black/25">·</span>}
                     <span className={row.alert ? "text-[#d05555]" : undefined}>

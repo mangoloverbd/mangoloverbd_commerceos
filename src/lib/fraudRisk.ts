@@ -60,13 +60,15 @@ const BREAKDOWN_LABELS: Record<string, string> = {
 };
 
 export function breakdownRows(breakdown: Record<string, number> | null | undefined) {
-  return Object.entries(breakdown || {}).map(([key, value]) => ({
-    key,
-    label: BREAKDOWN_LABELS[key] ?? key.replace(/_/g, " "),
-    value,
-    // A non-zero report or cancel component is what pushes the score up.
-    alert: /report|cancel/i.test(key) && Number(value) > 0,
-  }));
+  return Object.entries(breakdown || {})
+    .filter(([, value]) => Number(value) !== 0)
+    .map(([key, value]) => ({
+      key,
+      label: BREAKDOWN_LABELS[key] ?? key.replace(/_/g, " "),
+      value,
+      // A non-zero report or cancel component is what pushes the score up.
+      alert: /report|cancel/i.test(key) && Number(value) > 0,
+    }));
 }
 
 export function courierRows(payload: FraudPayload) {
