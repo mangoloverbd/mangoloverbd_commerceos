@@ -168,6 +168,19 @@ describe("FraudPanel", () => {
     expect(screen.queryByText("cancel_component")).not.toBeInTheDocument();
   });
 
+  it("starts expanded when asked, showing couriers without a click", async () => {
+    apiFetch.mockResolvedValue(ok({ phone: "01711111111", status: "ok", payload: SAFE_PAYLOAD, summary: SAFE_SUMMARY, checkedAt: new Date().toISOString() }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <FraudPanel phone="01711111111" defaultExpanded />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Safe");
+    expect(screen.getByText("Steadfast")).toBeInTheDocument();
+  });
+
   it("does not query at all without a valid BD phone", () => {
     renderPanel("012");
     expect(apiFetch).not.toHaveBeenCalled();

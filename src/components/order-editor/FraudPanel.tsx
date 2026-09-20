@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CaretDown, CaretUp, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
+import { CaretDown, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
 import { useFraudCheckMutation, useFraudLookup } from "@/hooks/useFraudCheck";
 import { Chip } from "@/components/base/badges/chip";
 import { RISK_STYLES, breakdownRows, courierRows, maskPhone, relativeAge, resolveFraudLevel } from "@/lib/fraudRisk";
@@ -113,9 +113,9 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false }: {
               aria-label={failed ? "Retry" : "Re-check"}
               disabled={busy || quotaBlocked}
               onClick={() => check.mutate({ force: true })}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40"
             >
-              <RefreshIcon size={14} />
+              <RefreshIcon size={18} />
               {failed ? "Retry" : null}
             </button>
           ) : (
@@ -129,14 +129,14 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false }: {
             </button>
           )}
 
-          {hasData && !isNewCustomer && (
+          {hasData && !isNewCustomer && !expanded && (
             <button
               type="button"
-              onClick={() => setExpanded((open) => !open)}
-              className="inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-[12px] text-black transition hover:bg-black/[0.05]"
+              onClick={() => setExpanded(true)}
+              className="inline-flex h-6 items-center gap-1 rounded-md bg-black/[0.04] px-2 py-1 text-[12px] font-medium text-black transition hover:bg-black/[0.08]"
             >
-              {expanded ? "Hide" : "Details"}
-              {expanded ? <CaretUp weight="light" size={12} /> : <CaretDown weight="light" size={12} />}
+              Details
+              <CaretDown weight="light" size={12} />
             </button>
           )}
         </div>
