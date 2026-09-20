@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.14] - 2026-09-21
+
+### Changed
+
+- Give কালোজিরা মিক্সড | Kalojira Mixed free delivery, matching the existing honey products.
+
 ## [0.1.0.13] - 2026-09-20
 
 ### Changed

@@ -187,6 +187,19 @@ describe("cartHasFreeDeliveryProduct", () => {
     ])).toBe(false);
   });
 
+  it("returns true when the cart contains only Kalojira Mixed", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "e1b38561-e8f4-4384-81b3-0afffa959d5c", productName: "কালোজিরা মিক্সড | Kalojira Mixed" },
+    ])).toBe(true);
+  });
+
+  it("returns true for a mixed cart containing Kalojira Mixed plus another product", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "e1b38561-e8f4-4384-81b3-0afffa959d5c", productName: "কালোজিরা মিক্সড | Kalojira Mixed" },
+      { productId: "other-id", productName: "Some Other Product" },
+    ])).toBe(true);
+  });
+
   it("returns false for empty, null, or undefined input", () => {
     expect(cartHasFreeDeliveryProduct([])).toBe(false);
     expect(cartHasFreeDeliveryProduct(null)).toBe(false);

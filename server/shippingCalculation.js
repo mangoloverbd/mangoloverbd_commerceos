@@ -66,9 +66,10 @@ export function calculateStorefrontShippingCost(subtotal, shippingZoneId, zones)
 export const FREE_DELIVERY_PRODUCT_IDS = [
   "814979aa-8446-429b-917f-e6d94cf6b334",
   "11043874-e90d-4160-bce7-38723b703706",
+  "e1b38561-e8f4-4384-81b3-0afffa959d5c",
 ];
-export const FREE_DELIVERY_PRODUCT_SLUGS = ["black-seed-flower-honey", "litchi-flower-honey"];
-const FREE_DELIVERY_PRODUCT_NAME_FRAGMENTS = ["কালোজিরা ফুলের মধু", "লিচু ফুলের মধু"];
+export const FREE_DELIVERY_PRODUCT_SLUGS = ["black-seed-flower-honey", "litchi-flower-honey", "kalojira-mixed"];
+const FREE_DELIVERY_PRODUCT_NAME_FRAGMENTS = ["কালোজিরা ফুলের মধু", "লিচু ফুলের মধু", "কালোজিরা মিক্সড"];
 
 /**
  * @param {Array<{productId?: unknown, productName?: unknown}> | null | undefined} orderItems
