@@ -3009,25 +3009,10 @@ app.get("/api/internal/fraud-warm", async (req, res) => {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  try {
-    const supabase = getServiceSupabase();
-    const { data: roleRows, error } = await supabase.from("user_roles").select("org_id").limit(1000);
-    if (error) throw error;
-
-    const orgIds = [...new Set((roleRows || []).map((row) => row.org_id).filter(Boolean))];
-    let checked = 0;
-    let skipped = null;
-    for (const orgId of orgIds) {
-      const result = await warmFraudChecksForOrg(supabase, orgId);
-      checked += result.checked;
-      skipped = skipped || result.skipped;
-    }
-
-    return res.json({ ok: true, scannedWorkspaces: orgIds.length, checked, skipped });
-  } catch {
-    console.warn("[FraudShield] warm run failed");
-    return res.status(500).json({ error: "Could not warm fraud checks" });
-  }
+  // Fraud warming is disabled: automated pre-checks were draining the daily
+  // FraudShield quota. This endpoint is kept (auth-guarded) so previously
+  // scheduled cron calls fail closed instead of spending requests.
+  return res.status(410).json({ ok: false, disabled: true, error: "Fraud warming is disabled" });
 });
 
 // Apex (<=2 labels, or 3 with a 2-3 char TLD like co.uk) → A record; else CNAME.
