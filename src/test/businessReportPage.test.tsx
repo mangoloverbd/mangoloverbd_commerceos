@@ -87,6 +87,15 @@ function hourlyBuckets() {
   });
 }
 
+function dailyBuckets() {
+  return Array.from({ length: 7 }, (_, index) => ({
+    key: `2026-09-${14 + index}`,
+    label: `Sep ${14 + index}`,
+    intake_count: 80 + index * 5,
+    order_value: (80 + index * 5) * 100,
+  }));
+}
+
 function reportResponse(overrides: Partial<BusinessReportResponse> = {}): BusinessReportResponse {
   return {
     range: { from: "2026-09-20", to: "2026-09-20" },
@@ -282,6 +291,21 @@ describe("BusinessReport", () => {
     expect(screen.getByText("No regular orders were created in this range.")).toBeInTheDocument();
     expect(screen.queryByText("Delivery charged")).not.toBeInTheDocument();
     expect(screen.queryByTestId("business-report-source-website")).not.toBeInTheDocument();
+  });
+
+  it("stretches day-granularity bars full width with single-line labels", async () => {
+    apiFetch.mockResolvedValue(jsonResponse(reportResponse({
+      range: { from: "2026-09-14", to: "2026-09-20" },
+      series: { granularity: "day", label: "Intake by day", buckets: dailyBuckets() },
+    })));
+
+    renderPage();
+
+    const chart = await screen.findByRole("region", { name: "Intake by day" });
+    const bucket = within(chart).getByLabelText("Sep 14: 80 orders");
+    expect(bucket.tagName).toBe("LI");
+    expect(bucket).toHaveClass("flex-1");
+    expect(within(bucket).getByText("Sep 14")).toHaveClass("whitespace-nowrap");
   });
 
   it("offers a retry after a report request fails", async () => {
