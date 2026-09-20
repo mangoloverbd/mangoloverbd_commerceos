@@ -2,6 +2,8 @@
 // stays unit-testable and free of a Supabase or network import, matching the
 // pattern in server/storefrontSeoRefresh.js.
 
+import { normalizeBdPhone } from "./abandonedCheckouts.js";
+
 export const FRAUD_CACHE_TTL_DAYS = 30;
 export const FRAUD_ERROR_RETRY_HOURS = 1;
 export const FRAUD_QUOTA_RESERVE = 100;
@@ -136,4 +138,87 @@ export async function fetchFraudShield(cleanedPhone, apiKey, fetchImpl = fetch) 
     const msg = error instanceof Error ? error.message : String(error);
     return { payload: null, summary: null, errorMessage: `Network error: ${msg}` };
   }
+}
+
+// ─── Cache policy ───────────────────────────────────────────────────────────
+
+export function cacheState(row, now) {
+  if (!row) return "missing";
+
+  const checkedAt = new Date(row.checked_at).getTime();
+  if (!Number.isFinite(checkedAt)) return "stale";
+  const ageMs = now.getTime() - checkedAt;
+
+  if (row.status === "pending") {
+    return ageMs < FRAUD_PENDING_CLAIM_SECONDS * 1000 ? "claimed" : "stale";
+  }
+  if (row.status === "error") {
+    return ageMs < FRAUD_ERROR_RETRY_HOURS * 3_600_000 ? "fresh" : "stale";
+  }
+  return ageMs < FRAUD_CACHE_TTL_DAYS * 86_400_000 ? "fresh" : "stale";
+}
+
+// Claims the phone with a `pending` row before calling, so a concurrent cron
+// run and an operator's click cannot both pay for the same lookup. A failed
+// re-check keeps whatever good data was already cached.
+export async function resolveFraudCheck({ readCache, writeCache, callApi, now, force = false }) {
+  const existing = await readCache();
+  const state = cacheState(existing, now);
+
+  if (state === "claimed") {
+    return { row: existing, spentRequest: false, skipped: "claimed" };
+  }
+  if (!force && state === "fresh") {
+    return { row: existing, spentRequest: false, skipped: null };
+  }
+
+  await writeCache({ status: "pending", checked_at: now.toISOString() });
+
+  const result = await callApi();
+  const next = result.errorMessage
+    ? {
+        status: "error",
+        // Preserve the last good result so a transient upstream failure does
+        // not blank the panel.
+        payload: existing?.status === "ok" ? existing.payload ?? null : null,
+        summary: existing?.status === "ok" ? existing.summary ?? null : null,
+        error_message: result.errorMessage,
+        checked_at: now.toISOString(),
+      }
+    : {
+        status: "ok",
+        payload: result.payload,
+        summary: result.summary,
+        error_message: null,
+        checked_at: now.toISOString(),
+      };
+
+  await writeCache(next);
+  return { row: next, spentRequest: true, skipped: null };
+}
+
+// Automated warming fails closed: if remaining quota is unknown, do not drain.
+// Interactive checks are unaffected — the operator asked for those.
+export function shouldWarm(usage, reserve) {
+  const remaining = usage?.remaining_today;
+  return Number.isFinite(remaining) && remaining > reserve;
+}
+
+export function selectPhonesToWarm({ orders, cachedRows, now, limit }) {
+  const freshPhones = new Set(
+    (cachedRows || [])
+      .filter((row) => cacheState(row, now) !== "stale" && cacheState(row, now) !== "missing")
+      .map((row) => row.phone),
+  );
+
+  const selected = [];
+  const seen = new Set();
+  for (const order of orders || []) {
+    const phone = normalizeBdPhone(order.phone);
+    if (!phone || seen.has(phone) || freshPhones.has(phone)) continue;
+    seen.add(phone);
+    selected.push(phone);
+    if (selected.length >= limit) break;
+  }
+  return selected;
 }
