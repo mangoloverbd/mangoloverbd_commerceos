@@ -159,7 +159,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
       )}
 
       <div className="mt-3 flex items-center justify-end gap-1.5">
-        {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/45">{relativeAge(data.checkedAt)}</span>}
+        {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/65">{relativeAge(data.checkedAt)}</span>}
 
         {hasData || failed ? (
           <button
@@ -167,9 +167,9 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
             aria-label={failed ? "Retry" : "Re-check"}
             disabled={busy || quotaBlocked}
             onClick={() => check.mutate({ force: true })}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
           >
-            <RefreshIcon size={16} />
+            <RefreshIcon size={18} />
             {failed ? "Retry" : null}
           </button>
         ) : (
