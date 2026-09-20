@@ -60,6 +60,15 @@ function DetailField({ label, value }: { label: string; value: string | number |
   );
 }
 
+function CardMetric({ label, value }: { label: string; value: string | number | null | undefined }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">{label}</p>
+      <p className="mt-1 truncate text-[16px] font-light tabular-nums tracking-[-0.04em] text-black" title={typeof value === "string" ? value : undefined}>{value || "—"}</p>
+    </div>
+  );
+}
+
 const LANDING_PAGE_PATH_RE = /^\/step\/([a-z0-9]+(?:-[a-z0-9]+)*)$/i;
 
 function formatLandingPageLabel(value: string | null | undefined): string {
@@ -308,16 +317,21 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
         )}
       </div>
 
-      <FraudPanel phone={customer.phone} className="mt-4" />
-
       <div className="mb-4 mt-4 h-px bg-black/[0.07]" />
-      <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-        <DetailField label="Payment" value={order.payment_method} />
-        <DetailField label="Order total" value={formatTaka(order.price)} />
-        <DetailField label="Delivery fee" value={formatTaka(order.delivery_rate)} />
-        <DetailField label="Created" value={dateTime(order.created_at)} />
-        <DetailField label="Updated" value={dateTime(order.updated_at)} />
-        <DetailField label="Consignment" value={order.consignment_id} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="min-w-0 rounded-2xl bg-black/[0.04] px-5 py-4">
+          <div className="flex h-full flex-col justify-between gap-4">
+            <CardMetric label="Payment" value={order.payment_method} />
+            <CardMetric label="Order total" value={formatTaka(order.price)} />
+            <CardMetric label="Delivery fee" value={formatTaka(order.delivery_rate)} />
+            <CardMetric label="Created" value={dateTime(order.created_at)} />
+            <CardMetric label="Updated" value={dateTime(order.updated_at)} />
+            <CardMetric label="Consignment" value={order.consignment_id} />
+          </div>
+        </div>
+        <div className="min-w-0 rounded-2xl bg-black/[0.04] px-5 py-4">
+          <FraudPanel phone={customer.phone} defaultExpanded />
+        </div>
       </div>
 
       {order.id && whatsappHref && (
