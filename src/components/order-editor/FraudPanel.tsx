@@ -86,7 +86,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
         ) : !hasData ? (
           <span className="text-[12px] text-black/50">Not checked yet</span>
         ) : isNewCustomer ? (
-          <span className="text-[12px] text-black/60">New customer</span>
+          <span className="inline-flex items-center rounded-md bg-yellow-200 px-1.5 py-1 text-[12px] font-medium text-black">New customer</span>
         ) : (
           <>
             <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1 font-semibold">
