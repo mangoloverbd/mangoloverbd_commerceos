@@ -35,6 +35,7 @@ const routeBreadcrumbLabels: Record<string, string> = {
     "/order-chat": "Ask Edith",
     "/order-analysis": "AI Analysis",
     "/reports/staff": "Staff Performance",
+    "/reports/business": "Business Report",
     "/inbox/facebook": "Facebook",
     "/inbox/instagram": "Instagram",
     "/inbox/whatsapp": "WhatsApp",

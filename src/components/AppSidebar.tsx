@@ -162,6 +162,13 @@ export function AppSidebar() {
                     icon: <ChartLineUp size={15} weight="light" className={iconCls} />,
                     link: "/reports/staff",
                 },
+                {
+                    id: "business-report",
+                    title: "Business Report",
+                    icon: <ChartLineUp size={15} weight="light" className={iconCls} />,
+                    link: "/reports/business",
+                    disabled: !isAdmin,
+                },
             ],
         };
 
