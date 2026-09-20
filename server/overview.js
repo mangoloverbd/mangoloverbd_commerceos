@@ -1,7 +1,7 @@
 import { computeOrderCogs } from "./cog.js";
 import { normalizeCustomerPhone } from "./customers.js";
 
-function toDayKey(value) {
+export function toDayKey(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   const parts = new Intl.DateTimeFormat("en-CA", {

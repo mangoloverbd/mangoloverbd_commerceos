@@ -299,4 +299,59 @@ describe("executeAiAction dispatcher", () => {
 
     expect(refreshes).toEqual([["org1", "published product creation"]]);
   });
+
+  it("attributes an Order Chat confirmation to the admin applying it", async () => {
+    const orderId = "11111111-1111-1111-1111-111111111111";
+    const before = { id: orderId, status: "pending", notes: null };
+    let persistedUpdate: Record<string, unknown> | null = null;
+    const supabase = fakeSupabase({
+      orders: {
+        select: () => {
+          const selectResult = () => ({
+            data: persistedUpdate ? { ...before, ...persistedUpdate } : before,
+            error: null,
+          });
+          return {
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: before, error: null }),
+                single: async () => selectResult(),
+              }),
+            }),
+          };
+        },
+        update: (update: Record<string, unknown>) => {
+          persistedUpdate = update;
+          return {
+            eq: () => ({
+              eq: () => ({
+                select: () => ({
+                  maybeSingle: async () => ({ data: { ...before, ...update }, error: null }),
+                }),
+              }),
+            }),
+          };
+        },
+      },
+    });
+
+    const result = await executeAiAction({
+      supabase,
+      orgId: "org1",
+      userId: "admin-1",
+      tool: "update_order",
+      args: { order_id: orderId, fields: { status: "confirmed" } },
+      helpers: noHelpers,
+    });
+
+    expect(persistedUpdate).toMatchObject({
+      status: "confirmed",
+      confirmed_by: "admin-1",
+    });
+    expect(persistedUpdate?.confirmed_at).toEqual(expect.any(String));
+    expect(result.after).toMatchObject({
+      status: "confirmed",
+      confirmed_by: "admin-1",
+    });
+  });
 });

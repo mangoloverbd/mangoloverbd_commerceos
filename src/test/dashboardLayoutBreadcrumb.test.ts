@@ -26,6 +26,8 @@ describe("DashboardLayout breadcrumb header", () => {
       "/customers",
       "/order-chat",
       "/order-analysis",
+      "/reports/staff",
+      "/reports/business",
       "/inbox/facebook",
       "/inbox/instagram",
       "/inbox/whatsapp",
@@ -46,6 +48,8 @@ describe("DashboardLayout breadcrumb header", () => {
     expect(layoutSource).toContain('"/order-extraction": "Extraction"');
     expect(layoutSource).toContain('"/order-chat": "Ask Edith"');
     expect(layoutSource).toContain('"/order-analysis": "AI Analysis"');
+    expect(layoutSource).toContain('"/reports/staff": "Staff Performance"');
+    expect(layoutSource).toContain('"/reports/business": "Business Report"');
     expect(layoutSource).toContain('"/inbox/facebook": "Facebook"');
     expect(layoutSource).toContain('"/inbox/instagram": "Instagram"');
     expect(layoutSource).toContain('"/inbox/whatsapp": "WhatsApp"');

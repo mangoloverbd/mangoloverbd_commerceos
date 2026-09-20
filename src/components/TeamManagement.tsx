@@ -19,6 +19,7 @@ interface TeamMember {
   role: "admin" | "team_member";
   email?: string;
   org_id?: string;
+  display_name?: string | null;
   created_at?: string;
 }
 
@@ -76,6 +77,31 @@ export function TeamManagement() {
       toast.error(error instanceof Error ? error.message : "Failed to create member");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleRename = async (member: TeamMember, name: string) => {
+    const next = name.trim();
+    if (next === (member.display_name || "")) return;
+    try {
+      const res = await apiFetch(`/api/team-members/${member.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: next || null }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save name");
+      }
+      setMembers((prev) =>
+        prev.map((current) => (
+          current.id === member.id
+            ? { ...current, display_name: next || null }
+            : current
+        )),
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save name");
     }
   };
 
@@ -162,7 +188,20 @@ export function TeamManagement() {
                           {member.email?.[0]?.toUpperCase() || "?"}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[13px] font-medium text-black truncate">
+                          {isAdmin ? (
+                            <input
+                              aria-label={`Name for ${member.email || member.user_id}`}
+                              defaultValue={member.display_name || ""}
+                              placeholder="Add name"
+                              onBlur={(event) => void handleRename(member, event.target.value)}
+                              className="w-full bg-transparent text-[13px] font-medium text-black outline-none placeholder:text-black/30"
+                            />
+                          ) : (
+                            <p className="truncate text-[13px] font-medium text-black">
+                              {member.display_name || member.email || `${member.user_id.slice(0, 16)}…`}
+                            </p>
+                          )}
+                          <p className="truncate text-[11px] text-black/60">
                             {member.email || `${member.user_id.slice(0, 16)}…`}
                           </p>
                           <div className="flex items-center gap-1.5 mt-0.5">

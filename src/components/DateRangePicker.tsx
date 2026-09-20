@@ -1,16 +1,17 @@
-import { useState, type ReactNode } from "react";
-import { format, subDays, startOfMonth, startOfYear } from "date-fns";
+import { useEffect, useState, type ReactNode } from "react";
+import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ChevronDown } from "lucide-react";
+import { buildDateRangePresets } from "@/lib/dateRangePresets";
 import { cn } from "@/lib/utils";
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
-export function fmtRange(range: DateRange | null): string {
+function fmtRange(range: DateRange | null): string {
   if (!range?.from) return "All Time";
   const from = format(range.from, "MMM d");
   if (!range.to || toYMD(range.from) === toYMD(range.to))
@@ -27,16 +28,7 @@ function dhakaToday(): Date {
 
 const TODAY = dhakaToday();
 
-const PRESETS: { label: string; range: DateRange | null }[] = [
-  { label: "All Time",     range: null },
-  { label: "Today",        range: { from: TODAY, to: TODAY } },
-  { label: "Yesterday",    range: { from: subDays(TODAY, 1), to: subDays(TODAY, 1) } },
-  { label: "Last 7 Days",  range: { from: subDays(TODAY, 6), to: TODAY } },
-  { label: "Last 30 Days", range: { from: subDays(TODAY, 29), to: TODAY } },
-  { label: "Last 90 Days", range: { from: subDays(TODAY, 89), to: TODAY } },
-  { label: "This Month",   range: { from: startOfMonth(TODAY), to: TODAY } },
-  { label: "This Year",    range: { from: startOfYear(TODAY), to: TODAY } },
-];
+const PRESETS = buildDateRangePresets(TODAY);
 
 export function DateRangePicker({
   value,
@@ -51,6 +43,12 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<DateRange | undefined>(value ?? undefined);
+  const valueFrom = value?.from?.getTime();
+  const valueTo = value?.to?.getTime();
+
+  useEffect(() => {
+    if (open) setPending(value ?? undefined);
+  }, [open, value, valueFrom, valueTo]);
 
   const activePreset = PRESETS.find((p) => {
     if (!p.range && !value) return true;

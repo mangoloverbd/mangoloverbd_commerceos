@@ -15,6 +15,8 @@ import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
 import { useFraudCheckMutation } from "@/hooks/useFraudCheck";
 import { normalizeBdPhone } from "@/lib/bdPhone";
+import { StaffSelect } from "@/components/order-editor/StaffSelect";
+import { useAuth } from "@/hooks/useAuth";
 import type { OrderSource } from "@/lib/orderSource";
 
 type Line = {
@@ -45,6 +47,7 @@ function money(value: number) {
 }
 
 export default function NewOrder() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -61,6 +64,11 @@ export default function NewOrder() {
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [notes, setNotes] = useState("");
   const [source, setSource] = useState<OrderSource>("manual_other");
+  const [assignedTo, setAssignedTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!assignedTo && user?.id) setAssignedTo(user.id);
+  }, [assignedTo, user?.id]);
 
   const productsQuery = useQuery<ProductsResponse>({
     queryKey: ["/api/products"],
@@ -177,8 +185,9 @@ export default function NewOrder() {
           notes: notes.trim() || null,
           payment_method: paymentMethod,
           discount,
-           advanced_payment: advance,
-           source,
+          advanced_payment: advance,
+          source,
+          assigned_to: assignedTo,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -217,7 +226,8 @@ export default function NewOrder() {
               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Customer name<input aria-label="Customer name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Rahim Uddin" className="mt-2 h-12 w-full rounded-lg bg-black/[0.04] px-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Phone <span className="text-red-500">*</span><input aria-label="Phone" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="01712345678" className="mt-2 h-12 w-full rounded-lg bg-black/[0.04] px-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black sm:col-span-2">Delivery address<textarea aria-label="Delivery address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="House 12, Road 5, Dhanmondi, Dhaka" rows={2} className="mt-2 min-h-16 w-full resize-none rounded-lg bg-black/[0.04] px-3.5 py-2.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
-               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Order source<div className="mt-2"><OrderSourceSelect value={source} onChange={setSource} disabled={creating} /></div></label>
+                <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Order source<div className="mt-2"><OrderSourceSelect value={source} onChange={setSource} disabled={creating} /></div></label>
+                <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Telesales staff<div className="mt-2"><StaffSelect value={assignedTo} onChange={setAssignedTo} disabled={creating} /></div></label>
              </div>
              <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
                <FraudPanel phone={phone} defaultExpanded compact alignHeader="left" className="flex h-full flex-col justify-between gap-3" />

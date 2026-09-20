@@ -479,6 +479,7 @@ export default function Dashboard() {
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const hasInitializedSearch = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
   const initialFulfillmentTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
@@ -644,6 +645,10 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (!hasInitializedSearch.current) {
+      hasInitializedSearch.current = true;
+      return;
+    }
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
       setOrderPage(0);

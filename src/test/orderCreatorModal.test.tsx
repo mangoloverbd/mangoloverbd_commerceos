@@ -2,21 +2,30 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import NewOrder from "@/pages/NewOrder";
 
 const apiFetch = vi.hoisted(() => vi.fn());
+const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
 vi.mock("@/lib/api", () => ({ apiFetch }));
 vi.mock("@/components/ui/sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), custom: vi.fn() },
   DarkToast: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "user-1", email: "operator@example.com" } }),
+}));
 
 describe("NewOrder", () => {
   beforeEach(() => {
     apiFetch.mockReset();
     apiFetch.mockResolvedValue({ ok: true, json: async () => ({ products: [] }) });
+    consoleWarn.mockClear();
+  });
+
+  afterAll(() => {
+    consoleWarn.mockRestore();
   });
 
   it("renders the order editor workspace and persistent actions", async () => {
@@ -34,6 +43,11 @@ describe("NewOrder", () => {
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create order/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Order source")).toHaveTextContent("Manual / Other");
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/products"));
+    expect(screen.getByLabelText("Telesales staff")).toBeInTheDocument();
+    expect(consoleWarn).not.toHaveBeenCalledWith(
+      expect.stringContaining("A component changed from uncontrolled to controlled"),
+    );
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/products"));
   });
 
@@ -57,11 +71,14 @@ describe("NewOrder", () => {
     });
   });
 
-  it("submits the selected order source", async () => {
+  it("submits the selected order source and staff assignee", async () => {
     const user = userEvent.setup();
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/products") {
         return { ok: true, json: async () => ({ products: [{ id: "honey", name: "Sundarbans Honey", selling_price: 850, variants: [], images: [] }] }) };
+      }
+      if (url === "/api/staff") {
+        return { ok: true, json: async () => ({ staff: [{ user_id: "user-1", display_name: "Operator" }, { user_id: "user-2", display_name: "Nadia" }] }) };
       }
       if (url === "/api/orders" && init?.method === "POST") {
         return { ok: true, json: async () => ({ order: { id: "order-1" } }) };
@@ -79,6 +96,8 @@ describe("NewOrder", () => {
 
     await user.click(screen.getByLabelText("Order source"));
     await user.click(await screen.findByRole("option", { name: "Phone" }));
+    await user.click(screen.getByLabelText("Telesales staff"));
+    await user.click(await screen.findByRole("option", { name: "Nadia" }));
     await user.type(screen.getByRole("textbox", { name: "Customer name" }), "Rahim Uddin");
     await user.type(screen.getByRole("textbox", { name: "Phone" }), "01712345678");
     await user.type(screen.getByRole("textbox", { name: "Delivery address" }), "Dhanmondi, Dhaka");
@@ -88,7 +107,7 @@ describe("NewOrder", () => {
     await waitFor(() => {
       const call = apiFetch.mock.calls.find(([requestUrl, requestInit]) => requestUrl === "/api/orders" && requestInit?.method === "POST");
       expect(call).toBeDefined();
-      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ source: "phone", status: "confirmed" });
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ source: "phone", assigned_to: "user-2", status: "confirmed" });
     });
   });
 

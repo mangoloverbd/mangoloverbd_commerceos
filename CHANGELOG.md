@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.1.0.13] - 2026-09-20
+
+### Changed
+
+- Give Staff Performance and Business Report their own sidebar icons instead of sharing one.
+
+## [0.1.0.12] - 2026-09-20
+
+### Fixed
+
+- Stretch Business Report day-granularity intake bars across the full chart width with single-line labels, so multi-day ranges read as clean as the hourly Today view.
+
+## [0.1.0.11] - 2026-09-20
+
+### Added
+
+- Open the admin-only Business Report for regular-order intake, source performance, Website landing pages, and delivery economics over Dhaka-local date ranges, with an hourly chart for single days and daily buckets for longer ranges.
+- Cover Business Report dates, outcome precedence, fulfillment fallback, fee coverage, and admin route wiring with regression tests.
+
+### Fixed
+
+- Reject Business Report ranges with future Dhaka dates or more than 366 days, and keep terminal courier returns ahead of legacy cancelled business status.
+- Point the Staff Performance product-variants read at the shared report pagination helper after the base-branch merge.
+
+## [0.1.0.10] - 2026-09-19
+
+### Changed
+
+- Review staff performance in a full-width, ranked regular-order card queue with team snapshots, color-coded outcome counts, and expandable operational detail.
+- Keep Social Inbox metrics out of the Staff Performance page while preserving the underlying report response for future reporting work.
+- Show the Dashboard / Staff Performance breadcrumb and a streamlined Staff Performance page header.
+
+## [0.1.0.9] - 2026-09-18
+
+### Added
+
+- Attribute manually created and social inbox orders to the staff member who creates, is assigned, confirms, or cancels them, with immutable status-transition history.
+- Add the Staff Performance report with role-safe staff filtering, Dhaka-local date ranges, and separate regular-order and social-inbox metrics.
+
+### Fixed
+
+- Keep staff reporting accurate for historical activity, courier-driven status changes, malformed legacy inbox items, and high-volume report queries.
+
 ## [0.1.0.8] - 2026-09-17
 
 ### Changed
