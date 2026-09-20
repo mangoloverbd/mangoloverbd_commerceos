@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CaretDown, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
 import { useFraudCheckMutation, useFraudLookup } from "@/hooks/useFraudCheck";
 import { Chip } from "@/components/base/badges/chip";
-import { RISK_STYLES, breakdownRows, courierRows, maskPhone, relativeAge, resolveFraudLevel } from "@/lib/fraudRisk";
+import { RISK_STYLES, courierRows, maskPhone, relativeAge, resolveFraudLevel } from "@/lib/fraudRisk";
 import { normalizeBdPhone } from "@/lib/bdPhone";
 
 const QUOTA_RE = /daily FraudShield limit/i;
@@ -67,7 +67,6 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
   const hasReviews = Array.isArray(reviews) && reviews.length > 0;
   const visibleCouriers = compact ? couriers.filter((courier) => courier.total > 0) : couriers;
   const hiddenCourierCount = couriers.length - visibleCouriers.length;
-  const breakdown = breakdownRows(payload?.fraudRiskScore?.breakdown);
 
   return (
     <section aria-label="Customer risk" className={className}>
@@ -89,18 +88,18 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
           <span className="text-[12px] text-black/60">New customer</span>
         ) : (
           <>
-            <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1">
-              {level === "safe" ? <ShieldCheck weight="light" size={12} /> : <ShieldWarning weight="light" size={12} />}
-              {styles.label}
-            </Chip>
-            <span className="text-[13px] font-semibold tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
-            <span className="inline-flex flex-wrap items-center gap-1.5">
-              <Chip variant="caption" color="lime" className="tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
-              <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
-              <Chip variant="caption" color="neutral" className="tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
+            <span className="flex flex-1 flex-wrap items-center justify-center gap-2">
+              <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1 font-semibold">
+                {level === "safe" ? <ShieldCheck weight="light" size={12} /> : <ShieldWarning weight="light" size={12} />}
+                {styles.label}
+              </Chip>
+              <span className="text-[15px] font-bold tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
+              <Chip variant="caption" color="lime" className="font-semibold tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
+              <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="font-semibold tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
+              <Chip variant="caption" color="neutral" className="font-semibold tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
             </span>
             {payload?.fraudRiskScore && (
-              <span className="text-[12px] text-black/55">
+              <span className="basis-full text-left text-[12px] text-black/55">
                 risk {payload.fraudRiskScore.score}/100{payload.fraudRiskScore.label ? ` · ${payload.fraudRiskScore.label}` : ""}
               </span>
             )}
@@ -165,19 +164,6 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
             </ul>
             {hiddenCourierCount > 0 && (
               <p className="mt-2 text-[11px] tabular-nums text-black/40">+{hiddenCourierCount} more couriers with no parcels</p>
-            )}
-
-            {breakdown.length > 0 && (
-              <p className="mt-4 text-[12px] tabular-nums text-black/55">
-                {breakdown.map((row, index) => (
-                  <span key={row.key}>
-                    {index > 0 && <span className="mx-1.5 text-black/25">·</span>}
-                    <span className={row.alert ? "text-[#d05555]" : undefined}>
-                      {row.label} <b className="font-semibold">{row.value}</b>
-                    </span>
-                  </span>
-                ))}
-              </p>
             )}
           </div>
 

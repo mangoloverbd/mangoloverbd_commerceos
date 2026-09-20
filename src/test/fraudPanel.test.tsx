@@ -147,27 +147,6 @@ describe("FraudPanel", () => {
     });
   });
 
-  it("labels the live score breakdown in plain words, not api keys", async () => {
-    const payload = {
-      ...SAFE_PAYLOAD,
-      fraudRiskScore: {
-        score: 25, level: "moderate", label: "স্বাভাবিক",
-        breakdown: { success_component: 9.2, report_component: 70, cancel_component: 13.8, volume_component: 5, report_count: 2, total_reviews: 2 },
-      },
-    };
-    apiFetch.mockResolvedValue(ok({ phone: "01711111111", status: "ok", payload, summary: SAFE_SUMMARY, checkedAt: new Date().toISOString() }));
-    renderPanel();
-
-    await screen.findByText("Caution");
-    await userEvent.click(screen.getByRole("button", { name: /details/i }));
-    for (const label of ["Success", "Reports", "Cancels", "Volume", "Reports filed", "Reviews"]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    }
-    expect(screen.queryByText("success_component")).not.toBeInTheDocument();
-    expect(screen.queryByText("report_component")).not.toBeInTheDocument();
-    expect(screen.queryByText("cancel_component")).not.toBeInTheDocument();
-  });
-
   it("starts expanded when asked, showing couriers without a click", async () => {
     apiFetch.mockResolvedValue(ok({ phone: "01711111111", status: "ok", payload: SAFE_PAYLOAD, summary: SAFE_SUMMARY, checkedAt: new Date().toISOString() }));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
