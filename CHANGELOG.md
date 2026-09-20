@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.15] - 2026-09-21
+
+### Fixed
+
+- Disable the automated FraudShield warming cron (every 5 minutes, up to 40 phones per run over the last 7 days), which drained the daily FraudShield quota down to the 100-request reserve even with few new orders. The endpoint now fails closed with 410.
+- Keep the order-editor fraud Check/Retry buttons enabled when the cached state says "Daily limit reached" — the cached message can be stale across the daily quota reset — and give quota-blocked numbers a force Retry that makes a live call.
+
 ## [0.1.0.14] - 2026-09-21
 
 ### Changed

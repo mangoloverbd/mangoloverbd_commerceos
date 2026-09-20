@@ -51,8 +51,10 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
   const hasData = Boolean(payload && summary);
   const isNewCustomer = hasData && (summary?.total_parcels ?? 0) === 0;
   const quotaBlocked = QUOTA_RE.test(data?.errorMessage || "");
-  // A quota error is not a failed check — it is a blocked one. It keeps the
-  // Check affordance (disabled) rather than offering a Retry that cannot work.
+  // A quota error is not a failed check — it is a blocked one. The cached
+  // message can also be stale (quota resets daily), so the Check affordance
+  // stays enabled: an explicit click spends at most one request and is the
+  // only way to discover the quota is back.
   const failed = data?.status === "error" && !hasData && !quotaBlocked;
   const busy = lookup.isPending || check.isPending || data?.status === "pending";
 
@@ -116,7 +118,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
             <button
               type="button"
               aria-label="Re-check"
-              disabled={busy || quotaBlocked}
+              disabled={busy}
               onClick={() => check.mutate({ force: true })}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
             >
@@ -177,11 +179,11 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
         <div className="mt-3 flex items-center justify-end gap-1.5">
           {!showRiskRow && data?.checkedAt && <span className="text-[11px] tabular-nums text-black/65">{relativeAge(data.checkedAt)}</span>}
 
-          {failed ? (
+          {failed || (quotaBlocked && !hasData) ? (
             <button
               type="button"
               aria-label="Retry"
-              disabled={busy || quotaBlocked}
+              disabled={busy}
               onClick={() => check.mutate({ force: true })}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
             >
@@ -191,7 +193,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
           ) : !hasData ? (
             <button
               type="button"
-              disabled={busy || quotaBlocked}
+              disabled={busy}
               onClick={() => check.mutate({ force: false })}
               className="inline-flex h-7 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
             >
@@ -201,7 +203,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
             <button
               type="button"
               aria-label="Re-check"
-              disabled={busy || quotaBlocked}
+              disabled={busy}
               onClick={() => check.mutate({ force: true })}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
             >
