@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.11] - 2026-09-20
+
+### Added
+
+- Open the admin-only Business Report for regular-order intake, source performance, Website landing pages, and delivery economics over Dhaka-local date ranges, with an hourly chart for single days and daily buckets for longer ranges.
+- Cover Business Report dates, outcome precedence, fulfillment fallback, fee coverage, and admin route wiring with regression tests.
+
+### Fixed
+
+- Reject Business Report ranges with future Dhaka dates or more than 366 days, and keep terminal courier returns ahead of legacy cancelled business status.
+- Point the Staff Performance product-variants read at the shared report pagination helper after the base-branch merge.
+
 ## [0.1.0.10] - 2026-09-19
 
 ### Changed
