@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0.20] - 2026-09-21
+
+### Changed
+
+- Redesign the New Order page's left column into two self-contained cards ("Customer details" and "Order settings") matching the Courier Delivery panel's header style, with leading icons on the Name/Phone/Address fields and a "New customer" reset button, instead of one stretched field grid with dead vertical gaps.
+- Grow the Delivery address textarea so the left column's height sits closer to the right panel's when a customer has a handful of couriers with data.
+- Cap the FraudShield "By courier" list at 4 visible rows (sorted by parcel volume) on all three order-editor pages; the rest collapse into a "+N more couriers" trigger that reveals them on hover instead of listing every courier unbounded.
+
 ## [0.1.0.19] - 2026-09-21
 
 ### Changed

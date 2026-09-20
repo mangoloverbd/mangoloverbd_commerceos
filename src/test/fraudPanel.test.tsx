@@ -167,11 +167,16 @@ describe("FraudPanel", () => {
     expect(screen.getByText("Steadfast")).toBeInTheDocument();
   });
 
-  it("hides zero-parcel couriers in compact mode", async () => {
+  it("caps the courier list at 4 and keeps the rest reachable behind the '+N more' trigger", async () => {
+    const zeroCourier = (name: string, logo: string) => ({ name, logo, total_parcel: 0, success_parcel: 0, cancelled_parcel: 0, success_ratio: 0 });
     const payload = {
       courierData: {
         steadfast: { name: "Steadfast", logo: "https://x/s.png", total_parcel: 25, success_parcel: 24, cancelled_parcel: 1, success_ratio: 96 },
-        pathao: { name: "Pathao", logo: "https://x/p.png", total_parcel: 0, success_parcel: 0, cancelled_parcel: 0, success_ratio: 0 },
+        redx: zeroCourier("RedX", "https://x/r.png"),
+        carrybee: zeroCourier("CarryBee", "https://x/c.png"),
+        paperfly: zeroCourier("PaperFly", "https://x/pf.png"),
+        parceldex: zeroCourier("ParcelDex", "https://x/pd.png"),
+        pathao: zeroCourier("Pathao", "https://x/p.png"),
       },
       fraudRiskScore: { score: 12, level: "safe", label: "নিরাপদ", breakdown: { success: 6, reports: 0, cancel: 4, volume: 2 } },
     };
@@ -179,14 +184,21 @@ describe("FraudPanel", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <FraudPanel phone="01711111111" defaultExpanded compact />
+        <FraudPanel phone="01711111111" defaultExpanded />
       </QueryClientProvider>,
     );
 
     await screen.findByText("Safe");
+    // 6 couriers in, sorted by volume: the 1 real one plus the first 3 empty
+    // ones fill the 4 visible rows; the last 2 (still zero) sit behind the trigger.
     expect(screen.getByText("Steadfast")).toBeInTheDocument();
-    expect(screen.queryByText("Pathao")).not.toBeInTheDocument();
-    expect(screen.getByText(/1 more courier/)).toBeInTheDocument();
+    expect(screen.getByText("RedX")).toBeInTheDocument();
+    expect(screen.getByText("CarryBee")).toBeInTheDocument();
+    expect(screen.getByText("PaperFly")).toBeInTheDocument();
+    expect(screen.getByText(/\+2 more couriers with no parcels/)).toBeInTheDocument();
+    // Hidden couriers stay in the DOM (hover-revealed), not removed outright.
+    expect(screen.getByText("ParcelDex")).toBeInTheDocument();
+    expect(screen.getByText("Pathao")).toBeInTheDocument();
   });
 
   it("does not query at all without a valid BD phone", () => {
