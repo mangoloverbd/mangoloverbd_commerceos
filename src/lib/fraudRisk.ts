@@ -47,6 +47,28 @@ export function relativeAge(iso: string | null | undefined, now: Date = new Date
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+// Human labels for the fraudRiskScore.breakdown components. The live API
+// sends score-part keys (success_component, …) plus counters (report_count,
+// total_reviews) — never render the raw snake_case keys.
+const BREAKDOWN_LABELS: Record<string, string> = {
+  success_component: "Success",
+  report_component: "Reports",
+  cancel_component: "Cancels",
+  volume_component: "Volume",
+  report_count: "Reports filed",
+  total_reviews: "Reviews",
+};
+
+export function breakdownRows(breakdown: Record<string, number> | null | undefined) {
+  return Object.entries(breakdown || {}).map(([key, value]) => ({
+    key,
+    label: BREAKDOWN_LABELS[key] ?? key.replace(/_/g, " "),
+    value,
+    // A non-zero report or cancel component is what pushes the score up.
+    alert: /report|cancel/i.test(key) && Number(value) > 0,
+  }));
+}
+
 export function courierRows(payload: FraudPayload) {
   return Object.entries(payload?.courierData || {})
     .filter(([key]) => key !== "summary")

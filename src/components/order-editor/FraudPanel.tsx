@@ -1,11 +1,27 @@
 import { useEffect, useState } from "react";
 import { ArrowClockwise, CaretDown, CaretUp, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
 import { useFraudCheckMutation, useFraudLookup } from "@/hooks/useFraudCheck";
-import { RISK_STYLES, courierRows, maskPhone, relativeAge, resolveFraudLevel } from "@/lib/fraudRisk";
+import { RISK_STYLES, breakdownRows, courierRows, maskPhone, relativeAge, resolveFraudLevel } from "@/lib/fraudRisk";
 import { normalizeBdPhone } from "@/lib/bdPhone";
 
 const LABEL = "text-[8px] font-medium uppercase tracking-[0.3em]";
 const QUOTA_RE = /daily FraudShield limit/i;
+
+function CourierLogo({ src }: { src: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <span className="h-5 w-5 shrink-0 rounded bg-black/[0.08]" />;
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="h-5 w-5 shrink-0 rounded-sm object-contain"
+    />
+  );
+}
 
 export function FraudPanel({ phone, className = "" }: { phone?: string | null; className?: string }) {
   const normalized = normalizeBdPhone(phone);
@@ -36,12 +52,12 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
 
   const reviews = payload?.reviews;
   const couriers = courierRows(payload);
-  const tint = hasData && !isNewCustomer ? styles.strip : "";
+  const hasReviews = Array.isArray(reviews) && reviews.length > 0;
 
   return (
-    <section aria-label="Customer risk" className={`overflow-hidden rounded-lg ring-1 ring-inset ring-black/[0.06] ${className}`}>
-      <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 ${tint}`}>
-        <p className={`${LABEL} ${tint ? styles.accent : "text-black"}`}>Customer risk</p>
+    <section aria-label="Customer risk" className={className}>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+        <p className={`${LABEL} text-black`}>Customer risk</p>
 
         {busy ? (
           <span className="text-[12px] text-black/50">Loading…</span>
@@ -55,14 +71,14 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
         ) : !hasData ? (
           <span className="text-[12px] text-black/50">Not checked yet</span>
         ) : isNewCustomer ? (
-          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${RISK_STYLES.unknown.pill}`}>New customer</span>
+          <span className="text-[12px] text-black/60">New customer</span>
         ) : (
           <>
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${styles.pill}`}>
+            <span className={`inline-flex items-center gap-1.5 text-[12px] font-medium ${styles.accent}`}>
               {level === "safe" ? <ShieldCheck weight="light" size={14} /> : <ShieldWarning weight="light" size={14} />}
               {styles.label}
             </span>
-            <span className={`text-[15px] font-medium tabular-nums ${styles.accent}`}>{summary?.success_rate ?? 0}%</span>
+            <span className="text-2xl font-light tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
             <span className="text-[12px] tabular-nums text-black/55">
               {summary?.total_delivered ?? 0} delivered · {summary?.total_cancel ?? 0} cancelled · {summary?.total_parcels ?? 0} total
             </span>
@@ -113,16 +129,14 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
       </div>
 
       {expanded && hasData && (
-        <div className="grid gap-7 border-t border-black/[0.07] bg-[#FAFAF8] px-4 py-4 sm:grid-cols-2">
+        <div className={`mt-4 grid gap-7 border-t border-black/[0.07] pt-4 ${hasReviews ? "sm:grid-cols-2" : ""}`}>
           <div className="min-w-0">
             <p className={`${LABEL} text-black`}>By courier</p>
-            <ul className="mt-3 grid gap-2">
+            <ul className="mt-3 grid gap-2.5">
               {couriers.map((courier) => (
                 <li key={courier.key} className="flex items-center gap-2.5">
-                  {courier.logo
-                    ? <img src={courier.logo} alt="" className="h-5 w-5 shrink-0 rounded" />
-                    : <span className="h-5 w-5 shrink-0 rounded bg-black/[0.08]" />}
-                  <span className="min-w-0 flex-1 truncate text-[12px] text-black">{courier.name}</span>
+                  <CourierLogo src={courier.logo} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-black">{courier.name}</span>
                   <span className="text-[12px] tabular-nums text-black/50">{courier.success}/{courier.total}</span>
                   <span className={`w-10 text-right text-[12px] font-semibold tabular-nums ${courier.ratio >= 70 ? "text-[#2e9e5b]" : courier.ratio >= 50 ? "text-[#b97f1f]" : "text-[#d05555]"}`}>
                     {courier.ratio}%
@@ -132,22 +146,20 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
             </ul>
 
             {payload?.fraudRiskScore?.breakdown && (
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                {Object.entries(payload.fraudRiskScore.breakdown).map(([key, value]) => (
-                  <span
-                    key={key}
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] tabular-nums ${
-                      (key === "reports" || key === "cancel") && value > 0 ? "bg-[#fdecec] text-[#d05555]" : "bg-black/[0.04] text-black"
-                    }`}
-                  >
-                    {key} <b className="font-semibold">{value}</b>
+              <p className="mt-4 text-[12px] tabular-nums text-black/55">
+                {breakdownRows(payload.fraudRiskScore.breakdown).map((row, index) => (
+                  <span key={row.key}>
+                    {index > 0 && <span className="mx-1.5 text-black/25">·</span>}
+                    <span className={row.alert ? "text-[#d05555]" : undefined}>
+                      {row.label} <b className="font-semibold">{row.value}</b>
+                    </span>
                   </span>
                 ))}
-              </div>
+              </p>
             )}
           </div>
 
-          {Array.isArray(reviews) && reviews.length > 0 && (
+          {hasReviews && (
             <div className="min-w-0">
               <p className={`${LABEL} text-black`}>Reviews from other merchants</p>
               <ul className="mt-2 divide-y divide-black/[0.07]">
