@@ -57,7 +57,9 @@ card-led visual language.
 
 The report reads only rows created in the selected interval. For an inclusive
 `from` / `to` date pair, the server queries `created_at >=` Dhaka-local midnight
-of `from` and `<` midnight following `to`. Omitted dates mean All Time.
+of `from` and `<` midnight following `to`. Bounded ranges may not include a
+future Dhaka date and are limited to 366 calendar days inclusive. Omitted dates
+mean All Time.
 
 ### Intake and value
 
@@ -69,18 +71,23 @@ of `from` and `<` midnight following `to`. Omitted dates mean All Time.
 
 ### Current outcome buckets
 
-Outcome buckets are mutually exclusive and use the order's present status plus
-the current courier/return fields:
+Outcome buckets are mutually exclusive and use the order's present business,
+fulfillment, courier, and return fields:
 
-1. **Cancelled**: business status or courier status normalizes to `cancelled`,
-   `canceled`, or `rejected`.
+1. **Cancelled**: an explicit courier status that normalizes to `cancelled`,
+   `canceled`, or `rejected` is cancelled.
 2. **Returned / RTO**: a terminal order/courier return (`returned`, a courier
    status containing `return`, or `return_status` of `returned` or `completed`)
-   that is not already cancelled/rejected.
-3. **Approved / progressing**: business status is `approved`, `confirmed`,
+   is Returned / RTO even if a legacy courier handler also set the business
+   status to `cancelled`. Pending return requests remain in their prior bucket.
+3. **Business / fulfillment cancellation**: a remaining business or fulfillment
+   status that normalizes to `cancelled`, `canceled`, or `rejected` is cancelled.
+4. **Approved / progressing**: business status is `approved`, `confirmed`,
    `print`, `processing`, `fulfilled`, `delivered`, or `partial_delivered`.
-   This preserves the approved outcome as an order advances through dispatch.
-4. **Pending**: all remaining selected orders, including pending and on-hold
+   Shopify fulfillment states `fulfilled`, `partial`, `delivered`, and
+   `partial_delivered` provide the same fallback when the synced business status
+   remains `pending`.
+5. **Pending**: all remaining selected orders, including pending and on-hold
    work.
 
 The summary shows Intake, Order Value, Approved / progressing, and Cancelled.
@@ -183,8 +190,9 @@ The handler is located in the reports area of `server/index.js` and performs:
    valid calendar days, and ordered `from <= to`.
 5. Stable, paginated reads of `orders`, always including
    `.eq("org_id", orgId)`, selecting only fields needed for the report:
-   `id`, `created_at`, `source`, `landing_page_path`, `status`, `price`,
-   `delivery_rate`, `courier_fee`, `courier_status`, and `return_status`.
+   `id`, `created_at`, `source`, `landing_page_path`, `status`,
+   `fulfillment_status`, `price`, `delivery_rate`, `courier_fee`,
+   `courier_status`, and `return_status`.
 6. JSON output from a pure business-report aggregation module.
 
 No client-provided organisation identifier is accepted. No schema or migration
