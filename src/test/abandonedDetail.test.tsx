@@ -8,6 +8,7 @@ import AbandonedDetail from "@/pages/AbandonedDetail";
 const apiFetch = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", () => ({ apiFetch }));
+vi.mock("@/components/order-editor/FraudPanel", () => ({ FraudPanel: () => null }));
 
 const draft = {
   id: "draft-1", status: "open", customer_name: "Abandoned Customer",

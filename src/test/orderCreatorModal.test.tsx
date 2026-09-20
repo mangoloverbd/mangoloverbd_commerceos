@@ -34,7 +34,6 @@ describe("NewOrder", () => {
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create order/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Order source")).toHaveTextContent("Manual / Other");
-    expect(screen.getByText("Run fraud check")).toBeInTheDocument();
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/products"));
   });
 

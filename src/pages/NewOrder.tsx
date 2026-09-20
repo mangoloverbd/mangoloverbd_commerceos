@@ -14,6 +14,7 @@ import { Switch } from "@/components/base/switch/switch";
 import { DarkToast, toast } from "@/components/ui/sonner";
 import { catalogImage, variantLabel, type CatalogProduct, type CatalogVariant } from "@/lib/orderEditor";
 import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
+import { FraudPanel } from "@/components/order-editor/FraudPanel";
 import type { OrderSource } from "@/lib/orderSource";
 
 type Line = {
@@ -70,7 +71,6 @@ export default function NewOrder() {
   const [advance, setAdvance] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [notes, setNotes] = useState("");
-  const [runFraudCheck, setRunFraudCheck] = useState(false);
   const [source, setSource] = useState<OrderSource>("manual_other");
 
   const productsQuery = useQuery<ProductsResponse>({
@@ -210,18 +210,6 @@ export default function NewOrder() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Failed to create order");
 
-      if (runFraudCheck && data?.order?.id) {
-        try {
-          await apiFetch("/api/check-fraud", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: data.order.id }),
-          });
-        } catch {
-          // The order is saved even if the optional manual fraud check fails.
-        }
-      }
-
       await queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       toast.custom(() => <DarkToast className="flex items-center gap-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15"><CheckCircle weight="light" size={20} className="text-emerald-400" /></div><div><span className="block text-[10px] font-semibold uppercase tracking-widest text-white/50">Order created</span><span className="text-sm font-semibold text-white">{customerName || "Order"}</span></div></DarkToast>, { fit: true });
       navigate(returnTo, { replace: true });
@@ -256,6 +244,7 @@ export default function NewOrder() {
               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Phone <span className="text-red-500">*</span><input aria-label="Phone" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="01712345678" className="mt-2 h-12 w-full rounded-lg bg-black/[0.04] px-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black sm:col-span-2">Delivery address<textarea aria-label="Delivery address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="House 12, Road 5, Dhanmondi, Dhaka" rows={2} className="mt-2 min-h-16 w-full resize-none rounded-lg bg-black/[0.04] px-3.5 py-2.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
                <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Order source<div className="mt-2"><OrderSourceSelect value={source} onChange={setSource} disabled={creating} /></div></label>
+               <div className="sm:col-span-2"><FraudPanel phone={phone} /></div>
              </div>
              <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
               <div className="flex items-center gap-2"><Sparkle weight="light" size={17} className="text-black" /><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-black">AI capture</p></div>
@@ -290,7 +279,7 @@ export default function NewOrder() {
 
               <div className="grid gap-3 rounded-lg bg-white p-4 ring-1 ring-inset ring-black/[0.06] sm:grid-cols-2"><label className="space-y-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-black">Payment method<Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger className="mt-1 h-10 rounded-lg border-0 bg-black/[0.04] text-[13px] normal-case tracking-normal shadow-none"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_METHODS.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}</SelectContent></Select></label><label className="space-y-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-black">Internal note<Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional note" className="mt-1 h-10 rounded-lg border-0 bg-black/[0.04] text-[13px] normal-case tracking-normal shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20" /></label></div>
             </div>
-            <div className="mt-3 flex shrink-0 flex-col gap-3 border-t border-black/[0.08] pt-3 sm:flex-row sm:items-center"><label className="flex flex-1 cursor-pointer items-center gap-2 text-[12px] text-black"><input type="checkbox" checked={runFraudCheck} onChange={(event) => setRunFraudCheck(event.target.checked)} className="h-4 w-4 rounded border-black/20 accent-black" /><ShieldCheck weight="light" size={16} /> Run fraud check</label><button type="button" onClick={() => navigate(returnTo)} disabled={creating} className="h-10 rounded-lg px-3 text-[12px] text-black hover:bg-black/[0.05] disabled:opacity-40">Cancel</button><button type="button" onClick={() => void createOrder()} disabled={creating} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-40">{creating ? <Spinner size="sm" /> : <Plus weight="light" size={15} />}{creating ? "Creating…" : "Create order"}</button></div>
+            <div className="mt-3 flex shrink-0 flex-col gap-3 border-t border-black/[0.08] pt-3 sm:flex-row sm:items-center sm:justify-end"><button type="button" onClick={() => navigate(returnTo)} disabled={creating} className="h-10 rounded-lg px-3 text-[12px] text-black hover:bg-black/[0.05] disabled:opacity-40">Cancel</button><button type="button" onClick={() => void createOrder()} disabled={creating} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-40">{creating ? <Spinner size="sm" /> : <Plus weight="light" size={15} />}{creating ? "Creating…" : "Create order"}</button></div>
           </section>
         </div>
       </div>

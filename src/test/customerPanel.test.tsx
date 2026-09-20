@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CustomerPanel } from "@/components/order-editor/CustomerPanel";
 
+vi.mock("@/components/order-editor/FraudPanel", () => ({ FraudPanel: () => null }));
+
 const baseOrder = {
   id: "order-1",
   order_number: "ML-1001",

@@ -7,6 +7,7 @@ import WhatsappLogo from "@/components/WhatsappLogo";
 import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
 import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
+import { FraudPanel } from "@/components/order-editor/FraudPanel";
 import type { OrderSource } from "@/lib/orderSource";
 
 export type CustomerDraft = {
@@ -34,7 +35,6 @@ type CustomerOrder = {
   courier_name?: string | null;
   courier_status?: string | null;
   consignment_id?: string | null;
-  fraud_data?: { risk_level?: string } | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -308,12 +308,13 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
         )}
       </div>
 
+      <FraudPanel phone={customer.phone} className="mt-4" />
+
       <div className="mb-4 mt-4 h-px bg-black/[0.07]" />
       <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
         <DetailField label="Payment" value={order.payment_method} />
         <DetailField label="Order total" value={formatTaka(order.price)} />
         <DetailField label="Delivery fee" value={formatTaka(order.delivery_rate)} />
-        <DetailField label="Fraud" value={order.fraud_data?.risk_level} />
         <DetailField label="Created" value={dateTime(order.created_at)} />
         <DetailField label="Updated" value={dateTime(order.updated_at)} />
         <DetailField label="Consignment" value={order.consignment_id} />
