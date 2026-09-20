@@ -648,6 +648,7 @@ export default function InboxOrders() {
     setIsBulkChecking(true);
     const ids = Array.from(selectedIds);
     let successCount = 0;
+    let skippedCount = 0;
     try {
       for (const id of ids) {
         const order = allOrders.find((o) => o.id === id);
@@ -657,15 +658,20 @@ export default function InboxOrders() {
           const res = await apiFetch("/api/inbox-orders/check-fraud", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: id }),
+            // Cache-aware: only genuinely new or stale numbers spend a request.
+            body: JSON.stringify({ orderId: id, force: false }),
           });
           const d = await res.json();
-          if (d.order) { updateLocalOrder(d.order); successCount++; }
+          if (d.order) {
+            updateLocalOrder(d.order);
+            if (d?.spentRequest === false) skippedCount++;
+            else successCount++;
+          }
         } catch { /* ignore */ } finally {
           setCheckingFraudIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
         }
       }
-      if (successCount > 0) {
+      if (successCount > 0 || skippedCount > 0) {
         toast.custom(() => (
           <DarkToast className="flex items-center gap-4">
           <div className="h-10 w-10 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0">
@@ -674,8 +680,8 @@ export default function InboxOrders() {
             <div className="flex flex-col">
               <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Bulk Analysis</span>
               <div className="flex items-baseline gap-1">
-                <span className="text-sm font-bold text-white">{successCount} Orders</span>
-                <span className="text-xs text-white/60 font-medium">Verified Successfully</span>
+                <span className="text-sm font-bold text-white">{successCount > 0 ? `${successCount} Orders` : "Already up to date"}</span>
+                <span className="text-xs text-white/60 font-medium">{skippedCount > 0 ? `${skippedCount} reused from cache · no credits spent` : successCount > 0 ? "Verified Successfully" : ""}</span>
               </div>
             </div>
           </DarkToast>

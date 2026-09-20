@@ -847,6 +847,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
     setIsBulkChecking(true);
     const ids = Array.from(selectedIds);
     let successCount = 0;
+    let skippedCount = 0;
 
     try {
       for (const id of ids) {
@@ -855,13 +856,15 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
           const res = await apiFetch("/api/check-fraud", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderId: id }),
+            // Cache-aware: only genuinely new or stale numbers spend a request.
+            body: JSON.stringify({ orderId: id, force: false }),
           });
           const data = await res.json();
 
           if (res.ok && !data?.error && data?.order && onOrderUpdate) {
             onOrderUpdate(data.order);
-            successCount++;
+            if (data?.spentRequest === false) skippedCount++;
+            else successCount++;
           }
         } catch (err) {
           console.error(`Fraud check failed for order ${id}:`, err);
@@ -874,15 +877,15 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         }
       }
 
-      if (successCount > 0) {
+      if (successCount > 0 || skippedCount > 0) {
         toast.custom(() => (
           <DarkToast className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-emerald-500/15 border border-emerald-400/20 flex items-center justify-center shrink-0">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-white">{successCount} orders verified</p>
-              <p className="text-[11px] text-white/50 mt-0.5">Bulk fraud analysis complete</p>
+              <p className="text-[13px] font-medium text-white">{successCount > 0 ? `${successCount} orders verified` : "Already up to date"}</p>
+              <p className="text-[11px] text-white/50 mt-0.5">{skippedCount > 0 ? `${skippedCount} reused from cache · no credits spent` : "Bulk fraud analysis complete"}</p>
             </div>
           </DarkToast>
         ), { fit: true });
