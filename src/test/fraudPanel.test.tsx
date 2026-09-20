@@ -181,6 +181,28 @@ describe("FraudPanel", () => {
     expect(screen.getByText("Steadfast")).toBeInTheDocument();
   });
 
+  it("hides zero-parcel couriers in compact mode", async () => {
+    const payload = {
+      courierData: {
+        steadfast: { name: "Steadfast", logo: "https://x/s.png", total_parcel: 25, success_parcel: 24, cancelled_parcel: 1, success_ratio: 96 },
+        pathao: { name: "Pathao", logo: "https://x/p.png", total_parcel: 0, success_parcel: 0, cancelled_parcel: 0, success_ratio: 0 },
+      },
+      fraudRiskScore: { score: 12, level: "safe", label: "নিরাপদ", breakdown: { success: 6, reports: 0, cancel: 4, volume: 2 } },
+    };
+    apiFetch.mockResolvedValue(ok({ phone: "01711111111", status: "ok", payload, summary: SAFE_SUMMARY, checkedAt: new Date().toISOString() }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <FraudPanel phone="01711111111" defaultExpanded compact />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("Safe");
+    expect(screen.getByText("Steadfast")).toBeInTheDocument();
+    expect(screen.queryByText("Pathao")).not.toBeInTheDocument();
+    expect(screen.getByText(/1 more courier/)).toBeInTheDocument();
+  });
+
   it("does not query at all without a valid BD phone", () => {
     renderPanel("012");
     expect(apiFetch).not.toHaveBeenCalled();

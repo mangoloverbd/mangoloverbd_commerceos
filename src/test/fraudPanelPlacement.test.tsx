@@ -44,6 +44,7 @@ describe("fraud panel placement", () => {
     expect(newOrder).toContain("phone={phone}");
     expect(newOrder).not.toContain("runFraudCheck");
     expect(newOrder).not.toContain('apiFetch("/api/check-fraud"');
+    expect(newOrder).not.toContain("AI capture");
   });
 
   it("keeps the abandoned checkout surface on the shared customer panel", () => {

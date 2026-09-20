@@ -1,20 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, Minus, Package, Plus, ShieldCheck, Sparkle, Trash, Truck } from "@phosphor-icons/react";
+import { ArrowLeft, CheckCircle, Minus, Package, Plus, ShieldCheck, Trash, Truck } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { RichButton } from "@/components/ui/rich-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/base/switch/switch";
 import { DarkToast, toast } from "@/components/ui/sonner";
 import { catalogImage, variantLabel, type CatalogProduct, type CatalogVariant } from "@/lib/orderEditor";
 import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
+import { useFraudCheckMutation } from "@/hooks/useFraudCheck";
+import { normalizeBdPhone } from "@/lib/bdPhone";
 import type { OrderSource } from "@/lib/orderSource";
 
 type Line = {
@@ -27,15 +27,6 @@ type Line = {
   unitPrice: number;
   quantity: number;
   image?: string | null;
-};
-
-type ExtractedOrder = {
-  customer_name: string;
-  phone: string;
-  address: string;
-  product: string;
-  quantity: number;
-  price: number;
 };
 
 type ProductsResponse = { products: CatalogProduct[] };
@@ -58,8 +49,6 @@ export default function NewOrder() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const returnTo = typeof location.state?.from === "string" ? location.state.from : "/";
-  const [orderText, setOrderText] = useState("");
-  const [extracting, setExtracting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -131,34 +120,19 @@ export default function NewOrder() {
     setLines((current) => current.filter((line) => line.id !== lineId));
   }
 
-  async function extractOrder() {
-    if (!orderText.trim()) {
-      toast.error("Please paste the order text first");
-      return;
+  const normalizedPhone = normalizeBdPhone(phone);
+  const fraudCheck = useFraudCheckMutation(phone);
+  const autoCheckedPhone = useRef<string | null>(null);
+
+  // Check the number in the background as soon as it becomes a valid BD
+  // phone. resolveFraudCheck returns fresh cache without spending a request,
+  // so re-typing a known number costs nothing.
+  useEffect(() => {
+    if (normalizedPhone && autoCheckedPhone.current !== normalizedPhone) {
+      autoCheckedPhone.current = normalizedPhone;
+      fraudCheck.mutate({ force: false });
     }
-    setExtracting(true);
-    try {
-      const response = await apiFetch("/api/extract-order-from-text", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderText }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Extraction failed");
-      const order = data.extractedOrder as ExtractedOrder | undefined;
-      if (!order) throw new Error(data.error || "Could not extract order details");
-      setCustomerName(order.customer_name || "");
-      setPhone(order.phone || "");
-      setAddress(order.address || "");
-      setLines([{ id: crypto.randomUUID(), name: order.product || "", productId: null, variantId: null, variantName: null, variants: [], unitPrice: order.price || 0, quantity: order.quantity || 1 }]);
-      toast.success("Order details extracted!");
-    } catch (error) {
-      console.error("Error extracting order:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to extract order details");
-    } finally {
-      setExtracting(false);
-    }
-  }
+  }, [normalizedPhone, fraudCheck]);
 
   async function createOrder() {
     if (!phone.trim()) {
@@ -244,12 +218,9 @@ export default function NewOrder() {
               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Phone <span className="text-red-500">*</span><input aria-label="Phone" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="01712345678" className="mt-2 h-12 w-full rounded-lg bg-black/[0.04] px-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
               <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black sm:col-span-2">Delivery address<textarea aria-label="Delivery address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="House 12, Road 5, Dhanmondi, Dhaka" rows={2} className="mt-2 min-h-16 w-full resize-none rounded-lg bg-black/[0.04] px-3.5 py-2.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" /></label>
                <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Order source<div className="mt-2"><OrderSourceSelect value={source} onChange={setSource} disabled={creating} /></div></label>
-               <div className="sm:col-span-2"><FraudPanel phone={phone} /></div>
              </div>
              <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
-              <div className="flex items-center gap-2"><Sparkle weight="light" size={17} className="text-black" /><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-black">AI capture</p></div>
-              <Textarea aria-label="Order message" value={orderText} onChange={(event) => setOrderText(event.target.value)} placeholder="Paste an inbox message…" className="mt-3 min-h-16 resize-none rounded-lg border-0 bg-black/[0.04] text-[13px] shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20" />
-              <RichButton color="default" size="default" onClick={() => void extractOrder()} disabled={extracting || !orderText.trim()} className="mt-3 w-full">{extracting ? <Spinner size="sm" /> : <Sparkle weight="light" size={16} />}{extracting ? "Extracting…" : "Extract details"}</RichButton>
+               <FraudPanel phone={phone} defaultExpanded compact />
             </div>
           </div>
         </section>

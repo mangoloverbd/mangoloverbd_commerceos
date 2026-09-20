@@ -35,7 +35,7 @@ function CourierLogo({ src }: { src: string | null }) {
   );
 }
 
-export function FraudPanel({ phone, className = "", defaultExpanded = false }: { phone?: string | null; className?: string; defaultExpanded?: boolean }) {
+export function FraudPanel({ phone, className = "", defaultExpanded = false, compact = false }: { phone?: string | null; className?: string; defaultExpanded?: boolean; compact?: boolean }) {
   const normalized = normalizeBdPhone(phone);
   const lookup = useFraudLookup(phone);
   const check = useFraudCheckMutation(phone);
@@ -65,6 +65,8 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false }: {
   const reviews = payload?.reviews;
   const couriers = courierRows(payload);
   const hasReviews = Array.isArray(reviews) && reviews.length > 0;
+  const visibleCouriers = compact ? couriers.filter((courier) => courier.total > 0) : couriers;
+  const hiddenCourierCount = couriers.length - visibleCouriers.length;
 
   return (
     <section aria-label="Customer risk" className={className}>
@@ -146,8 +148,8 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false }: {
         <div className={`mt-4 grid gap-7 border-t border-black/[0.08] pt-4 ${hasReviews ? "sm:grid-cols-2" : ""}`}>
           <div className="min-w-0">
             <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">By courier</p>
-            <ul className="mt-3 grid gap-2.5">
-              {couriers.map((courier) => (
+            <ul className={`mt-3 grid gap-2.5 ${compact ? "max-h-56 overflow-y-auto pr-1" : ""}`}>
+              {visibleCouriers.map((courier) => (
                 <li key={courier.key} className="flex items-center gap-2.5">
                   <CourierLogo src={courier.logo} />
                   <span className="min-w-0 flex-1 truncate text-[13px] text-black">{courier.name}</span>
@@ -160,6 +162,9 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false }: {
                 </li>
               ))}
             </ul>
+            {hiddenCourierCount > 0 && (
+              <p className="mt-2 text-[11px] tabular-nums text-black/40">+{hiddenCourierCount} more couriers with no parcels</p>
+            )}
 
             {payload?.fraudRiskScore?.breakdown && (
               <p className="mt-4 text-[12px] tabular-nums text-black/55">
