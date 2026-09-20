@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.13] - 2026-09-20
+
+### Changed
+
+- Give Staff Performance and Business Report their own sidebar icons instead of sharing one.
+
 ## [0.1.0.12] - 2026-09-20
 
 ### Fixed
