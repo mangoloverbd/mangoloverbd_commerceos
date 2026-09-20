@@ -8208,6 +8208,22 @@ async function runFraudCheck(supabase, orgId, phone, force = false) {
   });
 }
 
+// Fire-and-forget background check for newly placed storefront orders. Never
+// throws and never delays the shopper's response — a failure stays silent and
+// the 5-minute warm cron plus manual checks fill the gap later.
+function checkStorefrontOrderFraud(supabase, orgId, orderId, phone) {
+  runFraudCheck(supabase, orgId, phone, false).then(async ({ row, spentRequest }) => {
+    if (spentRequest) incrementUsage(orgId, "fraud_checks").catch(() => {});
+    if (row?.summary) {
+      await supabase
+        .from("orders")
+        .update({ fraud_checked: true, fraud_data: row.summary })
+        .eq("id", orderId)
+        .eq("org_id", orgId);
+    }
+  }).catch((error) => console.warn("[FraudShield] background storefront check deferred:", error?.message || error));
+}
+
 async function readFraudUsage(orgId) {
   const apiKey = (process.env.FRAUDSHIELD_API_KEY || "").trim();
   if (!apiKey) return null;
@@ -11712,6 +11728,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
 
     // ── Purge inventory cache so storefront reflects new stock ───────────
     await purgeProductCache(orgId, null, { listChanged: false, warm: false });
+
+    // Fraud-check the landing-page number in the background without delaying
+    // the shopper's confirmation. Cached numbers cost no request.
+    checkStorefrontOrderFraud(supabase, orgId, order.id, cleanPhone);
 
     return res.json({
       success: true,

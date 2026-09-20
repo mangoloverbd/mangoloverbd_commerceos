@@ -103,4 +103,21 @@ describe("fraud route wiring", () => {
     expect(usage).toContain("getSettings(");
     expect(usage).toContain("saveSettings(");
   });
+
+  it("background-checks landing-page orders without delaying the shopper", () => {
+    const submit = routeSection("async function handlePublicHandleOrderSubmit", 'app.post("/api/public/v1/:handle/orders"');
+
+    expect(submit).toContain("checkStorefrontOrderFraud(supabase, orgId, order.id, cleanPhone)");
+    // Fire-and-forget: kicked off without await so the response never waits.
+    expect(submit).not.toContain("await checkStorefrontOrderFraud(");
+  });
+
+  it("keeps the background check silent and writes back only good summaries", () => {
+    const helper = routeSection("function checkStorefrontOrderFraud", 'app.get("/api/fraud/lookup"');
+
+    expect(helper).toContain("runFraudCheck(supabase, orgId, phone, false)");
+    expect(helper).toContain("fraud_checked: true");
+    expect(helper).toContain("fraud_data: row.summary");
+    expect(helper).toContain(".catch(");
+  });
 });
