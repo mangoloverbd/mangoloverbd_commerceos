@@ -14,10 +14,9 @@ function routeSection(startMarker: string, endMarker: string) {
 }
 
 describe("fraud warm cron", () => {
-  it("is registered on a five-minute schedule", () => {
+  it("is not scheduled — automated warming is disabled to protect the daily quota", () => {
     const cron = vercelConfig.crons.find((c: { path: string }) => c.path === "/api/internal/fraud-warm");
-    expect(cron).toBeDefined();
-    expect(cron.schedule).toBe("*/5 * * * *");
+    expect(cron).toBeUndefined();
   });
 
   it("rejects unauthenticated callers with the shared cron secret check", () => {
@@ -25,6 +24,14 @@ describe("fraud warm cron", () => {
 
     expect(route).toContain("isAuthorizedCronRequest(req.headers.authorization, process.env.CRON_SECRET)");
     expect(route).toContain('return res.status(401).json({ error: "Unauthorized" })');
+  });
+
+  it("fails closed without spending a FraudShield request", () => {
+    const route = routeSection('app.get("/api/internal/fraud-warm"', "// Apex (<=2 labels");
+
+    expect(route).toContain("disabled");
+    expect(route).not.toContain("warmFraudChecksForOrg");
+    expect(route).not.toContain("runFraudCheck");
   });
 
   it("checks remaining quota before draining and holds back the reserve", () => {

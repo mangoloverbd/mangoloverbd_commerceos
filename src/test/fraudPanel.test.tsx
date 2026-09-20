@@ -129,7 +129,7 @@ describe("FraudPanel", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
-  it("disables the button after a quota error instead of letting it be retried", async () => {
+  it("offers an enabled force retry after a quota error, since the cached message can be stale", async () => {
     apiFetch.mockResolvedValueOnce(ok({ phone: "01711111111", status: null }));
     renderPanel();
 
@@ -142,9 +142,16 @@ describe("FraudPanel", () => {
     await userEvent.click(check);
 
     await screen.findByText(/daily limit reached/i);
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^check$/i })).toBeDisabled();
-    });
+    const retry = await screen.findByRole("button", { name: /retry/i });
+    expect(retry).toBeEnabled();
+
+    apiFetch.mockResolvedValueOnce(ok({ phone: "01711111111", status: "ok", payload: SAFE_PAYLOAD, summary: SAFE_SUMMARY, checkedAt: new Date().toISOString(), spentRequest: true }));
+    await userEvent.click(retry);
+
+    await screen.findByText("Safe");
+    const lastCall = apiFetch.mock.calls[apiFetch.mock.calls.length - 1];
+    expect(lastCall[0]).toBe("/api/fraud/check");
+    expect(JSON.parse(lastCall[1].body)).toMatchObject({ force: true });
   });
 
   it("starts expanded when asked, showing couriers without a click", async () => {
