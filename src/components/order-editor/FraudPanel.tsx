@@ -29,13 +29,14 @@ function CourierLogo({ src }: { src: string | null }) {
       src={src}
       alt=""
       loading="lazy"
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       className="h-5 w-5 shrink-0 rounded-sm object-contain"
     />
   );
 }
 
-export function FraudPanel({ phone, className = "", defaultExpanded = false, compact = false }: { phone?: string | null; className?: string; defaultExpanded?: boolean; compact?: boolean }) {
+export function FraudPanel({ phone, className = "", defaultExpanded = false, compact = false, alignHeader = "center" }: { phone?: string | null; className?: string; defaultExpanded?: boolean; compact?: boolean; alignHeader?: "left" | "center" }) {
   const normalized = normalizeBdPhone(phone);
   const lookup = useFraudLookup(phone);
   const check = useFraudCheckMutation(phone);
@@ -72,7 +73,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
 
   return (
     <section aria-label="Customer risk" className={className}>
-      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5">
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${alignHeader === "center" ? "justify-center" : "justify-start"}`}>
         {busy ? (
           <span className="text-[12px] text-black/50">Loading…</span>
         ) : quotaBlocked && !hasData ? (
@@ -132,7 +133,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
             <ul className={`mt-3 grid gap-2.5 ${compact ? "max-h-56 overflow-y-auto pr-1" : ""}`}>
               {visibleCouriers.map((courier) => (
                 <li key={courier.key} className="flex items-center gap-2.5">
-                  <CourierLogo src={courier.logo} />
+                  <CourierLogo key={`${courier.key}-${data?.checkedAt ?? "none"}`} src={courier.logo} />
                   <span className="min-w-0 flex-1 truncate text-[13px] text-black">{courier.name}</span>
                   <span className="text-[12px] tabular-nums text-black/50">{courier.success}/{courier.total}</span>
                   <span className="flex w-14 justify-end">

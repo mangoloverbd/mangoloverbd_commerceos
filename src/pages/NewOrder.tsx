@@ -220,7 +220,7 @@ export default function NewOrder() {
                <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black">Order source<div className="mt-2"><OrderSourceSelect value={source} onChange={setSource} disabled={creating} /></div></label>
              </div>
              <div className="rounded-xl bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
-               <FraudPanel phone={phone} defaultExpanded compact className="flex h-full flex-col justify-between gap-3" />
+               <FraudPanel phone={phone} defaultExpanded compact alignHeader="left" className="flex h-full flex-col justify-between gap-3" />
             </div>
           </div>
         </section>
