@@ -1,11 +1,36 @@
 import { useEffect, useState } from "react";
-import { CaretDown, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
+import type { Icon } from "@phosphor-icons/react";
+import { CaretDown, ChartBar, Gauge, Package, Receipt, ShieldCheck, ShieldWarning, Truck, XCircle } from "@phosphor-icons/react";
 import { useFraudCheckMutation, useFraudLookup } from "@/hooks/useFraudCheck";
 import { Chip } from "@/components/base/badges/chip";
 import { RISK_STYLES, courierRows, maskPhone, relativeAge, resolveFraudLevel } from "@/lib/fraudRisk";
 import { normalizeBdPhone } from "@/lib/bdPhone";
 
 const QUOTA_RE = /daily FraudShield limit/i;
+
+type Tone = "safe" | "caution" | "high" | "neutral";
+
+const TONE_STYLES: Record<Tone, { card: string; icon: string }> = {
+  safe:    { card: "bg-[#e8e8e6]", icon: "text-[#2e9e5b]" },
+  caution: { card: "bg-[#e8e8e6]", icon: "text-[#b97f1f]" },
+  high:    { card: "bg-[#e8e8e6]", icon: "text-[#d05555]" },
+  neutral: { card: "bg-[#e8e8e6]", icon: "text-black/55" },
+};
+
+function StatCard({ icon: IconComponent, tone, title, subtitle }: { icon: Icon; tone: Tone; title: string; subtitle: string }) {
+  const styles = TONE_STYLES[tone];
+  return (
+    <div className={`flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-2 ${styles.card}`}>
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white">
+        <IconComponent weight="light" size={14} className={styles.icon} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[12px] font-semibold leading-snug text-black">{title}</p>
+        <p className="text-[10px] leading-snug text-black/45">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
 
 function RefreshIcon({ size = 14 }: { size?: number }) {
   return (
@@ -70,63 +95,103 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
   const hasReviews = Array.isArray(reviews) && reviews.length > 0;
   const visibleCouriers = compact ? couriers.filter((courier) => courier.total > 0) : couriers;
   const hiddenCourierCount = couriers.length - visibleCouriers.length;
-  const showRiskRow = hasData && !isNewCustomer && Boolean(payload?.fraudRiskScore);
   const showDetails = hasData && !isNewCustomer && !expanded;
 
   return (
     <section aria-label="Customer risk" className={className}>
-      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${alignHeader === "center" ? "justify-center" : "justify-start"}`}>
-        {busy ? (
-          <span className="text-[12px] text-black/50">Loading…</span>
-        ) : quotaBlocked && !hasData ? (
-          <span className="text-[12px] text-black/50">Daily limit reached</span>
-        ) : failed ? (
-          <>
-            <span className="text-[12px] text-[#d05555]">Check failed</span>
-            <span className="min-w-0 flex-1 truncate text-[11px] text-black/50">{data?.errorMessage}</span>
-          </>
-        ) : !hasData ? (
-          <span className="text-[12px] text-black/50">Not checked yet</span>
-        ) : isNewCustomer ? (
-          <span className="inline-flex items-center rounded-md bg-yellow-200 px-1.5 py-1 text-[12px] font-medium text-black">New customer</span>
-        ) : (
-          <>
-            <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1 font-semibold">
-              {level === "safe" ? <ShieldCheck weight="light" size={12} /> : <ShieldWarning weight="light" size={12} />}
-              {styles.label}
-            </Chip>
-            <span className="text-[15px] font-bold tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
-            <Chip variant="caption" color="lime" className="font-semibold tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
-            <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="font-semibold tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
-            <Chip variant="caption" color="neutral" className="font-semibold tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
-          </>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eaf7ef]">
+            <Package weight="light" size={19} className="text-[#2e9e5b]" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-semibold text-black">Courier Delivery</p>
+            <p className="truncate text-[11.5px] text-black/45">Track and monitor deliveries across all couriers</p>
+          </div>
+        </div>
+
+        {hasData && data?.checkedAt && (
+          <button
+            type="button"
+            aria-label="Re-check"
+            disabled={busy}
+            onClick={() => check.mutate({ force: true })}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-black/[0.035] px-2.5 py-1 text-black transition hover:bg-black/[0.06] disabled:opacity-40"
+          >
+            <RefreshIcon size={12} />
+            <span className="text-center">
+              <span className="block text-[8px] font-medium uppercase tracking-[0.1em] text-black/40">Last updated</span>
+              <span className="block text-[11px] font-semibold tabular-nums text-black">{relativeAge(data.checkedAt)}</span>
+            </span>
+          </button>
         )}
       </div>
 
-      {showRiskRow && payload?.fraudRiskScore && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="font-semibold tabular-nums">
-            risk {payload.fraudRiskScore.score}/100
-          </Chip>
-          {payload.fraudRiskScore.label && (
-            <Chip variant="caption" color="neutral" className="font-medium">
-              {payload.fraudRiskScore.label}
-            </Chip>
-          )}
-          <span className="ml-auto inline-flex items-center gap-1.5">
-            {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/65">{relativeAge(data.checkedAt)}</span>}
-            <button
-              type="button"
-              aria-label="Re-check"
-              disabled={busy}
-              onClick={() => check.mutate({ force: true })}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
-            >
-              <RefreshIcon size={18} />
-            </button>
-          </span>
-        </div>
-      )}
+      <div className="mt-3.5">
+        {busy ? (
+          <span className={`block text-[12px] text-black/50 ${alignHeader === "center" ? "text-center" : "text-left"}`}>Loading…</span>
+        ) : quotaBlocked && !hasData ? (
+          <span className={`block text-[12px] text-black/50 ${alignHeader === "center" ? "text-center" : "text-left"}`}>Daily limit reached</span>
+        ) : failed ? (
+          <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${alignHeader === "center" ? "justify-center" : "justify-start"}`}>
+            <span className="text-[12px] text-[#d05555]">Check failed</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-black/50">{data?.errorMessage}</span>
+          </div>
+        ) : !hasData ? (
+          <span className={`block text-[12px] text-black/50 ${alignHeader === "center" ? "text-center" : "text-left"}`}>Not checked yet</span>
+        ) : isNewCustomer ? (
+          <div className={`flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-2 ${TONE_STYLES.neutral.card}`}>
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white">
+              <ShieldWarning weight="light" size={14} className={TONE_STYLES.neutral.icon} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold leading-snug text-black">New customer</p>
+              <p className="text-[10px] leading-snug text-black/45">No delivery history yet</p>
+            </div>
+          </div>
+        ) : (
+          <div className={`grid gap-1.5 ${compact ? "grid-cols-2" : "grid-cols-3"}`}>
+            <StatCard
+              icon={level === "safe" ? ShieldCheck : ShieldWarning}
+              tone={level === "unknown" ? "neutral" : level}
+              title={styles.label}
+              subtitle={level === "safe" ? "All systems normal" : level === "caution" ? "Review before dispatch" : level === "high" ? "Needs review" : "Not enough data"}
+            />
+            <StatCard
+              icon={ChartBar}
+              tone={level === "unknown" ? "neutral" : level}
+              title={`${summary?.success_rate ?? 0}%`}
+              subtitle="Success rate"
+            />
+            <StatCard
+              icon={Truck}
+              tone={level === "unknown" ? "neutral" : level}
+              title={`${summary?.total_delivered ?? 0} delivered`}
+              subtitle={`Out of ${summary?.total_parcels ?? 0} orders`}
+            />
+            <StatCard
+              icon={XCircle}
+              tone={(summary?.total_cancel ?? 0) > 0 ? "high" : "neutral"}
+              title={`${summary?.total_cancel ?? 0} cancelled`}
+              subtitle={(summary?.total_cancel ?? 0) > 0 ? "Needs review" : "No cancellations"}
+            />
+            <StatCard
+              icon={Receipt}
+              tone="neutral"
+              title={`${summary?.total_parcels ?? 0} total`}
+              subtitle="Total orders"
+            />
+            {payload?.fraudRiskScore && (
+              <StatCard
+                icon={Gauge}
+                tone={level === "unknown" ? "neutral" : level}
+                title={`risk ${payload.fraudRiskScore.score}/100`}
+                subtitle={payload.fraudRiskScore.label || "Risk score"}
+              />
+            )}
+          </div>
+        )}
+      </div>
 
       {expanded && hasData && (
         <div className={`mt-4 grid gap-7 border-t border-black/[0.08] pt-4 ${hasReviews ? "sm:grid-cols-2" : ""}`}>
@@ -177,8 +242,6 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
 
       {(failed || !hasData || showDetails) && (
         <div className="mt-3 flex items-center justify-end gap-1.5">
-          {!showRiskRow && data?.checkedAt && <span className="text-[11px] tabular-nums text-black/65">{relativeAge(data.checkedAt)}</span>}
-
           {failed || (quotaBlocked && !hasData) ? (
             <button
               type="button"
@@ -198,16 +261,6 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
               className="inline-flex h-7 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
             >
               Check
-            </button>
-          ) : !showRiskRow ? (
-            <button
-              type="button"
-              aria-label="Re-check"
-              disabled={busy}
-              onClick={() => check.mutate({ force: true })}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
-            >
-              <RefreshIcon size={18} />
             </button>
           ) : null}
 
