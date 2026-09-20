@@ -56,8 +56,8 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false }: {
 
   return (
     <section aria-label="Customer risk" className={className}>
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Customer risk</p>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+        <p className="mr-1 text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Customer risk</p>
 
         {busy ? (
           <span className="text-[12px] text-black/50">Loading…</span>
@@ -75,10 +75,10 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false }: {
         ) : (
           <>
             <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1">
-              {level === "safe" ? <ShieldCheck weight="light" size={14} /> : <ShieldWarning weight="light" size={14} />}
+              {level === "safe" ? <ShieldCheck weight="light" size={12} /> : <ShieldWarning weight="light" size={12} />}
               {styles.label}
             </Chip>
-            <span className="text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{summary?.success_rate ?? 0}%</span>
+            <span className="text-[13px] font-semibold tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
             <span className="inline-flex flex-wrap items-center gap-1.5">
               <Chip variant="caption" color="lime" className="tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
               <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
