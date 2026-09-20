@@ -67,6 +67,8 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
   const hasReviews = Array.isArray(reviews) && reviews.length > 0;
   const visibleCouriers = compact ? couriers.filter((courier) => courier.total > 0) : couriers;
   const hiddenCourierCount = couriers.length - visibleCouriers.length;
+  const showRiskRow = hasData && !isNewCustomer && Boolean(payload?.fraudRiskScore);
+  const showDetails = hasData && !isNewCustomer && !expanded;
 
   return (
     <section aria-label="Customer risk" className={className}>
@@ -98,7 +100,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
         )}
       </div>
 
-      {hasData && !isNewCustomer && payload?.fraudRiskScore && (
+      {showRiskRow && payload?.fraudRiskScore && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="font-semibold tabular-nums">
             risk {payload.fraudRiskScore.score}/100
@@ -108,6 +110,18 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
               {payload.fraudRiskScore.label}
             </Chip>
           )}
+          <span className="ml-auto inline-flex items-center gap-1.5">
+            {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/65">{relativeAge(data.checkedAt)}</span>}
+            <button
+              type="button"
+              aria-label="Re-check"
+              disabled={busy || quotaBlocked}
+              onClick={() => check.mutate({ force: true })}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
+            >
+              <RefreshIcon size={18} />
+            </button>
+          </span>
         </div>
       )}
 
@@ -158,42 +172,54 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-end gap-1.5">
-        {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/65">{relativeAge(data.checkedAt)}</span>}
+      {(failed || !hasData || showDetails) && (
+        <div className="mt-3 flex items-center justify-end gap-1.5">
+          {!showRiskRow && data?.checkedAt && <span className="text-[11px] tabular-nums text-black/65">{relativeAge(data.checkedAt)}</span>}
 
-        {hasData || failed ? (
-          <button
-            type="button"
-            aria-label={failed ? "Retry" : "Re-check"}
-            disabled={busy || quotaBlocked}
-            onClick={() => check.mutate({ force: true })}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
-          >
-            <RefreshIcon size={18} />
-            {failed ? "Retry" : null}
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={busy || quotaBlocked}
-            onClick={() => check.mutate({ force: false })}
-            className="inline-flex h-7 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
-          >
-            Check
-          </button>
-        )}
+          {failed ? (
+            <button
+              type="button"
+              aria-label="Retry"
+              disabled={busy || quotaBlocked}
+              onClick={() => check.mutate({ force: true })}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
+            >
+              <RefreshIcon size={18} />
+              Retry
+            </button>
+          ) : !hasData ? (
+            <button
+              type="button"
+              disabled={busy || quotaBlocked}
+              onClick={() => check.mutate({ force: false })}
+              className="inline-flex h-7 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
+            >
+              Check
+            </button>
+          ) : !showRiskRow ? (
+            <button
+              type="button"
+              aria-label="Re-check"
+              disabled={busy || quotaBlocked}
+              onClick={() => check.mutate({ force: true })}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black/[0.04] px-2.5 text-black transition hover:bg-black/[0.08] disabled:opacity-40"
+            >
+              <RefreshIcon size={18} />
+            </button>
+          ) : null}
 
-        {hasData && !isNewCustomer && !expanded && (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="inline-flex h-6 items-center gap-1 rounded-md bg-black/[0.04] px-2 py-1 text-[12px] font-medium text-black transition hover:bg-black/[0.08]"
-          >
-            Details
-            <CaretDown weight="light" size={12} />
-          </button>
-        )}
-      </div>
+          {showDetails && (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="inline-flex h-6 items-center gap-1 rounded-md bg-black/[0.04] px-2 py-1 text-[12px] font-medium text-black transition hover:bg-black/[0.08]"
+            >
+              Details
+              <CaretDown weight="light" size={12} />
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
