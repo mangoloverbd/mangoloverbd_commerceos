@@ -8,6 +8,9 @@ export const FRAUD_CACHE_TTL_DAYS = 30;
 export const FRAUD_ERROR_RETRY_HOURS = 1;
 export const FRAUD_QUOTA_RESERVE = 100;
 export const FRAUD_PENDING_CLAIM_SECONDS = 60;
+export const FRAUD_WARM_BATCH = 40;
+export const FRAUD_WARM_SPACING_MS = 400;
+export const FRAUD_WARM_LOOKBACK_DAYS = 7;
 
 const FRAUDSHIELD_CHECK_URL = "https://fraudshield.bd/api/customer/check";
 

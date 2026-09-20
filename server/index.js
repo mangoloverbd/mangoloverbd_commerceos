@@ -79,8 +79,14 @@ import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { validateAddressWithAI } from "./addressValidation.js";
 import {
+  FRAUD_QUOTA_RESERVE,
+  FRAUD_WARM_BATCH,
+  FRAUD_WARM_SPACING_MS,
+  FRAUD_WARM_LOOKBACK_DAYS,
   fetchFraudShield,
   resolveFraudCheck,
+  selectPhonesToWarm,
+  shouldWarm,
 } from "./fraudShield.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
@@ -2855,6 +2861,79 @@ app.get("/api/internal/abandoned-checkouts-maintenance", async (req, res) => {
   } catch {
     console.warn("[AbandonedCheckout] maintenance failed");
     return res.status(500).json({ error: "Could not maintain abandoned checkouts" });
+  }
+});
+
+// Pre-fetches risk data for phones on recent orders so the order editor is
+// already populated when an operator opens it. Holds back FRAUD_QUOTA_RESERVE
+// requests for interactive re-checks.
+async function warmFraudChecksForOrg(supabase, orgId) {
+  const usage = await readFraudUsage(orgId);
+  if (!shouldWarm(usage, FRAUD_QUOTA_RESERVE)) return { checked: 0, skipped: "quota" };
+
+  const since = new Date(Date.now() - FRAUD_WARM_LOOKBACK_DAYS * 86_400_000).toISOString();
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select("phone, created_at")
+    .eq("org_id", orgId)
+    .gte("created_at", since)
+    .not("phone", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (ordersError) throw ordersError;
+
+  const candidates = [...new Set((orders || []).map((o) => normalizeBdPhone(o.phone)).filter(Boolean))];
+  if (candidates.length === 0) return { checked: 0, skipped: null };
+
+  const { data: cachedRows, error: cacheError } = await supabase
+    .from("fraud_checks")
+    .select("phone, status, checked_at")
+    .eq("org_id", orgId)
+    .in("phone", candidates);
+  if (cacheError) throw cacheError;
+
+  const phones = selectPhonesToWarm({
+    orders: orders || [],
+    cachedRows: cachedRows || [],
+    now: new Date(),
+    limit: FRAUD_WARM_BATCH,
+  });
+
+  let checked = 0;
+  for (const phone of phones) {
+    if (checked > 0) await delay(FRAUD_WARM_SPACING_MS);
+    const { spentRequest } = await runFraudCheck(supabase, orgId, phone);
+    if (spentRequest) {
+      checked += 1;
+      incrementUsage(orgId, "fraud_checks").catch(() => {});
+    }
+  }
+  return { checked, skipped: null };
+}
+
+app.get("/api/internal/fraud-warm", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const supabase = getServiceSupabase();
+    const { data: roleRows, error } = await supabase.from("user_roles").select("org_id").limit(1000);
+    if (error) throw error;
+
+    const orgIds = [...new Set((roleRows || []).map((row) => row.org_id).filter(Boolean))];
+    let checked = 0;
+    let skipped = null;
+    for (const orgId of orgIds) {
+      const result = await warmFraudChecksForOrg(supabase, orgId);
+      checked += result.checked;
+      skipped = skipped || result.skipped;
+    }
+
+    return res.json({ ok: true, scannedWorkspaces: orgIds.length, checked, skipped });
+  } catch {
+    console.warn("[FraudShield] warm run failed");
+    return res.status(500).json({ error: "Could not warm fraud checks" });
   }
 });
 
