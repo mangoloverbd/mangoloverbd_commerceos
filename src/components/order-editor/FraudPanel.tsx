@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { ArrowClockwise, CaretDown, CaretUp, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
 import { useFraudCheckMutation, useFraudLookup } from "@/hooks/useFraudCheck";
+import { Chip } from "@/components/base/badges/chip";
 import { RISK_STYLES, breakdownRows, courierRows, maskPhone, relativeAge, resolveFraudLevel } from "@/lib/fraudRisk";
 import { normalizeBdPhone } from "@/lib/bdPhone";
 
-const LABEL = "text-[8px] font-medium uppercase tracking-[0.3em]";
 const QUOTA_RE = /daily FraudShield limit/i;
 
 function CourierLogo({ src }: { src: string | null }) {
@@ -23,11 +23,11 @@ function CourierLogo({ src }: { src: string | null }) {
   );
 }
 
-export function FraudPanel({ phone, className = "" }: { phone?: string | null; className?: string }) {
+export function FraudPanel({ phone, className = "", defaultExpanded = false }: { phone?: string | null; className?: string; defaultExpanded?: boolean }) {
   const normalized = normalizeBdPhone(phone);
   const lookup = useFraudLookup(phone);
   const check = useFraudCheckMutation(phone);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   const data = lookup.data;
   const payload = (data?.payload ?? null) as Parameters<typeof courierRows>[0];
@@ -57,7 +57,7 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
   return (
     <section aria-label="Customer risk" className={className}>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <p className={`${LABEL} text-black`}>Customer risk</p>
+        <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Customer risk</p>
 
         {busy ? (
           <span className="text-[12px] text-black/50">Loading…</span>
@@ -74,13 +74,15 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
           <span className="text-[12px] text-black/60">New customer</span>
         ) : (
           <>
-            <span className={`inline-flex items-center gap-1.5 text-[12px] font-medium ${styles.accent}`}>
+            <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1">
               {level === "safe" ? <ShieldCheck weight="light" size={14} /> : <ShieldWarning weight="light" size={14} />}
               {styles.label}
-            </span>
-            <span className="text-2xl font-light tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
-            <span className="text-[12px] tabular-nums text-black/55">
-              {summary?.total_delivered ?? 0} delivered · {summary?.total_cancel ?? 0} cancelled · {summary?.total_parcels ?? 0} total
+            </Chip>
+            <span className="text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{summary?.success_rate ?? 0}%</span>
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <Chip variant="caption" color="lime" className="tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
+              <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
+              <Chip variant="caption" color="neutral" className="tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
             </span>
             {payload?.fraudRiskScore && (
               <span className="text-[12px] text-black/55">
@@ -129,17 +131,19 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
       </div>
 
       {expanded && hasData && (
-        <div className={`mt-4 grid gap-7 border-t border-black/[0.07] pt-4 ${hasReviews ? "sm:grid-cols-2" : ""}`}>
+        <div className={`mt-4 grid gap-7 border-t border-black/[0.08] pt-4 ${hasReviews ? "sm:grid-cols-2" : ""}`}>
           <div className="min-w-0">
-            <p className={`${LABEL} text-black`}>By courier</p>
+            <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">By courier</p>
             <ul className="mt-3 grid gap-2.5">
               {couriers.map((courier) => (
                 <li key={courier.key} className="flex items-center gap-2.5">
                   <CourierLogo src={courier.logo} />
                   <span className="min-w-0 flex-1 truncate text-[13px] text-black">{courier.name}</span>
                   <span className="text-[12px] tabular-nums text-black/50">{courier.success}/{courier.total}</span>
-                  <span className={`w-10 text-right text-[12px] font-semibold tabular-nums ${courier.ratio >= 70 ? "text-[#2e9e5b]" : courier.ratio >= 50 ? "text-[#b97f1f]" : "text-[#d05555]"}`}>
-                    {courier.ratio}%
+                  <span className="flex w-14 justify-end">
+                    <Chip variant="caption" color={courier.ratio >= 70 ? "lime" : courier.ratio >= 50 ? "yellow" : "rose"} className="tabular-nums">
+                      {courier.ratio}%
+                    </Chip>
                   </span>
                 </li>
               ))}
@@ -161,7 +165,7 @@ export function FraudPanel({ phone, className = "" }: { phone?: string | null; c
 
           {hasReviews && (
             <div className="min-w-0">
-              <p className={`${LABEL} text-black`}>Reviews from other merchants</p>
+              <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Reviews from other merchants</p>
               <ul className="mt-2 divide-y divide-black/[0.07]">
                 {reviews.map((review, index) => (
                   <li key={`${review.commenter_phone}-${index}`} className="flex gap-2.5 py-2.5">
