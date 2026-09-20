@@ -70,8 +70,8 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
 
   return (
     <section aria-label="Customer risk" className={className}>
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-        <p className="mr-1 text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Customer risk</p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Customer risk</p>
 
         {busy ? (
           <span className="text-[12px] text-black/50">Loading…</span>
@@ -80,7 +80,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
         ) : failed ? (
           <>
             <span className="text-[12px] text-[#d05555]">Check failed</span>
-            <span className="min-w-0 truncate text-[11px] text-black/50">{data?.errorMessage}</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-black/50">{data?.errorMessage}</span>
           </>
         ) : !hasData ? (
           <span className="text-[12px] text-black/50">Not checked yet</span>
@@ -88,26 +88,24 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
           <span className="text-[12px] text-black/60">New customer</span>
         ) : (
           <>
-            <span className="flex flex-1 flex-wrap items-center justify-center gap-2">
-              <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1 font-semibold">
-                {level === "safe" ? <ShieldCheck weight="light" size={12} /> : <ShieldWarning weight="light" size={12} />}
-                {styles.label}
-              </Chip>
-              <span className="text-[15px] font-bold tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
-              <Chip variant="caption" color="lime" className="font-semibold tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
-              <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="font-semibold tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
-              <Chip variant="caption" color="neutral" className="font-semibold tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
-            </span>
+            <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="gap-1 font-semibold">
+              {level === "safe" ? <ShieldCheck weight="light" size={12} /> : <ShieldWarning weight="light" size={12} />}
+              {styles.label}
+            </Chip>
+            <span className="text-[15px] font-bold tabular-nums text-black">{summary?.success_rate ?? 0}%</span>
+            <Chip variant="caption" color="lime" className="font-semibold tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
+            <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="font-semibold tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
+            <Chip variant="caption" color="neutral" className="font-semibold tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
             {payload?.fraudRiskScore && (
-              <span className="basis-full text-left text-[12px] text-black/55">
+              <span className="text-[11px] tabular-nums text-black/45">
                 risk {payload.fraudRiskScore.score}/100{payload.fraudRiskScore.label ? ` · ${payload.fraudRiskScore.label}` : ""}
               </span>
             )}
           </>
         )}
 
-        <div className="ml-auto flex items-center gap-2">
-          {data?.checkedAt && <span className="text-[11px] text-black/45">{relativeAge(data.checkedAt)}</span>}
+        <span className="ml-auto inline-flex items-center gap-1.5">
+          {data?.checkedAt && <span className="text-[11px] tabular-nums text-black/45">{relativeAge(data.checkedAt)}</span>}
 
           {hasData || failed ? (
             <button
@@ -115,9 +113,9 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
               aria-label={failed ? "Retry" : "Re-check"}
               disabled={busy || quotaBlocked}
               onClick={() => check.mutate({ force: true })}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40"
             >
-              <RefreshIcon size={18} />
+              <RefreshIcon size={16} />
               {failed ? "Retry" : null}
             </button>
           ) : (
@@ -125,7 +123,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
               type="button"
               disabled={busy || quotaBlocked}
               onClick={() => check.mutate({ force: false })}
-              className="inline-flex h-8 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
+              className="inline-flex h-7 items-center rounded-lg bg-black px-3 text-[12px] font-medium text-white transition hover:bg-black/90 disabled:opacity-40"
             >
               Check
             </button>
@@ -141,7 +139,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
               <CaretDown weight="light" size={12} />
             </button>
           )}
-        </div>
+        </span>
       </div>
 
       {expanded && hasData && (
