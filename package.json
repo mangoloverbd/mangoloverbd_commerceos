@@ -21,6 +21,7 @@
   "dependencies": {
     "@amcharts/amcharts5": "^5.19.0",
     "@hookform/resolvers": "^3.10.0",
+    "@internationalized/date": "^3.12.4",
     "@mendable/firecrawl-js": "^4.25.0",
     "@number-flow/react": "^0.6.2",
     "@paper-design/shaders": "^0.0.76",

@@ -1,11 +1,32 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Button as AriaButton,
+  Dialog,
+  DialogTrigger,
+  Popover as AriaPopover,
+  RangeCalendar,
+} from "react-aria-components";
+import { CalendarDate } from "@internationalized/date";
+import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown } from "lucide-react";
+import { Button } from "@/components/base/buttons/button";
+import { DateChipInput, MonthPanel, popoverClassName } from "@/components/base/date-picker/shared";
 import { buildDateRangePresets } from "@/lib/dateRangePresets";
 import { cn } from "@/lib/utils";
+import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+
+/**
+ * The trigger button (icon, date-range text, border) is this app's own —
+ * unchanged from before BoardUI. Only the popover CARD (dual-month range
+ * calendar, quick-select list, editable date chips, Cancel/Apply footer) is
+ * BoardUI's `date-range-picker` (`npx boardui@latest add date-range-picker`),
+ * wired up here instead of through its own bundled trigger so both stay in
+ * sync with this app's Dhaka-aware presets and nullable "All Time" state.
+ */
+
+type DateRangeValue = { start: CalendarDate; end: CalendarDate };
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -26,9 +47,121 @@ function dhakaToday(): Date {
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
-const TODAY = dhakaToday();
+function toCalendarDate(date: Date): CalendarDate {
+  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
 
+function fromCalendarDate(date: CalendarDate): Date {
+  return new Date(date.year, date.month - 1, date.day);
+}
+
+function toDateRangeValue(range: DateRange | null): DateRangeValue | null {
+  if (!range?.from) return null;
+  const start = toCalendarDate(range.from);
+  const end = range.to ? toCalendarDate(range.to) : start;
+  return { start, end };
+}
+
+function toDateRange(value: DateRangeValue): DateRange {
+  return { from: fromCalendarDate(value.start), to: fromCalendarDate(value.end) };
+}
+
+function daysInRange(value: DateRangeValue) {
+  const ms = value.end.compare(value.start) * 86_400_000;
+  return Math.round(ms / 86_400_000) + 1;
+}
+
+const TODAY = dhakaToday();
+const MAX_DATE = toCalendarDate(TODAY);
 const PRESETS = buildDateRangePresets(TODAY);
+
+function QuickSelect({
+  activeLabel,
+  onSelect,
+}: {
+  activeLabel: string;
+  onSelect: (range: DateRange | null) => void;
+}) {
+  return (
+    <div className="flex w-[118px] shrink-0 flex-col gap-1.5">
+      {PRESETS.map((preset) => (
+        <button
+          key={preset.label}
+          type="button"
+          onClick={() => onSelect(preset.range)}
+          className={cn(
+            "w-full cursor-pointer rounded-2lg px-2 py-1.5 text-left text-body-medium text-text-primary transition-colors duration-150 ease",
+            preset.label === activeLabel
+              ? "bg-background-tertiary-default"
+              : "hover:bg-background-secondary-hover",
+          )}
+        >
+          {preset.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Footer({
+  value,
+  onChange,
+  onCancel,
+  onApply,
+}: {
+  value: DateRangeValue | null;
+  onChange: (value: DateRangeValue) => void;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between pt-3 pr-4">
+      <div className="flex items-center gap-2.5">
+        <AnimatePresence>
+          {value && (
+            <motion.div
+              key="range-summary"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: [0.34, 1.2, 0.64, 1] }}
+              className="flex items-center gap-2.5"
+            >
+              <div className="flex items-center gap-[5px]">
+                <DateChipInput
+                  date={value.start}
+                  label="Start date"
+                  onCommit={(start) =>
+                    onChange({ start, end: start.compare(value.end) > 0 ? start : value.end })
+                  }
+                />
+                <span className="text-body-medium text-text-secondary">-</span>
+                <DateChipInput
+                  date={value.end}
+                  label="End date"
+                  onCommit={(end) =>
+                    onChange({ start: end.compare(value.start) < 0 ? end : value.start, end })
+                  }
+                />
+              </div>
+              <span className="rounded-xl bg-background-tertiary-default px-2 py-2 text-body-medium text-text-secondary">
+                {daysInRange(value)} day{daysInRange(value) === 1 ? "" : "s"} selected
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      <div className="flex items-center gap-2.5">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" onClick={onApply} disabled={!value}>
+          Apply
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function DateRangePicker({
   value,
@@ -41,127 +174,104 @@ export function DateRangePicker({
   children?: ReactNode;
   triggerClassName?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<DateRange | undefined>(value ?? undefined);
-  const valueFrom = value?.from?.getTime();
-  const valueTo = value?.to?.getTime();
+  const [isOpen, setIsOpen] = useState(false);
+  const [pendingValue, setPendingValue] = useState<DateRangeValue | null>(toDateRangeValue(value));
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLElement>(null);
+  useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
+  const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
 
-  useEffect(() => {
-    if (open) setPending(value ?? undefined);
-  }, [open, value, valueFrom, valueTo]);
+  const activePresetLabel = (
+    PRESETS.find((p) => {
+      if (!p.range && !value) return true;
+      if (!p.range || !value) return false;
+      return (
+        p.range.from && value.from && toYMD(p.range.from) === toYMD(value.from) &&
+        p.range.to && value.to && toYMD(p.range.to) === toYMD(value.to)
+      );
+    })?.label ?? "All Time"
+  );
 
-  const activePreset = PRESETS.find((p) => {
-    if (!p.range && !value) return true;
-    if (!p.range || !value) return false;
-    return (
-      p.range.from && value.from && toYMD(p.range.from) === toYMD(value.from) &&
-      p.range.to   && value.to   && toYMD(p.range.to)   === toYMD(value.to)
-    );
-  });
-
-  const apply = (r: DateRange | null) => {
-    onChange(r);
-    setOpen(false);
-  };
-
-  const dateButton = (
-    <button
-      className="flex items-center gap-2 h-8 px-3 text-[11px] font-medium text-foreground/70 hover:text-foreground border border-border hover:border-foreground/30 rounded-lg bg-background transition-all"
+  const trigger = (
+    <AriaButton
+      ref={triggerRef}
       data-testid="button-date-range-picker"
+      className="flex items-center gap-2 h-8 px-3 text-[11px] font-medium text-foreground/70 hover:text-foreground border border-border hover:border-foreground/30 rounded-lg bg-background transition-all"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" className="shrink-0"><path fill="currentColor" d="M6.96 2c.418 0 .756.31.756.692V4.09c.67-.012 1.422-.012 2.268-.012h4.032c.846 0 1.597 0 2.268.012V2.692c0-.382.338-.692.756-.692s.756.31.756.692V4.15c1.45.106 2.403.368 3.103 1.008c.7.641.985 1.513 1.101 2.842v1H2V8c.116-1.329.401-2.2 1.101-2.842c.7-.64 1.652-.902 3.103-1.008V2.692c0-.382.339-.692.756-.692"/><path fill="currentColor" d="M22 14v-2c0-.839-.013-2.335-.026-3H2.006c-.013.665 0 2.161 0 3v2c0 3.771 0 5.657 1.17 6.828C4.349 22 6.234 22 10.004 22h4c3.77 0 5.654 0 6.826-1.172S22 17.771 22 14" opacity=".5"/><path fill="currentColor" d="M18 16.5a1.5 1.5 0 1 1-3 0a1.5 1.5 0 0 1 3 0"/></svg>
       {fmtRange(value)}
       <ChevronDown className="h-3 w-3 opacity-50" />
-    </button>
+    </AriaButton>
   );
 
-  const popoverContent = (
-    <PopoverContent align="center" className="w-auto p-0 rounded-xl border border-black/10 bg-white shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
-      <div className="flex">
-        <div className="border-r border-black/[0.06] py-3 w-32 flex flex-col">
-          <p className="text-[8px] font-semibold tracking-widest text-black/30 uppercase px-3 pb-2">Preset</p>
-          {PRESETS.map((p) => {
-            const isActive = p.label === (activePreset?.label ?? "All Time");
-            return (
-              <button
-                key={p.label}
-                onClick={() => apply(p.range)}
-                className={cn(
-                  "text-left px-3 py-[7px] text-[11px] transition-colors rounded-md mx-1",
-                  isActive
-                    ? "text-[#202020] font-semibold bg-[#F3F3F3]"
-                    : "text-black/50 hover:text-[#202020] hover:bg-black/[0.04]"
-                )}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="p-3">
-          <p className="text-[8px] font-semibold tracking-widest text-black/30 uppercase px-1 pb-2">Custom Range</p>
-          <Calendar
-            mode="range"
-            selected={pending}
-            onSelect={(r) => {
-              setPending(r);
-              if (r?.from && r?.to) apply(r);
-            }}
-            className="p-0"
-            classNames={{
-              months: "flex flex-col sm:flex-row space-y-3 sm:space-x-4 sm:space-y-0",
-              month: "space-y-2",
-              caption: "flex justify-center pt-0.5 relative items-center",
-              caption_label: "text-[13px] font-semibold text-[#202020]",
-              nav_button: "h-7 w-7 bg-transparent p-0 opacity-40 hover:opacity-100 transition-opacity",
-              nav_button_previous: "absolute left-1",
-              nav_button_next: "absolute right-1",
-              table: "w-full border-collapse space-y-0",
-              head_row: "flex",
-              head_cell: "text-black/30 rounded-md w-8 font-medium text-[10px] uppercase",
-              row: "flex w-full mt-0.5",
-              cell: "h-8 w-8 text-center text-xs p-0 relative first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-              day: "h-8 w-8 p-0 text-xs font-normal rounded-md transition-colors duration-150",
-              day_range_middle: "bg-black/[0.06] rounded-none aria-selected:bg-black/[0.06] aria-selected:text-[#202020]",
-              day_selected: "bg-[#202020] text-white hover:bg-[#202020]/90 focus:bg-[#202020] focus:text-white",
-              day_today: "font-bold text-[#202020]",
-              day_outside: "text-black/20",
-              day_disabled: "text-black/15",
-              day_hidden: "invisible",
-            }}
-            numberOfMonths={2}
-            toDate={TODAY}
-          />
-          {pending?.from && !pending?.to && (
-            <p className="text-[10px] text-black/40 text-center pt-1">Select an end date</p>
-          )}
-        </div>
-      </div>
-    </PopoverContent>
+  const popover = (
+    <AriaPopover ref={popoverRef} offset={4} placement="bottom end" isNonModal className={popoverClassName}>
+      <Dialog aria-label="Date range" className="outline-none">
+        {({ close }) => (
+          <RangeCalendar
+            aria-label="Date range"
+            visibleDuration={{ months: 2 }}
+            value={pendingValue}
+            onChange={setPendingValue}
+            maxValue={MAX_DATE}
+          >
+            <div className="flex gap-3">
+              <div className="pt-4 pl-4">
+                <QuickSelect
+                  activeLabel={activePresetLabel}
+                  onSelect={(range) => {
+                    onChange(range);
+                    close();
+                  }}
+                />
+              </div>
+              <div className="flex flex-col pt-2 pr-2 pb-3">
+                <div className="flex gap-2">
+                  <MonthPanel offset={0} showPrev />
+                  <MonthPanel offset={1} showNext />
+                </div>
+                <Footer
+                  value={pendingValue}
+                  onChange={setPendingValue}
+                  onCancel={() => {
+                    setPendingValue(toDateRangeValue(value));
+                    close();
+                  }}
+                  onApply={() => {
+                    if (pendingValue) onChange(toDateRange(pendingValue));
+                    close();
+                  }}
+                />
+              </div>
+            </div>
+          </RangeCalendar>
+        )}
+      </Dialog>
+    </AriaPopover>
   );
+
+  const handleOpenChange = (open: boolean) => {
+    if (!allowOpenChange(open)) return;
+    if (open) setPendingValue(toDateRangeValue(value));
+    setIsOpen(open);
+  };
 
   if (!children) {
     return (
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <span className={cn("uv-beam rounded-full", triggerClassName)}>{dateButton}</span>
-        </PopoverTrigger>
-        {popoverContent}
-      </Popover>
+      <DialogTrigger isOpen={isOpen} onOpenChange={handleOpenChange}>
+        <span className={cn("uv-beam rounded-full", triggerClassName)}>{trigger}</span>
+        {popover}
+      </DialogTrigger>
     );
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverAnchor asChild>
-        <div className="mt-4 flex flex-row flex-wrap items-center justify-center gap-4 text-center">
-          {children}
-          <PopoverTrigger asChild>
-            <span className={cn("uv-beam rounded-full", triggerClassName)}>{dateButton}</span>
-          </PopoverTrigger>
-        </div>
-      </PopoverAnchor>
-      {popoverContent}
-    </Popover>
+    <DialogTrigger isOpen={isOpen} onOpenChange={handleOpenChange}>
+      <div className="mt-4 flex flex-row flex-wrap items-center justify-center gap-4 text-center">
+        {children}
+        <span className={cn("uv-beam rounded-full", triggerClassName)}>{trigger}</span>
+      </div>
+      {popover}
+    </DialogTrigger>
   );
 }
