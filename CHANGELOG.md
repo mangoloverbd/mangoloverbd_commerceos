@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.19] - 2026-09-21
+
+### Changed
+
+- Redesign the FraudShield risk panel on the Order editor, Abandoned order editor, and New order pages: a "Courier Delivery" header with a compact "Last updated" re-check button, and six flat `#e8e8e6` stat cards (Safe/Caution/High, success rate, delivered, cancelled, total, risk score) laid out 3-up/3-down instead of the old inline chip row.
+
 ## [0.1.0.18] - 2026-09-21
 
 ### Changed
