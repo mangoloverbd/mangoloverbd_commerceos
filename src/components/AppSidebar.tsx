@@ -28,7 +28,6 @@ import {
     Lightbulb,
 
 } from "lucide-react";
-import { ChartLineUp } from "@phosphor-icons/react";
 import { Logo } from "./logo";
 import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
@@ -159,13 +158,13 @@ export function AppSidebar() {
                 {
                     id: "staff-performance",
                     title: "Staff Performance",
-                    icon: <ChartLineUp size={15} weight="light" className={iconCls} />,
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path fill="currentColor" style={{fill: 'var(--fillg)'}} d="M16 17v2H2v-2s0-4 7-4s7 4 7 4m-3.5-9.5A3.5 3.5 0 1 0 9 11a3.5 3.5 0 0 0 3.5-3.5m3.44 5.5A5.32 5.32 0 0 1 18 17v2h4v-2s0-3.63-6.06-4M15 4a3.4 3.4 0 0 0-1.93.59a5 5 0 0 1 0 5.82A3.4 3.4 0 0 0 15 11a3.5 3.5 0 0 0 0-7"/></svg>,
                     link: "/reports/staff",
                 },
                 {
                     id: "business-report",
                     title: "Business Report",
-                    icon: <ChartLineUp size={15} weight="light" className={iconCls} />,
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path d="M12 10C16.4183 10 20 8.20914 20 6C20 3.79086 16.4183 2 12 2C7.58172 2 4 3.79086 4 6C4 8.20914 7.58172 10 12 10Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.5" d="M4 12V18C4 20.2091 7.58172 22 12 22C16.4183 22 20 20.2091 20 18V12C20 14.2091 16.4183 16 12 16C7.58172 16 4 14.2091 4 12Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.7" d="M4 6V12C4 14.2091 7.58172 16 12 16C16.4183 16 20 14.2091 20 12V6C20 8.20914 16.4183 10 12 10C7.58172 10 4 8.20914 4 6Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/></svg>,
                     link: "/reports/business",
                     disabled: !isAdmin,
                 },
