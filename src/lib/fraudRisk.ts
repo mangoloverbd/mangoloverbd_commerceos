@@ -56,7 +56,10 @@ export function courierRows(payload: FraudPayload) {
       return {
         key,
         name: courier.name ?? key,
-        logo: courier.logo ?? null,
+        // The API recently started sending logo files from a host that does
+        // not resolve (fraudshieldbd.site); the same paths work on the live
+        // host, so rewrite it instead of showing a broken image.
+        logo: courier.logo?.replace("fraudshieldbd.site", "fraudshield.bd") ?? null,
         total,
         success,
         ratio: courier.success_ratio ?? (total > 0 ? Math.round((success / total) * 100) : 0),
