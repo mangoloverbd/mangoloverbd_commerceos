@@ -71,8 +71,6 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
   return (
     <section aria-label="Customer risk" className={className}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Customer risk</p>
-
         {busy ? (
           <span className="text-[12px] text-black/50">Loading…</span>
         ) : quotaBlocked && !hasData ? (
@@ -96,11 +94,6 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
             <Chip variant="caption" color="lime" className="font-semibold tabular-nums">{summary?.total_delivered ?? 0} delivered</Chip>
             <Chip variant="caption" color={(summary?.total_cancel ?? 0) > 0 ? "rose" : "neutral"} className="font-semibold tabular-nums">{summary?.total_cancel ?? 0} cancelled</Chip>
             <Chip variant="caption" color="neutral" className="font-semibold tabular-nums">{summary?.total_parcels ?? 0} total</Chip>
-            {payload?.fraudRiskScore && (
-              <span className="text-[11px] tabular-nums text-black/45">
-                risk {payload.fraudRiskScore.score}/100{payload.fraudRiskScore.label ? ` · ${payload.fraudRiskScore.label}` : ""}
-              </span>
-            )}
           </>
         )}
 
@@ -141,6 +134,19 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
           )}
         </span>
       </div>
+
+      {hasData && !isNewCustomer && payload?.fraudRiskScore && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Chip variant="caption" color={level === "safe" ? "lime" : level === "caution" ? "yellow" : level === "high" ? "rose" : "neutral"} className="font-semibold tabular-nums">
+            risk {payload.fraudRiskScore.score}/100
+          </Chip>
+          {payload.fraudRiskScore.label && (
+            <Chip variant="caption" color="neutral" className="font-medium">
+              {payload.fraudRiskScore.label}
+            </Chip>
+          )}
+        </div>
+      )}
 
       {expanded && hasData && (
         <div className={`mt-4 grid gap-7 border-t border-black/[0.08] pt-4 ${hasReviews ? "sm:grid-cols-2" : ""}`}>
