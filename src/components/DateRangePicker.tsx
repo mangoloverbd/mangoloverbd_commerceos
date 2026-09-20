@@ -83,14 +83,14 @@ function QuickSelect({
   onSelect: (range: DateRange | null) => void;
 }) {
   return (
-    <div className="flex w-[118px] shrink-0 flex-col gap-1.5">
+    <div className="flex w-[132px] shrink-0 flex-col gap-0.5">
       {PRESETS.map((preset) => (
         <button
           key={preset.label}
           type="button"
           onClick={() => onSelect(preset.range)}
           className={cn(
-            "w-full cursor-pointer rounded-2lg px-2 py-1.5 text-left text-body-medium text-text-primary transition-colors duration-150 ease",
+            "w-full cursor-pointer whitespace-nowrap rounded-lg px-2.5 py-0.5 text-left text-caption-1-medium text-text-primary transition-colors duration-150 ease",
             preset.label === activeLabel
               ? "bg-background-tertiary-default"
               : "hover:bg-background-secondary-hover",
@@ -115,8 +115,8 @@ function Footer({
   onApply: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between pt-3 pr-4">
-      <div className="flex items-center gap-2.5">
+    <div className="flex items-center justify-between pt-2 pr-2">
+      <div className="flex items-center gap-1.5">
         <AnimatePresence>
           {value && (
             <motion.div
@@ -125,9 +125,9 @@ function Footer({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.25, ease: [0.34, 1.2, 0.64, 1] }}
-              className="flex items-center gap-2.5"
+              className="flex items-center gap-1.5"
             >
-              <div className="flex items-center gap-[5px]">
+              <div className="flex items-center gap-1">
                 <DateChipInput
                   date={value.start}
                   label="Start date"
@@ -135,7 +135,7 @@ function Footer({
                     onChange({ start, end: start.compare(value.end) > 0 ? start : value.end })
                   }
                 />
-                <span className="text-body-medium text-text-secondary">-</span>
+                <span className="text-caption-1-medium text-text-secondary">-</span>
                 <DateChipInput
                   date={value.end}
                   label="End date"
@@ -144,18 +144,18 @@ function Footer({
                   }
                 />
               </div>
-              <span className="rounded-xl bg-background-tertiary-default px-2 py-2 text-body-medium text-text-secondary">
+              <span className="rounded-lg bg-background-tertiary-default px-1.5 py-1.5 text-caption-1-medium text-text-secondary">
                 {daysInRange(value)} day{daysInRange(value) === 1 ? "" : "s"} selected
               </span>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
-      <div className="flex items-center gap-2.5">
-        <Button type="button" variant="secondary" onClick={onCancel}>
+      <div className="flex items-center gap-1.5">
+        <Button type="button" size="small" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="button" onClick={onApply} disabled={!value}>
+        <Button type="button" size="small" onClick={onApply} disabled={!value}>
           Apply
         </Button>
       </div>
@@ -215,8 +215,8 @@ export function DateRangePicker({
             onChange={setPendingValue}
             maxValue={MAX_DATE}
           >
-            <div className="flex gap-3">
-              <div className="pt-4 pl-4">
+            <div className="flex gap-2">
+              <div className="pt-2 pl-3">
                 <QuickSelect
                   activeLabel={activePresetLabel}
                   onSelect={(range) => {
@@ -225,7 +225,7 @@ export function DateRangePicker({
                   }}
                 />
               </div>
-              <div className="flex flex-col pt-2 pr-2 pb-3">
+              <div className="flex flex-col pt-2 pr-2 pb-2">
                 <div className="flex gap-2">
                   <MonthPanel offset={0} showPrev />
                   <MonthPanel offset={1} showNext />

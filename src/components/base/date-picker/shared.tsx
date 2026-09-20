@@ -80,7 +80,7 @@ export function DayCell(props: CalendarCellRenderProps & { isRange: boolean }) {
   const { date, formattedDate, isSelected, isSelectionStart, isSelectionEnd, isHovered, isFocusVisible, isDisabled, isOutsideMonth, isRange } = props;
 
   if (isOutsideMonth) {
-    return <div className="size-8" />;
+    return <div className="size-7" />;
   }
 
   const dayOfWeek = date.toDate(getLocalTimeZone()).getDay(); // 0 = Sun ... 6 = Sat
@@ -92,9 +92,9 @@ export function DayCell(props: CalendarCellRenderProps & { isRange: boolean }) {
   const isSingleDay = isRange ? isSelectionStart && isSelectionEnd : isSelected;
   const isEdge = isRange ? isSelectionStart || isSelectionEnd : isSelected;
 
-  // Cells sit 12px apart (Figma's row/column gap). A selected range should
+  // Cells sit 8px apart (row/column gap). A selected range should
   // still read as one continuous band, so the background bridges that gap by
-  // extending half of it (6px) toward each selected neighbor — never past
+  // extending half of it (4px) toward each selected neighbor — never past
   // the first/last column of a row, where there's no neighbor to bridge to.
   // Only meaningful for a RangeCalendar; a plain Calendar never bridges.
   const extendLeft = isRange && isSelected && !isSelectionStart && dayOfWeek !== 0;
@@ -110,13 +110,13 @@ export function DayCell(props: CalendarCellRenderProps & { isRange: boolean }) {
   // square in sync with the fade instead of snapping to square immediately
   // while the color is still visible.
   return (
-    <div className="relative size-8">
+    <div className="relative size-7">
       <span
         aria-hidden
         className={cx(
           "absolute inset-y-0 bg-date-range-background transition-[opacity,border-radius] duration-100 ease-out",
-          isSelectionStart ? "left-1/2" : extendLeft ? "-left-1.5" : "left-0",
-          isSelectionEnd ? "right-1/2" : extendRight ? "-right-1.5" : "right-0",
+          isSelectionStart ? "left-1/2" : extendLeft ? "-left-1" : "left-0",
+          isSelectionEnd ? "right-1/2" : extendRight ? "-right-1" : "right-0",
           !isSelectionStart && dayOfWeek === 0 && "rounded-l-lg",
           !isSelectionEnd && dayOfWeek === 6 && "rounded-r-lg",
           isSelected && !isSingleDay ? "opacity-100" : "opacity-0",
@@ -124,7 +124,7 @@ export function DayCell(props: CalendarCellRenderProps & { isRange: boolean }) {
       />
       <div
         className={cx(
-          "relative flex size-8 items-center justify-center rounded-lg outline-none",
+          "relative flex size-7 items-center justify-center rounded-lg outline-none",
           !isSelected && isHovered && "bg-background-secondary-hover",
           "transition-colors duration-100 ease-out",
           isFocusVisible && "ring-2 ring-inset ring-border-focus-ring",
@@ -140,7 +140,7 @@ export function DayCell(props: CalendarCellRenderProps & { isRange: boolean }) {
             isEdge ? "opacity-100" : "opacity-0",
           )}
         />
-        <span className={cx("relative text-body-medium text-text-primary", isDisabled && "text-text-tertiary")}>
+        <span className={cx("relative text-caption-1-medium text-text-primary", isDisabled && "text-text-tertiary")}>
           {formattedDate}
         </span>
       </div>
@@ -181,42 +181,42 @@ export function MonthPanel({
     : "";
 
   return (
-    <div className={bare ? "w-[296px] shrink-0" : "w-[326px] shrink-0 rounded-2xl bg-background-primary-default p-[15px] shadow-xs"}>
-      <div className="flex flex-col gap-5">
+    <div className={bare ? "w-[248px] shrink-0" : "w-[276px] shrink-0 rounded-2xl bg-background-primary-default p-3 shadow-xs"}>
+      <div className="flex flex-col gap-3">
         {!hideHeader && (
           <div className="flex items-center justify-between">
             {showPrev ? (
               <RACButton
                 slot="previous"
-                className="flex size-4 cursor-pointer items-center justify-center rounded-[3px] text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
+                className="flex size-3.5 cursor-pointer items-center justify-center rounded-[3px] text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
               >
-                <ChevronLeft16 />
+                <ChevronLeft16 className="size-3.5" />
               </RACButton>
             ) : (
-              <span className="size-4" aria-hidden />
+              <span className="size-3.5" aria-hidden />
             )}
-            <span className="flex-1 text-center text-body-medium text-text-primary">{title}</span>
+            <span className="flex-1 text-center text-caption-1-semibold text-text-primary">{title}</span>
             {showNext ? (
               <RACButton
                 slot="next"
-                className="flex size-4 cursor-pointer items-center justify-center rounded-[3px] text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
+                className="flex size-3.5 cursor-pointer items-center justify-center rounded-[3px] text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
               >
-                <ChevronRight16 />
+                <ChevronRight16 className="size-3.5" />
               </RACButton>
             ) : (
-              <span className="size-4" aria-hidden />
+              <span className="size-3.5" aria-hidden />
             )}
           </div>
         )}
         <CalendarGrid
           offset={{ months: offset }}
           weekdayStyle="short"
-          className="-m-3 self-start border-separate outline-none"
-          style={{ borderSpacing: "12px 12px" }}
+          className="-m-2 self-start border-separate outline-none"
+          style={{ borderSpacing: "8px 8px" }}
         >
           <CalendarGridHeader>
             {(day) => (
-              <CalendarHeaderCell className="size-6 pb-0 text-center text-body-medium text-text-secondary">
+              <CalendarHeaderCell className="size-5 pb-0 text-center text-caption-1-medium text-text-secondary">
                 {day.slice(0, 2)}
               </CalendarHeaderCell>
             )}
@@ -274,7 +274,7 @@ export function DateChipInput({
         if (event.key === "Escape") setText(formatted);
       }}
       aria-label={label}
-      className="w-[104px] rounded-2lg border border-border-button-default bg-background-primary-default px-2 py-2 text-body-medium text-text-primary shadow-xs outline-none transition-colors duration-100 ease-out focus-visible:border-border-button-active"
+      className="w-[88px] rounded-lg border border-border-button-default bg-background-primary-default px-2 py-1.5 text-caption-1-medium text-text-primary shadow-xs outline-none transition-colors duration-100 ease-out focus-visible:border-border-button-active"
     />
   );
 }
@@ -292,7 +292,7 @@ export const triggerButtonClassName = cx(
 /** Shared popover chrome (Figma's rounded/3xl, background/secondary/default
  *  "Calendar component" surface) for both pickers. */
 export const popoverClassName = cx(
-  "origin-top rounded-3xl bg-background-secondary-default shadow-dropdown",
+  "origin-top rounded-2xl bg-background-secondary-default shadow-dropdown",
   "transition duration-150 ease-out",
   "data-[entering]:opacity-0 data-[entering]:scale-95 data-[entering]:blur-[2px]",
   "data-[exiting]:opacity-0 data-[exiting]:scale-95 data-[exiting]:blur-[2px]",
