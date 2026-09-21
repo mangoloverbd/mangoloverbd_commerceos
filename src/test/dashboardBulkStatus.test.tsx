@@ -86,6 +86,7 @@ function renderDashboard() {
 describe("dashboard bulk status button", () => {
   beforeEach(() => {
     sessionStorage.setItem("autosync_done_user-1", "1");
+    sessionStorage.removeItem("dashboard-fulfillment-tab");
     localStorage.clear();
     toastSuccess.mockClear();
     toastError.mockClear();

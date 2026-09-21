@@ -214,6 +214,7 @@ interface OrdersTableProps {
   showRiskColumn?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
+  orderLinkState?: Record<string, unknown>;
 }
 
 interface BulkSteadfastResponse {
@@ -560,7 +561,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   );
 }
 
-export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, selectedIds: controlledSelectedIds, onSelectionChange }: OrdersTableProps) {
+export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, selectedIds: controlledSelectedIds, onSelectionChange, orderLinkState }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -1151,7 +1152,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         selectedIds={selectedIds}
         onToggleSelection={toggleSelectOrder}
         onToggleSelectAll={toggleSelectAll}
-        onOpenOrder={(orderId) => navigate(`/orders/${orderId}`)}
+        onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, orderLinkState ? { state: orderLinkState } : undefined)}
         renderActions={(order) => (
           <div className="flex flex-wrap gap-2">
             {!order.fraud_checked && (
@@ -1228,14 +1229,14 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                   onClick={(event) => {
                     const target = event.target as HTMLElement;
                     if (target.closest("button, a, input, textarea, select, [role='button'], [data-row-interactive='true']")) return;
-                    navigate(`/orders/${order.id}`);
+                    navigate(`/orders/${order.id}`, orderLinkState ? { state: orderLinkState } : undefined);
                   }}
                   onKeyDown={(event) => {
                     if (event.key !== "Enter" && event.key !== " ") return;
                     const target = event.target as HTMLElement;
                     if (target.closest("button, a, input, textarea, select, [role='button'], [data-row-interactive='true']")) return;
                     event.preventDefault();
-                    navigate(`/orders/${order.id}`);
+                    navigate(`/orders/${order.id}`, orderLinkState ? { state: orderLinkState } : undefined);
                   }}
                   className={cn(
                     "border-b border-[#F1F1F2] transition-all duration-200 group relative cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 focus-visible:ring-inset",

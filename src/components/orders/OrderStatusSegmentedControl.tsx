@@ -65,7 +65,7 @@ const STATUS_PRESENTATION: Record<FulfillmentQueueTab, StatusPresentation> = {
   },
 };
 
-const FULFILLMENT_QUEUE_TABS: FulfillmentQueueTab[] = [
+export const FULFILLMENT_QUEUE_TABS: FulfillmentQueueTab[] = [
   "all",
   "abandoned",
   ...ORDER_STATUS_FILTERS.filter((status) => status !== "all"),
