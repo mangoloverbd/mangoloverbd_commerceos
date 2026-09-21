@@ -7583,18 +7583,33 @@ app.post("/api/orders", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
     const requestedItems = req.body?.items;
     const orderItems = Array.isArray(requestedItems)
-      ? requestedItems.map((item) => ({
-          product_id: item?.product_id || null,
-          variant_id: item?.variant_id || null,
-          product_name: typeof item?.product_name === "string" ? item.product_name.trim() : "",
-          variant_name: typeof item?.variant_name === "string" ? item.variant_name : null,
-          unit_price: Number(item?.unit_price),
-          quantity: Number(item?.quantity),
-        }))
+      ? requestedItems.map((item) => {
+          const unitPrice = Number(item?.unit_price);
+          const quantity = Number(item?.quantity);
+          const rawType = item?.discount_type ?? item?.discountType ?? null;
+          const discountType = rawType === "fixed" || rawType === "percentage" ? rawType : null;
+          const rawValue = item?.discount_value ?? item?.discountValue ?? 0;
+          const discountValue = discountType ? Number(rawValue) : 0;
+          let unitDiscount = 0;
+          if (discountType === "fixed") unitDiscount = Math.min(unitPrice, discountValue);
+          else if (discountType === "percentage") unitDiscount = Math.round((unitPrice * Math.min(100, discountValue) / 100 + Number.EPSILON) * 100) / 100;
+          if (!Number.isFinite(unitDiscount) || unitDiscount < 0) unitDiscount = 0;
+          return {
+            product_id: item?.product_id || item?.productId || null,
+            variant_id: item?.variant_id || item?.variantId || null,
+            product_name: typeof item?.product_name === "string" ? item.product_name.trim() : "",
+            variant_name: typeof item?.variant_name === "string" ? item.variant_name : (typeof item?.variantName === "string" ? item.variantName : null),
+            unit_price: unitPrice,
+            quantity,
+            discount_type: discountType,
+            discount_value: Number.isFinite(discountValue) && discountValue >= 0 ? Math.round((discountValue + Number.EPSILON) * 100) / 100 : 0,
+            unit_discount: unitDiscount,
+          };
+        })
       : [];
     if (Array.isArray(requestedItems) && (
       orderItems.length === 0 ||
-      orderItems.some((item) => !item.product_name || !Number.isFinite(item.unit_price) || item.unit_price < 0 || !Number.isInteger(item.quantity) || item.quantity < 1)
+      orderItems.some((item) => !item.product_name || !Number.isFinite(item.unit_price) || item.unit_price < 0 || !Number.isInteger(item.quantity) || item.quantity < 1 || (item.discount_type !== null && item.discount_type !== "fixed" && item.discount_type !== "percentage") || !Number.isFinite(item.discount_value) || item.discount_value < 0 || (item.discount_type === "percentage" && item.discount_value > 100) || (item.discount_type === "fixed" && item.discount_value > item.unit_price) || !Number.isFinite(item.unit_discount) || item.unit_discount < 0 || item.unit_discount > item.unit_price)
     )) {
       return res.status(400).json({ error: "Invalid order items" });
     }
@@ -7632,6 +7647,24 @@ app.post("/api/orders", async (req, res) => {
     row.order_number = await getNextManualOrderNumber(orgId);
     if (!row.status) row.status = "pending";
     row.created_by = user.id;
+
+    if (orderItems.length > 0) {
+      const gross = orderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+      const itemDiscountTotal = orderItems.reduce((sum, item) => sum + item.unit_discount * item.quantity, 0);
+      const requestedDiscount = row.discount !== undefined ? Number(row.discount) : itemDiscountTotal;
+      if (!Number.isFinite(requestedDiscount) || requestedDiscount < 0) {
+        return res.status(400).json({ error: "Discount must be a non-negative number" });
+      }
+      if (requestedDiscount + 1e-9 < itemDiscountTotal) {
+        return res.status(400).json({ error: "Discount cannot be less than item discounts" });
+      }
+      if (requestedDiscount - gross > 1e-9) {
+        return res.status(400).json({ error: "Discount cannot exceed merchandise subtotal" });
+      }
+      row.discount = Math.round((requestedDiscount + Number.EPSILON) * 100) / 100;
+      row.price = Math.round(((gross - row.discount) + Number.EPSILON) * 100) / 100;
+      row.quantity = orderItems.reduce((sum, item) => sum + item.quantity, 0);
+    }
 
     // Manually created orders default to the operator who is entering them.
     // A telesales lead can assign another staff member, but only if that person
