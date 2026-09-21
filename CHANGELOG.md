@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.21] - 2026-09-21
+
+### Added
+
+- New Order page now supports per-item discounts (fixed amount or percentage, same editor as the Order editor) and an overall cart discount, instead of a single fixed-amount discount field.
+- `POST /api/orders` accepts and validates per-item `discount_type`/`discount_value`, computes `unit_discount` server-side, and verifies the aggregate discount never exceeds the merchandise subtotal (recomputes `price`/`quantity` from the items).
+
+### Changed
+
+- New Order cart restructured to match the Order editor: scrollable item list on top, pinned summary below (Delivery, discount, Subtotal, Advance, Final total, compact payment dropdown, note icon with dropdown editor, Cancel/Create order buttons inside the card).
+- Adding a product auto-scrolls the cart to the new line for preview; the page toolbar sticks on scroll and the workspace fills the viewport height.
+
 ## [0.1.0.20] - 2026-09-21
 
 ### Changed
