@@ -11,6 +11,7 @@ import {
 import { CalendarDate } from "@internationalized/date";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown } from "lucide-react";
+import { CalendarBlank, ChartBar, Infinity as InfinityIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/base/buttons/button";
 import { DateChipInput, MonthPanel, popoverClassName } from "@/components/base/date-picker/shared";
 import { buildDateRangePresets } from "@/lib/dateRangePresets";
@@ -75,6 +76,23 @@ const TODAY = dhakaToday();
 const MAX_DATE = toCalendarDate(TODAY);
 const PRESETS = buildDateRangePresets(TODAY);
 
+function YesterdayIcon({ size = 17, className }: { size?: number | string; className?: string; weight?: unknown }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true" focusable="false">
+      <path fillRule="evenodd" clipRule="evenodd" d="M2.93077 11.2003C3.00244 6.23968 7.07619 2.25 12.0789 2.25C15.3873 2.25 18.287 3.99427 19.8934 6.60721C20.1103 6.96007 20.0001 7.42199 19.6473 7.63892C19.2944 7.85585 18.8325 7.74565 18.6156 7.39279C17.2727 5.20845 14.8484 3.75 12.0789 3.75C7.8945 3.75 4.50372 7.0777 4.431 11.1982L4.83138 10.8009C5.12542 10.5092 5.60029 10.511 5.89203 10.8051C6.18377 11.0991 6.18191 11.574 5.88787 11.8657L4.20805 13.5324C3.91565 13.8225 3.44398 13.8225 3.15157 13.5324L1.47176 11.8657C1.17772 11.574 1.17585 11.0991 1.46759 10.8051C1.75933 10.5111 2.2342 10.5092 2.52824 10.8009L2.93077 11.2003ZM19.7864 10.4666C20.0786 10.1778 20.5487 10.1778 20.8409 10.4666L22.5271 12.1333C22.8217 12.4244 22.8245 12.8993 22.5333 13.1939C22.2421 13.4885 21.7673 13.4913 21.4727 13.2001L21.0628 12.7949C20.9934 17.7604 16.9017 21.75 11.8825 21.75C8.56379 21.75 5.65381 20.007 4.0412 17.3939C3.82366 17.0414 3.93307 16.5793 4.28557 16.3618C4.63806 16.1442 5.10016 16.2536 5.31769 16.6061C6.6656 18.7903 9.09999 20.25 11.8825 20.25C16.0887 20.25 19.4922 16.9171 19.5625 12.7969L19.1546 13.2001C18.86 13.4913 18.3852 13.4885 18.094 13.1939C17.8028 12.8993 17.8056 12.4244 18.1002 12.1333L19.7864 10.4666Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function presetIcon(label: string) {
+  if (label === "All Time") return InfinityIcon;
+  if (label === "Yesterday") return YesterdayIcon;
+  if (label === "Last 7 Days" || label === "Last 30 Days" || label === "Last 90 Days") return ChartBar;
+  return CalendarBlank;
+}
+
+const PRESET_GROUP_BREAKS = new Set([3, 6]);
+
 function QuickSelect({
   activeLabel,
   onSelect,
@@ -83,22 +101,29 @@ function QuickSelect({
   onSelect: (range: DateRange | null) => void;
 }) {
   return (
-    <div className="flex w-[132px] shrink-0 flex-col gap-0.5">
-      {PRESETS.map((preset) => (
-        <button
-          key={preset.label}
-          type="button"
-          onClick={() => onSelect(preset.range)}
-          className={cn(
-            "w-full cursor-pointer whitespace-nowrap rounded-lg px-2.5 py-0.5 text-left text-caption-1-medium text-text-primary transition-colors duration-150 ease",
-            preset.label === activeLabel
-              ? "bg-background-tertiary-default"
-              : "hover:bg-background-secondary-hover",
-          )}
-        >
-          {preset.label}
-        </button>
-      ))}
+    <div className="flex w-[172px] shrink-0 flex-col px-1.5 py-1">
+      {PRESETS.map((preset, index) => {
+        const Icon = presetIcon(preset.label);
+        const active = preset.label === activeLabel;
+        return (
+          <div key={preset.label}>
+            {PRESET_GROUP_BREAKS.has(index) && <div className="mx-1 my-0.5 border-t border-black/[0.08]" />}
+            <button
+              type="button"
+              onClick={() => onSelect(preset.range)}
+              className={cn(
+                "flex w-full cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 ease",
+                active
+                  ? "bg-[#e8f0fe] font-medium text-[#1a73e8]"
+                  : "font-normal text-black hover:bg-black/[0.04]",
+              )}
+            >
+              <Icon weight="light" size={17} className={cn("shrink-0", active ? "text-[#1a73e8]" : "text-black/45")} />
+              {preset.label}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -168,11 +193,13 @@ export function DateRangePicker({
   onChange,
   children,
   triggerClassName = "",
+  placement = "bottom end",
 }: {
   value: DateRange | null;
   onChange: (r: DateRange | null) => void;
   children?: ReactNode;
   triggerClassName?: string;
+  placement?: "bottom" | "bottom start" | "bottom end";
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingValue, setPendingValue] = useState<DateRangeValue | null>(toDateRangeValue(value));
@@ -205,7 +232,7 @@ export function DateRangePicker({
   );
 
   const popover = (
-    <AriaPopover ref={popoverRef} offset={4} placement="bottom end" isNonModal className={popoverClassName}>
+    <AriaPopover ref={popoverRef} offset={4} placement={placement} isNonModal className={popoverClassName}>
       <Dialog aria-label="Date range" className="outline-none">
         {({ close }) => (
           <RangeCalendar

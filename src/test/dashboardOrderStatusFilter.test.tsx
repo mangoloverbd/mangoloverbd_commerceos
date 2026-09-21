@@ -82,6 +82,7 @@ function jsonResponse(body: unknown) {
 describe("dashboard order status filter", () => {
   beforeEach(() => {
     sessionStorage.setItem("autosync_done_user-1", "1");
+    sessionStorage.removeItem("dashboard-fulfillment-tab");
     localStorage.clear();
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (url: string) => {
@@ -179,6 +180,23 @@ describe("dashboard order status filter", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "contacted" }),
     });
+  });
+
+  it("restores the order tab from navigation state when returning from an order", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[{ pathname: "/", state: { fulfillmentTab: "cancelled" } }]}>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const cancelledTab = await screen.findByRole("radio", { name: /Cancelled.*1/ });
+    expect(cancelledTab).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Cancelled Customer");
+    expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
+    expect(sessionStorage.getItem("dashboard-fulfillment-tab")).toBe("cancelled");
   });
 
   it("searches orders by Steadfast consignment ID and tracking code", async () => {

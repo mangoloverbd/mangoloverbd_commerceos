@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0.22] - 2026-09-21
+
+### Fixed
+
+- Order editor saves failing with "UPDATE requires a WHERE clause": the `replace_order_items` discount refresh updated its temp table with no `WHERE` clause, which the managed project rejects. Added an always-true predicate (every row carries a product or variant id at that point). Canonical migration `20260921000000_fix_replace_order_items_where_guard.sql`.
+- Dashboard order tabs resetting to All Orders after opening an order: the tab now travels in navigation state from the table to the order editor and back, with a per-session fallback so browser-back returns to the same tab.
+
+### Changed
+
+- Redesigned the date-range preset list (Staff Performance, Business Report, Dashboard, Overview): grouped icon rows (All Time/Today/Yesterday, Last 7/30/90 Days, This Week/Month, Last Month, This Year) with dividers and a blue selected highlight; compact sizing to match the calendar height.
+- Dashboard date picker dropdown now opens centered below its trigger; other pages keep the right-aligned placement.
+- Yesterday preset uses a custom circular history-arrow icon.
+
 ## [0.1.0.21] - 2026-09-21
 
 ### Added

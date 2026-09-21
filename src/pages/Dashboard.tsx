@@ -18,6 +18,7 @@ import {
   OrderTablePagination,
 } from "@/components/orders/OrderTablePagination";
 import {
+  FULFILLMENT_QUEUE_TABS,
   OrderStatusSegmentedControl,
   type FulfillmentQueueTab,
 } from "@/components/orders/OrderStatusSegmentedControl";
@@ -483,8 +484,13 @@ export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const initialFulfillmentTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
+  const storedFulfillmentTab = sessionStorage.getItem("dashboard-fulfillment-tab");
   const [fulfillmentTab, setFulfillmentTab] = useState<FulfillmentQueueTab>(
-    initialFulfillmentTab === "abandoned" ? "abandoned" : "all",
+    typeof initialFulfillmentTab === "string" && (FULFILLMENT_QUEUE_TABS as readonly string[]).includes(initialFulfillmentTab)
+      ? (initialFulfillmentTab as FulfillmentQueueTab)
+      : typeof storedFulfillmentTab === "string" && (FULFILLMENT_QUEUE_TABS as readonly string[]).includes(storedFulfillmentTab)
+        ? (storedFulfillmentTab as FulfillmentQueueTab)
+        : "all",
   );
   // Clear the restore hint so browser-back does not sticky-reset the tab.
   useEffect(() => {
@@ -492,6 +498,10 @@ export default function Dashboard() {
       navigate(location.pathname, { replace: true });
     }
   }, [location.pathname, location.state, navigate]);
+  // Remember the tab for this session so browser-back from an order returns here.
+  useEffect(() => {
+    sessionStorage.setItem("dashboard-fulfillment-tab", fulfillmentTab);
+  }, [fulfillmentTab]);
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const todayRange = useMemo<DateRange>(() => ({ from: TODAY, to: TODAY }), []);
@@ -1331,7 +1341,7 @@ export default function Dashboard() {
           </p>
 
           {/* Moved cluster — centered below the greeting */}
-          <DateRangePicker value={dateRange} onChange={handleDateRangeChange} triggerClassName="uv-beam rounded-lg">
+          <DateRangePicker value={dateRange} onChange={handleDateRangeChange} triggerClassName="uv-beam rounded-lg" placement="bottom">
             <span className="uv-beam group relative rounded-lg">
               <div className="flex h-8 items-center gap-1.5 rounded-lg bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
                 <span className="relative flex h-2 w-2">
@@ -1655,6 +1665,7 @@ export default function Dashboard() {
               showRiskColumn={false}
               selectedIds={selectedOrderIds}
               onSelectionChange={setSelectedOrderIds}
+              orderLinkState={{ fulfillmentTab }}
             />
 
             <OrderTablePagination
