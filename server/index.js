@@ -11830,12 +11830,20 @@ function inventoryEtag(inventory) {
   return computeEtag(fp);
 }
 
+// Catalog tier. `s-maxage` lets the Vercel edge serve one cached copy to every
+// visitor instead of waking this function per request; `max-age=0` keeps browser
+// behaviour unchanged so only the shared cache layer moves. Starts at 30s and can
+// be raised once the hit rate is confirmed in production.
+const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=30, stale-while-revalidate=86400";
+
 // Sets cache headers + honours If-None-Match. Returns true if a 304 was sent
 // (caller should then return without writing a body).
 function respondCached(res, { etag, cacheControl, cacheTag }) {
   res.set("Cache-Control", cacheControl);
   res.set("ETag", etag);
-  res.set("Vary", "Accept-Encoding");
+  // Origin is in Vary because the CORS middleware reflects the request origin —
+  // without it a shared cache could hand one site's Allow-Origin to another.
+  res.set("Vary", "Accept-Encoding, Origin");
   if (cacheTag) res.set("Cache-Tag", cacheTag);
   res.set("X-Merchant-Suite-API-Version", "2026-07-19");
   const inm = res.req.headers["if-none-match"];
@@ -11951,7 +11959,7 @@ async function handlePublicStorefrontProducts(req, res) {
     const products = await loadPublicProducts(req.params.storefrontId);
     if (respondCached(res, {
       etag: catalogEtag(products),
-      cacheControl: "no-store",
+      cacheControl: CATALOG_CACHE_CONTROL,
       cacheTag: cacheTagHeader(req.params.storefrontId),
     })) return;
     return res.json({ products });
@@ -11966,7 +11974,7 @@ async function handlePublicStorefrontProductDetail(req, res) {
     if (!product) return res.status(404).json({ error: "Product not found" });
     if (respondCached(res, {
       etag: catalogEtag([product]),
-      cacheControl: "no-store",
+      cacheControl: CATALOG_CACHE_CONTROL,
       cacheTag: cacheTagHeader(req.params.storefrontId, [product.id]),
     })) return;
     return res.json({ product });
@@ -12591,7 +12599,7 @@ async function handlePublicHandleProducts(req, res) {
     const products = await loadPublicProducts(orgId);
     if (respondCached(res, {
       etag: catalogEtag(products),
-      cacheControl: "no-store",
+      cacheControl: CATALOG_CACHE_CONTROL,
       cacheTag: cacheTagHeader(req.params.handle),
     })) return;
     return res.json({ products });
@@ -12608,7 +12616,7 @@ async function handlePublicHandleProductDetail(req, res) {
     if (!product) return res.status(404).json({ error: "not_found" });
     if (respondCached(res, {
       etag: catalogEtag([product]),
-      cacheControl: "no-store",
+      cacheControl: CATALOG_CACHE_CONTROL,
       cacheTag: cacheTagHeader(req.params.handle, [product.id]),
     })) return;
     return res.json({ product });
