@@ -46,14 +46,16 @@ describe("manual product creation", () => {
     expect(saveRoute).toContain("purgeProductCache(orgId, null, { listChanged: true");
   });
 
-  it("does not allow Vercel to serve a stale public catalog", () => {
+  it("keeps browsers uncached and caps the shared catalog cache at 30 seconds", () => {
     const publicCatalogSource = serverSource.slice(
       serverSource.indexOf("async function handlePublicStorefrontProducts"),
       serverSource.indexOf("// ─── Public Storefront Config", serverSource.indexOf("async function handlePublicStorefrontProducts")),
     );
 
-    expect(publicCatalogSource).toContain('cacheControl: "no-store"');
-    expect(publicCatalogSource).not.toContain("stale-while-revalidate");
+    expect(serverSource).toContain(
+      'const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=30"',
+    );
+    expect(publicCatalogSource).toContain("cacheControl: CATALOG_CACHE_CONTROL");
   });
 
   it("builds catalog ETags from the complete public product payload", () => {
