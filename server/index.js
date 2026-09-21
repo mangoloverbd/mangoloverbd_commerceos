@@ -1407,6 +1407,18 @@ async function purgeProductCache(orgId, product, { listChanged = false, warm = t
   }
 }
 
+async function purgePublishedProductCacheForId(supabase, orgId, productId) {
+  const { data: product, error } = await supabase
+    .from("products")
+    .select("id, slug, published")
+    .eq("id", productId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!product?.published) return;
+  await purgeProductCache(orgId, product, { listChanged: true });
+}
+
 async function setStorefrontHandle(orgId, handle) {
   if (!orgId) throw new Error("orgId required");
   const validation = validateStorefrontHandle(handle);
@@ -11799,8 +11811,8 @@ function setDeprecationHeaders(res, canonicalPath) {
 
 // ─── Public cache helpers ───────────────────────────────────────────────
 // Two-tier cache for the storefront:
-//   • Catalog  — s-maxage=60, stale-while-revalidate=86400. Static-ish;
-//     invalidated by Cache-Tag purge on product write.
+//   • Catalog  — browser max-age=0, shared s-maxage=30. Stock-free and
+//     invalidated by URL purge on product writes.
 //   • Inventory — s-maxage=5,  SWR=30. Stock truth; short so the
 //     add-to-cart button is never more than ~5s stale on a hard refresh.
 // Cache-Tag uses storefront:<handle> / product:<id> (never org_id) so a
@@ -11834,7 +11846,7 @@ function inventoryEtag(inventory) {
 // visitor instead of waking this function per request; `max-age=0` keeps browser
 // behaviour unchanged so only the shared cache layer moves. Starts at 30s and can
 // be raised once the hit rate is confirmed in production.
-const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=30, stale-while-revalidate=86400";
+const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=30";
 
 // Sets cache headers + honours If-None-Match. Returns true if a 304 was sent
 // (caller should then return without writing a body).
@@ -13277,10 +13289,8 @@ app.patch("/api/products/:id", async (req, res) => {
     const onlyStockChanged = hasStockUpdate && changedFields.length === 0;
     const isUnpublishing = update.published === false;
     if (!onlyStockChanged && (data.published || isUnpublishing)) {
-      const isPublishing = update.published === true;
-      const listChanged = isPublishing || isUnpublishing;
       purgeProductCache(orgId, { id: data.id, slug: data.slug }, {
-        listChanged,
+        listChanged: true,
         warm: !isUnpublishing,
       }).catch(() => {});
     }
@@ -13713,6 +13723,9 @@ app.post("/api/products/:id/variants", async (req, res) => {
       .select()
       .single();
     if (error) throw error;
+    purgePublishedProductCacheForId(supabase, orgId, req.params.id).catch((purgeError) => {
+      console.warn("[Purge] Variant create purge error:", purgeError.message);
+    });
     return res.json({ variant: data });
   } catch (e) {
     return sendError(res, e);
@@ -13748,6 +13761,13 @@ app.patch("/api/products/:id/variants/:variantId", async (req, res) => {
       .select()
       .single();
     if (error) throw error;
+    const catalogChanged = ["attributes", "price_adjustment"]
+      .some((field) => req.body[field] !== undefined);
+    if (catalogChanged) {
+      purgePublishedProductCacheForId(supabase, orgId, req.params.id).catch((purgeError) => {
+        console.warn("[Purge] Variant update purge error:", purgeError.message);
+      });
+    }
     return res.json({ variant: data });
   } catch (e) {
     return sendError(res, e);
@@ -13768,6 +13788,9 @@ app.delete("/api/products/:id/variants/:variantId", async (req, res) => {
       .eq("product_id", req.params.id)
       .eq("org_id", orgId);
     if (error) throw error;
+    purgePublishedProductCacheForId(supabase, orgId, req.params.id).catch((purgeError) => {
+      console.warn("[Purge] Variant delete purge error:", purgeError.message);
+    });
     return res.json({ success: true });
   } catch (e) {
     return res.status(500).json({ error: e.message });

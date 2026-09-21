@@ -15,7 +15,7 @@ function handlerFor(anchor: string, nextAnchor: string): string {
 describe("public catalog CDN caching", () => {
   it("declares a shared catalog tier the edge can cache", () => {
     expect(source).toContain(
-      'const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=30, stale-while-revalidate=86400"',
+      'const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=30"',
     );
   });
 
@@ -50,5 +50,35 @@ describe("public catalog CDN caching", () => {
       'app.get("/api/public/v1/:handle/config"',
     );
     expect(detail).toContain('res.set("Cache-Control", "no-store")');
+  });
+
+  it("purges the catalog list after every published non-stock product edit", () => {
+    const patchRoute = handlerFor(
+      'app.patch("/api/products/:id"',
+      'app.delete("/api/products/:id"',
+    );
+
+    expect(patchRoute).toContain("listChanged: true");
+    expect(patchRoute).not.toContain("const listChanged = isPublishing || isUnpublishing");
+  });
+
+  it("purges published catalog entries after variant catalog changes", () => {
+    const createRoute = handlerFor(
+      'app.post("/api/products/:id/variants"',
+      'app.patch("/api/products/:id/variants/:variantId"',
+    );
+    const patchRoute = handlerFor(
+      'app.patch("/api/products/:id/variants/:variantId"',
+      'app.delete("/api/products/:id/variants/:variantId"',
+    );
+    const deleteRoute = handlerFor(
+      'app.delete("/api/products/:id/variants/:variantId"',
+      "async function ensureAppSettingsTable",
+    );
+
+    expect(createRoute).toContain("purgePublishedProductCacheForId(supabase, orgId, req.params.id)");
+    expect(patchRoute).toContain('const catalogChanged = ["attributes", "price_adjustment"]');
+    expect(patchRoute).toContain("purgePublishedProductCacheForId(supabase, orgId, req.params.id)");
+    expect(deleteRoute).toContain("purgePublishedProductCacheForId(supabase, orgId, req.params.id)");
   });
 });

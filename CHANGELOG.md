@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.24] - 2026-09-22
+
+### Changed
+
+- Serve stock-free public product catalogs from a 30-second shared cache while keeping browsers uncached and inventory on its separate five-second endpoint.
+- Vary cached catalog responses by request origin so CORS headers cannot be shared between storefront origins.
+
+### Fixed
+
+- Purge and warm public catalog URLs after published product and variant catalog changes, including ordinary product edits, while leaving stock-only edits on the short inventory cache.
+
 ## [0.1.0.23] - 2026-09-21
 
 ### Added
