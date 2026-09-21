@@ -12632,7 +12632,10 @@ async function handlePublicHandleProductDetail(req, res) {
 // without turning stock into a distributed-systems problem.
 async function handlePublicHandleInventory(req, res) {
   try {
-    const orgId = await resolveStorefrontHandle(req.params.handle);
+    // Mirrors handlePublicHandleProductInventory: the same handler serves both
+    // the canonical :handle route and the legacy /storefronts/:storefrontId one,
+    // so a storefront on either base can batch its stock reads into one request.
+    const orgId = req.params.storefrontId || (await resolveStorefrontHandle(req.params.handle));
     if (!orgId) {
       res.set("Cache-Control", "no-store");
       return res.status(404).json({ error: "not_found" });
@@ -12648,7 +12651,9 @@ async function handlePublicHandleInventory(req, res) {
     if (respondCached(res, {
       etag: inventoryEtag(inventory),
       cacheControl: "public, max-age=5, stale-while-revalidate=30, s-maxage=5",
-      cacheTag: cacheTagHeader(req.params.handle, ids),
+      // No handle on the legacy base, and storefrontId is the org id — tagging
+      // with it would leak the tenant id into a public response header.
+      cacheTag: req.params.handle ? cacheTagHeader(req.params.handle, ids) : undefined,
     })) return;
     // Validate through Zod so a leaked field is a staging 500, not a
     // contract break shipped to storefronts.
@@ -12706,6 +12711,7 @@ app.get("/api/public/v1/:handle/inventory", rateLimitPublicRead, handlePublicHan
 app.get("/api/public/v1/storefronts/:storefrontId/products", rateLimitPublicRead, handlePublicStorefrontProducts);
 app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", rateLimitPublicRead, handlePublicStorefrontProductDetail);
 app.get("/api/public/v1/storefronts/:storefrontId/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
+app.get("/api/public/v1/storefronts/:storefrontId/inventory", rateLimitPublicRead, handlePublicHandleInventory);
 
 app.get("/api/public/storefronts/:storefrontId/products", (req, res) => {
   setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products`);
