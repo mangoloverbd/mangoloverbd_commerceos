@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.23] - 2026-09-21
+
+### Added
+
+- Order editor "Last orders" entries are clickable cards that open the order in the editor (dashboard tab preserved), showing CN No, courier, and color-coded courier-status chips (BoardUI Chip) in a balanced two-column layout.
+
 ## [0.1.0.22] - 2026-09-21
 
 ### Fixed

@@ -38,6 +38,35 @@ function renderPanel(orderStatus: string | null = "confirmed", phone = baseCusto
   return { onApply };
 }
 
+describe("CustomerPanel order history", () => {
+  it("shows consignment details and opens the order in the editor on click", async () => {
+    const user = userEvent.setup();
+    const onOpenOrder = vi.fn();
+    render(
+      <CustomerPanel
+        order={baseOrder}
+        customer={baseCustomer}
+        onApply={vi.fn()}
+        history={[{
+          id: "order-0",
+          order_number: "ML-150857",
+          status: "processing",
+          price: 700,
+          created_at: "2026-09-21T08:14:00Z",
+          consignment_id: "299149665",
+          courier_name: "SteadFast",
+          courier_status: "in_transit",
+        }]}
+        onOpenOrder={onOpenOrder}
+      />,
+    );
+
+    expect(screen.getByText(/CN No:299149665/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /open order ML-150857/i }));
+    expect(onOpenOrder).toHaveBeenCalledWith("order-0");
+  });
+});
+
 describe("CustomerPanel phone copy", () => {
   const writeText = vi.fn();
 
