@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight, Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
 import { normalizeBusinessStatus } from "@/lib/orderTransitions";
 import { formatTaka } from "@/lib/orderEditor";
+import { Chip } from "@/components/base/badges/chip";
 import { bdWhatsAppHref } from "@/lib/bdPhone";
 import WhatsappLogo from "@/components/WhatsappLogo";
 import SmsBubbleIcon from "@/components/SmsBubbleIcon";
@@ -22,6 +23,11 @@ export type HistoryEntry = {
   status?: string | null;
   price?: number | null;
   created_at?: string | null;
+  consignment_id?: string | null;
+  tracking_code?: string | null;
+  courier_name?: string | null;
+  courier_status?: string | null;
+  product?: string | null;
 };
 
 type CustomerOrder = {
@@ -45,6 +51,7 @@ type CustomerPanelProps = {
   disabled?: boolean;
   history?: HistoryEntry[];
   historyLoading?: boolean;
+  onOpenOrder?: (orderId: string) => void;
   onApply: (customer: CustomerDraft) => void;
   source?: OrderSource;
   onSourceChange?: (source: OrderSource) => void;
@@ -118,6 +125,24 @@ function historyStatusLabel(status: string | null | undefined): string {
   return (status || "").trim() || "—";
 }
 
+function humanizeCourierStatus(status: string): string {
+  return status
+    .split(/[_-\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function courierStatusChipColor(status: string | null | undefined): "lime" | "rose" | "yellow" | "blue" | "neutral" {
+  const normalized = (status || "").toLowerCase().replace(/[-_\s]+/g, "");
+  if (!normalized) return "neutral";
+  if (/(delivered|complete|success)/.test(normalized)) return "lime";
+  if (/(cancel|return|fail|lost|damage)/.test(normalized)) return "rose";
+  if (/(pending|hold|waiting|partial|review)/.test(normalized)) return "yellow";
+  if (/(transit|ship|pick|dispatch|way|process|confirm|approve)/.test(normalized)) return "blue";
+  return "neutral";
+}
+
 function historyStatusPill(status: string | null | undefined): string {
   const normalized = normalizeBusinessStatus(status);
   if (normalized === "confirmed" || normalized === "approved" || normalized === "delivered") return "bg-[#e3f5e9] text-[#2e9e5b]";
@@ -150,7 +175,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
   }
 }
 
-export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onApply, source, onSourceChange, sourceDisabled = false }: CustomerPanelProps) {
+export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source, onSourceChange, sourceDisabled = false }: CustomerPanelProps) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
   const [copied, setCopied] = useState(false);
@@ -301,18 +326,53 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
           <p className="mt-3 text-[12px] text-black">No previous orders.</p>
         ) : (
           <ul className="mt-2.5 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-            {history.map((entry) => (
-              <li key={entry.id} className="min-w-0 rounded-[6px] border border-black/10 bg-white px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 truncate text-[17px] font-semibold tracking-normal text-black">{String(entry.order_number ?? "").replace(/^#+/, "")}</p>
-                  <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${historyStatusPill(entry.status)}`}>{historyStatusLabel(entry.status)}</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="text-[15px] font-bold tabular-nums tracking-[0.02em] text-black">{formatTaka(entry.price)}</p>
-                  <p className="min-w-0 truncate text-[13px] text-black">{historyDateTime(entry.created_at) || "—"}</p>
-                </div>
-              </li>
-            ))}
+            {history.map((entry) => {
+              const hasCourierInfo = Boolean(entry.consignment_id || entry.courier_name || entry.courier_status);
+              const body = (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex min-w-0 items-center gap-1.5 truncate text-[17px] font-semibold tracking-normal text-black">
+                        <span className="truncate">{String(entry.order_number ?? "").replace(/^#+/, "")}</span>
+                        {onOpenOrder && <ArrowUpRight weight="light" size={15} className="shrink-0 text-black/30" />}
+                      </p>
+                      <p className="mt-2 truncate text-[13px] text-black">
+                        <span className="text-[15px] font-bold tabular-nums tracking-[0.02em]">{formatTaka(entry.price)}</span>
+                        <span className="mx-2 text-black/25">·</span>
+                        {historyDateTime(entry.created_at) || "—"}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-medium ${historyStatusPill(entry.status)}`}>{historyStatusLabel(entry.status)}</span>
+                      {hasCourierInfo && (
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          {entry.consignment_id && <Chip variant="caption" color="blue" title={`CN No:${entry.consignment_id}`}>CN No:{entry.consignment_id}</Chip>}
+                          {entry.courier_name && <Chip variant="caption" color="cyan">{humanizeCourierStatus(entry.courier_name)}</Chip>}
+                          {entry.courier_status && <Chip variant="caption" color={courierStatusChipColor(entry.courier_status)}>{humanizeCourierStatus(entry.courier_status)}</Chip>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {!hasCourierInfo && entry.product ? (
+                    <p className="mt-1.5 truncate text-[12px] text-black/55" title={entry.product}>{entry.product}</p>
+                  ) : null}
+                </>
+              );
+              return (
+                <li key={entry.id} className="min-w-0 rounded-[6px] border border-black/10 bg-white px-4 py-3 transition-colors">
+                  {onOpenOrder ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenOrder(entry.id)}
+                      aria-label={`Open order ${String(entry.order_number ?? "").replace(/^#+/, "")} in the order editor`}
+                      className="block w-full cursor-pointer text-left hover:bg-black/[0.02]"
+                    >
+                      {body}
+                    </button>
+                  ) : body}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
