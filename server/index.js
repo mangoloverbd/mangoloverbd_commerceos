@@ -6584,7 +6584,7 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
     const hasAction = req.body?.action !== undefined;
     if (hasAction) {
       if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
-        || Object.keys(req.body).some((key) => key !== "action")) {
+        || Object.keys(req.body).some((key) => !["action", "activity_group_id"].includes(key))) {
         return res.status(400).json({ error: "Invalid checkout action" });
       }
       const action = req.body.action;
@@ -6595,10 +6595,11 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
     const now = new Date();
     const { data: current, error: currentError } = await supabase
       .from("abandoned_checkouts")
-      .select("id, status")
+      .select("*")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
@@ -6617,11 +6618,14 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
       if (!patch) return res.status(409).json({ error: "Checkout action is not allowed" });
     } else {
       try {
-        patch = parseAbandonedCheckoutStaffEdit(req.body);
+        patch = parseAbandonedCheckoutStaffEdit({ customerName: req.body?.customerName, phone: req.body?.phone, address: req.body?.address, items: req.body?.items, deliveryRate: req.body?.deliveryRate });
       } catch {
         return res.status(400).json({ error: "Invalid checkout edits" });
       }
     }
+    const beforeItems = (current.cart || []).map((item) => ({ product_id: item.productName, variant_id: item.variantName || null, product_name: item.productName, variant_name: item.variantName, quantity: item.quantity, unit_price: item.unitPrice, unit_discount: 0 }));
+    const proposedItems = (patch.cart || current.cart || []).map((item) => ({ product_id: item.productName, variant_id: item.variantName || null, product_name: item.productName, variant_name: item.variantName, quantity: item.quantity, unit_price: item.unitPrice, unit_discount: 0 }));
+    if (!hasAction) validateAdditionReasons({ beforeItems, afterItems: proposedItems, additionReasons: req.body?.addition_reasons || {} });
 
     const { data: updated, error: updateError } = await supabase
       .from("abandoned_checkouts")
@@ -6647,10 +6651,13 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
         occurredAt: now.toISOString(),
       }));
     }
+    const afterItems = (updated.cart || []).map((item) => ({ product_id: item.productName, variant_id: item.variantName || null, product_name: item.productName, variant_name: item.variantName, quantity: item.quantity, unit_price: item.unitPrice, unit_discount: 0 }));
+    const changes = buildOrderChanges({ beforeOrder: current, afterOrder: updated, beforeItems, afterItems, additionReasons: req.body?.addition_reasons || {} });
+    if (changes.length || (hasAction && patch.status !== current.status)) await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: current.id, orderTable: "abandoned_checkouts", eventType: hasAction ? "order.status_changed" : "order.edited", category: hasAction ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, sourceSurface: "abandoned_queue", summary: hasAction ? `Checkout marked ${patch.status}` : "Edited abandoned checkout", changes, metadata: hasAction ? { from_status: current.status, to_status: patch.status } : {}, occurredAt: now.toISOString() }));
     return res.json({ checkout: updated });
-  } catch {
+  } catch (error) {
     console.warn("[AbandonedCheckout] staff action failed");
-    return res.status(500).json({ error: "Could not update abandoned checkout" });
+    return sendError(res, error);
   }
 });
 
@@ -11557,6 +11564,7 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
     const allowed = ["status", "notes", "sent_to_courier", "consignment_id", "tracking_code", "courier_status", "courier_message", "fraud_checked", "fraud_data", "delivery_rate", "items", "total_price", "contact_name", "warehouse_id", "weight_kg"];
     const update = {};
     for (const key of allowed) {
@@ -11579,12 +11587,19 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
 
     const { data: currentOrder, error: currentOrderError } = await supabase
       .from("social_inbox_orders")
-      .select("id, status, warehouse_auto")
+      .select("*")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .maybeSingle();
     if (currentOrderError) throw currentOrderError;
     if (!currentOrder) return res.status(404).json({ error: "Inbox order not found" });
+    const fromBusinessStatus = normalizeBusinessStatus(currentOrder.status);
+    const toBusinessStatus = update.status === undefined ? fromBusinessStatus : normalizeBusinessStatus(update.status);
+    const isStaffCancellation = toBusinessStatus === "cancelled" && fromBusinessStatus !== "cancelled";
+    const isReopening = fromBusinessStatus === "cancelled" && toBusinessStatus !== "cancelled";
+    let cancellationReason = null;
+    if (isStaffCancellation) { cancellationReason = validateCancellationReason({ code: req.body?.cancellation_reason_code, note: req.body?.cancellation_reason_note }); update.cancellation_reason_code = cancellationReason.code; update.cancellation_reason_note = cancellationReason.note; }
+    else if (isReopening) { update.cancellation_reason_code = null; update.cancellation_reason_note = null; }
 
     if (update.items !== undefined) {
       update.items = await normalizeSocialInboxItems(supabase, orgId, update.items);
@@ -11637,6 +11652,12 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
         actorKind: "user",
         occurredAt: transitionAt,
       }));
+    }
+    const changes = buildOrderChanges({ beforeOrder: currentOrder, afterOrder: data });
+    if (JSON.stringify(currentOrder.items || []) !== JSON.stringify(data.items || [])) changes.push({ type: "items_changed", field: "items", label: "Order items", before: currentOrder.items || [], after: data.items || [] });
+    if (changes.length || update.status !== undefined) {
+      let eventType = update.status !== undefined ? "order.status_changed" : "order.edited"; if (isStaffCancellation) eventType = "order.cancelled"; if (isReopening) eventType = "order.reopened";
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: currentOrder.id, orderTable: "social_inbox_orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, sourceSurface: "inbox_orders", summary: isStaffCancellation ? "Cancelled inbox order" : isReopening ? "Reopened inbox order" : update.status !== undefined ? `Status changed to ${update.status}` : "Edited inbox order", reasonCode: cancellationReason?.code, reasonNote: cancellationReason?.note, changes, metadata: update.status !== undefined ? { from_status: currentOrder.status, to_status: update.status } : {}, occurredAt: transitionAt || undefined }));
     }
 
     return res.json({ success: true, order: data });
