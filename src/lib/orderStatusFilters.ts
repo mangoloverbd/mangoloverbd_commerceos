@@ -146,6 +146,21 @@ export function filterOrdersByStatus<T extends StatusFilterOrder>(orders: T[], f
   return orders.filter((order) => classifyOrderStatus(order) === filter);
 }
 
+/**
+ * Queue tabs where the consignment copy affordance stays hidden — the
+ * parcel is past the point where the team needs to grab the tracking ID.
+ */
+const CONSIGNMENT_COPY_HIDDEN_TABS: ReadonlySet<OperationalOrderStatus> = new Set([
+  "in_transit",
+  "delivered",
+  "flagged",
+  "cancelled",
+]);
+
+export function canShowConsignmentCopy(order: StatusFilterOrder): boolean {
+  return !CONSIGNMENT_COPY_HIDDEN_TABS.has(classifyOrderStatus(order));
+}
+
 export function countOrdersByStatus(orders: StatusFilterOrder[]): Record<OrderStatusFilter, number> {
   const counts: Record<OrderStatusFilter, number> = {
     all: orders.length,

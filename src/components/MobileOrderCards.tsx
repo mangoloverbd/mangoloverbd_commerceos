@@ -3,7 +3,7 @@ import { ArrowRight, CalendarBlank, Check, MapPin, Phone, ShieldCheck, Warning, 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { displayStatusLabel } from "@/lib/orderTransitions";
-import { classifyOrderStatus } from "@/lib/orderStatusFilters";
+import { canShowConsignmentCopy } from "@/lib/orderStatusFilters";
 import type { Order } from "@/components/OrdersTable";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -147,7 +147,7 @@ export function MobileOrderCards({
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] pt-3">
               <FraudState order={order} />
-              {order.sent_to_courier && (order.consignment_id || order.tracking_code) && classifyOrderStatus(order) !== "delivered" ? (
+              {order.sent_to_courier && (order.consignment_id || order.tracking_code) && canShowConsignmentCopy(order) ? (
                 <span className="inline-flex min-w-0 items-center gap-1 rounded-lg bg-sky-50 px-2 py-1 text-[10px] font-mono text-sky-700">
                   <span className="truncate">ID {order.consignment_id || order.tracking_code}</span>
                   <CopyButton
