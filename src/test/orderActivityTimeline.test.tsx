@@ -20,7 +20,19 @@ const detailedEvent = {
 
 function renderTimeline(events = [detailedEvent]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  apiFetch.mockResolvedValue({ ok: true, json: async () => ({ events }) } as Response);
+  apiFetch.mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      events,
+      provenance: {
+        origin_source: "website",
+        created_at: "2026-09-22T09:35:26.000Z",
+        assigned_to_display_name: null,
+        last_edited_by: null,
+        viewer_count: 1,
+      },
+    }),
+  } as Response);
   return render(createElement(
     QueryClientProvider,
     { client: queryClient },
@@ -31,11 +43,26 @@ function renderTimeline(events = [detailedEvent]) {
 beforeEach(() => apiFetch.mockReset());
 
 describe("OrderActivityTimeline", () => {
+  it("summarizes origin, latest activity, and history with semantic chips", async () => {
+    renderTimeline();
+
+    expect(await screen.findByText("Latest activity")).toBeInTheDocument();
+    expect(screen.getByText("History")).toBeInTheDocument();
+    expect(screen.getByText("Website")).toHaveClass("bg-status-cyan-background");
+    expect(screen.getByText("1 event")).toHaveClass("bg-status-purple-background");
+    expect(screen.getAllByText("Order cancelled")[0]).toHaveClass("bg-status-rose-background");
+    expect(screen.getByText(/Rakib ·/)).toBeInTheDocument();
+    expect(screen.queryByText("Ownership")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reviewed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+  });
+
   it("shows a compact overview and reveals details when its row is clicked", async () => {
     renderTimeline();
 
     const row = await screen.findByTestId("activity-event");
     expect(within(row).getByText(/Order cancelled/)).toBeInTheDocument();
+    expect(within(row).getByText("Order cancelled")).toHaveClass("bg-status-rose-background");
     expect(within(row).getByText(/by Rakib/)).toBeInTheDocument();
     expect(within(row).queryByText("Customer changed their mind")).not.toBeInTheDocument();
     expect(within(row).queryByText("confirmed")).not.toBeInTheDocument();

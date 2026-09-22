@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CaretDown, CaretUp, ClockCounterClockwise, Eye, UserCircle } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, ClockCounterClockwise } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Spinner } from "@/components/ui/ios-spinner";
+import { Chip } from "@/components/base/badges/chip";
+import { activityActionColor, type ActivityAction } from "@/lib/activityLogPresentation";
 
 type Change = {
   type?: string;
@@ -37,6 +39,11 @@ type Provenance = {
 type Response = { events: Event[]; provenance?: Provenance };
 
 const RECENT_LIMIT = 5;
+const ACTIVITY_ACTIONS = new Set<ActivityAction>([
+  "created", "confirmed", "cancelled", "status_changed", "contacted", "reopened",
+  "dismissed", "converted", "expired", "viewed", "edited", "assigned", "messaged",
+  "fraud_checked", "courier_updated", "printed",
+]);
 const REASONS: Record<string, string> = {
   customer_changed_mind: "Customer changed their mind",
   customer_unreachable: "Customer unreachable",
@@ -86,6 +93,20 @@ const display = (value: unknown) => {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 };
 
+function eventChipColor(event?: Event) {
+  const eventType = event?.event_type || event?.action || "";
+  if (/cancelled|deleted|failed|dismissed|expired/.test(eventType)) return "rose" as const;
+  if (eventType.startsWith("courier.")) return "lime" as const;
+  if (eventType === "fraud.checked") return "yellow" as const;
+  if (eventType === "message.sent") return "blue" as const;
+  if (eventType === "document.printed") return "soft" as const;
+
+  const action = eventType.includes(".") ? eventType.split(".").at(-1) : eventType;
+  return action && ACTIVITY_ACTIONS.has(action as ActivityAction)
+    ? activityActionColor(action as ActivityAction)
+    : "soft";
+}
+
 function EventRow({ event }: { event: Event }) {
   const [open, setOpen] = useState(false);
   const changes = event.changes || [];
@@ -100,9 +121,15 @@ function EventRow({ event }: { event: Event }) {
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 py-2 text-left"
       >
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-black">
-          {summary}{" "}
-          <span className="font-normal text-black/50">by {event.actor_display_name}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <Chip
+            variant="caption"
+            color={eventChipColor(event)}
+            className="max-w-[70%] overflow-hidden text-ellipsis"
+          >
+            {summary}
+          </Chip>
+          <span className="truncate text-[11px] font-normal text-black/50">by {event.actor_display_name}</span>
         </span>
         <span className="shrink-0 text-[10px] text-black/45">{timeAgo(event.occurred_at)}</span>
         {open ? (
@@ -169,6 +196,8 @@ export function OrderActivityTimeline({ endpoint, enabled = true }: { endpoint: 
   const events = query.data?.events || [];
   const provenance = query.data?.provenance;
   const visibleEvents = all ? events : events.slice(0, RECENT_LIMIT);
+  const latestEvent = events[0];
+  const oldestEvent = events.at(-1);
 
   return (
     <section aria-label="Order activity" className="rounded-xl bg-white p-3">
@@ -187,24 +216,31 @@ export function OrderActivityTimeline({ endpoint, enabled = true }: { endpoint: 
             <div className="mt-3 grid gap-px overflow-hidden rounded-lg bg-black/[0.06] sm:grid-cols-3">
               <div className="bg-[#FAFAF8] p-2.5">
                 <p className="text-[8px] uppercase tracking-[.2em] text-black/45">Origin</p>
-                <p className="mt-1 text-[12px] font-medium">{humanize(provenance.origin_source)}</p>
-                <p className="text-[10px] text-black/45">{timestamp(provenance.created_at)}</p>
+                <div className="mt-1"><Chip variant="caption" color="cyan">{humanize(provenance.origin_source)}</Chip></div>
+                <p className="mt-1 text-[10px] text-black/45">Created {timestamp(provenance.created_at)}</p>
               </div>
               <div className="bg-[#FAFAF8] p-2.5">
-                <p className="flex items-center gap-1 text-[8px] uppercase tracking-[.2em] text-black/45">
-                  <UserCircle size={11} weight="light" />Ownership
-                </p>
-                <p className="mt-1 text-[12px] font-medium">
-                  {provenance.assigned_to_display_name || provenance.created_by_display_name || "Unassigned"}
-                </p>
-                <p className="text-[10px] text-black/45">Last edited by {provenance.last_edited_by || "—"}</p>
+                <p className="text-[8px] uppercase tracking-[.2em] text-black/45">Latest activity</p>
+                <div className="mt-1">
+                  <Chip variant="caption" color={eventChipColor(latestEvent)}>
+                    {latestEvent?.summary || "No recorded activity"}
+                  </Chip>
+                </div>
+                {latestEvent && (
+                  <p className="mt-1 text-[10px] text-black/45">
+                    {latestEvent.actor_display_name} · {timeAgo(latestEvent.occurred_at)}
+                  </p>
+                )}
               </div>
               <div className="bg-[#FAFAF8] p-2.5">
-                <p className="flex items-center gap-1 text-[8px] uppercase tracking-[.2em] text-black/45">
-                  <Eye size={11} weight="light" />Reviewed
-                </p>
-                <p className="mt-1 text-[12px] font-medium">
-                  {provenance.viewer_count || 0} viewer{provenance.viewer_count === 1 ? "" : "s"}
+                <p className="text-[8px] uppercase tracking-[.2em] text-black/45">History</p>
+                <div className="mt-1">
+                  <Chip variant="caption" color="purple">
+                    {events.length} event{events.length === 1 ? "" : "s"}
+                  </Chip>
+                </div>
+                <p className="mt-1 text-[10px] text-black/45">
+                  Tracking since {timestamp(oldestEvent?.occurred_at || provenance.created_at)}
                 </p>
               </div>
             </div>
