@@ -101,6 +101,7 @@ export function OrderStatusSegmentedControl({
           const selected = [...keys][0];
           if (selected) onChange(String(selected) as FulfillmentQueueTab);
         }}
+        thumbClassName="border border-black bg-[#FBBB14]"
         className="w-max min-w-full rounded-xl bg-black/[0.045] p-1 ring-1 ring-black/[0.025] xl:flex xl:w-full"
       >
         {FULFILLMENT_QUEUE_TABS.filter((status) => status === "abandoned" || !hiddenStatuses.includes(status)).map((status) => {
@@ -114,7 +115,7 @@ export function OrderStatusSegmentedControl({
               id={status}
               aria-label={`${presentation.label}: ${loading ? "loading" : formattedCount}`}
               className={({ isSelected }) => [
-                "min-w-[112px] rounded-lg px-3 py-2 xl:min-w-0 xl:flex-1",
+                "group min-w-[112px] rounded-lg px-3 py-2 xl:min-w-0 xl:flex-1",
                 "hover:bg-white/45 data-[pressed]:scale-[0.99]",
                 isSelected ? "text-black" : "text-black/55",
               ].join(" ")}
@@ -129,7 +130,7 @@ export function OrderStatusSegmentedControl({
                 </span>
                 <span
                   data-testid={`order-status-count-${status}`}
-                  className="pl-3 text-[14px] font-semibold leading-none tabular-nums tracking-tight text-black/80"
+                  className="pl-3 text-[14px] font-semibold leading-none tabular-nums tracking-tight text-black/80 group-data-[selected]:text-black"
                 >
                   {loading ? "—" : formattedCount}
                 </span>
