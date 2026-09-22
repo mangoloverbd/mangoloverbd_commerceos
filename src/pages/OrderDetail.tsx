@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowLeft } from "@phosphor-icons/react";
+import { ArrowLeft, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/CustomerPanel";
@@ -132,6 +133,21 @@ export default function OrderDetail() {
   const backState = typeof returnTab === "string" && returnTab ? { fulfillmentTab: returnTab } : undefined;
   function goBack() {
     navigate("/", backState ? { state: backState } : undefined);
+  }
+  const rawPendingOrderIds = (location.state as { pendingOrderIds?: unknown } | null)?.pendingOrderIds;
+  const pendingOrderIds = Array.isArray(rawPendingOrderIds)
+    ? rawPendingOrderIds.filter((value): value is string => typeof value === "string")
+    : null;
+  const pendingIndex = pendingOrderIds && id ? pendingOrderIds.indexOf(id) : -1;
+  const hasPendingNav = Boolean(pendingOrderIds) && pendingIndex !== -1;
+  const prevPendingOrderId = hasPendingNav && pendingIndex > 0 ? pendingOrderIds![pendingIndex - 1] : null;
+  const nextPendingOrderId =
+    hasPendingNav && pendingIndex < pendingOrderIds!.length - 1 ? pendingOrderIds![pendingIndex + 1] : null;
+  // Carries pendingOrderIds forward on any jump to another order (Prev/Next,
+  // customer history) so the snapshot survives the hop; falls back to backState.
+  const siblingState = pendingOrderIds ? { fulfillmentTab: returnTab, pendingOrderIds } : backState;
+  function goToSibling(targetId: string) {
+    navigate(`/orders/${targetId}`, { state: siblingState, replace: true });
   }
   const [draft, setDraft] = useState<OrderEditorItem[]>([]);
   const [customer, setCustomer] = useState<CustomerDraft>({ customerName: "", phone: "", address: "" });
@@ -268,7 +284,7 @@ export default function OrderDetail() {
     const detailsChanged = JSON.stringify(customer) !== JSON.stringify(originalCustomer);
     const cartChanged = !cartsMatch(draft, detail.items);
     if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged && !notesChanged && !statusChanged && !sourceChanged) {
-      goBack();
+      if (!hasPendingNav) goBack();
       return;
     }
     if (cartChanged && draft.some((item) => !item.product_id && !item.variant_id)) {
@@ -347,7 +363,11 @@ export default function OrderDetail() {
       setNotesDraft(currentOrder.notes ?? "");
       setStatusDraft(currentOrder.status ?? null);
       setSourceDraft(normalizeOrderSource(currentOrder.source));
-      goBack();
+      if (hasPendingNav) {
+        toast.success("Order saved");
+      } else {
+        goBack();
+      }
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : "Failed to save order changes");
     } finally {
@@ -360,6 +380,31 @@ export default function OrderDetail() {
       <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
+        {hasPendingNav && (
+          <div data-testid="order-editor-pending-nav" className="ml-auto flex items-center gap-2">
+            <span className="text-[11px] font-medium tracking-[0.1em] text-black/40">
+              {pendingIndex + 1} of {pendingOrderIds!.length} pending
+            </span>
+            <BuiButton
+              variant="ghost"
+              size="small"
+              iconOnly
+              leadingIcon={CaretLeft}
+              aria-label="Previous pending order"
+              disabled={!prevPendingOrderId}
+              onClick={() => prevPendingOrderId && goToSibling(prevPendingOrderId)}
+            />
+            <BuiButton
+              variant="ghost"
+              size="small"
+              iconOnly
+              leadingIcon={CaretRight}
+              aria-label="Next pending order"
+              disabled={!nextPendingOrderId}
+              onClick={() => nextPendingOrderId && goToSibling(nextPendingOrderId)}
+            />
+          </div>
+        )}
       </div>
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={goBack} className="mt-2 text-[13px] text-black underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
@@ -371,7 +416,7 @@ export default function OrderDetail() {
           transition={{ duration: 0.35 }}
           className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]"
         >
-          <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, backState ? { state: backState } : undefined)} onApply={setCustomer} source={sourceDraft} onSourceChange={setSourceDraft} sourceDisabled={saving || detailQuery.isPlaceholderData} />
+          <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={sourceDraft} onSourceChange={setSourceDraft} sourceDisabled={saving || detailQuery.isPlaceholderData} />
             <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
             <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
             <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} status={statusDraft} onStatusChange={setStatusDraft} notes={notesDraft} onNotesChange={setNotesDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} />

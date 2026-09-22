@@ -26,9 +26,16 @@ vi.mock("recharts", () => ({
   Tooltip: () => null,
 }));
 vi.mock("@/components/OrdersTable", () => ({
-  OrdersTable: ({ orders, showRiskColumn = true }: { orders: Array<{ id: string; customer_name: string }>; showRiskColumn?: boolean }) => (
+  OrdersTable: (
+    { orders, showRiskColumn = true, orderLinkState }: {
+      orders: Array<{ id: string; customer_name: string }>;
+      showRiskColumn?: boolean;
+      orderLinkState?: Record<string, unknown>;
+    },
+  ) => (
     <div data-testid="dashboard-orders">
       <span data-testid="dashboard-risk-column">{showRiskColumn ? "visible" : "hidden"}</span>
+      <span data-testid="dashboard-order-link-state">{JSON.stringify(orderLinkState ?? null)}</span>
       {orders.map((order) => <span key={order.id}>{order.customer_name}</span>)}
     </div>
   ),
@@ -133,6 +140,35 @@ describe("dashboard order status filter", () => {
     expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Delivered Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Cancelled Customer");
+  });
+
+  it("passes the full pending queue to the order editor link state only on the Pending tab", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("radio", { name: /All Orders.*3/ })).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-order-link-state")).toHaveTextContent(
+      JSON.stringify({ fulfillmentTab: "all" }),
+    );
+
+    await user.click(screen.getByRole("radio", { name: /^Pending.*1/ }));
+
+    expect(screen.getByTestId("dashboard-order-link-state")).toHaveTextContent(
+      JSON.stringify({ fulfillmentTab: "pending", pendingOrderIds: ["pending"] }),
+    );
+
+    await user.click(screen.getByRole("radio", { name: /Delivered.*1/ }));
+
+    expect(screen.getByTestId("dashboard-order-link-state")).toHaveTextContent(
+      JSON.stringify({ fulfillmentTab: "delivered" }),
+    );
   });
 
   it("switches to an independent abandoned checkout queue without changing order counts or bulk controls", async () => {
