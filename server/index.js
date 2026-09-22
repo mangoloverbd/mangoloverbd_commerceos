@@ -4479,6 +4479,8 @@ async function fetchOrderActivityTimeline(supabase, orgId, orderTable, orderId) 
     actor_display_name: event.actor_kind === "user"
       ? ((event.actor_id && staffById.get(event.actor_id)) || "Unknown")
       : (event.actor_kind === "courier_webhook" ? "Courier" : "System"),
+    from_status: event.from_status ?? null,
+    to_status: event.to_status ?? null,
   }));
 }
 
