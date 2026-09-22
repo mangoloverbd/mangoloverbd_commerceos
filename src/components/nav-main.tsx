@@ -42,11 +42,15 @@ export interface NavSection {
     collapsible?: boolean;
 }
 
+const activeNavLabelClass = "font-medium text-black/90";
+const inactiveNavLabelClass =
+    "font-normal text-black/80 group-hover/nav-link:text-black/85 group-hover/nav-button:text-black/85";
+
 function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
     return (
         <span className={cn(
-            "block truncate font-sf-text text-[12.5px] normal-case tracking-normal min-w-0",
-            active ? "!font-bold text-black" : "font-medium text-black"
+            "block truncate font-sans text-[13px] normal-case tracking-normal min-w-0",
+            active ? activeNavLabelClass : inactiveNavLabelClass
         )}>
             {text}
         </span>
@@ -130,7 +134,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
 
     return (
         <SidebarGroup className="px-1.5 py-0.5">
-            <div className="mb-0 flex h-auto w-full items-center gap-1 px-2 py-0.5 font-sf-text text-[11px] font-medium normal-case tracking-normal text-black">
+            <div className="mb-0 flex h-auto w-full items-center gap-1 px-2 py-0.5 font-sans text-[11px] font-medium normal-case tracking-normal text-black">
                 <span className="truncate">{section.label}</span>
             </div>
 
@@ -148,7 +152,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                         title="Admin only"
                                     >
                                         <span className={cn(navIconFrame)}>{route.icon}</span>
-                                        <span className="flex-1 truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal">
+                                        <span className="flex-1 truncate font-sans text-[13px] font-medium normal-case tracking-normal">
                                             {route.title}
                                         </span>
                                         <Lock size={11} className="shrink-0 ml-auto opacity-60" />
@@ -165,7 +169,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                             asChild
                                             tooltip={route.title}
                                             className={cn(
-                                                "gap-2 font-sf-text text-[12.5px] tracking-normal transition-all w-full",
+                                                "gap-2 font-sans text-[13px] tracking-normal transition-all w-full",
                                                 cn(activeNavItemClass, "h-[28px] !p-0 !justify-start")
                                             )}
                                         >
@@ -180,7 +184,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                                         )} style={activeIconStyle}>
                                                             {route.icon}
                                                         </span>
-                                                        <span className="truncate font-sf-text text-[12.5px] !font-bold text-black">
+                                                        <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
                                                             {route.title}
                                                         </span>
                                                     </div>
@@ -194,7 +198,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                         asChild
                                         tooltip={route.title}
                                         className={cn(
-                                            "h-7 rounded-lg px-2 pl-8 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
+                                            "h-7 rounded-lg px-2 pl-8 gap-2 font-sans text-[13px] tracking-normal transition-all",
                                             "text-black hover:bg-black/5 hover:text-black"
                                         )}
                                     >
@@ -243,7 +247,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                 >
                     {/* Section label */}
                     {!isCollapsed && section.label && (
-                        <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 font-sf-text text-[11px] font-medium normal-case tracking-normal text-black">
+                        <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 font-sans text-[11px] font-medium normal-case tracking-normal text-black">
                             {section.label}
                         </SidebarGroupLabel>
                     )}
@@ -311,7 +315,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 <span className={cn(navIconFrame)}>
                                                     {route.icon}
                                                 </span>
-                                                <span className="flex-1 truncate font-sf-text text-[12.5px] font-medium normal-case tracking-normal">
+                                                <span className="flex-1 truncate font-sans text-[13px] font-medium normal-case tracking-normal">
                                                     {route.title}
                                                 </span>
                                                 <Lock size={11} className="shrink-0 ml-auto opacity-60" />
@@ -336,12 +340,12 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             <div className="glass-button-wrap w-full">
                                                                 <SidebarMenuButton
                                                                     tooltip={route.title}
-                                                                    className="glass-button h-7 gap-2 font-sf-text text-[12.5px] tracking-normal w-full !p-0 !justify-start"
+                                                                    className="glass-button h-7 gap-2 font-sans text-[13px] tracking-normal w-full !p-0 !justify-start"
                                                                 >
                                                                     <span className={cn(navIconFrame)} style={activeIconStyle}>
                                                                         {route.icon}
                                                                     </span>
-                                                                    <span className="truncate font-sf-text text-[12.5px] !font-bold text-black">
+                                                                    <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
                                                                         {route.title}
                                                                     </span>
                                                                     <ChevronRight className="ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -352,7 +356,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             <SidebarMenuButton
                                                                 tooltip={route.title}
                                                                 className={cn(
-                                                                    "group/nav-button h-7 rounded-lg px-2 gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
+                                                                     "group/nav-button h-7 rounded-lg px-2 gap-2 font-sans text-[13px] tracking-normal transition-all",
                                                                     "text-black hover:bg-black/5 hover:text-black"
                                                                 )}
                                                             >
@@ -377,7 +381,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                         <SidebarMenuSubButton
                                                                             asChild
                                                                             className={cn(
-                                                                                "font-sf-text text-[11.5px] font-medium tracking-normal transition-all",
+                                                                                 "font-sans text-[11.5px] font-medium tracking-normal transition-all",
                                                                                 subActive
                                                                                     ? cn(activeNavItemClass, "h-7 w-full !p-0 !justify-start")
                                                                                     : "h-6 rounded-md px-2 text-black hover:bg-black/5 hover:text-black"
@@ -394,7 +398,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                                 {sub.icon && (
                                                                                                     <span className={cn(navIconFrame)} style={activeIconStyle}>{sub.icon}</span>
                                                                                                 )}
-                                                                                                <span className="truncate font-sf-text text-[11.5px] !font-bold text-black">
+                                                                                                 <span className={cn("truncate font-sans text-[11.5px]", activeNavLabelClass)}>
                                                                                                     {sub.title}
                                                                                                 </span>
                                                                                             </div>
@@ -411,8 +415,8 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                             )} style={inactiveIconStyle}>{sub.icon}</span>
                                                                                         )}
                                                                                         <span className={cn(
-                                                                                            "block truncate font-sf-text text-[11.5px] font-medium normal-case tracking-normal min-w-0",
-                                                                                            "text-black"
+                                                                                             "block truncate font-sans text-[11.5px] normal-case tracking-normal min-w-0",
+                                                                                            inactiveNavLabelClass
                                                                                         )}>
                                                                                             {sub.title}
                                                                                         </span>
@@ -431,7 +435,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     asChild
                                                     tooltip={route.title}
                                                     className={cn(
-                                                        "gap-2 font-sf-text text-[12.5px] tracking-normal transition-all",
+                                                         "gap-2 font-sans text-[13px] tracking-normal transition-all",
                                                         isActive
                                                             ? cn(activeNavItemClass, "h-[28px] w-full !p-0 !justify-start")
                                                             : "h-7 rounded-lg px-2 text-black hover:bg-black/5 hover:text-black"
@@ -449,7 +453,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                             <span className={cn(navIconFrame)} style={activeIconStyle}>
                                                                                 {route.icon}
                                                                             </span>
-                                                                            <span className="truncate font-sf-text text-[12.5px] !font-bold text-black">
+                                                                              <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
                                                                                 {route.title}
                                                                             </span>
                                                                         </div>

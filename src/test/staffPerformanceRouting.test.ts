@@ -12,11 +12,11 @@ describe("Staff Performance navigation", () => {
     expect(appSource).not.toContain('<Route path="/reports/staff" element={<AdminRoute><StaffPerformance /></AdminRoute>} />');
   });
 
-  it("places Staff Performance in its Reports sidebar section", () => {
+  it("places Staff in its Reports sidebar section", () => {
    expect(sidebarSource).toContain('label: "Reports"');
     expect(sidebarSource).toMatch(/const reports: NavSection = \{[\s\S]*?label: "Reports",[\s\S]*?collapsible: true/);
     expect(sidebarSource).toContain('id: "staff-performance"');
-    expect(sidebarSource).toContain('title: "Staff Performance"');
+    expect(sidebarSource).toContain('title: "Staff"');
     expect(sidebarSource).toContain('link: "/reports/staff"');
   });
 });
