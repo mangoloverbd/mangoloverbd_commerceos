@@ -112,6 +112,15 @@ describe("dashboard bulk status button", () => {
     });
   });
 
+  it("opens a dashboard order ID in a new tab", async () => {
+    renderDashboard();
+
+    const orderLink = await screen.findByRole("link", { name: "Open order 101 in a new tab" });
+    expect(orderLink).toHaveAttribute("href", "/orders/pending-1");
+    expect(orderLink).toHaveAttribute("target", "_blank");
+    expect(orderLink).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
   it("stays disabled without selection and moves approved orders to print in bulk", async () => {
     const user = userEvent.setup();
     renderDashboard();

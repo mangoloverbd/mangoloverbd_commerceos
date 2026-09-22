@@ -105,6 +105,7 @@ describe("warehouse detail", () => {
     renderDetail();
 
     expect(await screen.findByText("Anis uz Zaman")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open order 101 in a new tab" })).not.toBeInTheDocument();
     expect(screen.getByText("2 orders")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Search warehouse orders" }), "murad");
     expect(screen.queryByText("Anis uz Zaman")).not.toBeInTheDocument();

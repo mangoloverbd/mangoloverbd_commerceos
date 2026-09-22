@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { displayStatusLabel } from "@/lib/orderTransitions";
 import type { Order } from "@/components/OrdersTable";
+import { OrderIdLink } from "@/components/orders/OrderIdLink";
 
 type MobileOrderCardsProps = {
   orders: Order[];
@@ -13,6 +14,7 @@ type MobileOrderCardsProps = {
   onToggleSelectAll: () => void;
   onOpenOrder: (id: string) => void;
   renderActions: (order: Order) => ReactNode;
+  enableOrderIdLinks?: boolean;
 };
 
 function money(value: number | null) {
@@ -62,6 +64,7 @@ export function MobileOrderCards({
   onToggleSelectAll,
   onOpenOrder,
   renderActions,
+  enableOrderIdLinks = false,
 }: MobileOrderCardsProps) {
   if (loading) {
     return (
@@ -112,7 +115,11 @@ export function MobileOrderCards({
               </label>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-bold text-black">{orderLabel}</span>
+                  {enableOrderIdLinks ? (
+                    <OrderIdLink orderId={order.id} orderNumber={orderLabel} className="text-sm font-bold" />
+                  ) : (
+                    <span className="text-sm font-bold text-black">{orderLabel}</span>
+                  )}
                   <span className={cn("rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wide", statusClass(order.status))}>{displayStatusLabel(order.status)}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-1 text-[10px] text-black"><CalendarBlank weight="light" size={13} />{format(new Date(order.created_at), "MMM d, yyyy")}</div>
