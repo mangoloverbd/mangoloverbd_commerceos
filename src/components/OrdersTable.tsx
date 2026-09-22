@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
@@ -46,6 +46,62 @@ import { downloadOrderExcel } from "@/lib/orderExcelExport";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileOrderCards } from "@/components/MobileOrderCards";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
+import { CopyButton } from "@/components/ui/copy-button";
+
+function copyTextValue(value: string) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(value).catch(() => {});
+    return;
+  }
+  const area = document.createElement("textarea");
+  area.value = value;
+  document.body.appendChild(area);
+  area.select();
+  try {
+    document.execCommand("copy");
+  } catch {
+    // no-op: clipboard unavailable, still show feedback
+  }
+  document.body.removeChild(area);
+}
+
+/** Blue consignment pill — clicking anywhere on it (icon included) copies the ID. */
+function ConsignmentIdButton({ id }: { id: string | number }) {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const handleClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    copyTextValue(String(id));
+    setCopied(true);
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <PopButton
+      color="sky"
+      size="sm"
+      onClick={handleClick}
+      aria-label={copied ? `Consignment ${id} copied` : `Copy consignment ${id}`}
+      title={String(id)}
+      data-row-interactive="true"
+      className="cursor-pointer gap-1.5 text-[10px] font-bold tracking-widest uppercase w-36 justify-center"
+    >
+      <span className="opacity-70">ID</span>
+      <span className="font-mono tracking-tight normal-case text-[11px]">{id}</span>
+      {copied
+        ? <Check className="h-3 w-3 shrink-0" />
+        : <Copy className="h-3 w-3 shrink-0 opacity-70" />}
+    </PopButton>
+  );
+}
 
 function splitProductLines(product: string | null): string[] {
   if (!product) return [];
@@ -1317,7 +1373,17 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                           </Tooltip>
                         )}
                       </div>
-                      <span className="font-mono text-[11px] text-black">{order.phone || "No Phone"}</span>
+                      <div className="flex items-center gap-1 min-w-0" data-row-interactive="true">
+                        <span className="font-mono text-[11px] text-black truncate">{order.phone || "No Phone"}</span>
+                        {order.phone && (
+                          <CopyButton
+                            value={order.phone}
+                            size="sm"
+                            aria-label={`Copy phone number ${order.phone}`}
+                            className="h-6 w-6 shrink-0 rounded-md text-black/40 hover:bg-black/[0.06] hover:text-black"
+                          />
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   {showRiskColumn && (
@@ -1495,14 +1561,30 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                           const id = order.consignment_id || order.tracking_code;
 
                           if (isInitialState || isSteadfastProcessing) {
-                            return (
-                              <PopButton color="sky" size="sm" className="cursor-default gap-1.5 text-[10px] font-bold tracking-widest uppercase w-36 justify-center">
-                                <span className="opacity-70">ID</span>
-                                <span className="font-mono tracking-tight normal-case text-[11px]">{id || "—"}</span>
-                              </PopButton>
-                            );
+                            if (!id) {
+                              return (
+                                <PopButton color="sky" size="sm" className="cursor-default gap-1.5 text-[10px] font-bold tracking-widest uppercase w-36 justify-center">
+                                  <span className="opacity-70">ID</span>
+                                  <span className="font-mono tracking-tight normal-case text-[11px]">—</span>
+                                </PopButton>
+                              );
+                            }
+                            return <ConsignmentIdButton id={id} />;
                           }
-                          return getCourierStatusBadge(order);
+                          return (
+                            <div className="flex items-center justify-center gap-1" data-row-interactive="true">
+                              {getCourierStatusBadge(order)}
+                              {id && (
+                                <CopyButton
+                                  value={String(id)}
+                                  size="sm"
+                                  aria-label={`Copy consignment number ${id}`}
+                                  title={String(id)}
+                                  className="h-6 w-6 shrink-0 rounded-md text-black/40 hover:bg-black/[0.06] hover:text-black"
+                                />
+                              )}
+                            </div>
+                          );
                         })()
                       )}
                     </div>
