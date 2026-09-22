@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CaretDown, CaretUp, ClockCounterClockwise } from "@phosphor-icons/react";
+import { CaretDown, CaretUp } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Chip } from "@/components/base/badges/chip";
@@ -97,6 +97,9 @@ function eventChipColor(event?: Event) {
   const eventType = event?.event_type || event?.action || "";
   if (/cancelled|deleted|failed|dismissed|expired/.test(eventType)) return "rose" as const;
   if (eventType.startsWith("courier.")) return "lime" as const;
+  if (eventType === "order.created" || eventType === "converted") return "lime" as const;
+  if (eventType === "history.started" || eventType === "order.status_changed") return "yellow" as const;
+  if (eventType === "order.edited") return "purple" as const;
   if (eventType === "fraud.checked") return "yellow" as const;
   if (eventType === "message.sent") return "blue" as const;
   if (eventType === "document.printed") return "soft" as const;
@@ -105,6 +108,24 @@ function eventChipColor(event?: Event) {
   return action && ACTIVITY_ACTIONS.has(action as ActivityAction)
     ? activityActionColor(action as ActivityAction)
     : "soft";
+}
+
+function ActivityLogIcon() {
+  return (
+    <svg
+      data-testid="activity-log-icon"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      className="text-black/60"
+    >
+      <path fill="currentColor" d="M20.3116 12.6473L20.8293 10.7154C21.4335 8.46034 21.7356 7.3328 21.5081 6.35703C21.3285 5.58657 20.9244 4.88668 20.347 4.34587C19.6157 3.66095 18.4881 3.35883 16.2331 2.75458C13.978 2.15033 12.8504 1.84821 11.8747 2.07573C11.1042 2.25537 10.4043 2.65945 9.86351 3.23687C9.27709 3.86298 8.97128 4.77957 8.51621 6.44561C8.43979 6.7254 8.35915 7.02633 8.27227 7.35057L7.75458 9.28263C7.15033 11.5377 6.84821 12.6652 7.07573 13.641C7.25537 14.4115 7.65945 15.1114 8.23687 15.6522C8.96815 16.3371 10.0957 16.6392 12.3508 17.2435C14.3834 17.7881 15.4999 18.0873 16.415 17.9744C16.5152 17.9621 16.6129 17.9448 16.7092 17.9223C17.4796 17.7427 18.1795 17.3386 18.7203 16.7612C19.4052 16.0299 19.7074 14.9024 20.3116 12.6473Z" />
+      <path opacity="0.5" fill="currentColor" d="M16.4149 17.9745C16.2064 18.6128 15.8398 19.1903 15.347 19.6519C14.6157 20.3368 13.4881 20.6389 11.2331 21.2432C8.97798 21.8474 7.85044 22.1496 6.87466 21.922C6.10421 21.7424 5.40432 21.3383 4.86351 20.7609C4.17859 20.0296 3.87647 18.9021 3.27222 16.647L2.75458 14.7152C2.15033 12.4601 1.84821 11.3325 2.07573 10.3568C2.25537 9.5863 2.65945 8.88641 3.23687 8.3456C3.96815 7.66068 5.09569 7.35856 7.35077 6.75431C7.7774 6.64 8.16369 6.53649 8.51621 6.44534C8.43979 6.72513 8.3591 7.02657 8.27222 7.35081L7.75458 9.28266C7.15033 11.5377 6.84821 12.6653 7.07573 13.6411C7.25537 14.4115 7.65945 15.1114 8.23687 15.6522C8.96815 16.3371 10.0957 16.6393 12.3508 17.2435C14.3833 17.7881 15.4999 18.0873 16.4149 17.9745Z" />
+    </svg>
+  );
 }
 
 function EventRow({ event }: { event: Event }) {
@@ -202,7 +223,7 @@ export function OrderActivityTimeline({ endpoint, enabled = true }: { endpoint: 
   return (
     <section aria-label="Order activity" className="rounded-xl bg-white p-3">
       <div className="flex items-center gap-1.5">
-        <ClockCounterClockwise size={13} weight="light" />
+        <ActivityLogIcon />
         <p className="text-[8px] font-medium uppercase tracking-[0.25em] text-black/60">Activity</p>
       </div>
 

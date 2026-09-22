@@ -47,6 +47,7 @@ describe("OrderActivityTimeline", () => {
     renderTimeline();
 
     expect(await screen.findByText("Latest activity")).toBeInTheDocument();
+    expect(screen.getByTestId("activity-log-icon")).toBeInTheDocument();
     expect(screen.getByText("History")).toBeInTheDocument();
     expect(screen.getByText("Website")).toHaveClass("bg-status-cyan-background");
     expect(screen.getByText("1 event")).toHaveClass("bg-status-purple-background");
@@ -55,6 +56,21 @@ describe("OrderActivityTimeline", () => {
     expect(screen.queryByText("Ownership")).not.toBeInTheDocument();
     expect(screen.queryByText("Reviewed")).not.toBeInTheDocument();
     expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+  });
+
+  it("uses distinct vibrant chip colors for different activity meanings", async () => {
+    renderTimeline([
+      { ...detailedEvent, id: "viewed", event_type: "order.viewed", summary: "Viewed order" },
+      { ...detailedEvent, id: "history", event_type: "history.started", summary: "Detailed history started" },
+      { ...detailedEvent, id: "created", event_type: "order.created", summary: "Order created" },
+      { ...detailedEvent, id: "edited", event_type: "order.edited", summary: "Edited order" },
+    ]);
+
+    await screen.findByText("Latest activity");
+    expect(screen.getAllByText("Viewed order")[0]).toHaveClass("bg-status-blue-background");
+    expect(screen.getByText("Detailed history started")).toHaveClass("bg-status-yellow-background");
+    expect(screen.getByText("Order created")).toHaveClass("bg-status-lime-background");
+    expect(screen.getByText("Edited order")).toHaveClass("bg-status-purple-background");
   });
 
   it("shows a compact overview and reveals details when its row is clicked", async () => {
