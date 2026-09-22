@@ -1,5 +1,6 @@
 import { Minus, Package, Plus, Trash } from "@phosphor-icons/react";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
+import { Button as BuiButton } from "@/components/base/buttons/button";
 import { Switch } from "@/components/base/switch/switch";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CartDiscountEditor } from "./CartDiscountEditor";
@@ -94,7 +95,7 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
           </BuiSelect>
           )}
           <button type="button" onClick={onSave} disabled={saving || saveDisabled} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-35">{saving && <Spinner size="sm" />}{saving ? "Saving…" : "Save changes"}</button>
-          <button type="button" onClick={onCancel} disabled={saving} className="h-9 rounded-lg px-2.5 text-[12px] text-black hover:bg-black/[0.05] disabled:opacity-35">Cancel</button>
+          <BuiButton variant="ghost" size="medium" onClick={onCancel} disabled={saving}>Cancel</BuiButton>
            {!hideOrderSections && isOnHoldStatus(status) && (
             <label className="col-span-3 mt-1 block" htmlFor="hold-note">
               <span className="sr-only">Hold note</span>
