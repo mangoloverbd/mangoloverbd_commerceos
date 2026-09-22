@@ -581,6 +581,14 @@ export default function Dashboard() {
   const fetchOrders = useCallback(async () => {
     try {
       const res = await apiFetch("/api/orders");
+      // A 401 here means the token was invalid (apiFetch already retried a
+      // refresh once). Revalidate /api/me so role/org recover, and skip the
+      // error toast — the next poll/refetch will load normally.
+      if (res.status === 401) {
+        void queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+        setLoading(false);
+        return;
+      }
       if (!res.ok) throw new Error("Failed to load orders");
       const data = await res.json();
       const nextOrders = (data.orders as Order[]) || [];

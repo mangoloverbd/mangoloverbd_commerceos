@@ -3,13 +3,31 @@ import { supabase } from "@/integrations/supabase/client";
 export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  return fetch(url, {
+  const res = await fetch(url, {
     ...options,
     headers: {
       ...(options.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
+  // Token may have expired between getSession() and the request while the
+  // auto-refresh was still in flight. Retry once with a fresh token so a
+  // transient 401 doesn't surface as "needs onboarding" / "failed to load".
+  if (res.status !== 401) return res;
+  try {
+    const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+    const newToken = refreshed?.access_token;
+    if (!newToken || newToken === token) return res;
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: `Bearer ${newToken}`,
+      },
+    });
+  } catch {
+    return res;
+  }
 }
 
 export type AppConfig = {

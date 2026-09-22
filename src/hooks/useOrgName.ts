@@ -3,9 +3,9 @@ import { useMe } from "@/hooks/useMe";
 
 export function useOrgName() {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useMe();
+  const { data, isLoading, isError } = useMe();
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["/api/me"] });
 
-  return { orgName: data?.orgName ?? "", isLoading, refresh };
+  return { orgName: data?.orgName ?? "", isLoading, isError, hasData: !!data, refresh };
 }

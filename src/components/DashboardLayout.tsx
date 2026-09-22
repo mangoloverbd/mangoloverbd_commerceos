@@ -4,6 +4,7 @@ import { AppSidebar } from "./AppSidebar";
 import { HeaderAlerts } from "./HeaderAlerts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useOrgName } from "@/hooks/useOrgName";
+import { useMe } from "@/hooks/useMe";
 import { useAuth } from "@/hooks/useAuth";
 import { CaretRight, Gear, SignOut } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -51,7 +52,8 @@ function getBreadcrumbLabel(pathname: string) {
 }
 
 export function DashboardLayout() {
-    const { orgName, isLoading } = useOrgName();
+    const { orgName, isLoading, isError, hasData } = useOrgName();
+    const { data: me } = useMe();
     const { signOut, user } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
@@ -72,6 +74,12 @@ export function DashboardLayout() {
 
     useEffect(() => {
         if (isLoading) return;
+        // Only redirect when we positively know this is an admin whose
+        // workspace has no name. Never redirect on auth errors / 401s or
+        // before /api/me has resolved — a transient token expiry must not
+        // look like "needs onboarding".
+        if (isError || !hasData) return;
+        if (!me || me.isAdmin !== true) return;
         // Don't redirect if we just completed onboarding (flag set in Onboarding.tsx)
         const justDone = sessionStorage.getItem("onboarding_done");
         const skipped = sessionStorage.getItem("onboarding_skipped");
@@ -79,10 +87,17 @@ export function DashboardLayout() {
         if (orgName === "") {
             navigate("/onboarding", { replace: true });
         }
-    }, [isLoading, orgName, navigate]);
+    }, [isLoading, isError, hasData, me, orgName, navigate]);
 
+    // Same guard for the render gate: a missing/errored /api/me response
+    // renders the dashboard (it will retry) instead of blank-screening or
+    // bouncing to onboarding.
     const needsOnboarding =
         !isLoading &&
+        !isError &&
+        hasData &&
+        !!me &&
+        me.isAdmin === true &&
         orgName === "" &&
         !sessionStorage.getItem("onboarding_done") &&
         !sessionStorage.getItem("onboarding_skipped");
