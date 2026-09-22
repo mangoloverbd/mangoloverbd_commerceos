@@ -6,14 +6,15 @@ type OrderIdLinkProps = {
   orderId: string;
   orderNumber: string | number;
   className?: string;
+  search?: string;
 };
 
-export function OrderIdLink({ orderId, orderNumber, className }: OrderIdLinkProps) {
+export function OrderIdLink({ orderId, orderNumber, className, search }: OrderIdLinkProps) {
   const label = String(orderNumber).replace(/^#+/, "");
 
   return (
     <Link
-      to={`/orders/${orderId}`}
+      to={{ pathname: `/orders/${orderId}`, search }}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`Open order ${label} in a new tab`}

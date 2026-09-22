@@ -28,6 +28,7 @@ import {
   type AbandonedCheckoutConvertStatus,
 } from "@/lib/abandonedCheckouts";
 import { toast, DarkToast } from "@/components/ui/sonner";
+import { savePendingOrderQueue } from "@/lib/pendingOrderQueue";
 import {
   Search, AlertTriangle,
   Info, Check, X, Plus,
@@ -1015,6 +1016,10 @@ export default function Dashboard() {
     () => filterOrdersByStatus(warehouseOrders, "pending").map((order) => order.id),
     [warehouseOrders],
   );
+
+  useEffect(() => {
+    if (fulfillmentTab === "pending") savePendingOrderQueue(pendingOrderIds);
+  }, [fulfillmentTab, pendingOrderIds]);
 
   const filteredOrders = useMemo(() => {
     return filterOrdersByStatus(warehouseOrders, activeOrderStatusFilter).filter((order) =>

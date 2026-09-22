@@ -72,6 +72,26 @@ function renderOrderDetail(pendingOrderIds: string[], startId = "order-1") {
   );
 }
 
+function renderNewTabOrderDetail(entry: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(
+        MemoryRouter,
+        { initialEntries: [entry] },
+        createElement(
+          Routes,
+          null,
+          createElement(Route, { path: "/orders/:id", element: createElement(OrderDetail) }),
+          createElement(Route, { path: "/", element: createElement("div", { "data-testid": "dashboard-stub" }) }),
+        ),
+      ),
+    ),
+  );
+}
+
 describe("pending order prev/next navigation", () => {
   it("shows the queue position and disables Previous on the first pending order", async () => {
     apiFetch.mockImplementation((url: string) => {
@@ -145,5 +165,46 @@ describe("pending order prev/next navigation", () => {
     } finally {
       successSpy.mockRestore();
     }
+  });
+
+  it("shows pending nav in a new tab from the stored snapshot", async () => {
+    localStorage.clear();
+    localStorage.setItem(
+      "ml:pending-order-queue",
+      JSON.stringify({ ids: ["order-1", "order-2"], savedAt: Date.now() }),
+    );
+    apiFetch.mockImplementation((url: string) => {
+      if (url === "/api/orders/order-1") return Promise.resolve(response({ order: orderOne, items: [], canEditItems: true }));
+      if (url === "/api/products") return Promise.resolve(response({ products: [] }));
+      if (url === "/api/orders") return Promise.resolve(response({ orders: [orderOne, orderTwo] }));
+      return Promise.resolve(response({}));
+    });
+
+    renderNewTabOrderDetail("/orders/order-1?fulfillmentTab=pending");
+
+    const nav = await screen.findByTestId("order-editor-pending-nav");
+    expect(nav).toHaveTextContent("1 of 2 pending");
+    expect(screen.getByRole("button", { name: "Next pending order" })).toBeEnabled();
+    localStorage.clear();
+  });
+
+  it("hides pending nav in a new tab without pending context", async () => {
+    localStorage.clear();
+    localStorage.setItem(
+      "ml:pending-order-queue",
+      JSON.stringify({ ids: ["order-1", "order-2"], savedAt: Date.now() }),
+    );
+    apiFetch.mockImplementation((url: string) => {
+      if (url === "/api/orders/order-1") return Promise.resolve(response({ order: orderOne, items: [], canEditItems: true }));
+      if (url === "/api/products") return Promise.resolve(response({ products: [] }));
+      if (url === "/api/orders") return Promise.resolve(response({ orders: [orderOne, orderTwo] }));
+      return Promise.resolve(response({}));
+    });
+
+    renderNewTabOrderDetail("/orders/order-1");
+
+    await screen.findByTestId("customer-name");
+    expect(screen.queryByTestId("order-editor-pending-nav")).not.toBeInTheDocument();
+    localStorage.clear();
   });
 });
