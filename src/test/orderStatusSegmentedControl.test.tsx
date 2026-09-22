@@ -66,7 +66,7 @@ describe("OrderStatusSegmentedControl", () => {
       "xl:flex",
       "xl:w-full",
       "rounded-lg",
-      "bg-black/[0.045]",
+      "bg-black/[0.055]",
       "p-1",
     );
     expect(screen.getByRole("radio", { name: /Delivered.*37,678/ })).toHaveClass("xl:min-w-0", "xl:flex-1");
