@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { displayStatusLabel } from "@/lib/orderTransitions";
 import type { Order } from "@/components/OrdersTable";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
+import { CopyButton } from "@/components/ui/copy-button";
 
 type MobileOrderCardsProps = {
   orders: Order[];
@@ -131,14 +132,33 @@ export function MobileOrderCards({
 
             <div className="mt-4 grid gap-2 text-xs text-black">
               <div className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-black/20" /><span className="truncate font-medium text-black">{order.customer_name || "Guest User"}</span></div>
-              <div className="flex min-w-0 items-center gap-2"><Phone weight="light" size={14} className="shrink-0 text-black/35" /><span className="truncate">{order.phone || "No phone"}</span></div>
+              <div className="flex min-w-0 items-center gap-1.5"><Phone weight="light" size={14} className="shrink-0 text-black/35" /><span className="min-w-0 flex-1 truncate">{order.phone || "No phone"}</span>{order.phone && (
+                <CopyButton
+                  value={order.phone}
+                  size="sm"
+                  aria-label={`Copy phone number ${order.phone}`}
+                  className="h-6 w-6 shrink-0 rounded-md text-black/40 hover:bg-black/[0.06] hover:text-black"
+                />
+              )}</div>
               <div className="flex min-w-0 items-center gap-2"><MapPin weight="light" size={14} className="shrink-0 text-black/35" /><span className="truncate">{order.address || "Digital delivery"}</span></div>
               <p className="truncate rounded-xl bg-black/[0.035] px-3 py-2 text-[11px] text-black">{productLabel(order)}</p>
             </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] pt-3">
               <FraudState order={order} />
-              <span className="text-[10px] text-black">{order.sent_to_courier ? (order.courier_status || "Sent to courier") : "Not dispatched"}</span>
+              {order.sent_to_courier && (order.consignment_id || order.tracking_code) ? (
+                <span className="inline-flex min-w-0 items-center gap-1 rounded-lg bg-sky-50 px-2 py-1 text-[10px] font-mono text-sky-700">
+                  <span className="truncate">ID {order.consignment_id || order.tracking_code}</span>
+                  <CopyButton
+                    value={String(order.consignment_id || order.tracking_code)}
+                    size="sm"
+                    aria-label={`Copy consignment number ${order.consignment_id || order.tracking_code}`}
+                    className="h-6 w-6 shrink-0 rounded-md text-sky-700/60 hover:bg-sky-100 hover:text-sky-800"
+                  />
+                </span>
+              ) : (
+                <span className="text-[10px] text-black">{order.sent_to_courier ? (order.courier_status || "Sent to courier") : "Not dispatched"}</span>
+              )}
             </div>
 
             {actions && <div className="mt-3 border-t border-black/[0.06] pt-3">{actions}</div>}
