@@ -1009,6 +1009,13 @@ export default function Dashboard() {
     [warehouseOrders],
   );
 
+  // Full pending queue (ignores search text and table pagination) so the
+  // order editor can offer Previous/Next navigation through the whole tab.
+  const pendingOrderIds = useMemo(
+    () => filterOrdersByStatus(warehouseOrders, "pending").map((order) => order.id),
+    [warehouseOrders],
+  );
+
   const filteredOrders = useMemo(() => {
     return filterOrdersByStatus(warehouseOrders, activeOrderStatusFilter).filter((order) =>
       matchesOrderSearch(order, debouncedSearch),
@@ -1665,7 +1672,9 @@ export default function Dashboard() {
               showRiskColumn={false}
               selectedIds={selectedOrderIds}
               onSelectionChange={setSelectedOrderIds}
-              orderLinkState={{ fulfillmentTab }}
+              orderLinkState={
+                fulfillmentTab === "pending" ? { fulfillmentTab, pendingOrderIds } : { fulfillmentTab }
+              }
             />
 
             <OrderTablePagination
