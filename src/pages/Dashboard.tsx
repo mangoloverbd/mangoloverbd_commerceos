@@ -1672,6 +1672,7 @@ export default function Dashboard() {
               showRiskColumn={false}
               selectedIds={selectedOrderIds}
               onSelectionChange={setSelectedOrderIds}
+              enableOrderIdLinks
               orderLinkState={
                 fulfillmentTab === "pending" ? { fulfillmentTab, pendingOrderIds } : { fulfillmentTab }
               }

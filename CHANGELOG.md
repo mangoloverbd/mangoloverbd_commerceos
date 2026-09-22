@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.25] - 2026-09-22
+
+### Added
+
+- Dashboard order IDs now open the existing order editor in a new tab on desktop and mobile while preserving the current Dashboard state and existing same-tab row/card navigation.
+
 ## [0.1.0.24] - 2026-09-22
 
 ### Changed

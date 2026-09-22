@@ -45,6 +45,7 @@ import { useWarehouses } from "@/hooks/useWarehouses";
 import { downloadOrderExcel } from "@/lib/orderExcelExport";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileOrderCards } from "@/components/MobileOrderCards";
+import { OrderIdLink } from "@/components/orders/OrderIdLink";
 
 function splitProductLines(product: string | null): string[] {
   if (!product) return [];
@@ -215,6 +216,7 @@ interface OrdersTableProps {
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
   orderLinkState?: Record<string, unknown>;
+  enableOrderIdLinks?: boolean;
 }
 
 interface BulkSteadfastResponse {
@@ -561,7 +563,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   );
 }
 
-export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, selectedIds: controlledSelectedIds, onSelectionChange, orderLinkState }: OrdersTableProps) {
+export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, selectedIds: controlledSelectedIds, onSelectionChange, orderLinkState, enableOrderIdLinks = false }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -1153,6 +1155,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         onToggleSelection={toggleSelectOrder}
         onToggleSelectAll={toggleSelectAll}
         onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, orderLinkState ? { state: orderLinkState } : undefined)}
+        enableOrderIdLinks={enableOrderIdLinks}
         renderActions={(order) => (
           <div className="flex flex-wrap gap-2">
             {!order.fraud_checked && (
@@ -1273,7 +1276,11 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                   </TableCell>
                   <TableCell className="py-3">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-[13px] tracking-tight">{order.order_number}</span>
+                      {enableOrderIdLinks ? (
+                        <OrderIdLink orderId={order.id} orderNumber={order.order_number} className="font-bold text-[13px] tracking-tight" />
+                      ) : (
+                        <span className="font-bold text-[13px] tracking-tight">{order.order_number}</span>
+                      )}
                       {order.fulfillment_status === "fulfilled" && (
                         <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[8px] font-bold uppercase tracking-wider">Fulfilled</span>
                       )}

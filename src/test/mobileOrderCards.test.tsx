@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { MobileOrderCards } from "@/components/MobileOrderCards";
 import type { Order } from "@/components/OrdersTable";
@@ -31,20 +32,28 @@ describe("MobileOrderCards", () => {
     const onOpenOrder = vi.fn();
 
     render(
-      <MobileOrderCards
-        orders={[order]}
-        loading={false}
-        selectedIds={new Set()}
-        onToggleSelection={vi.fn()}
-        onToggleSelectAll={vi.fn()}
-        onOpenOrder={onOpenOrder}
-        renderActions={() => null}
-      />,
+      <MemoryRouter>
+        <MobileOrderCards
+          orders={[order]}
+          loading={false}
+          selectedIds={new Set()}
+          onToggleSelection={vi.fn()}
+          onToggleSelectAll={vi.fn()}
+          onOpenOrder={onOpenOrder}
+          renderActions={() => null}
+          enableOrderIdLinks
+        />
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("#ML-1001")).toBeInTheDocument();
     expect(screen.getByText("Mango Buyer")).toBeInTheDocument();
     expect(screen.getByText(/৳1,250/)).toBeInTheDocument();
+    const orderLink = screen.getByRole("link", { name: "Open order ML-1001 in a new tab" });
+    expect(orderLink).toHaveAttribute("href", "/orders/order-1");
+    expect(orderLink).toHaveAttribute("target", "_blank");
+    await user.click(orderLink);
+    expect(onOpenOrder).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: /open order #ML-1001/i }));
     expect(onOpenOrder).toHaveBeenCalledWith(order.id);
   });
@@ -55,15 +64,17 @@ describe("MobileOrderCards", () => {
     const order = makeOrder();
 
     render(
-      <MobileOrderCards
-        orders={[order]}
-        loading={false}
-        selectedIds={new Set()}
-        onToggleSelection={onToggleSelection}
-        onToggleSelectAll={vi.fn()}
-        onOpenOrder={vi.fn()}
-        renderActions={() => null}
-      />,
+      <MemoryRouter>
+        <MobileOrderCards
+          orders={[order]}
+          loading={false}
+          selectedIds={new Set()}
+          onToggleSelection={onToggleSelection}
+          onToggleSelectAll={vi.fn()}
+          onOpenOrder={vi.fn()}
+          renderActions={() => null}
+        />
+      </MemoryRouter>,
     );
 
     await user.click(screen.getByRole("checkbox", { name: /select order/i }));
