@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0.28] - 2026-09-23
+
+### Added
+
+- Detailed per-order activity history for regular, inbox, and abandoned orders, including immutable provenance, actor attribution, structured change reasons, before/after values, meaningful-view deduplication, and operational events for printing, messaging, fraud checks, and courier actions.
+- Compact expandable activity timelines that show five recent events by default, semantic BoardUI chips, exact timestamps, and full-history access.
+- Staff performance reporting for retained upsell value and detailed order activity.
+
+### Changed
+
+- Order and inbox editors now require structured reasons for audited item additions and cancellations, group save events, and recover safely from stale-write conflicts.
+- Main Cancel actions in the existing-order and new-order editors now use the BoardUI ghost button.
+
 ## [0.1.0.27] - 2026-09-22
 
 ### Fixed
