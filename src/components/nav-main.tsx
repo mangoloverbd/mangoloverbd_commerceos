@@ -233,29 +233,28 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
 
     return (
         <>
-            {sections.map((section) => {
+            {sections.map((section, sectionIndex) => {
                 const sectionKey = section.label || section.routes[0]?.id;
+                const sectionBoundaryClass = sectionIndex > 0
+                    ? "mt-2 border-t border-black/[0.08] pt-2"
+                    : undefined;
 
                 if (section.collapsible && !isCollapsed) {
-                    return <CollapsibleSection key={sectionKey} section={section} />;
+                    return (
+                        <div key={sectionKey} className={sectionBoundaryClass}>
+                            <CollapsibleSection section={section} />
+                        </div>
+                    );
                 }
 
                 return (
-                <SidebarGroup
-                    key={sectionKey}
-                    className="px-1.5 py-0.5"
-                >
+                <div key={sectionKey} className={sectionBoundaryClass}>
+                 <SidebarGroup className="px-1.5 py-0.5">
                     {/* Section label */}
                     {!isCollapsed && section.label && (
                         <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 font-sans text-[11px] font-medium normal-case tracking-normal text-black">
                             {section.label}
                         </SidebarGroupLabel>
-                    )}
-
-                    {isCollapsed && section.label && (
-                        <div className="flex justify-center py-1 mb-0.5">
-                            <div className="h-px w-4 rounded-full bg-black/10" />
-                        </div>
                     )}
 
                     <SidebarGroupContent>
@@ -482,7 +481,8 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                             })}
                         </SidebarMenu>
                     </SidebarGroupContent>
-                </SidebarGroup>
+                 </SidebarGroup>
+                </div>
                 );
             })}
         </>
