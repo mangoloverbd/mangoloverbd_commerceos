@@ -95,6 +95,9 @@ const SAFE_METADATA_KEYS = new Set([
   "upsell_value",
   "integration",
   "failure_reason",
+  "document_type",
+  "legacy_status_event_id",
+  "provider_status",
 ]);
 
 const TRACKED_ORDER_FIELDS = Object.freeze([
@@ -301,7 +304,8 @@ export function buildDetailedActivityEvent({
   const safeMetadata = {};
   if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
     for (const [key, value] of Object.entries(metadata)) {
-      if (SAFE_METADATA_KEYS.has(key)) safeMetadata[key] = value;
+      if (!SAFE_METADATA_KEYS.has(key)) continue;
+      safeMetadata[key] = typeof value === "string" ? value.slice(0, 120) : value;
     }
   }
 
