@@ -8854,14 +8854,14 @@ app.get("/api/returns", async (req, res) => {
 
     const { data: mainOrders } = await supabase
       .from("orders")
-      .select("id, order_number, customer_name, phone, product, price, courier_status, courier_name, courier_fee, consignment_id, return_status, return_reason, return_requested_at, sent_to_courier, created_at")
+      .select("id, order_number, customer_name, phone, product, price, courier_status, courier_name, courier_fee, consignment_id, return_status, return_reason, return_requested_at, sent_to_courier, source, created_at")
       .eq("org_id", orgId)
       .eq("sent_to_courier", true)
       .or("courier_status.ilike.%return%,return_status.neq.null,courier_status.eq.cancelled");
 
     const { data: inboxOrders } = await supabase
       .from("social_inbox_orders")
-      .select("id, contact_name, items, total_price, courier_status, courier_name, courier_fee, consignment_id, return_status, return_reason, return_requested_at, sent_to_courier, notes, created_at")
+      .select("id, contact_name, items, total_price, courier_status, courier_name, courier_fee, consignment_id, return_status, return_reason, return_requested_at, sent_to_courier, platform, notes, created_at")
       .eq("org_id", orgId)
       .eq("sent_to_courier", true)
       .or("courier_status.ilike.%return%,return_status.neq.null,courier_status.eq.cancelled");
@@ -8872,7 +8872,8 @@ app.get("/api/returns", async (req, res) => {
       const cs = (o.courier_status || "").toLowerCase();
       returns.push({
         id: o.id,
-        source: "shopify",
+        source: "orders",
+        order_source: o.source || "manual_other",
         order_number: o.order_number || o.id.slice(-6).toUpperCase(),
         customer_name: o.customer_name || "Unknown",
         phone: o.phone || "",
@@ -8898,6 +8899,7 @@ app.get("/api/returns", async (req, res) => {
       returns.push({
         id: o.id,
         source: "inbox",
+        order_source: o.platform || "manual_other",
         order_number: `IO-${o.id.slice(-6).toUpperCase()}`,
         customer_name: o.contact_name || "Unknown",
         phone: phoneMatch?.[1]?.trim() || "",
