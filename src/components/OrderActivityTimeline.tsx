@@ -4,22 +4,220 @@ import { CaretDown, CaretUp, ClockCounterClockwise, Eye, UserCircle } from "@pho
 import { apiFetch } from "@/lib/api";
 import { Spinner } from "@/components/ui/ios-spinner";
 
-type Change = { type?: string; field?: string; label?: string; before?: unknown; after?: unknown; addition_reason?: string };
-type Event = { id: string; occurred_at: string | null; event_type?: string; action?: string; actor_display_name: string; summary?: string; reason_code?: string | null; reason_note?: string | null; changes?: Change[] };
-type Provenance = { origin_source?: string | null; created_at?: string | null; created_by_display_name?: string | null; assigned_to_display_name?: string | null; last_edited_by?: string | null; viewer_count?: number };
+type Change = {
+  type?: string;
+  field?: string;
+  label?: string;
+  before?: unknown;
+  after?: unknown;
+  addition_reason?: string;
+};
+
+type Event = {
+  id: string;
+  occurred_at: string | null;
+  event_type?: string;
+  action?: string;
+  actor_display_name: string;
+  summary?: string;
+  reason_code?: string | null;
+  reason_note?: string | null;
+  changes?: Change[];
+};
+
+type Provenance = {
+  origin_source?: string | null;
+  created_at?: string | null;
+  created_by_display_name?: string | null;
+  assigned_to_display_name?: string | null;
+  last_edited_by?: string | null;
+  viewer_count?: number;
+};
+
 type Response = { events: Event[]; provenance?: Provenance };
-const REASONS: Record<string, string> = { customer_changed_mind: "Customer changed their mind", customer_unreachable: "Customer unreachable", duplicate_order: "Duplicate order", wrong_product_or_quantity: "Wrong product or quantity", pricing_issue: "Pricing issue", delivery_charge_objection: "Delivery-charge objection", delivery_delay: "Delivery delay", out_of_stock: "Out of stock", fraud_or_suspicious: "Fraud or suspicious order", invalid_contact_information: "Invalid contact information", service_area_unavailable: "Service area unavailable", test_or_fake_order: "Test or fake order", upsell: "Upsell", customer_request: "Customer request", correction: "Correction", replacement: "Replacement", other: "Other" };
-const humanize = (value?: string | null) => value ? value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown";
-const timestamp = (value?: string | null) => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString("en-BD") : "From rollout";
-const display = (value: unknown) => value === null || value === undefined || value === "" ? "Not set" : typeof value === "object" ? JSON.stringify(value) : String(value);
+
+const RECENT_LIMIT = 5;
+const REASONS: Record<string, string> = {
+  customer_changed_mind: "Customer changed their mind",
+  customer_unreachable: "Customer unreachable",
+  duplicate_order: "Duplicate order",
+  wrong_product_or_quantity: "Wrong product or quantity",
+  pricing_issue: "Pricing issue",
+  delivery_charge_objection: "Delivery-charge objection",
+  delivery_delay: "Delivery delay",
+  out_of_stock: "Out of stock",
+  fraud_or_suspicious: "Fraud or suspicious order",
+  invalid_contact_information: "Invalid contact information",
+  service_area_unavailable: "Service area unavailable",
+  test_or_fake_order: "Test or fake order",
+  upsell: "Upsell",
+  customer_request: "Customer request",
+  correction: "Correction",
+  replacement: "Replacement",
+  other: "Other",
+};
+
+const humanize = (value?: string | null) =>
+  value
+    ? value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ")
+    : "Unknown";
+
+const timestamp = (value?: string | null) =>
+  value && Number.isFinite(new Date(value).getTime())
+    ? new Date(value).toLocaleString("en-BD")
+    : "From rollout";
+
+const timeAgo = (value?: string | null) => {
+  const time = value ? new Date(value).getTime() : Number.NaN;
+  if (!Number.isFinite(time)) return "From rollout";
+  const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return timestamp(value);
+};
+
+const display = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return "Not set";
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+};
 
 function EventRow({ event }: { event: Event }) {
-  const [open, setOpen] = useState(false); const changes = event.changes || []; const summary = event.summary || humanize(event.event_type || event.action);
-  return <li data-testid="activity-event" className="rounded-lg bg-black/[0.025] px-3 py-2.5"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-x-2"><span className="text-[12px] font-medium text-black">{summary}</span><span className="text-[10px] text-black/50">by {event.actor_display_name}</span></div>{(event.reason_code || event.reason_note) && <p className="mt-1 text-[11px] text-black/65">{event.reason_code && <span>{REASONS[event.reason_code] || humanize(event.reason_code)}</span>}{event.reason_code && event.reason_note ? " · " : null}{event.reason_note && <span>{event.reason_note}</span>}</p>}</div><span className="shrink-0 text-[10px] text-black/45">{timestamp(event.occurred_at)}</span></div>{changes.length > 0 && <button type="button" aria-label={`${open ? "Hide" : "Show"} changes for ${summary}`} onClick={() => setOpen(!open)} className="mt-2 inline-flex items-center gap-1 text-[10px] text-black/60">{open ? <CaretUp size={11} weight="light" /> : <CaretDown size={11} weight="light" />}{changes.length} change{changes.length === 1 ? "" : "s"}</button>}{open && <dl className="mt-2 divide-y divide-black/[0.05] border-t border-black/[0.06]">{changes.map((change, index) => <div key={index} className="grid grid-cols-[minmax(80px,.7fr)_1fr_auto_1fr] gap-2 py-2 text-[10px]"><dt className="font-medium text-black/60">{change.label || humanize(change.field || change.type)}</dt><dd className="break-words text-black/55">{display(change.before)}</dd><span>→</span><dd className="break-words text-black">{display(change.after)}{change.addition_reason ? ` (${REASONS[change.addition_reason] || humanize(change.addition_reason)})` : ""}</dd></div>)}</dl>}</li>;
+  const [open, setOpen] = useState(false);
+  const changes = event.changes || [];
+  const summary = event.summary || humanize(event.event_type || event.action);
+
+  return (
+    <li data-testid="activity-event" className="border-b border-black/[0.05] last:border-0">
+      <button
+        type="button"
+        aria-label={`${open ? "Collapse" : "Expand"}: ${summary}`}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 py-2 text-left"
+      >
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-black">
+          {summary}{" "}
+          <span className="font-normal text-black/50">by {event.actor_display_name}</span>
+        </span>
+        <span className="shrink-0 text-[10px] text-black/45">{timeAgo(event.occurred_at)}</span>
+        {open ? (
+          <CaretUp size={11} weight="light" className="shrink-0 text-black/50" />
+        ) : (
+          <CaretDown size={11} weight="light" className="shrink-0 text-black/50" />
+        )}
+      </button>
+
+      {open && (
+        <div className="pb-2 pl-1">
+          {(event.reason_code || event.reason_note) && (
+            <p className="text-[11px] text-black/65">
+              {event.reason_code && <span>{REASONS[event.reason_code] || humanize(event.reason_code)}</span>}
+              {event.reason_code && event.reason_note ? " · " : null}
+              {event.reason_note && <span>{event.reason_note}</span>}
+            </p>
+          )}
+
+          {changes.length > 0 && (
+            <dl className="mt-1.5 divide-y divide-black/[0.05] border-t border-black/[0.06]">
+              {changes.map((change, index) => (
+                <div
+                  key={`${change.field || change.type || "change"}-${index}`}
+                  className="grid grid-cols-[minmax(80px,.7fr)_1fr_auto_1fr] gap-2 py-1.5 text-[10px]"
+                >
+                  <dt className="font-medium text-black/60">{change.label || humanize(change.field || change.type)}</dt>
+                  <dd className="break-words text-black/55">{display(change.before)}</dd>
+                  <span aria-hidden="true">→</span>
+                  <dd className="break-words text-black">
+                    {display(change.after)}
+                    {change.addition_reason
+                      ? ` (${REASONS[change.addition_reason] || humanize(change.addition_reason)})`
+                      : ""}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          <p className="mt-1 text-[10px] text-black/40">{timestamp(event.occurred_at)}</p>
+        </div>
+      )}
+    </li>
+  );
 }
 
 export function OrderActivityTimeline({ endpoint, enabled = true }: { endpoint: string; enabled?: boolean }) {
-  const [all, setAll] = useState(false); const query = useQuery({ queryKey: [endpoint], enabled, staleTime: 15_000, queryFn: async (): Promise<Response> => { const response = await apiFetch(endpoint); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || "Could not load activity"); return body; } });
-  if (!enabled) return null; const events = query.data?.events || []; const provenance = query.data?.provenance;
-  return <section aria-label="Order activity" className="rounded-xl bg-white p-3"><div className="flex items-center gap-1.5"><ClockCounterClockwise size={13} weight="light" /><p className="text-[8px] font-medium uppercase tracking-[0.25em] text-black/60">Activity</p></div>{query.isLoading ? <div className="mt-3 flex gap-2 text-[11px]"><Spinner size="sm" />Loading activity</div> : query.isError ? <p className="mt-3 text-[11px] text-black/50">Could not load activity for this order.</p> : <>{provenance && <div className="mt-3 grid gap-px overflow-hidden rounded-lg bg-black/[0.06] sm:grid-cols-3"><div className="bg-[#FAFAF8] p-2.5"><p className="text-[8px] uppercase tracking-[.2em] text-black/45">Origin</p><p className="mt-1 text-[12px] font-medium">{humanize(provenance.origin_source)}</p><p className="text-[10px] text-black/45">{timestamp(provenance.created_at)}</p></div><div className="bg-[#FAFAF8] p-2.5"><p className="flex items-center gap-1 text-[8px] uppercase tracking-[.2em] text-black/45"><UserCircle size={11} weight="light" />Ownership</p><p className="mt-1 text-[12px] font-medium">{provenance.assigned_to_display_name || provenance.created_by_display_name || "Unassigned"}</p><p className="text-[10px] text-black/45">Last edited by {provenance.last_edited_by || "—"}</p></div><div className="bg-[#FAFAF8] p-2.5"><p className="flex items-center gap-1 text-[8px] uppercase tracking-[.2em] text-black/45"><Eye size={11} weight="light" />Reviewed</p><p className="mt-1 text-[12px] font-medium">{provenance.viewer_count || 0} viewer{provenance.viewer_count === 1 ? "" : "s"}</p></div></div>}<ol className="mt-3 space-y-2">{(all ? events : events.slice(0, 5)).map((event) => <EventRow key={event.id} event={event} />)}</ol>{events.length > 5 && <button type="button" onClick={() => setAll(!all)} className="mt-3 text-[11px] font-medium underline">{all ? "Show recent activity" : "View all activity"}</button>}</>}</section>;
+  const [all, setAll] = useState(false);
+  const query = useQuery({
+    queryKey: [endpoint],
+    enabled,
+    staleTime: 15_000,
+    queryFn: async (): Promise<Response> => {
+      const response = await apiFetch(endpoint);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Could not load activity");
+      return body;
+    },
+  });
+
+  if (!enabled) return null;
+
+  const events = query.data?.events || [];
+  const provenance = query.data?.provenance;
+  const visibleEvents = all ? events : events.slice(0, RECENT_LIMIT);
+
+  return (
+    <section aria-label="Order activity" className="rounded-xl bg-white p-3">
+      <div className="flex items-center gap-1.5">
+        <ClockCounterClockwise size={13} weight="light" />
+        <p className="text-[8px] font-medium uppercase tracking-[0.25em] text-black/60">Activity</p>
+      </div>
+
+      {query.isLoading ? (
+        <div className="mt-3 flex gap-2 text-[11px]"><Spinner size="sm" />Loading activity</div>
+      ) : query.isError ? (
+        <p className="mt-3 text-[11px] text-black/50">Could not load activity for this order.</p>
+      ) : (
+        <>
+          {provenance && (
+            <div className="mt-3 grid gap-px overflow-hidden rounded-lg bg-black/[0.06] sm:grid-cols-3">
+              <div className="bg-[#FAFAF8] p-2.5">
+                <p className="text-[8px] uppercase tracking-[.2em] text-black/45">Origin</p>
+                <p className="mt-1 text-[12px] font-medium">{humanize(provenance.origin_source)}</p>
+                <p className="text-[10px] text-black/45">{timestamp(provenance.created_at)}</p>
+              </div>
+              <div className="bg-[#FAFAF8] p-2.5">
+                <p className="flex items-center gap-1 text-[8px] uppercase tracking-[.2em] text-black/45">
+                  <UserCircle size={11} weight="light" />Ownership
+                </p>
+                <p className="mt-1 text-[12px] font-medium">
+                  {provenance.assigned_to_display_name || provenance.created_by_display_name || "Unassigned"}
+                </p>
+                <p className="text-[10px] text-black/45">Last edited by {provenance.last_edited_by || "—"}</p>
+              </div>
+              <div className="bg-[#FAFAF8] p-2.5">
+                <p className="flex items-center gap-1 text-[8px] uppercase tracking-[.2em] text-black/45">
+                  <Eye size={11} weight="light" />Reviewed
+                </p>
+                <p className="mt-1 text-[12px] font-medium">
+                  {provenance.viewer_count || 0} viewer{provenance.viewer_count === 1 ? "" : "s"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <ol className="mt-1">{visibleEvents.map((event) => <EventRow key={event.id} event={event} />)}</ol>
+          {events.length > RECENT_LIMIT && (
+            <button type="button" onClick={() => setAll(!all)} className="mt-3 text-[11px] font-medium underline">
+              {all ? "Show recent activity" : "View all activity"}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
 }
