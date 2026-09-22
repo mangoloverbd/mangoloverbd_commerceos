@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0.30] - 2026-09-23
+
+### Added
+
+- Added Staff Performance to Overview with assigned, confirmed, value, delivery-rate, and top-staff metrics.
+- Added Pending Fulfillment as an actionable Overview KPI with period-over-period comparison.
+
+### Changed
+
+- Expanded Courier Performance with shipment totals, status breakdowns, and delivery pipeline shares.
+- Expanded Retention with average orders per customer and average customer value.
+- Aligned the Overview operational cards and anchored their final sections to the shared card height.
+
 ## [0.1.0.29] - 2026-09-23
 
 ### Changed
