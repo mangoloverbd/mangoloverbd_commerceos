@@ -37,6 +37,13 @@ const ALL_ACTIONS: ActivityAction[] = [
   "converted",
   "status_changed",
   "expired",
+  "viewed",
+  "edited",
+  "assigned",
+  "messaged",
+  "fraud_checked",
+  "courier_updated",
+  "printed",
 ];
 
 function dhakaToday(): Date {
@@ -242,7 +249,7 @@ function ActivityRow({ event, index, reduceMotion }: { event: ActivityEvent; ind
             {event.actor_display_name}
             <span className="font-normal text-black/45"> · {activityTableLabel(event.order_table)}</span>
           </p>
-          <p className="truncate text-[10.5px] text-black/50">{event.order_label || "—"}</p>
+          <p className="truncate text-[10.5px] text-black/50">{event.summary ? `${event.summary} · ` : ""}{event.order_label || "—"}</p>
         </div>
       </div>
       <div className="shrink-0 text-right">

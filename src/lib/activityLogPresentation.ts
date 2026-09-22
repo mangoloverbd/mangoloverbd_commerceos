@@ -7,7 +7,14 @@ export type ActivityAction =
   | "reopened"
   | "dismissed"
   | "converted"
-  | "expired";
+  | "expired"
+  | "viewed"
+  | "edited"
+  | "assigned"
+  | "messaged"
+  | "fraud_checked"
+  | "courier_updated"
+  | "printed";
 
 export type ActivityOrderTable = "orders" | "social_inbox_orders" | "abandoned_checkouts";
 
@@ -21,6 +28,7 @@ export type ActivityEvent = {
   order_value: number | null;
   actor_id: string | null;
   actor_display_name: string;
+  summary?: string | null;
 };
 
 export type ActivityStaffOption = {
@@ -51,6 +59,13 @@ const ACTION_LABELS: Record<ActivityAction, string> = {
   dismissed: "Dismissed",
   converted: "Converted to order",
   expired: "Expired",
+  viewed: "Viewed",
+  edited: "Edited",
+  assigned: "Assigned",
+  messaged: "Messaged",
+  fraud_checked: "Fraud checked",
+  courier_updated: "Courier updated",
+  printed: "Printed",
 };
 
 export function activityActionLabel(action: ActivityAction): string {
@@ -69,6 +84,13 @@ const ACTION_COLORS: Record<ActivityAction, ChipColor> = {
   dismissed: "rose",
   converted: "lime",
   expired: "rose",
+  viewed: "blue",
+  edited: "soft",
+  assigned: "yellow",
+  messaged: "blue",
+  fraud_checked: "yellow",
+  courier_updated: "lime",
+  printed: "soft",
 };
 
 export function activityActionColor(action: ActivityAction): ChipColor {

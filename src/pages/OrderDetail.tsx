@@ -331,9 +331,29 @@ export default function OrderDetail() {
     setSaving(true);
     setSaveError("");
     const activityGroupId = createActivityGroupId();
+    const completedSegments: string[] = [];
+    const pendingSegments: string[] = [
+      ...(detailsChanged ? ["customer details"] : []),
+      ...(cartChanged ? ["order items"] : []),
+      ...((overallChanged || deliveryChanged || notesChanged || statusChanged || sourceChanged) ? ["totals and status"] : []),
+    ];
+    const expectedVersion = order.updated_at || null;
     try {
       let currentOrder = order;
       let currentItems = detail.items;
+      const failWith = async (segment: string, message: string, status?: number, code?: string) => {
+        if (status === 409 && code === "stale_write") {
+          await queryClient.invalidateQueries({ queryKey: [`/api/orders/${id}`] });
+          throw new Error("Order changed before it could be saved. Refresh and try again.");
+        }
+        if (completedSegments.length > 0) {
+          await queryClient.invalidateQueries({ queryKey: [`/api/orders/${id}`] });
+          const saved = completedSegments.join(", ");
+          const remaining = pendingSegments.filter((entry) => !completedSegments.includes(entry) && entry !== segment).concat([segment]).join(", ");
+          throw new Error(`Partial save: ${saved} saved, but ${remaining} was not saved (${message}). Refresh to see saved changes, then retry the remaining edits (a new save uses a new history group).`);
+        }
+        throw new Error(message);
+      };
       if (detailsChanged) {
         const detailsRes = await apiFetch(`/api/orders/${id}`, {
           method: "PATCH",
@@ -343,28 +363,31 @@ export default function OrderDetail() {
             phone: customer.phone.trim(),
             address: customer.address.trim(),
             activity_group_id: activityGroupId,
+            ...(expectedVersion ? { expected_updated_at: expectedVersion } : {}),
           }),
         });
         const detailsJson = await detailsRes.json().catch(() => ({}));
-        if (!detailsRes.ok) throw new Error(detailsJson.error || "Failed to save customer details");
+        if (!detailsRes.ok) await failWith("customer details", detailsJson.error || "Failed to save customer details", detailsRes.status, detailsJson.code);
         currentOrder = detailsJson.order;
+        completedSegments.push("customer details");
       }
 
       if (cartChanged) {
         const res = await apiFetch(`/api/orders/${id}/items`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: itemIntent(draft), addition_reasons: additionReasons, activity_group_id: activityGroupId }),
+          body: JSON.stringify({ items: itemIntent(draft), addition_reasons: additionReasons, activity_group_id: activityGroupId, ...(currentOrder.updated_at ? { expected_updated_at: currentOrder.updated_at } : {}) }),
         });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json.error || "Failed to save order items");
+        if (!res.ok) await failWith("order items", json.error || "Failed to save order items", res.status, json.code);
         const savedDetail = json as OrderDetailResponse;
         currentOrder = savedDetail.order;
         currentItems = savedDetail.items;
+        completedSegments.push("order items");
       }
 
       if (overallChanged || deliveryChanged || notesChanged || statusChanged || sourceChanged) {
-        const orderPatch: { discount?: number; delivery_rate?: number; notes?: string | null; status?: string; source?: OrderSource; activity_group_id: string; cancellation_reason_code?: CancellationReason; cancellation_reason_note?: string | null } = { activity_group_id: activityGroupId };
+        const orderPatch: { discount?: number; delivery_rate?: number; notes?: string | null; status?: string; source?: OrderSource; activity_group_id: string; expected_updated_at?: string | null; cancellation_reason_code?: CancellationReason; cancellation_reason_note?: string | null } = { activity_group_id: activityGroupId, ...(currentOrder.updated_at ? { expected_updated_at: currentOrder.updated_at } : {}) };
         if (overallChanged) {
           const itemTotal = currentItems.reduce(
             (sum, item) => sum + (Number(item.unit_discount) || 0) * (Number(item.quantity) || 0),
@@ -387,8 +410,9 @@ export default function OrderDetail() {
             body: JSON.stringify(orderPatch),
           });
           const totalsJson = await totalsRes.json().catch(() => ({}));
-          if (!totalsRes.ok) throw new Error(totalsJson.error || "Failed to save order totals");
+          if (!totalsRes.ok) await failWith("totals and status", totalsJson.error || "Failed to save order totals", totalsRes.status, totalsJson.code);
           currentOrder = totalsJson.order;
+          completedSegments.push("totals and status");
         }
       }
 

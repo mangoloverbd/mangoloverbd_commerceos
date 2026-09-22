@@ -737,6 +737,7 @@ export default function InboxOrders() {
     if (selectedOrders.length === 0) return;
     try {
       printInvoice(selectedOrders, orgName);
+      void apiFetch("/api/order-activity/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_table: "social_inbox_orders", order_ids: selectedOrders.map((order) => order.id), document_type: "invoice" }) }).catch(() => {});
     } catch {
       toast.error("Failed to prepare invoices for printing");
     }
@@ -754,7 +755,7 @@ export default function InboxOrders() {
         toast.error(
           `Send ${result.missingOrderNumbers.join(", ")} to a courier before printing the label`,
         );
-      }
+      } else void apiFetch("/api/order-activity/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_table: "social_inbox_orders", order_ids: selectedOrders.map((order) => order.id), document_type: "shipping_label" }) }).catch(() => {});
     } catch {
       toast.error("Failed to print shipping labels");
     }

@@ -25,6 +25,8 @@ export type StaffMetrics = {
   telesales_confirmed_count: number;
   telesales_confirmed_value: number;
   telesales_confirmed_kg: number;
+  retained_upsell_count: number;
+  retained_upsell_value: number;
   products: ProductDetail[];
 };
 
