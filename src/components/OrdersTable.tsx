@@ -33,7 +33,7 @@ import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldChe
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { classifyOrderStatus } from "@/lib/orderStatusFilters";
+import { classifyOrderStatus, canShowConsignmentCopy } from "@/lib/orderStatusFilters";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isPrintStatus } from "@/lib/orderTransitions";
@@ -1580,7 +1580,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                           return (
                             <div className="flex items-center justify-center gap-1" data-row-interactive="true">
                               {getCourierStatusBadge(order)}
-                              {id && classifyOrderStatus(order) !== "delivered" && (
+                              {id && canShowConsignmentCopy(order) && (
                                 <CopyButton
                                   value={String(id)}
                                   size="sm"
