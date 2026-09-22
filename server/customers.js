@@ -5,6 +5,19 @@ export function normalizeCustomerPhone(phone) {
   return /^01\d{9}$/.test(clean) ? clean : "";
 }
 
+export function customerPhoneCandidates(phone) {
+  const normalized = normalizeCustomerPhone(phone);
+  if (!normalized) return [];
+  const international = `880${normalized.slice(1)}`;
+  return [normalized, international, `+${international}`];
+}
+
+export function findCustomerOrderByPhone(orders, phone) {
+  const normalized = normalizeCustomerPhone(phone);
+  if (!normalized || !Array.isArray(orders)) return null;
+  return orders.find((order) => normalizeCustomerPhone(order?.phone) === normalized) || null;
+}
+
 export function detectCustomerOrderSource(row, tableKind) {
   const source = String(row?.source || row?.platform || "").toLowerCase();
   if (tableKind === "social") {

@@ -31,7 +31,7 @@ import {
   mergeResolvedOrderItems,
   parseLegacyProductLines,
 } from "./orderItemParsing.js";
-import { buildCustomers, summarizeCustomers } from "./customers.js";
+import { buildCustomers, customerPhoneCandidates, findCustomerOrderByPhone, summarizeCustomers } from "./customers.js";
 import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
   HANDLE_REGEX,
@@ -7452,6 +7452,52 @@ function buildCustomerAiInsight(customer) {
     nextAction,
   };
 }
+
+app.get("/api/customers/lookup", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const phoneCandidates = customerPhoneCandidates(req.query.phone);
+    if (!phoneCandidates.length) return res.status(400).json({ error: "Valid phone number is required" });
+    const normalizedPhone = phoneCandidates[0];
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data, error } = await supabase
+      .from("orders")
+      .select("customer_name, address, created_at")
+      .eq("org_id", orgId)
+      .in("phone", phoneCandidates)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+
+    let customerOrder = data;
+    if (!customerOrder) {
+      const { data: formattedCandidates, error: formattedError } = await supabase
+        .from("orders")
+        .select("customer_name, address, phone, created_at")
+        .eq("org_id", orgId)
+        .ilike("phone", `%${normalizedPhone.slice(-4)}`)
+        .order("created_at", { ascending: false });
+      if (formattedError) throw formattedError;
+      customerOrder = findCustomerOrderByPhone(formattedCandidates, normalizedPhone);
+    }
+
+    return res.json({
+      customer: customerOrder ? {
+        customerName: customerOrder.customer_name || "",
+        address: customerOrder.address || "",
+        lastOrderAt: customerOrder.created_at || null,
+      } : null,
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
 
 app.get("/api/customers", async (req, res) => {
   try {

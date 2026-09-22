@@ -71,6 +71,139 @@ describe("NewOrder", () => {
     });
   });
 
+  it("fills empty customer fields from the latest order for a valid phone", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/customers/lookup?phone=01712345678") {
+        return {
+          ok: true,
+          json: async () => ({ customer: { customerName: "Rahim Uddin", address: "Dhanmondi, Dhaka", lastOrderAt: "2026-09-20T12:00:00Z" } }),
+        };
+      }
+      return { ok: true, json: async () => ({ products: [] }) };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/orders/new"]}>
+          <NewOrder />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByRole("textbox", { name: "Phone" }), "01712345678");
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Customer name" })).toHaveValue("Rahim Uddin");
+      expect(screen.getByRole("textbox", { name: "Delivery address" })).toHaveValue("Dhanmondi, Dhaka");
+    });
+    expect(screen.getByText("Previous customer found")).toBeInTheDocument();
+  });
+
+  it("preserves typed customer details and clears the match for a new customer", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/customers/lookup?phone=01712345678") {
+        return {
+          ok: true,
+          json: async () => ({ customer: { customerName: "Old Name", address: "Mirpur, Dhaka", lastOrderAt: "2026-09-20T12:00:00Z" } }),
+        };
+      }
+      return { ok: true, json: async () => ({ products: [] }) };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/orders/new"]}>
+          <NewOrder />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByRole("textbox", { name: "Customer name" }), "New Name");
+    await user.type(screen.getByRole("textbox", { name: "Phone" }), "01712345678");
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Delivery address" })).toHaveValue("Mirpur, Dhaka"));
+    expect(screen.getByRole("textbox", { name: "Customer name" })).toHaveValue("New Name");
+
+    await user.click(screen.getByRole("button", { name: "New customer" }));
+
+    expect(screen.getByRole("textbox", { name: "Phone" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Customer name" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Delivery address" })).toHaveValue("");
+    expect(screen.queryByText("Previous customer found")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["no previous order", { ok: true, json: async () => ({ customer: null }) }, "success"],
+    ["lookup failure", { ok: false, json: async () => ({ error: "Lookup failed" }) }, "error"],
+  ])("keeps manual customer entry usable after %s", async (_label, lookupResponse, expectedStatus) => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/customers/lookup?phone=01712345678") return lookupResponse;
+      return { ok: true, json: async () => ({ products: [] }) };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/orders/new"]}>
+          <NewOrder />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.type(screen.getByRole("textbox", { name: "Phone" }), "01712345678");
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/customers/lookup?phone=01712345678"));
+    await waitFor(() => expect(client.getQueryState(["/api/customers/lookup", "01712345678"])?.status).toBe(expectedStatus));
+
+    expect(screen.getByRole("textbox", { name: "Customer name" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Delivery address" })).toHaveValue("");
+    expect(screen.queryByText("Previous customer found")).not.toBeInTheDocument();
+  });
+
+  it("ignores an older lookup response after the phone number changes", async () => {
+    const user = userEvent.setup();
+    let resolveFirstLookup: ((value: { ok: boolean; json: () => Promise<unknown> }) => void) | undefined;
+    const firstLookup = new Promise<{ ok: boolean; json: () => Promise<unknown> }>((resolve) => {
+      resolveFirstLookup = resolve;
+    });
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/customers/lookup?phone=01712345678") return firstLookup;
+      if (url === "/api/customers/lookup?phone=01812345678") {
+        return {
+          ok: true,
+          json: async () => ({ customer: { customerName: "Current Customer", address: "Uttara, Dhaka", lastOrderAt: "2026-09-21T12:00:00Z" } }),
+        };
+      }
+      return { ok: true, json: async () => ({ products: [] }) };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/orders/new"]}>
+          <NewOrder />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const phoneInput = screen.getByRole("textbox", { name: "Phone" });
+    await user.type(phoneInput, "01712345678");
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/customers/lookup?phone=01712345678"));
+    await user.clear(phoneInput);
+    await user.type(phoneInput, "01812345678");
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Customer name" })).toHaveValue("Current Customer"));
+    resolveFirstLookup?.({
+      ok: true,
+      json: async () => ({ customer: { customerName: "Stale Customer", address: "Old Address", lastOrderAt: "2026-09-01T12:00:00Z" } }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Customer name" })).toHaveValue("Current Customer");
+      expect(screen.getByRole("textbox", { name: "Delivery address" })).toHaveValue("Uttara, Dhaka");
+    });
+  });
+
   it("submits the selected order source and staff assignee", async () => {
     const user = userEvent.setup();
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {

@@ -35,6 +35,13 @@ import type { OrderSource } from "@/lib/orderSource";
 type Line = OrderEditorItem;
 
 type ProductsResponse = { products: CatalogProduct[] };
+type CustomerLookupResponse = {
+  customer: {
+    customerName: string;
+    address: string;
+    lastOrderAt: string | null;
+  } | null;
+};
 
 const PAYMENT_METHODS = [
   { value: "cod", label: "Cash on Delivery" },
@@ -55,6 +62,7 @@ export default function NewOrder() {
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [matchedCustomerPhone, setMatchedCustomerPhone] = useState<string | null>(null);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [deliveryOn, setDeliveryOn] = useState(true);
@@ -163,9 +171,23 @@ export default function NewOrder() {
     setCustomerName("");
     setPhone("");
     setAddress("");
+    setMatchedCustomerPhone(null);
   }
 
   const normalizedPhone = normalizeBdPhone(phone);
+  const customerLookup = useQuery<CustomerLookupResponse>({
+    queryKey: ["/api/customers/lookup", normalizedPhone],
+    enabled: Boolean(normalizedPhone),
+    retry: false,
+    staleTime: 60_000,
+    queryFn: async () => {
+      if (!normalizedPhone) return { customer: null };
+      const response = await apiFetch(`/api/customers/lookup?phone=${encodeURIComponent(normalizedPhone)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to look up customer");
+      return { customer: data.customer || null };
+    },
+  });
   const fraudCheck = useFraudCheckMutation(phone);
   const autoCheckedPhone = useRef<string | null>(null);
   const cartScrollRef = useRef<HTMLDivElement>(null);
@@ -193,6 +215,23 @@ export default function NewOrder() {
       fraudCheck.mutate({ force: false });
     }
   }, [normalizedPhone, fraudCheck]);
+
+  useEffect(() => {
+    if (!normalizedPhone) {
+      setMatchedCustomerPhone(null);
+      return;
+    }
+
+    const customer = customerLookup.data?.customer;
+    if (!customer) {
+      if (customerLookup.isSuccess) setMatchedCustomerPhone(null);
+      return;
+    }
+
+    setCustomerName((current) => current.trim() ? current : customer.customerName || "");
+    setAddress((current) => current.trim() ? current : customer.address || "");
+    setMatchedCustomerPhone(normalizedPhone);
+  }, [customerLookup.data, customerLookup.isSuccess, normalizedPhone]);
 
   async function createOrder() {
     if (!phone.trim()) {
@@ -309,6 +348,7 @@ export default function NewOrder() {
                       <PhoneIcon weight="light" size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black/35" />
                       <input aria-label="Phone" type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="01712345678" className="h-12 w-full rounded-lg bg-black/[0.04] pl-10 pr-3.5 text-[14px] normal-case tracking-normal text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20" />
                     </div>
+                    {normalizedPhone && matchedCustomerPhone === normalizedPhone && <p className="mt-1.5 text-[11px] normal-case tracking-normal text-[#2e9e5b]">Previous customer found</p>}
                   </label>
                   <label className="block text-[10px] font-medium uppercase tracking-[0.16em] text-black sm:col-span-2">
                     Delivery address

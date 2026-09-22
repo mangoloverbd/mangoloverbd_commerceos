@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCustomers,
+  customerPhoneCandidates,
   detectCustomerOrderSource,
+  findCustomerOrderByPhone,
   normalizeCustomerPhone,
 } from "../../server/customers.js";
 
@@ -11,6 +13,31 @@ describe("customer intelligence aggregation", () => {
     expect(normalizeCustomerPhone("8801812345678")).toBe("01812345678");
     expect(normalizeCustomerPhone("01912345678")).toBe("01912345678");
     expect(normalizeCustomerPhone("not-a-phone")).toBe("");
+  });
+
+  it("builds the supported stored forms for a customer lookup", () => {
+    expect(customerPhoneCandidates("01712345678")).toEqual([
+      "01712345678",
+      "8801712345678",
+      "+8801712345678",
+    ]);
+    expect(customerPhoneCandidates("+880 1712-345678")).toEqual([
+      "01712345678",
+      "8801712345678",
+      "+8801712345678",
+    ]);
+    expect(customerPhoneCandidates("not-a-phone")).toEqual([]);
+  });
+
+  it("finds the newest matching order when a stored phone contains formatting", () => {
+    const rows = [
+      { id: "newest-other", phone: "01812-345678" },
+      { id: "newest-match", phone: "+880 1712-345678" },
+      { id: "older-match", phone: "01712345678" },
+    ];
+
+    expect(findCustomerOrderByPhone(rows, "01712345678")).toEqual(rows[1]);
+    expect(findCustomerOrderByPhone(rows, "01912345678")).toBeNull();
   });
 
   it("detects Shopify, custom website webhook, manual, and social sources", () => {
