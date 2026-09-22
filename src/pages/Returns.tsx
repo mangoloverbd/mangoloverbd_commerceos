@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { orderSourceLabel } from "@/lib/orderSource";
 import { motion, AnimatePresence } from "framer-motion";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { toast } from "@/components/ui/sonner";
@@ -15,7 +16,8 @@ import { TextEffect } from "@/components/ui/text-effect";
 
 interface ReturnOrder {
   id: string;
-  source: "shopify" | "inbox";
+  source: "orders" | "inbox";
+  order_source: string;
   order_number: string;
   customer_name: string;
   phone: string;
@@ -324,7 +326,7 @@ export default function Returns() {
                   <tr key={order.id} className="border-b border-black/[0.04] hover:bg-black/[0.01] transition-colors">
                     <td className="py-2.5 px-4">
                       <span className="text-[12px] font-medium text-black">{order.order_number}</span>
-                      <span className="ml-1.5 text-[9px] text-black uppercase">{order.source}</span>
+                      <span className="ml-1.5 text-[9px] text-black uppercase">{orderSourceLabel(order.order_source)}</span>
                     </td>
                     <td className="py-2.5">
                       <p className="text-[12px] font-medium text-black truncate max-w-[120px]">{order.customer_name}</p>
