@@ -6,28 +6,9 @@ import {
     SidebarContent,
     SidebarFooter,
     SidebarHeader,
-    SidebarTrigger,
     useSidebar,
 } from "@/components/ui/sidebar";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import {
-    Home,
-    Download,
-    Package,
-    TrendingUp,
-
-    HelpCircle,
-    Send,
-    Lightbulb,
-
-} from "lucide-react";
 import { Logo } from "./logo";
 import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
@@ -157,7 +138,7 @@ export function AppSidebar() {
             routes: [
                 {
                     id: "staff-performance",
-                    title: "Staff Performance",
+                    title: "Staff",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path fill="currentColor" style={{fill: 'var(--fillg)'}} d="M16 17v2H2v-2s0-4 7-4s7 4 7 4m-3.5-9.5A3.5 3.5 0 1 0 9 11a3.5 3.5 0 0 0 3.5-3.5m3.44 5.5A5.32 5.32 0 0 1 18 17v2h4v-2s0-3.63-6.06-4M15 4a3.4 3.4 0 0 0-1.93.59a5 5 0 0 1 0 5.82A3.4 3.4 0 0 0 15 11a3.5 3.5 0 0 0 0-7"/></svg>,
                     link: "/reports/staff",
                 },
@@ -178,8 +159,8 @@ export function AppSidebar() {
         };
 
         const sections = [product];
-        sections.push(workspace);
         sections.push(reports);
+        sections.push(workspace);
         sections.push(socialInbox);
         return sections;
     }, [isAdmin]);
@@ -236,25 +217,6 @@ export function AppSidebar() {
 
             {/* ── Footer ──────────────────────────────────── */}
             <SidebarFooter className="border-t-0 p-1.5">
-                {/* Billing button */}
-                <div className={cn("px-2", isCollapsed && "flex justify-center px-0")}>
-                    <Link
-                        to="/billing"
-                        className={cn(
-                            "group/footer-link flex items-center gap-2 rounded-lg transition-all hover:bg-black/5 hover:text-black",
-                            isCollapsed ? "h-8 w-8 justify-center" : "w-full h-7 px-2 py-2"
-                        )}
-                        title="Billing & Plan"
-                    >
-                        <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
-                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0"><g clipPath="url(#clip0_billing)"><path d="M15.012 1.5C14.177 1.5 13.5 3.51472 13.5 6H15.012C15.7407 6 16.105 6 16.3306 5.74841C16.5562 5.49682 16.5169 5.1655 16.4384 4.50286C16.2311 2.75357 15.6707 1.5 15.012 1.5Z" stroke="currentColor" strokeWidth="1.125" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M13.5 6.0407V13.9843C13.5 15.1181 13.5 15.685 13.1535 15.9081C12.5873 16.2728 11.7121 15.5081 11.2718 15.2305C10.9081 15.0011 10.7263 14.8864 10.5244 14.8798C10.3063 14.8726 10.1212 14.9826 9.72817 15.2305L8.295 16.1343C7.90838 16.378 7.7151 16.5 7.5 16.5C7.28491 16.5 7.09159 16.378 6.705 16.1343L5.27185 15.2305C4.90811 15.0011 4.72624 14.8864 4.5244 14.8798C4.30629 14.8726 4.1212 14.9826 3.72815 15.2305C3.28796 15.5081 2.41265 16.2728 1.84646 15.9081C1.5 15.685 1.5 15.1181 1.5 13.9843V6.0407C1.5 3.90019 1.5 2.82994 2.15901 2.16497C2.81802 1.5 3.87868 1.5 6 1.5H15" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M4.5 4.5H10.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/><path d="M6 7.5H4.5" stroke="currentColor" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" className="transition-colors group-hover/footer-link:stroke-[#0c6fff]"/></g></svg>
-                        </span>
-                        {!isCollapsed && (
-                            <span className="text-[12.5px] font-medium text-black font-sf-text tracking-normal">Billing & Plan</span>
-                        )}
-                    </Link>
-                </div>
-
                 {/* Settings button */}
                 <div className={cn("px-2", isCollapsed && "flex justify-center px-0")}>
                     <Link
@@ -269,49 +231,11 @@ export function AppSidebar() {
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" className="text-black"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" d="M12 3v2m0 0a7 7 0 0 0-7 7m7-7a7 7 0 0 1 7 7m0 0h2m-2 0a7 7 0 0 1-7 7m0 0v2m0-2a7 7 0 0 1-7-7m0 0H3m4.5-7.794l1 1.732M18.062 8.5l1.732-1M15.5 18.062l1 1.732M5.938 15.5l-1.732 1m0-9l1.732 1M15.5 5.938l1-1.732M18.062 15.5l1.732 1M8.5 18.062l-1 1.732M12 12L7 7.101M12 12l-1.812 6.762M12 12l6.762-1.812"/></svg>
                         </span>
                         {!isCollapsed && (
-                            <span className="text-[12.5px] font-medium text-black font-sf-text tracking-normal">System Settings</span>
+                            <span className="text-[12.5px] font-medium text-black font-sans tracking-normal">System Settings</span>
                         )}
                     </Link>
                 </div>
 
-                {/* Copyright */}
-                {!isCollapsed && (
-                    <div className="flex items-center justify-between px-4 pb-2">
-                        <p className="text-[10px] text-sidebar-foreground/25 whitespace-nowrap">
-                            © 2026 Commerce OS
-                        </p>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <button className="flex items-center justify-center h-5 w-5 rounded-full bg-white shadow-sm hover:shadow-md transition-all">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"><g fill="none"><circle cx="12" cy="12" r="9" fill="#0033ff" opacity=".25"/><circle cx="12" cy="12" r="9" stroke="#0033ff" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"/><path stroke="#0033ff" strokeLinejoin="round" strokeWidth="3.5" d="M12 16h.01v.01H12z"/><path stroke="#0033ff" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10.586 7.586c.39-.39.9-.585 1.41-.586a1.991 1.991 0 0 1 1.418.586c.39.39.586.902.586 1.414a1.99 1.99 0 0 1-.586 1.414a1.993 1.993 0 0 1-1.418.586L12 12"/></g></svg>
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent side="right" align="end" sideOffset={8} className="w-52 rounded-xl border border-black/[0.08] bg-white p-0 shadow-xl shadow-black/[0.08]">
-                                <div className="px-4 pt-3.5 pb-2.5 border-b border-black/[0.06]">
-                                    <p className="text-[11px] font-semibold text-foreground">Support</p>
-                                    <p className="text-[10px] text-muted-foreground mt-0.5">How can we help you?</p>
-                                </div>
-                                <div className="p-1.5">
-                                    {[
-                                        { icon: Send, label: "Feedback" },
-                                        { icon: HelpCircle, label: "Help Center", testid: "link-help-center" },
-                                        { icon: Lightbulb, label: "Request a Feature" },
-                                    ].map(({ icon: Icon, label, testid }: { icon: React.ElementType; label: string; testid?: string }) => (
-                                        <Link
-                                            key={label}
-                                            to="#"
-                                            data-testid={testid}
-                                            className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-medium text-foreground/80 transition-colors hover:bg-black/[0.04] hover:text-foreground"
-                                        >
-                                            <Icon size={15} className="shrink-0 text-muted-foreground" />
-                                            {label}
-                                        </Link>
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-                )}
             </SidebarFooter>
         </Sidebar>
     );

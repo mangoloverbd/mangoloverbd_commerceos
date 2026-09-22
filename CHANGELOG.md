@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.0.29] - 2026-09-23
+
+### Changed
+
+- Sidebar navigation now uses Geist Sans, 13px primary labels, calmer active and inactive contrast, a slightly wider layout, Reports above Intelligence, and the shorter Staff label.
+
+### Removed
+
+- Removed Billing & Plan, the copyright/help controls, and the FraudShield usage summary from their respective interfaces.
+
 ## [0.1.0.28] - 2026-09-23
 
 ### Added

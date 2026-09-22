@@ -3,7 +3,6 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { TeamManagement } from "@/components/TeamManagement";
 import { IntegrationSettings } from "@/components/IntegrationSettings";
-import { FraudUsageMeter } from "@/components/FraudUsageMeter";
 import { BulkSmsSection } from "@/components/BulkSmsSection";
 import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
@@ -570,7 +569,6 @@ export default function Settings() {
               {section === "integrations" && (
                 isAdmin ? (
                   <>
-                    <FraudUsageMeter />
                     <IntegrationSettings />
                   </>
                 ) : (
