@@ -96,6 +96,15 @@ import {
 } from "./orderAttribution.js";
 import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
 import { buildBusinessReport, resolveBusinessReportRequest } from "./businessReport.js";
+import {
+  ACTIVITY_LOG_PAGE_SIZE,
+  buildActivityLogEntry,
+  buildOrderLookup,
+  classifyActivityEvent,
+  resolveActivityActionFilter,
+  resolveActivityPage,
+  resolveActivityTableFilter,
+} from "./activityLog.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -4194,6 +4203,7 @@ app.get("/api/reports/staff", async (req, res) => {
       cancelledInboxOrders,
       regularStatusEvents,
       socialStatusEvents,
+      abandonedStatusEvents,
       products,
       variants,
     ] = await Promise.all([
@@ -4204,6 +4214,7 @@ app.get("/api/reports/staff", async (req, res) => {
       fetchInboxRows("cancelled_by", "cancelled_at"),
       fetchStatusEvents("orders"),
       fetchStatusEvents("social_inbox_orders"),
+      fetchStatusEvents("abandoned_checkouts"),
       fetchReportPages(() => supabase
         .from("products")
         .select("id, name, weight_kg")
@@ -4268,13 +4279,39 @@ app.get("/api/reports/staff", async (req, res) => {
         .in("order_id", orderIdBatch)));
     }
 
+    const classifiedAbandonedEvents = abandonedStatusEvents.map((event) => ({
+      ...event,
+      action: classifyActivityEvent({ ...event, order_table: "abandoned_checkouts" }),
+    }));
+    const convertedCheckoutIds = [...new Set(
+      classifiedAbandonedEvents
+        .filter((event) => event.action === "converted")
+        .map((event) => event.order_id)
+        .filter(Boolean),
+    )];
+    const convertedCheckouts = [];
+    for (const idBatch of chunkIds(convertedCheckoutIds)) {
+      convertedCheckouts.push(...await fetchReportPages(() => supabase
+        .from("abandoned_checkouts")
+        .select("id, total")
+        .eq("org_id", orgId)
+        .in("id", idBatch)));
+    }
+    const checkoutTotalById = new Map(convertedCheckouts.map((checkout) => [checkout.id, checkout.total]));
+    const abandonedActivities = classifiedAbandonedEvents.map((event) => ({
+      actor_id: event.actor_id,
+      occurred_at: event.created_at,
+      action: event.action,
+      value: event.action === "converted" ? checkoutTotalById.get(event.order_id) : 0,
+    }));
+
     const report = buildStaffReport(
       assignedOrders,
       [],
       orderItems,
       products,
       selectedStaff,
-      { ...request, regularActivities, socialActivities },
+      { ...request, regularActivities, socialActivities, abandonedActivities },
       variants,
     );
     return res.json({
@@ -4283,6 +4320,211 @@ app.get("/api/reports/staff", async (req, res) => {
       selected_user_ids: request.selectedUserIds,
       ...report,
     });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// ─── Activity Log ────────────────────────────────────────────────────────────
+// A chronological, per-event feed built from the same order_status_events
+// audit trail the Staff Performance report aggregates. Answers "who confirmed
+// / cancelled / contacted / dismissed this specific order", not just totals.
+
+async function fetchActivityOrderReferences(supabase, orgId, pageRows) {
+  const orderIds = [...new Set(pageRows.filter((e) => e.order_table === "orders").map((e) => e.order_id))];
+  const inboxIds = [...new Set(pageRows.filter((e) => e.order_table === "social_inbox_orders").map((e) => e.order_id))];
+  const checkoutIds = [...new Set(pageRows.filter((e) => e.order_table === "abandoned_checkouts").map((e) => e.order_id))];
+
+  const fetchByIds = async (table, columns, ids) => {
+    const rows = [];
+    for (const idBatch of chunkIds(ids)) {
+      rows.push(...await fetchReportPages(() => supabase
+        .from(table)
+        .select(columns)
+        .eq("org_id", orgId)
+        .in("id", idBatch)));
+    }
+    return rows;
+  };
+
+  const [orders, socialInboxOrders, abandonedCheckouts] = await Promise.all([
+    orderIds.length ? fetchByIds("orders", "id, order_number, customer_name, price", orderIds) : [],
+    inboxIds.length ? fetchByIds("social_inbox_orders", "id, contact_name, total_price", inboxIds) : [],
+    checkoutIds.length ? fetchByIds("abandoned_checkouts", "id, customer_name, total", checkoutIds) : [],
+  ]);
+  return buildOrderLookup({ orders, socialInboxOrders, abandonedCheckouts });
+}
+
+app.get("/api/reports/activity", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    const staffRows = await fetchReportPages(() => supabase
+      .from("user_roles")
+      .select("id, user_id, display_name, deleted_at")
+      .eq("org_id", orgId));
+    const staff = staffRows.map((member) => ({
+      user_id: member.user_id,
+      display_name: member.display_name || "Unnamed member",
+      deleted_at: member.deleted_at,
+    }));
+
+    const request = resolveStaffReportRequest({
+      from: req.query.from,
+      to: req.query.to,
+      users: req.query.users,
+      role,
+      userId: user.id,
+      staff,
+    });
+    const tableFilter = resolveActivityTableFilter(req.query.table);
+    const actionFilter = resolveActivityActionFilter(req.query.action);
+    const page = resolveActivityPage(req.query.page);
+
+    const selectedStaff = staff.filter((member) => request.selectedUserIds.includes(member.user_id));
+    const visibleStaff = role === "team_member" ? selectedStaff : staff;
+    const availableStaff = visibleStaff.map((member) => ({
+      user_id: member.user_id,
+      display_name: member.display_name,
+      is_active: !member.deleted_at,
+    }));
+
+    if (request.selectedUserIds.length === 0) {
+      return res.json({
+        range: request.range,
+        available_staff: availableStaff,
+        selected_user_ids: request.selectedUserIds,
+        events: [],
+        total: 0,
+        action_counts: {},
+        page,
+        page_size: ACTIVITY_LOG_PAGE_SIZE,
+        has_more: false,
+      });
+    }
+
+    const rawEvents = [];
+    for (const staffIds of chunkIds(request.selectedUserIds)) {
+      rawEvents.push(...await fetchReportPages(() => {
+        let query = supabase
+          .from("order_status_events")
+          .select("id, order_id, order_table, from_status, to_status, actor_id, created_at")
+          .eq("org_id", orgId)
+          .eq("actor_kind", "user")
+          .in("actor_id", staffIds);
+        if (request.since) query = query.gte("created_at", request.since);
+        if (request.until) query = query.lt("created_at", request.until);
+        if (tableFilter !== "all") query = query.eq("order_table", tableFilter);
+        return query;
+      }));
+    }
+
+    const classifiedAll = rawEvents.map((event) => ({ ...event, action: classifyActivityEvent(event) }));
+    const actionCounts = {};
+    for (const event of classifiedAll) {
+      actionCounts[event.action] = (actionCounts[event.action] || 0) + 1;
+    }
+    const classified = (actionFilter ? classifiedAll.filter((event) => actionFilter.includes(event.action)) : classifiedAll)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const total = classified.length;
+    const pageStart = page * ACTIVITY_LOG_PAGE_SIZE;
+    const pageRows = classified.slice(pageStart, pageStart + ACTIVITY_LOG_PAGE_SIZE);
+
+    const orderLookup = await fetchActivityOrderReferences(supabase, orgId, pageRows);
+    const staffById = new Map(staff.map((member) => [member.user_id, member.display_name]));
+    const events = pageRows.map((event) => buildActivityLogEntry(event, { orderLookup, staffById }));
+
+    return res.json({
+      range: request.range,
+      available_staff: availableStaff,
+      selected_user_ids: request.selectedUserIds,
+      events,
+      total,
+      action_counts: actionCounts,
+      page,
+      page_size: ACTIVITY_LOG_PAGE_SIZE,
+      has_more: pageStart + ACTIVITY_LOG_PAGE_SIZE < total,
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+// Per-order activity timeline, embedded on each order's own editing page.
+async function fetchOrderActivityTimeline(supabase, orgId, orderTable, orderId) {
+  const [{ data: events, error: eventsError }, { data: staffRows, error: staffError }] = await Promise.all([
+    supabase
+      .from("order_status_events")
+      .select("id, from_status, to_status, actor_id, actor_kind, created_at")
+      .eq("org_id", orgId)
+      .eq("order_table", orderTable)
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: true }),
+    supabase.from("user_roles").select("user_id, display_name").eq("org_id", orgId),
+  ]);
+  if (eventsError) throw eventsError;
+  if (staffError) throw staffError;
+
+  const staffById = new Map((staffRows || []).map((member) => [member.user_id, member.display_name || "Unnamed member"]));
+  return (events || []).map((event) => ({
+    id: event.id,
+    occurred_at: event.created_at,
+    action: classifyActivityEvent({ ...event, order_table: orderTable }),
+    actor_id: event.actor_kind === "user" ? event.actor_id : null,
+    actor_display_name: event.actor_kind === "user"
+      ? ((event.actor_id && staffById.get(event.actor_id)) || "Unknown")
+      : (event.actor_kind === "courier_webhook" ? "Courier" : "System"),
+  }));
+}
+
+app.get("/api/orders/:id/activity", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order } = await supabase.from("orders").select("id").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const events = await fetchOrderActivityTimeline(supabase, orgId, "orders", order.id);
+    return res.json({ events });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/social/inbox-orders/:id/activity", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: order } = await supabase.from("social_inbox_orders").select("id").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    if (!order) return res.status(404).json({ error: "Inbox order not found" });
+    const events = await fetchOrderActivityTimeline(supabase, orgId, "social_inbox_orders", order.id);
+    return res.json({ events });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
+app.get("/api/abandoned-checkouts/:id/activity", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!isAbandonedCheckoutDraftKey(req.params.id)) {
+      return res.status(400).json({ error: "Invalid checkout ID" });
+    }
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { data: checkout } = await supabase.from("abandoned_checkouts").select("id").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    if (!checkout) return res.status(404).json({ error: "Checkout not found" });
+    const events = await fetchOrderActivityTimeline(supabase, orgId, "abandoned_checkouts", checkout.id);
+    return res.json({ events });
   } catch (err) {
     return sendError(res, err);
   }
@@ -6354,6 +6596,19 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
       .maybeSingle();
     if (updateError) throw updateError;
     if (!updated) return res.status(409).json({ error: "Checkout changed before it could be updated" });
+
+    if (hasAction && patch.status !== current.status) {
+      await recordStatusEvent(supabase, buildStatusEvent({
+        orgId,
+        orderId: current.id,
+        orderTable: "abandoned_checkouts",
+        fromStatus: current.status,
+        toStatus: patch.status,
+        actorId: user.id,
+        actorKind: "user",
+        occurredAt: now.toISOString(),
+      }));
+    }
     return res.json({ checkout: updated });
   } catch {
     console.warn("[AbandonedCheckout] staff action failed");
@@ -6451,6 +6706,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       })),
     );
 
+    const conversionAt = now.toISOString();
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert({
@@ -6472,6 +6728,15 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         weight_kg: routing.weightKg,
         abandoned_checkout_id: draft.id,
         source: "website",
+        created_by: user.id,
+        assigned_to: user.id,
+        ...buildAttributionPatch({
+          fromStatus: null,
+          toStatus: status,
+          actorId: user.id,
+          actorKind: "user",
+          now: conversionAt,
+        }),
       })
       .select("*")
       .single();
@@ -6503,6 +6768,27 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
       return res.status(409).json({ error: "Checkout changed before it could be converted" });
     }
+
+    await recordStatusEvent(supabase, buildStatusEvent({
+      orgId,
+      orderId: order.id,
+      orderTable: "orders",
+      fromStatus: null,
+      toStatus: status,
+      actorId: user.id,
+      actorKind: "user",
+      occurredAt: conversionAt,
+    }));
+    await recordStatusEvent(supabase, buildStatusEvent({
+      orgId,
+      orderId: draft.id,
+      orderTable: "abandoned_checkouts",
+      fromStatus: draft.status,
+      toStatus: "recovered",
+      actorId: user.id,
+      actorKind: "user",
+      occurredAt: conversionAt,
+    }));
 
     await sendBulkSms(orgId, "confirmation", order);
     return res.status(201).json({ order });

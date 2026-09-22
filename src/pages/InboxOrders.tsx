@@ -22,8 +22,9 @@ import { format } from "date-fns";
 import {
   MagnifyingGlass, ShoppingBag, Package, NotePencil, Truck,
   ShieldCheck, FileText, Printer,
-  Trash, Check, MapPin,
+  Trash, Check, MapPin, ClockCounterClockwise,
 } from "@phosphor-icons/react";
+import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
 import { AlertTriangle, HelpCircle, ShieldAlert, ShieldCheck as LucideShieldCheck } from "lucide-react";
 import { printInvoice } from "@/utils/invoiceGenerator";
 import { toInvoiceOrder } from "@/utils/inboxOrderPrintMapper";
@@ -400,6 +401,33 @@ function InboxNotesPopover({ order, onOrderUpdate }: {
             </Button>
           </div>
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Activity Popover ─────────────────────────────────────────────────────────
+
+function InboxActivityPopover({ orderId }: { orderId: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              aria-label="View activity"
+              className="p-1.5 rounded-lg text-muted-foreground/30 transition-all duration-200 hover:bg-muted/50 hover:text-muted-foreground"
+            >
+              <ClockCounterClockwise size={14} weight="light" />
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        {!open && <TooltipContent side="top" className="text-sm">Activity</TooltipContent>}
+      </Tooltip>
+      <PopoverContent className="w-72 p-0" align="end">
+        {open && <OrderActivityTimeline endpoint={`/api/social/inbox-orders/${orderId}/activity`} />}
       </PopoverContent>
     </Popover>
   );
@@ -1060,6 +1088,7 @@ export default function InboxOrders() {
                           </PopoverContent>
                         </Popover>
                         <InboxNotesPopover order={order} onOrderUpdate={updateLocalOrder} />
+                        <InboxActivityPopover orderId={order.id} />
                       </div>
                     </TableCell>
 

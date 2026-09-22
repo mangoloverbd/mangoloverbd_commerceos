@@ -9,6 +9,7 @@ import { toast } from "@/components/ui/sonner";
 import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/CustomerPanel";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { CartPanel } from "@/components/order-editor/CartPanel";
+import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
 import type {
   AbandonedCheckout,
   AbandonedCheckoutResponse,
@@ -256,7 +257,7 @@ export default function AbandonedDetail() {
         )
       ) : (
         <div className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
-          <CustomerPanel order={{}} customer={customer} disabled={saving} onApply={setCustomer} />
+          <CustomerPanel order={{}} customer={customer} disabled={saving} onApply={setCustomer} activityTimeline={checkout ? <OrderActivityTimeline endpoint={`/api/abandoned-checkouts/${checkout.id}/activity`} /> : undefined} />
           <div data-testid="abandoned-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
             <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit locked={false} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
             <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={saveError} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} status={null} onStatusChange={() => {}} notes="" onNotesChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => { void save(); }} onCancel={goBack} hideOrderSections />

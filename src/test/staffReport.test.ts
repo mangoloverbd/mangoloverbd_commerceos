@@ -673,6 +673,61 @@ describe("buildStaffReport", () => {
       products: [],
     });
   });
+
+  it("defaults abandoned checkout metrics to zero when there is no activity", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [], [], [], [],
+      [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }],
+      interval,
+    );
+
+    expect(report.rows[0].abandoned_checkouts).toEqual({
+      contacted_count: 0,
+      dismissed_count: 0,
+      reopened_count: 0,
+      converted_count: 0,
+      converted_value: 0,
+    });
+  });
+
+  it("credits contacted, dismissed, reopened, and converted abandoned-cart actions to the acting staff member", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [], [], [], [],
+      [
+        { user_id: TEAM_MEMBER_ID, display_name: "Rafi" },
+        { user_id: ADMIN_ID, display_name: "Admin" },
+      ],
+      {
+        ...interval,
+        abandonedActivities: [
+          { actor_id: TEAM_MEMBER_ID, occurred_at: "2026-09-18T04:00:00.000Z", action: "contacted" },
+          { actor_id: TEAM_MEMBER_ID, occurred_at: "2026-09-18T05:00:00.000Z", action: "dismissed" },
+          { actor_id: TEAM_MEMBER_ID, occurred_at: "2026-09-18T06:00:00.000Z", action: "reopened" },
+          { actor_id: TEAM_MEMBER_ID, occurred_at: "2026-09-18T07:00:00.000Z", action: "converted", value: 850 },
+          { actor_id: ADMIN_ID, occurred_at: "2026-09-18T07:30:00.000Z", action: "converted", value: 300 },
+          // Outside the selected date range — must not be counted.
+          { actor_id: TEAM_MEMBER_ID, occurred_at: "2026-09-17T04:00:00.000Z", action: "contacted" },
+        ],
+      },
+    );
+
+    const rafi = report.rows.find((row) => row.user_id === TEAM_MEMBER_ID)?.abandoned_checkouts;
+    const admin = report.rows.find((row) => row.user_id === ADMIN_ID)?.abandoned_checkouts;
+
+    expect(rafi).toEqual({
+      contacted_count: 1,
+      dismissed_count: 1,
+      reopened_count: 1,
+      converted_count: 1,
+      converted_value: 850,
+    });
+    expect(admin).toMatchObject({
+      converted_count: 1,
+      converted_value: 300,
+    });
+  });
 });
 
 describe("classifyCourierOutcome", () => {

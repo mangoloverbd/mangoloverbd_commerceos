@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0.26] - 2026-09-22
+
+### Added
+
+- Activity Log report (`/reports/activity`) — a chronological, filterable feed of every staff confirm/cancel/contact/dismiss/convert action across orders, inbox orders, and abandoned carts, with the same design language as Staff Performance and Business Report.
+- Per-order activity timeline embedded on the order editor, the abandoned-checkout editor, and an inbox-order popover, so "who did what" is visible on the order itself, not just the report.
+- `order_status_events` now also records abandoned-checkout Contacted/Dismissed/Reopened actions, closing the only order-shaped table with no staff attribution.
+- Staff Performance now reports abandoned-cart handling per staff member — Contacted, Dismissed, Reopened, and Converted counts plus converted value — as its own detail group and a quick-glance chip on each staff card.
+
+### Fixed
+
+- Converting an abandoned checkout into an order (`POST /api/abandoned-checkouts/:id/convert`) now stamps `created_by`, `assigned_to`, and confirmation attribution and writes the matching audit events — previously the resulting order had no recorded confirmer at all.
+
 ## [0.1.0.25] - 2026-09-22
 
 ### Added

@@ -4,7 +4,7 @@
 // Route handlers supply the actor, workspace, and timestamp so the business
 // rules can be tested independently from I/O.
 
-export const ORDER_TABLES = Object.freeze(["orders", "social_inbox_orders"]);
+export const ORDER_TABLES = Object.freeze(["orders", "social_inbox_orders", "abandoned_checkouts"]);
 
 const ACTOR_KINDS = new Set(["user", "courier_webhook", "system"]);
 const APPROVED_STATES = new Set(["approved", "confirmed"]);

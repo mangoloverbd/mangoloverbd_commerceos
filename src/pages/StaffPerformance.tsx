@@ -242,6 +242,16 @@ function StaffPerformanceCard({
         { label: "Weight", value: formatKg(metrics.telesales_confirmed_kg) },
       ],
     },
+    {
+      title: "Abandoned carts",
+      items: [
+        { label: "Contacted", value: formatNumber(row.abandoned_checkouts.contacted_count) },
+        { label: "Dismissed", value: formatNumber(row.abandoned_checkouts.dismissed_count) },
+        { label: "Reopened", value: formatNumber(row.abandoned_checkouts.reopened_count) },
+        { label: "Converted", value: formatNumber(row.abandoned_checkouts.converted_count) },
+        { label: "Converted value", value: formatTaka(row.abandoned_checkouts.converted_value) },
+      ],
+    },
   ];
 
   return (
@@ -294,6 +304,9 @@ function StaffPerformanceCard({
         <Chip variant="caption" color="lime" className="gap-1 tabular-nums">Delivered {formatNumber(metrics.delivered_count)}</Chip>
         <Chip variant="caption" color="rose" className="gap-1 tabular-nums">Cancelled {formatNumber(metrics.cancelled_count)}</Chip>
         <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">RTO {formatNumber(metrics.returned_count)}</Chip>
+        {(row.abandoned_checkouts.contacted_count + row.abandoned_checkouts.converted_count) > 0 && (
+          <Chip variant="caption" color="soft" className="gap-1 tabular-nums">Cart converted {formatNumber(row.abandoned_checkouts.converted_count)}</Chip>
+        )}
       </div>
 
       <AnimatePresence initial={false}>

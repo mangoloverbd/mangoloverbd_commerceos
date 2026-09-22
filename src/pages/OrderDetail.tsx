@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/ios-spinner";
 import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/CustomerPanel";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { CartPanel } from "@/components/order-editor/CartPanel";
+import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
 import {
   calculateCartTotals,
   calculateUnitDiscount,
@@ -399,7 +400,7 @@ export default function OrderDetail() {
           transition={{ duration: 0.35 }}
           className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]"
         >
-          <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={sourceDraft} onSourceChange={setSourceDraft} sourceDisabled={saving || detailQuery.isPlaceholderData} />
+          <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={sourceDraft} onSourceChange={setSourceDraft} sourceDisabled={saving || detailQuery.isPlaceholderData} activityTimeline={order.id ? <OrderActivityTimeline endpoint={`/api/orders/${order.id}/activity`} /> : undefined} />
             <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
             <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
             <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} status={statusDraft} onStatusChange={setStatusDraft} notes={notesDraft} onNotesChange={setNotesDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} />

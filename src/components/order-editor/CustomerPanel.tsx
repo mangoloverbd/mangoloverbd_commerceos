@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { ArrowUpRight, Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
 import { normalizeBusinessStatus } from "@/lib/orderTransitions";
 import { formatTaka } from "@/lib/orderEditor";
@@ -56,6 +57,7 @@ type CustomerPanelProps = {
   source?: OrderSource;
   onSourceChange?: (source: OrderSource) => void;
   sourceDisabled?: boolean;
+  activityTimeline?: ReactNode;
 };
 
 function DetailField({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -175,7 +177,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
   }
 }
 
-export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source, onSourceChange, sourceDisabled = false }: CustomerPanelProps) {
+export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source, onSourceChange, sourceDisabled = false, activityTimeline }: CustomerPanelProps) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
   const [copied, setCopied] = useState(false);
@@ -256,6 +258,8 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
           )}
         </div>
       </div>
+
+      {activityTimeline && <div className="mt-4">{activityTimeline}</div>}
 
       {editing ? (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
