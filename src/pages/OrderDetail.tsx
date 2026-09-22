@@ -6,6 +6,7 @@ import { ArrowLeft, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import { Button as BuiButton } from "@/components/base/buttons/button";
+import { Chip } from "@/components/base/badges/chip";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/CustomerPanel";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
@@ -260,6 +261,13 @@ export default function OrderDetail() {
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
       .slice(0, 5);
   }, [historyQuery.data, id, order?.phone, order?.customer_name, order?.contact_name]);
+  const ordersById = useMemo(() => {
+    const map = new Map<string, Order>();
+    for (const cached of historyQuery.data || []) map.set(cached.id, cached);
+    return map;
+  }, [historyQuery.data]);
+  const prevPendingOrder = prevPendingOrderId ? ordersById.get(prevPendingOrderId) : null;
+  const nextPendingOrder = nextPendingOrderId ? ordersById.get(nextPendingOrderId) : null;
 
   function addCatalogItem(product: CatalogProduct, variant?: CatalogVariant) {
     setDraft((items) => upsertCartItem(items, product, variant));
@@ -407,27 +415,41 @@ export default function OrderDetail() {
           data-testid="order-editor-pending-nav"
           className="sticky bottom-0 z-40 -mx-2 mt-1 flex items-center justify-between border-t border-black/[0.08] bg-[#FAFAF8]/95 px-3 py-2.5 backdrop-blur-sm lg:-mx-3"
         >
-          <BuiButton
-            variant="ghost"
-            size="small"
-            iconOnly
-            leadingIcon={CaretLeft}
-            aria-label="Previous pending order"
-            disabled={!prevPendingOrderId}
-            onClick={() => prevPendingOrderId && goToSibling(prevPendingOrderId)}
-          />
-          <span className="text-[11px] font-medium tracking-[0.1em] text-black/50">
+          <div className="flex min-w-0 items-center gap-2">
+            <BuiButton
+              variant="ghost"
+              size="small"
+              iconOnly
+              leadingIcon={CaretLeft}
+              aria-label="Previous pending order"
+              disabled={!prevPendingOrderId}
+              onClick={() => prevPendingOrderId && goToSibling(prevPendingOrderId)}
+            />
+            {prevPendingOrder && (
+              <Chip variant="subtle" color="cyan" className="h-8 min-w-8 px-2 font-mono">
+                {orderNumberLabel(prevPendingOrder.order_number)}
+              </Chip>
+            )}
+          </div>
+          <span className="shrink-0 text-[11px] font-medium tracking-[0.1em] text-black/50">
             {pendingIndex + 1} of {pendingOrderIds!.length} pending
           </span>
-          <BuiButton
-            variant="ghost"
-            size="small"
-            iconOnly
-            leadingIcon={CaretRight}
-            aria-label="Next pending order"
-            disabled={!nextPendingOrderId}
-            onClick={() => nextPendingOrderId && goToSibling(nextPendingOrderId)}
-          />
+          <div className="flex min-w-0 items-center gap-2">
+            {nextPendingOrder && (
+              <Chip variant="subtle" color="purple" className="h-8 min-w-8 px-2 font-mono">
+                {orderNumberLabel(nextPendingOrder.order_number)}
+              </Chip>
+            )}
+            <BuiButton
+              variant="ghost"
+              size="small"
+              iconOnly
+              leadingIcon={CaretRight}
+              aria-label="Next pending order"
+              disabled={!nextPendingOrderId}
+              onClick={() => nextPendingOrderId && goToSibling(nextPendingOrderId)}
+            />
+          </div>
         </motion.div>
       )}
     </div>

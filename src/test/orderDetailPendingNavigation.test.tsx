@@ -87,6 +87,8 @@ describe("pending order prev/next navigation", () => {
     expect(nav).toHaveTextContent("1 of 2 pending");
     expect(screen.getByRole("button", { name: "Previous pending order" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next pending order" })).toBeEnabled();
+    // No chip for Previous (disabled/boundary); the Next chip previews order-2's number.
+    await waitFor(() => expect(nav).toHaveTextContent("#ML-1002"));
   });
 
   it("navigates to the next pending order and disables Next at the end of the queue", async () => {
