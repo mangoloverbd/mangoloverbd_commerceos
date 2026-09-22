@@ -376,8 +376,7 @@ export default function OrderDetail() {
   }
 
   return (
-    <>
-    <div className={`flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pt-0 lg:px-3 lg:pt-1 ${hasPendingNav ? "pb-16" : "pb-3"}`}>
+    <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
       <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
@@ -399,16 +398,15 @@ export default function OrderDetail() {
           </div>
         </motion.div>
       )}
-    </div>
-    {hasPendingNav && (
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25 }}
-        data-testid="order-editor-pending-nav"
-        className="fixed inset-x-0 bottom-6 z-40 flex justify-center px-4"
-      >
-        <div className="flex items-center gap-4 rounded-full border border-black/[0.09] bg-white px-3 py-2 shadow-[0_4px_40px_-8px_rgba(0,0,0,0.14)]">
+
+      {hasPendingNav && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          data-testid="order-editor-pending-nav"
+          className="sticky bottom-0 z-40 -mx-2 mt-1 flex items-center justify-between border-t border-black/[0.08] bg-[#FAFAF8]/95 px-3 py-2.5 backdrop-blur-sm lg:-mx-3"
+        >
           <BuiButton
             variant="ghost"
             size="small"
@@ -430,9 +428,8 @@ export default function OrderDetail() {
             disabled={!nextPendingOrderId}
             onClick={() => nextPendingOrderId && goToSibling(nextPendingOrderId)}
           />
-        </div>
-      </motion.div>
-    )}
-    </>
+        </motion.div>
+      )}
+    </div>
   );
 }
