@@ -44,7 +44,7 @@ describe("order attribution wiring", () => {
     expect(create).toContain("fromStatus: null");
     expect(create).toContain("toStatus: row.status");
     expect(create).toContain("Object.assign(row,");
-    expect(create).toContain("buildStatusEvent");
+    expect(create).toMatch(/buildStatusEvent|prepareStatusEvent/);
     expect(create).toContain('orderTable: "orders"');
     expect(create).toContain('actorKind: "user"');
   });
@@ -57,7 +57,7 @@ describe("order attribution wiring", () => {
 
     expect(patch).toContain("orderCheck.status");
     expect(patch).toContain("buildAttributionPatch");
-    expect(patch).toContain("buildStatusEvent");
+    expect(patch).toMatch(/buildStatusEvent|prepareStatusEvent/);
     expect(patch).toContain('actorKind: "user"');
     expect(patch).toContain('.eq("org_id", orgId)');
     expect(patch).not.toMatch(/"(?:created_by|assigned_to|confirmed_by|cancelled_by)"/);
@@ -70,7 +70,7 @@ describe("order attribution wiring", () => {
     );
     const eventWriter = routeSection(
       "async function recordStatusEvent",
-      'app.post("/api/orders"',
+      "async function recordOrderActivity",
     );
 
     expect(guard).toContain('.from("user_roles")');

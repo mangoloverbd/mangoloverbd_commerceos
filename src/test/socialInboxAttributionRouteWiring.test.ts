@@ -21,7 +21,7 @@ describe("social inbox order attribution wiring", () => {
 
     expect(patch).toContain("currentOrder.status");
     expect(patch).toContain("buildAttributionPatch");
-    expect(patch).toContain("buildStatusEvent");
+    expect(patch).toMatch(/buildStatusEvent|prepareStatusEvent/);
     expect(patch).toContain('orderTable: "social_inbox_orders"');
     expect(patch).toContain('actorKind: "user"');
     expect(patch).toContain('.eq("org_id", orgId)');

@@ -38,6 +38,17 @@ import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isPrintStatus } from "@/lib/orderTransitions";
 import { useOrgName } from "@/hooks/useOrgName";
+import { CANCELLATION_REASON_OPTIONS, createActivityGroupId, type CancellationReason } from "@/lib/orderActivity";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { PopButton } from "@/components/ui/pop-button";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
@@ -649,6 +660,9 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
   const [isBulkChecking, setIsBulkChecking] = useState(false);
   const [isBulkSendingSteadfast, setIsBulkSendingSteadfast] = useState(false);
   const [isDeletingOrders, setIsDeletingOrders] = useState(false);
+  const [cancellationTarget, setCancellationTarget] = useState<Order | null>(null);
+  const [cancellationReasonCode, setCancellationReasonCode] = useState<CancellationReason | "">("");
+  const [cancellationReasonNote, setCancellationReasonNote] = useState("");
   const warehouseNames = Object.fromEntries(warehouses.map((warehouse) => [warehouse.id, warehouse.name]));
 
   const handleWarehouseChange = async (order: Order, warehouseId: string) => {
@@ -668,8 +682,18 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
     }
   });
 
-  const handleStatusChange = async (order: Order, newStatus: string) => {
+  const handleStatusChange = async (
+    order: Order,
+    newStatus: string,
+    cancellation?: { code: CancellationReason; note: string },
+  ) => {
     if (order.status === newStatus) return;
+    if (newStatus === "cancelled" && !cancellation) {
+      setCancellationTarget(order);
+      setCancellationReasonCode("");
+      setCancellationReasonNote("");
+      return;
+    }
 
     // Optimistic update - update UI immediately
     onStatusUpdate(order.id, newStatus);
@@ -678,7 +702,14 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
       const res = await apiFetch(`/api/orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          status: newStatus,
+          activity_group_id: createActivityGroupId(),
+          ...(cancellation ? {
+            cancellation_reason_code: cancellation.code,
+            cancellation_reason_note: cancellation.note.trim() || null,
+          } : {}),
+        }),
       });
       const data = await res.json();
 
@@ -691,6 +722,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
       if (data?.order && onOrderUpdate) {
         onOrderUpdate(data.order);
       }
+      if (newStatus === "cancelled") setCancellationTarget(null);
     } catch (error) {
       console.error("Error updating order status:", error);
       console.error("Error updating order status:", error);
@@ -1030,6 +1062,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
     try {
       const { printInvoice } = await import("@/utils/invoiceGenerator");
       printInvoice(selectedOrders, orgName);
+      void apiFetch("/api/order-activity/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_table: "orders", order_ids: selectedOrders.map((order) => order.id), document_type: "invoice" }) }).catch(() => {});
     } catch (error) {
       console.error("Invoice printing failed:", error);
       toast.error("Failed to prepare invoices for printing");
@@ -1046,7 +1079,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         toast.error(
           `Send ${result.missingOrderNumbers.join(", ")} to Steadfast before printing the label`,
         );
-      }
+      } else void apiFetch("/api/order-activity/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_table: "orders", order_ids: selectedOrders.map((order) => order.id), document_type: "shipping_label" }) }).catch(() => {});
     } catch (error) {
       console.error("Print failed:", error);
       toast.error("Failed to print shipping labels");
@@ -1705,6 +1738,53 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
           </motion.div>
         )}
       </AnimatePresence>
+      <AlertDialog open={Boolean(cancellationTarget)} onOpenChange={(open) => { if (!open) setCancellationTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select a reason so this cancellation is recorded in the order history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.3em] text-black">Cancellation reason</span>
+              <select
+                aria-label="Cancellation reason"
+                value={cancellationReasonCode}
+                onChange={(event) => setCancellationReasonCode(event.target.value as CancellationReason | "")}
+                className="h-10 w-full rounded-lg bg-black/[0.04] px-3 text-sm"
+              >
+                <option value="">Choose a reason</option>
+                {CANCELLATION_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.3em] text-black">Note</span>
+              <Textarea
+                aria-label="Cancellation note"
+                value={cancellationReasonNote}
+                onChange={(event) => setCancellationReasonNote(event.target.value)}
+                placeholder={cancellationReasonCode === "other" ? "Required for Other" : "Optional context"}
+              />
+            </label>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep order</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!cancellationReasonCode || (cancellationReasonCode === "other" && !cancellationReasonNote.trim()) || Boolean(cancellationTarget && updatingIds.has(cancellationTarget.id))}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!cancellationTarget || !cancellationReasonCode) return;
+                void handleStatusChange(cancellationTarget, "cancelled", { code: cancellationReasonCode, note: cancellationReasonNote });
+              }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Confirm cancellation
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -111,6 +111,8 @@ function emptyMetrics() {
     telesales_confirmed_count: 0,
     telesales_confirmed_value: 0,
     telesales_confirmed_kg: 0,
+    retained_upsell_count: 0,
+    retained_upsell_value: 0,
     products: [],
   };
 }
@@ -143,6 +145,115 @@ export function classifyCourierOutcome({ courier_status: courierStatus, return_s
   if (courier === "delivered" || courier === "partial_delivered") return "delivered";
   if (courier.includes("return") || returned === "returned" || returned === "completed") return "returned";
   return null;
+}
+
+function activityNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function calculateRetainedUpsells(events = [], {
+  selectedActorIds = [],
+  since = null,
+  until = null,
+  terminalLossOrderIds = new Set(),
+} = {}) {
+  const selected = new Set(selectedActorIds);
+  const totals = new Map([...selected].map((actorId) => [actorId, { count: 0, value: 0 }]));
+  const lotsByItem = new Map();
+  const terminalOrders = new Set(terminalLossOrderIds);
+  const ordered = [...events].sort((a, b) => {
+    const timeDelta = new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime();
+    return timeDelta || String(a?.id || "").localeCompare(String(b?.id || ""));
+  });
+
+  const reduceItemQuantity = (orderId, itemKey, reduction) => {
+    const lots = lotsByItem.get(`${orderId}:${itemKey}`) || [];
+    const activeQuantity = lots.reduce((sum, lot) => sum + lot.quantity, 0);
+    if (activeQuantity <= 0) return;
+    const reductionRatio = Math.min(1, Math.max(0, reduction) / activeQuantity);
+    for (const lot of lots) {
+      lot.quantity *= 1 - reductionRatio;
+      lot.value *= 1 - reductionRatio;
+    }
+  };
+
+  for (const event of ordered) {
+    const occurredAt = new Date(event?.created_at || 0).getTime();
+    if (until && occurredAt >= new Date(until).getTime()) continue;
+    const eventStatus = normalizeCourierStatus(event?.metadata?.to_status);
+    if (event?.event_type === "order.reopened") terminalOrders.delete(event.order_id);
+    if (
+      event?.event_type === "order.cancelled"
+      || event?.event_type === "order.deleted"
+      || eventStatus === "cancelled"
+      || eventStatus === "canceled"
+      || eventStatus === "rejected"
+      || eventStatus === "returned"
+      || eventStatus === "return_completed"
+    ) terminalOrders.add(event.order_id);
+    for (const change of Array.isArray(event?.changes) ? event.changes : []) {
+      const itemKey = change?.item_key;
+      const quantityDelta = activityNumber(change?.quantity_delta);
+      const inRange = (!since || occurredAt >= new Date(since).getTime())
+        && (!until || occurredAt < new Date(until).getTime());
+      if (change?.addition_reason === "upsell" && quantityDelta > 0 && event?.actor_id && inRange) {
+        const key = `${event.order_id}:${itemKey || "unknown"}`;
+        const lots = lotsByItem.get(key) || [];
+        lots.push({ actorId: event.actor_id, quantity: quantityDelta, value: Math.max(0, activityNumber(change?.amount_delta)) });
+        lotsByItem.set(key, lots);
+        continue;
+      }
+
+      if (itemKey && quantityDelta < 0) {
+        reduceItemQuantity(event.order_id, itemKey, Math.abs(quantityDelta));
+        continue;
+      }
+
+      if (change?.type === "item_discount_changed" && itemKey) {
+        const discountIncrease = Math.max(0, activityNumber(change.after) - activityNumber(change.before));
+        for (const lot of lotsByItem.get(`${event.order_id}:${itemKey}`) || []) {
+          lot.value = Math.max(0, lot.value - (discountIncrease * lot.quantity));
+        }
+        continue;
+      }
+
+      if (change?.type === "field_changed" && change?.field === "discount") {
+        const lots = [...lotsByItem.entries()]
+          .filter(([key]) => key.startsWith(`${event.order_id}:`))
+          .flatMap(([, itemLots]) => itemLots)
+          .filter((lot) => lot.quantity > 0 && lot.value > 0);
+        const retainedValue = lots.reduce((sum, lot) => sum + lot.value, 0);
+        const discountIncrease = Math.min(
+          retainedValue,
+          Math.max(0, activityNumber(change.after) - activityNumber(change.before)),
+        );
+        if (discountIncrease > 0 && retainedValue > 0) {
+          for (const lot of lots) lot.value = Math.max(0, lot.value - (discountIncrease * (lot.value / retainedValue)));
+        }
+      }
+    }
+  }
+
+  for (const [orderItemKey, lots] of lotsByItem) {
+    const orderId = orderItemKey.slice(0, orderItemKey.indexOf(":"));
+    if (terminalOrders.has(orderId)) continue;
+    for (const lot of lots) {
+      if (selected.size > 0 && !selected.has(lot.actorId)) continue;
+      const total = totals.get(lot.actorId) || { count: 0, value: 0 };
+      total.count += lot.quantity;
+      total.value += lot.value;
+      totals.set(lot.actorId, total);
+    }
+  }
+  for (const actorId of [...totals.keys()]) {
+    if (selected.size > 0 && !selected.has(actorId)) totals.delete(actorId);
+  }
+  for (const total of totals.values()) {
+    total.count = Number(total.count.toFixed(2));
+    total.value = Number(total.value.toFixed(2));
+  }
+  return totals;
 }
 
 function finalizeMetrics(metrics) {
@@ -234,7 +345,7 @@ export function buildStaffReport(
   orderItems,
   products,
   staff,
-  { since = null, until = null, regularActivities, socialActivities, abandonedActivities, variants = null } = {},
+  { since = null, until = null, regularActivities, socialActivities, abandonedActivities, upsellActivities, variants = null } = {},
   variantsArg = null,
 ) {
   const variantsList = Array.isArray(variantsArg) ? variantsArg : (Array.isArray(variants) ? variants : []);
@@ -270,6 +381,16 @@ export function buildStaffReport(
     abandoned_checkouts: emptyAbandonedMetrics(),
   }));
   const rowsByUserId = new Map(rows.map((row) => [row.user_id, row]));
+  const retainedUpsells = calculateRetainedUpsells(upsellActivities || [], {
+    selectedActorIds: rows.map((row) => row.user_id),
+    since,
+    until,
+  });
+  for (const row of rows) {
+    const retained = retainedUpsells.get(row.user_id);
+    row.orders.retained_upsell_count = retained?.count || 0;
+    row.orders.retained_upsell_value = retained?.value || 0;
+  }
   const missingWeightProducts = new Map();
   const productRowsByMetrics = new Map();
   const confirmedAssignedOrderKeys = new Set();

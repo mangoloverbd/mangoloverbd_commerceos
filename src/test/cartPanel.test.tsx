@@ -50,6 +50,11 @@ function renderCart(status: string, notes = "") {
 }
 
 describe("CartPanel order status", () => {
+  it("uses the BoardUI ghost button for the main Cancel action", () => {
+    renderCart("confirmed");
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveClass("bg-button-ghost-background");
+  });
+
   it("offers print for an approved order and stages the selection", async () => {
     const user = userEvent.setup();
     const { onStatusChange } = renderCart("confirmed");

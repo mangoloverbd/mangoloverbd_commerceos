@@ -32,6 +32,7 @@ import { useOrgName } from "@/hooks/useOrgName";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { Select, SelectItem } from "@/components/base/select/select";
+import { CANCELLATION_REASON_OPTIONS, createActivityGroupId, type CancellationReason } from "@/lib/orderActivity";
 
 interface InboxOrder {
   id: string;
@@ -410,9 +411,11 @@ function InboxNotesPopover({ order, onOrderUpdate }: {
 
 function InboxActivityPopover({ orderId }: { orderId: string }) {
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const handleOpen = (next: boolean) => { setOpen(next); if (next) void apiFetch(`/api/social/inbox-orders/${orderId}/activity/view`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_surface: "inbox_orders" }) }).then((response) => response.ok && queryClient.invalidateQueries({ queryKey: [`/api/social/inbox-orders/${orderId}/activity`] })).catch(() => {}); };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpen}>
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -503,6 +506,9 @@ export default function InboxOrders() {
   const [isBulkChecking, setIsBulkChecking] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [localOrders, setLocalOrders] = useState<InboxOrder[] | null>(null);
+  const [cancellationOrderId, setCancellationOrderId] = useState<string | null>(null);
+  const [cancellationReasonCode, setCancellationReasonCode] = useState<CancellationReason | "">("");
+  const [cancellationReasonNote, setCancellationReasonNote] = useState("");
 
   const { data, isLoading } = useQuery<{ orders: InboxOrder[] }>({
     queryKey: ["/api/social/inbox-orders"],
@@ -555,16 +561,18 @@ export default function InboxOrders() {
   }), [allOrders]);
 
   // ─── Status toggle ──────────────────────────────────────────────────────────
-  const handleStatusUpdate = async (order: InboxOrder, newStatus: string) => {
+  const handleStatusUpdate = async (order: InboxOrder, newStatus: string, cancellation?: { code: CancellationReason; note: string }) => {
     updateLocalOrder({ ...order, status: newStatus as InboxOrder["status"] });
     try {
       const res = await apiFetch(`/api/social/inbox-orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, activity_group_id: createActivityGroupId(), ...(cancellation ? { cancellation_reason_code: cancellation.code, cancellation_reason_note: cancellation.note.trim() || null } : {}) }),
       });
       const data = await res.json();
       if (data.order) updateLocalOrder(data.order);
+      setCancellationOrderId(null); setCancellationReasonCode(""); setCancellationReasonNote("");
+      void queryClient.invalidateQueries({ queryKey: [`/api/social/inbox-orders/${order.id}/activity`] });
     } catch {
       updateLocalOrder(order); // revert
       toast.error("Failed to update status");
@@ -729,6 +737,7 @@ export default function InboxOrders() {
     if (selectedOrders.length === 0) return;
     try {
       printInvoice(selectedOrders, orgName);
+      void apiFetch("/api/order-activity/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_table: "social_inbox_orders", order_ids: selectedOrders.map((order) => order.id), document_type: "invoice" }) }).catch(() => {});
     } catch {
       toast.error("Failed to prepare invoices for printing");
     }
@@ -746,7 +755,7 @@ export default function InboxOrders() {
         toast.error(
           `Send ${result.missingOrderNumbers.join(", ")} to a courier before printing the label`,
         );
-      }
+      } else void apiFetch("/api/order-activity/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_table: "social_inbox_orders", order_ids: selectedOrders.map((order) => order.id), document_type: "shipping_label" }) }).catch(() => {});
     } catch {
       toast.error("Failed to print shipping labels");
     }
@@ -1069,7 +1078,7 @@ export default function InboxOrders() {
                               {(["pending", "confirmed", "cancelled"] as const).map((st) => (
                                 <button
                                   key={st}
-                                  onClick={() => { if (order.status !== st) handleStatusUpdate(order, st); }}
+                                  onClick={() => { if (order.status === st) return; if (st === "cancelled") { setCancellationOrderId(order.id); setCancellationReasonCode(""); setCancellationReasonNote(""); return; } void handleStatusUpdate(order, st); }}
                                   className={cn(
                                     "flex h-9 w-full items-center justify-between rounded-xl border px-3 text-left text-xs font-medium capitalize transition-all",
                                     order.status === st
@@ -1084,6 +1093,7 @@ export default function InboxOrders() {
                                   {order.status === st && <Check size={14} weight="bold" />}
                                 </button>
                               ))}
+                              {cancellationOrderId === order.id && <div className="mt-1 space-y-2 border-t border-black/[0.06] pt-2"><select aria-label="Cancellation reason" value={cancellationReasonCode} onChange={(event) => setCancellationReasonCode(event.target.value as CancellationReason)} className="h-9 w-full rounded-lg bg-red-50 px-2 text-[11px]"><option value="">Choose reason</option>{CANCELLATION_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><input aria-label="Cancellation note" value={cancellationReasonNote} onChange={(event) => setCancellationReasonNote(event.target.value)} placeholder={cancellationReasonCode === "other" ? "Required note" : "Optional note"} className="h-9 w-full rounded-lg bg-black/[0.03] px-2 text-[11px]" /><button type="button" disabled={!cancellationReasonCode || (cancellationReasonCode === "other" && !cancellationReasonNote.trim())} onClick={() => cancellationReasonCode && void handleStatusUpdate(order, "cancelled", { code: cancellationReasonCode, note: cancellationReasonNote })} className="h-8 w-full rounded-lg bg-red-600 text-[11px] font-medium text-white disabled:opacity-35">Confirm cancellation</button></div>}
                             </div>
                           </PopoverContent>
                         </Popover>

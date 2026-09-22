@@ -10,6 +10,7 @@ import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/Cus
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { CartPanel } from "@/components/order-editor/CartPanel";
 import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
+import { createActivityGroupId, orderItemActivityKey, type AdditionReason } from "@/lib/orderActivity";
 import type {
   AbandonedCheckout,
   AbandonedCheckoutResponse,
@@ -69,7 +70,9 @@ export default function AbandonedDetail() {
   const [saveError, setSaveError] = useState("");
   const [deliveryOn, setDeliveryOn] = useState(true);
   const [deliveryRate, setDeliveryRate] = useState(100);
+  const [additionReasons, setAdditionReasons] = useState<Record<string, AdditionReason | "">>({});
   const initializedDraftKey = useRef<string | null>(null);
+  const viewedDraftId = useRef<string | null>(null);
 
   const cachedDraft = queryClient
     .getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
@@ -112,7 +115,14 @@ export default function AbandonedDetail() {
     setDeliveryRate(savedRate > 0 ? savedRate : 100);
     setDeliveryOn(savedRate > 0);
     setSaveError("");
+    setAdditionReasons({});
   }, [checkout]);
+
+  useEffect(() => {
+    if (!checkout || viewedDraftId.current === checkout.id) return;
+    viewedDraftId.current = checkout.id;
+    void apiFetch(`/api/abandoned-checkouts/${checkout.id}/activity/view`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_surface: "abandoned_queue" }) }).then((response) => response.ok && queryClient.invalidateQueries({ queryKey: [`/api/abandoned-checkouts/${checkout.id}/activity`] })).catch(() => {});
+  }, [checkout, queryClient]);
 
   // When products load, try to match existing cart items (product_id: null) to catalog products by name
   useEffect(() => {
@@ -150,6 +160,11 @@ export default function AbandonedDetail() {
     () => calculateCartTotals(draft, deliveryOn ? deliveryRate : 0, 0),
     [draft, deliveryOn, deliveryRate],
   );
+  const requiredAdditionReasonKeys = useMemo(() => {
+    if (!checkout) return [];
+    const initial = new Map(checkout.cart.map((line) => [`${line.productName}:${line.variantName || ""}`, Number(line.quantity) || 0]));
+    return draft.filter((item) => Number(item.quantity) > (initial.get(`${item.product_name || ""}:${item.variant_name || ""}`) || 0)).map(orderItemActivityKey);
+  }, [checkout, draft]);
 
   function addCatalogItem(product: CatalogProduct, variant?: CatalogVariant) {
     setDraft((items) => upsertCartItem(items, product, variant));
@@ -186,10 +201,13 @@ export default function AbandonedDetail() {
       setSaveError("Delivery rate must be a valid amount");
       return;
     }
+    if (requiredAdditionReasonKeys.some((key) => !additionReasons[key])) { setSaveError("Choose a reason for every added product or quantity increase"); return; }
 
     setSaving(true);
     setSaveError("");
     try {
+      const activityGroupId = createActivityGroupId();
+      const additionReasonsByName = Object.fromEntries(draft.map((item) => [`${item.product_name || ""}:${item.variant_name || ""}`, additionReasons[orderItemActivityKey(item)] || ""]));
       const res = await apiFetch(`/api/abandoned-checkouts/${draftId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -204,6 +222,8 @@ export default function AbandonedDetail() {
             unitPrice: item.unit_price,
           })),
           deliveryRate: rate,
+          addition_reasons: additionReasonsByName,
+          activity_group_id: activityGroupId,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -222,6 +242,8 @@ export default function AbandonedDetail() {
       initializedDraftKey.current = `${updated.id}:${updated.updated_at}`;
       setCustomer(customerFromDraft(updated));
       setDraft(updated.cart.map((line, index) => draftLineToItem(line, index, updated.id)));
+      setAdditionReasons({});
+      void queryClient.invalidateQueries({ queryKey: [`/api/abandoned-checkouts/${draftId}/activity`] });
       toast.success("Checkout updated");
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : "Could not save checkout edits");
@@ -260,7 +282,7 @@ export default function AbandonedDetail() {
           <CustomerPanel order={{}} customer={customer} disabled={saving} onApply={setCustomer} activityTimeline={checkout ? <OrderActivityTimeline endpoint={`/api/abandoned-checkouts/${checkout.id}/activity`} /> : undefined} />
           <div data-testid="abandoned-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
             <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit locked={false} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
-            <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={saveError} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} status={null} onStatusChange={() => {}} notes="" onNotesChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => { void save(); }} onCancel={goBack} hideOrderSections />
+             <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={saveError} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} status={null} onStatusChange={() => {}} notes="" onNotesChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => { void save(); }} onCancel={goBack} hideOrderSections requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} />
           </div>
         </div>
       )}

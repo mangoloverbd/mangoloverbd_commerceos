@@ -1,14 +1,46 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTIVITY_ORDER_TABLES,
+  activityFetchLimit,
   buildActivityLogEntry,
   buildOrderLookup,
   classifyActivityEvent,
+  mergeActivityStreams,
   orderReferenceKey,
   resolveActivityActionFilter,
   resolveActivityPage,
   resolveActivityTableFilter,
 } from "../../server/activityLog.js";
+
+describe("mergeActivityStreams", () => {
+  it("suppresses only the exact linked legacy status event", () => {
+    const detailed = [{
+      id: "detailed-1",
+      order_id: "order-1",
+      order_table: "orders",
+      actor_id: "actor-1",
+      event_type: "order.status_changed",
+      created_at: "2026-09-22T10:00:00.500Z",
+      metadata: { legacy_status_event_id: "legacy-1" },
+    }];
+    const legacy = [
+      { id: "legacy-1", order_id: "order-1", order_table: "orders", actor_id: "actor-1", from_status: "pending", to_status: "approved", created_at: "2026-09-22T10:00:00.000Z" },
+      { id: "legacy-2", order_id: "order-1", order_table: "orders", actor_id: "actor-1", from_status: "approved", to_status: "print", created_at: "2026-09-22T10:00:01.000Z" },
+    ];
+
+    expect(mergeActivityStreams(detailed, legacy).map((event) => event.id)).toEqual([
+      "legacy-2",
+      "detailed-1",
+    ]);
+  });
+
+  it("uses time reconciliation only for unlinked compatibility rows", () => {
+    const detailed = [{ id: "detailed-1", order_id: "order-1", order_table: "orders", actor_id: "actor-1", event_type: "order.cancelled", created_at: "2026-09-22T10:00:00.500Z", metadata: {} }];
+    const legacy = [{ id: "legacy-1", order_id: "order-1", order_table: "orders", actor_id: "actor-1", from_status: "approved", to_status: "cancelled", created_at: "2026-09-22T10:00:00.000Z" }];
+
+    expect(mergeActivityStreams(detailed, legacy).map((event) => event.id)).toEqual(["detailed-1"]);
+  });
+});
 
 describe("classifyActivityEvent", () => {
   it("classifies order creation with a null from_status as created", () => {
@@ -46,6 +78,14 @@ describe("classifyActivityEvent", () => {
       from_status: "approved",
       to_status: "print",
     })).toBe("status_changed");
+  });
+
+  it("classifies detailed status events from their safe metadata", () => {
+    expect(classifyActivityEvent({
+      event_type: "order.status_changed",
+      order_table: "orders",
+      metadata: { from_status: "pending", to_status: "approved" },
+    })).toBe("confirmed");
   });
 
   it("classifies every abandoned checkout status transition", () => {
@@ -102,6 +142,14 @@ describe("resolveActivityPage", () => {
 
   it("accepts a positive integer page", () => {
     expect(resolveActivityPage("3")).toBe(3);
+  });
+});
+
+describe("activityFetchLimit", () => {
+  it("overfetches enough to merge the requested page without scanning full history", () => {
+    expect(activityFetchLimit(0)).toBe(100);
+    expect(activityFetchLimit(3)).toBe(250);
+    expect(activityFetchLimit(100)).toBe(1000);
   });
 });
 

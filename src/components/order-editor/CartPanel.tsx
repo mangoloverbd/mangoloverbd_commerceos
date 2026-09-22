@@ -1,11 +1,14 @@
 import { Minus, Package, Plus, Trash } from "@phosphor-icons/react";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
+import { Button as BuiButton } from "@/components/base/buttons/button";
 import { Switch } from "@/components/base/switch/switch";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CartDiscountEditor } from "./CartDiscountEditor";
 import { DiscountEditor } from "./DiscountEditor";
 import { calculateUnitDiscount, formatTaka, roundTaka, type CartTotals, type DiscountType, type OrderEditorItem } from "@/lib/orderEditor";
 import { displayStatusLabel, isOnHoldStatus, statusOptionsFor } from "@/lib/orderTransitions";
+import { ChangeReasonSelect } from "./ChangeReasonSelect";
+import { CANCELLATION_REASON_OPTIONS, orderItemActivityKey, type AdditionReason, type CancellationReason } from "@/lib/orderActivity";
 
 type CartPanelProps = {
   items: OrderEditorItem[];
@@ -31,9 +34,17 @@ type CartPanelProps = {
   onSave: () => void;
   onCancel: () => void;
   hideOrderSections?: boolean;
+  requiredAdditionReasonKeys?: string[];
+  additionReasons?: Record<string, AdditionReason | "">;
+  onAdditionReasonChange?: (itemKey: string, reason: AdditionReason) => void;
+  cancellationRequired?: boolean;
+  cancellationReasonCode?: CancellationReason | "";
+  cancellationReasonNote?: string;
+  onCancellationReasonChange?: (reason: CancellationReason) => void;
+  onCancellationReasonNoteChange?: (note: string) => void;
 };
 
-export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false }: CartPanelProps) {
+export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false, requiredAdditionReasonKeys = [], additionReasons = {}, onAdditionReasonChange, cancellationRequired = false, cancellationReasonCode = "", cancellationReasonNote = "", onCancellationReasonChange, onCancellationReasonNoteChange }: CartPanelProps) {
   const overallBase = roundTaka(totals.grossSubtotal - totals.itemDiscount);
   return (
     <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
@@ -45,7 +56,8 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
           const unitDiscount = calculateUnitDiscount(item.unit_price, item.discount_type, item.discount_value);
           const netUnit = item.unit_price - unitDiscount;
           const isLegacy = !item.product_id && !item.variant_id;
-          const maxQuantity = item.available_stock ?? undefined;
+           const maxQuantity = item.available_stock ?? undefined;
+           const activityKey = orderItemActivityKey(item);
           return (
             <article key={item.id} data-testid={`order-item-${item.id}`} className="rounded-lg bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
               <div className="flex gap-3">
@@ -58,7 +70,8 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
                 <div><div className="flex items-baseline gap-2"><span className="font-mono text-[13px] tabular-nums text-black">{formatTaka(netUnit)}</span>{unitDiscount > 0 && <span className="font-mono text-[10px] tabular-nums text-black/35 line-through">{formatTaka(item.unit_price)}</span>}</div>{!hideOrderSections && <DiscountEditor item={item} disabled={!canEdit || isLegacy} onApply={(type, value) => onDiscount(item.id, type, value)} onRemove={() => onDiscount(item.id, null, 0)} />}</div>
                 <div className="flex items-center rounded-lg bg-black/[0.04] p-1"><button type="button" aria-label={`Decrease ${name} quantity`} onClick={() => onQuantity(item.id, Math.max(1, item.quantity - 1))} disabled={!canEdit || item.quantity <= 1} className="grid h-7 w-7 place-items-center rounded-md text-black disabled:opacity-20"><Minus weight="light" size={13} /></button><input aria-label={`Quantity for ${name}`} type="number" min={1} max={maxQuantity} value={item.quantity} onChange={(event) => onQuantity(item.id, Math.max(1, Math.min(maxQuantity ?? Number.MAX_SAFE_INTEGER, Number.parseInt(event.target.value, 10) || 1)))} disabled={!canEdit} className="h-7 w-10 bg-transparent text-center font-mono text-[12px] outline-none disabled:opacity-40" /><button type="button" aria-label={`Increase ${name} quantity`} onClick={() => onQuantity(item.id, item.quantity + 1)} disabled={!canEdit || (maxQuantity != null && item.quantity >= maxQuantity)} className="grid h-7 w-7 place-items-center rounded-md text-black disabled:opacity-20"><Plus weight="light" size={13} /></button></div>
               </div>
-              <p className="mt-2 text-right font-mono text-[11px] tabular-nums text-black">Line total {formatTaka(netUnit * item.quantity)}</p>
+               <p className="mt-2 text-right font-mono text-[11px] tabular-nums text-black">Line total {formatTaka(netUnit * item.quantity)}</p>
+               {requiredAdditionReasonKeys.includes(activityKey) && onAdditionReasonChange && <ChangeReasonSelect itemName={name} value={additionReasons[activityKey] || ""} disabled={!canEdit || saving} onChange={(reason) => onAdditionReasonChange(activityKey, reason)} />}
             </article>
           );
         })}
@@ -82,8 +95,8 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
           </BuiSelect>
           )}
           <button type="button" onClick={onSave} disabled={saving || saveDisabled} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-35">{saving && <Spinner size="sm" />}{saving ? "Saving…" : "Save changes"}</button>
-          <button type="button" onClick={onCancel} disabled={saving} className="h-9 rounded-lg px-2.5 text-[12px] text-black hover:bg-black/[0.05] disabled:opacity-35">Cancel</button>
-          {!hideOrderSections && isOnHoldStatus(status) && (
+          <BuiButton variant="ghost" size="medium" onClick={onCancel} disabled={saving}>Cancel</BuiButton>
+           {!hideOrderSections && isOnHoldStatus(status) && (
             <label className="col-span-3 mt-1 block" htmlFor="hold-note">
               <span className="sr-only">Hold note</span>
               <textarea
@@ -97,7 +110,8 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
                 className="h-16 w-full resize-none rounded-lg bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20 disabled:opacity-50"
               />
             </label>
-          )}
+           )}
+           {!hideOrderSections && cancellationRequired && <div className="col-span-3 mt-1 grid gap-2 rounded-lg bg-red-50/70 p-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Cancellation reason</span><select aria-label="Cancellation reason" value={cancellationReasonCode} onChange={(event) => onCancellationReasonChange?.(event.target.value as CancellationReason)} className="h-9 w-full rounded-lg bg-white px-3 text-[12px]"><option value="">Choose a reason</option>{CANCELLATION_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Optional note</span><input aria-label="Cancellation note" value={cancellationReasonNote} onChange={(event) => onCancellationReasonNoteChange?.(event.target.value)} placeholder={cancellationReasonCode === "other" ? "Required for Other" : "Add context"} className="h-9 w-full rounded-lg bg-white px-3 text-[12px]" /></label></div>}
         </div>
       </div>
     </section>

@@ -63,7 +63,7 @@ describe("steadfast webhook attribution isolation", () => {
       "async function saveMetaInboxOrder",
       "async function sendMetaMessage",
     );
-    expect(save).toContain("buildStatusEvent");
+    expect(save).toMatch(/buildStatusEvent|prepareStatusEvent/);
     expect(save).toContain('actorKind: "system"');
     expect(save).toContain("actorId: null");
     expect(save).not.toContain("confirmed_by");

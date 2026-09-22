@@ -98,13 +98,26 @@ import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
 import { buildBusinessReport, resolveBusinessReportRequest } from "./businessReport.js";
 import {
   ACTIVITY_LOG_PAGE_SIZE,
+  activityFetchLimit,
   buildActivityLogEntry,
   buildOrderLookup,
   classifyActivityEvent,
+  filterLegacyActivityEvents,
+  mergeActivityStreams,
   resolveActivityActionFilter,
   resolveActivityPage,
   resolveActivityTableFilter,
 } from "./activityLog.js";
+import {
+  buildOrderChanges,
+  buildDetailedActivityEvent,
+  groupActivityEvents,
+  meaningfulViewBucket,
+  normalizeActivityGroupId,
+  normalizeSourceSurface,
+  validateAdditionReasons,
+  validateCancellationReason,
+} from "./orderActivity.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -4194,6 +4207,44 @@ app.get("/api/reports/staff", async (req, res) => {
       }
       return rows;
     };
+    const fetchRetainedUpsellActivities = async () => {
+      const candidateRows = [];
+      for (const staffIds of chunkIds(request.selectedUserIds)) {
+        let query = supabase
+          .from("order_activity_events")
+          .select("id, order_id, event_type, actor_id, created_at, changes, metadata")
+          .eq("org_id", orgId)
+          .eq("order_table", "orders")
+          .eq("event_type", "order.edited")
+          .in("actor_id", staffIds);
+        if (request.since) query = query.gte("created_at", request.since);
+        if (request.until) query = query.lt("created_at", request.until);
+        const { data, error } = await query;
+        if (error) {
+          if (isMissingDetailedActivityTable(error)) return [];
+          throw error;
+        }
+        candidateRows.push(...(data || []));
+      }
+      const orderIds = [...new Set(candidateRows
+        .filter((event) => (event.changes || []).some((change) => change?.addition_reason === "upsell"))
+        .map((event) => event.order_id)
+        .filter(Boolean))];
+      const activities = [];
+      for (const orderIdBatch of chunkIds(orderIds)) {
+        activities.push(...await fetchReportPages(() => {
+          let historyQuery = supabase
+            .from("order_activity_events")
+            .select("id, order_id, event_type, actor_id, created_at, changes, metadata")
+            .eq("org_id", orgId)
+            .eq("order_table", "orders")
+            .in("order_id", orderIdBatch);
+          if (request.until) historyQuery = historyQuery.lt("created_at", request.until);
+          return historyQuery;
+        }));
+      }
+      return activities;
+    };
 
     const [
       assignedOrders,
@@ -4206,6 +4257,7 @@ app.get("/api/reports/staff", async (req, res) => {
       abandonedStatusEvents,
       products,
       variants,
+      upsellActivities,
     ] = await Promise.all([
       fetchRegularRows("assigned_to", "created_at"),
       fetchRegularRows("confirmed_by", "confirmed_at"),
@@ -4223,6 +4275,7 @@ app.get("/api/reports/staff", async (req, res) => {
         .from("product_variants")
         .select("id, product_id, weight_kg")
         .eq("org_id", orgId)),
+      fetchRetainedUpsellActivities(),
     ]);
 
     const regularEventOrderIds = [...new Set(
@@ -4311,7 +4364,7 @@ app.get("/api/reports/staff", async (req, res) => {
       orderItems,
       products,
       selectedStaff,
-      { ...request, regularActivities, socialActivities, abandonedActivities },
+      { ...request, regularActivities, socialActivities, abandonedActivities, upsellActivities },
       variants,
     );
     return res.json({
@@ -4408,8 +4461,11 @@ app.get("/api/reports/activity", async (req, res) => {
     }
 
     const rawEvents = [];
+    const detailedEvents = [];
+    const fetchLimit = activityFetchLimit(page);
+    let sourceTruncated = false;
     for (const staffIds of chunkIds(request.selectedUserIds)) {
-      rawEvents.push(...await fetchReportPages(() => {
+      const { data: legacy, error: legacyError } = await (() => {
         let query = supabase
           .from("order_status_events")
           .select("id, order_id, order_table, from_status, to_status, actor_id, created_at")
@@ -4419,11 +4475,24 @@ app.get("/api/reports/activity", async (req, res) => {
         if (request.since) query = query.gte("created_at", request.since);
         if (request.until) query = query.lt("created_at", request.until);
         if (tableFilter !== "all") query = query.eq("order_table", tableFilter);
-        return query;
-      }));
+        return query.order("created_at", { ascending: false }).limit(fetchLimit);
+      })();
+      if (legacyError) throw legacyError;
+      rawEvents.push(...(legacy || []));
+      if ((legacy || []).length === fetchLimit) sourceTruncated = true;
+      const { data: detailed, error: detailedError } = await (() => {
+        let query = supabase.from("order_activity_events").select("id, order_id, order_table, event_type, category, summary, metadata, actor_id, actor_kind, created_at").eq("org_id", orgId).eq("actor_kind", "user").in("actor_id", staffIds);
+        if (request.since) query = query.gte("created_at", request.since);
+        if (request.until) query = query.lt("created_at", request.until);
+        if (tableFilter !== "all") query = query.eq("order_table", tableFilter);
+        return query.order("created_at", { ascending: false }).limit(fetchLimit);
+      })();
+      if (detailedError && !isMissingDetailedActivityTable(detailedError)) throw detailedError;
+      detailedEvents.push(...(detailed || []));
+      if ((detailed || []).length === fetchLimit) sourceTruncated = true;
     }
 
-    const classifiedAll = rawEvents.map((event) => ({ ...event, action: classifyActivityEvent(event) }));
+    const classifiedAll = mergeActivityStreams(detailedEvents, rawEvents);
     const actionCounts = {};
     for (const event of classifiedAll) {
       actionCounts[event.action] = (actionCounts[event.action] || 0) + 1;
@@ -4448,7 +4517,7 @@ app.get("/api/reports/activity", async (req, res) => {
       action_counts: actionCounts,
       page,
       page_size: ACTIVITY_LOG_PAGE_SIZE,
-      has_more: pageStart + ACTIVITY_LOG_PAGE_SIZE < total,
+      has_more: sourceTruncated || pageStart + ACTIVITY_LOG_PAGE_SIZE < total,
     });
   } catch (err) {
     return sendError(res, err);
@@ -4456,32 +4525,39 @@ app.get("/api/reports/activity", async (req, res) => {
 });
 
 // Per-order activity timeline, embedded on each order's own editing page.
-async function fetchOrderActivityTimeline(supabase, orgId, orderTable, orderId) {
-  const [{ data: events, error: eventsError }, { data: staffRows, error: staffError }] = await Promise.all([
-    supabase
-      .from("order_status_events")
-      .select("id, from_status, to_status, actor_id, actor_kind, created_at")
-      .eq("org_id", orgId)
-      .eq("order_table", orderTable)
-      .eq("order_id", orderId)
-      .order("created_at", { ascending: true }),
+function isMissingDetailedActivityTable(error) {
+  return error?.code === "42P01" || error?.code === "PGRST205";
+}
+
+function activityActorLabel(event, staffById) {
+  if (event.actor_kind === "user") return event.actor_display_name || staffById.get(event.actor_id) || "Unknown";
+  if (event.actor_kind === "customer") return "Customer";
+  if (event.actor_kind === "courier_webhook") return "Courier";
+  if (event.actor_kind === "integration") return "Integration";
+  return "System";
+}
+
+async function fetchOrderActivityTimeline(supabase, orgId, orderTable, orderId, entity) {
+  const [detailedResult, legacyResult, staffResult] = await Promise.all([
+    supabase.from("order_activity_events").select("*").eq("org_id", orgId).eq("order_table", orderTable).eq("order_id", orderId).order("created_at", { ascending: false }),
+    supabase.from("order_status_events").select("id, from_status, to_status, actor_id, actor_kind, created_at").eq("org_id", orgId).eq("order_table", orderTable).eq("order_id", orderId).order("created_at", { ascending: false }),
     supabase.from("user_roles").select("user_id, display_name").eq("org_id", orgId),
   ]);
-  if (eventsError) throw eventsError;
-  if (staffError) throw staffError;
-
-  const staffById = new Map((staffRows || []).map((member) => [member.user_id, member.display_name || "Unnamed member"]));
-  return (events || []).map((event) => ({
-    id: event.id,
-    occurred_at: event.created_at,
-    action: classifyActivityEvent({ ...event, order_table: orderTable }),
-    actor_id: event.actor_kind === "user" ? event.actor_id : null,
-    actor_display_name: event.actor_kind === "user"
-      ? ((event.actor_id && staffById.get(event.actor_id)) || "Unknown")
-      : (event.actor_kind === "courier_webhook" ? "Courier" : "System"),
-    from_status: event.from_status ?? null,
-    to_status: event.to_status ?? null,
-  }));
+  if (detailedResult.error && !isMissingDetailedActivityTable(detailedResult.error)) throw detailedResult.error;
+  if (legacyResult.error) throw legacyResult.error;
+  if (staffResult.error) throw staffResult.error;
+  const detailedRows = detailedResult.error ? [] : (detailedResult.data || []);
+  const staffById = new Map((staffResult.data || []).map((member) => [member.user_id, member.display_name || "Unnamed member"]));
+  const detailed = groupActivityEvents(detailedRows).map((event) => ({ ...event, occurred_at: event.created_at, action: event.event_type, actor_display_name: activityActorLabel(event, staffById) }));
+  const legacy = filterLegacyActivityEvents(detailedRows, legacyResult.data || []).map((event) => {
+    const action = classifyActivityEvent({ ...event, order_table: orderTable });
+    const eventType = action === "created" ? "order.created" : action === "cancelled" ? "order.cancelled" : "order.status_changed";
+    return { id: `legacy:${event.id}`, occurred_at: event.created_at, created_at: event.created_at, event_type: eventType, action, category: "status", actor_id: event.actor_kind === "user" ? event.actor_id : null, actor_kind: event.actor_kind, actor_display_name: activityActorLabel(event, staffById), summary: action === "created" ? "Order created" : `Status changed to ${event.to_status}`, changes: [{ type: "status_changed", label: "Status", before: event.from_status, after: event.to_status }], change_count: 1 };
+  });
+  const marker = !entity?.origin_source ? [{ id: `history-started:${orderId}`, occurred_at: entity?.detailed_activity_started_at || null, event_type: "history.started", category: "lifecycle", actor_id: null, actor_kind: "system", actor_display_name: "System", summary: "Detailed history started", reason_note: "Earlier activity may be incomplete.", changes: [], change_count: 0 }] : [];
+  const events = [...detailed, ...legacy, ...marker].sort((a, b) => new Date(b.occurred_at || 0).getTime() - new Date(a.occurred_at || 0).getTime());
+  const lastEdited = detailed.find((event) => event.category !== "view");
+  return { events, provenance: { origin_source: entity?.origin_source || entity?.source || entity?.platform || "existing_order", created_at: entity?.created_at || null, created_by_display_name: entity?.created_by ? staffById.get(entity.created_by) || "Unknown" : null, assigned_to_display_name: entity?.assigned_to ? staffById.get(entity.assigned_to) || "Unknown" : null, last_edited_by: lastEdited?.actor_display_name || null, last_edited_at: lastEdited?.occurred_at || null, viewer_count: new Set(detailedRows.filter((event) => event.event_type === "order.viewed").map((event) => event.actor_id).filter(Boolean)).size } };
 }
 
 app.get("/api/orders/:id/activity", async (req, res) => {
@@ -4490,10 +4566,9 @@ app.get("/api/orders/:id/activity", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: order } = await supabase.from("orders").select("id").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    const { data: order } = await supabase.from("orders").select("id, created_at, source, origin_source, detailed_activity_started_at, created_by, assigned_to").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
     if (!order) return res.status(404).json({ error: "Order not found" });
-    const events = await fetchOrderActivityTimeline(supabase, orgId, "orders", order.id);
-    return res.json({ events });
+    return res.json(await fetchOrderActivityTimeline(supabase, orgId, "orders", order.id, order));
   } catch (err) {
     return sendError(res, err);
   }
@@ -4505,10 +4580,9 @@ app.get("/api/social/inbox-orders/:id/activity", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: order } = await supabase.from("social_inbox_orders").select("id").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    const { data: order } = await supabase.from("social_inbox_orders").select("id, created_at, platform, origin_source, detailed_activity_started_at, created_by, assigned_to").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
     if (!order) return res.status(404).json({ error: "Inbox order not found" });
-    const events = await fetchOrderActivityTimeline(supabase, orgId, "social_inbox_orders", order.id);
-    return res.json({ events });
+    return res.json(await fetchOrderActivityTimeline(supabase, orgId, "social_inbox_orders", order.id, order));
   } catch (err) {
     return sendError(res, err);
   }
@@ -4523,14 +4597,35 @@ app.get("/api/abandoned-checkouts/:id/activity", async (req, res) => {
     }
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { data: checkout } = await supabase.from("abandoned_checkouts").select("id").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    const { data: checkout } = await supabase.from("abandoned_checkouts").select("id, created_at, source, origin_source, detailed_activity_started_at").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
     if (!checkout) return res.status(404).json({ error: "Checkout not found" });
-    const events = await fetchOrderActivityTimeline(supabase, orgId, "abandoned_checkouts", checkout.id);
-    return res.json({ events });
+    return res.json(await fetchOrderActivityTimeline(supabase, orgId, "abandoned_checkouts", checkout.id, checkout));
   } catch (err) {
     return sendError(res, err);
   }
 });
+
+async function recordMeaningfulOrderView(req, res, config) {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const sourceSurface = normalizeSourceSurface(req.body?.source_surface || "direct_link", "direct_link");
+    const { data: entity, error } = await supabase.from(config.table).select("id, detailed_activity_started_at").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    if (error) throw error;
+    if (!entity) return res.status(404).json({ error: config.notFound });
+    const occurredAt = new Date().toISOString();
+    const viewBucket = meaningfulViewBucket(occurredAt);
+    const result = await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: entity.id, orderTable: config.table, eventType: "order.viewed", category: "view", actorId: user.id, actorKind: "user", sourceSurface, summary: "Viewed order", metadata: { view_bucket: viewBucket }, viewBucket, occurredAt }));
+    if (result.recorded && !entity.detailed_activity_started_at) await supabase.from(config.table).update({ detailed_activity_started_at: occurredAt }).eq("id", entity.id).eq("org_id", orgId).is("detailed_activity_started_at", null);
+    return res.json({ recorded: result.recorded, view_bucket: viewBucket });
+  } catch (error) { return sendError(res, error); }
+}
+
+app.post("/api/orders/:id/activity/view", (req, res) => recordMeaningfulOrderView(req, res, { table: "orders", notFound: "Order not found" }));
+app.post("/api/social/inbox-orders/:id/activity/view", (req, res) => recordMeaningfulOrderView(req, res, { table: "social_inbox_orders", notFound: "Inbox order not found" }));
+app.post("/api/abandoned-checkouts/:id/activity/view", (req, res) => recordMeaningfulOrderView(req, res, { table: "abandoned_checkouts", notFound: "Checkout not found" }));
 
 // ─── Business Report ─────────────────────────────────────────────────────────
 
@@ -6548,7 +6643,7 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
     const hasAction = req.body?.action !== undefined;
     if (hasAction) {
       if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)
-        || Object.keys(req.body).some((key) => key !== "action")) {
+        || Object.keys(req.body).some((key) => !["action", "activity_group_id"].includes(key))) {
         return res.status(400).json({ error: "Invalid checkout action" });
       }
       const action = req.body.action;
@@ -6559,10 +6654,11 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
     const now = new Date();
     const { data: current, error: currentError } = await supabase
       .from("abandoned_checkouts")
-      .select("id, status")
+      .select("*")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
@@ -6581,11 +6677,14 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
       if (!patch) return res.status(409).json({ error: "Checkout action is not allowed" });
     } else {
       try {
-        patch = parseAbandonedCheckoutStaffEdit(req.body);
+        patch = parseAbandonedCheckoutStaffEdit({ customerName: req.body?.customerName, phone: req.body?.phone, address: req.body?.address, items: req.body?.items, deliveryRate: req.body?.deliveryRate });
       } catch {
         return res.status(400).json({ error: "Invalid checkout edits" });
       }
     }
+    const beforeItems = (current.cart || []).map((item) => ({ product_id: item.productName, variant_id: item.variantName || null, product_name: item.productName, variant_name: item.variantName, quantity: item.quantity, unit_price: item.unitPrice, unit_discount: 0 }));
+    const proposedItems = (patch.cart || current.cart || []).map((item) => ({ product_id: item.productName, variant_id: item.variantName || null, product_name: item.productName, variant_name: item.variantName, quantity: item.quantity, unit_price: item.unitPrice, unit_discount: 0 }));
+    if (!hasAction) validateAdditionReasons({ beforeItems, afterItems: proposedItems, additionReasons: req.body?.addition_reasons || {} });
 
     const { data: updated, error: updateError } = await supabase
       .from("abandoned_checkouts")
@@ -6611,10 +6710,16 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
         occurredAt: now.toISOString(),
       }));
     }
+    const afterItems = (updated.cart || []).map((item) => ({ product_id: item.productName, variant_id: item.variantName || null, product_name: item.productName, variant_name: item.variantName, quantity: item.quantity, unit_price: item.unitPrice, unit_discount: 0 }));
+    const changes = buildOrderChanges({ beforeOrder: current, afterOrder: updated, beforeItems, afterItems, additionReasons: req.body?.addition_reasons || {} });
+    if (changes.length || (hasAction && patch.status !== current.status)) {
+      const requestId = buildOperationRequestId(activityGroupId, current.id, hasAction ? "action" : "edit");
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: current.id, orderTable: "abandoned_checkouts", eventType: hasAction ? "order.status_changed" : "order.edited", category: hasAction ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "abandoned_queue", summary: hasAction ? `Checkout marked ${patch.status}` : "Edited abandoned checkout", changes, metadata: hasAction ? { from_status: current.status, to_status: patch.status } : {}, occurredAt: now.toISOString() }));
+    }
     return res.json({ checkout: updated });
-  } catch {
+  } catch (error) {
     console.warn("[AbandonedCheckout] staff action failed");
-    return res.status(500).json({ error: "Could not update abandoned checkout" });
+    return sendError(res, error);
   }
 });
 
@@ -6730,6 +6835,9 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         weight_kg: routing.weightKg,
         abandoned_checkout_id: draft.id,
         source: "website",
+        origin_source: "abandoned_checkout",
+        origin_actor_kind: "user",
+        detailed_activity_started_at: conversionAt,
         created_by: user.id,
         assigned_to: user.id,
         ...buildAttributionPatch({
@@ -6771,7 +6879,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       return res.status(409).json({ error: "Checkout changed before it could be converted" });
     }
 
-    await recordStatusEvent(supabase, buildStatusEvent({
+    const convertedStatusEvent = prepareStatusEvent({
       orgId,
       orderId: order.id,
       orderTable: "orders",
@@ -6780,7 +6888,9 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       actorId: user.id,
       actorKind: "user",
       occurredAt: conversionAt,
-    }));
+    });
+    await recordStatusEvent(supabase, convertedStatusEvent);
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "abandoned_queue", summary: "Order created from abandoned checkout", metadata: { origin_source: "abandoned_checkout", ...(convertedStatusEvent?.id ? { legacy_status_event_id: convertedStatusEvent.id } : {}) }, occurredAt: conversionAt }));
     await recordStatusEvent(supabase, buildStatusEvent({
       orgId,
       orderId: draft.id,
@@ -7011,6 +7121,8 @@ app.patch("/api/orders/:id/items", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const requestedItems = req.body?.items;
+    const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
+    const additionReasons = req.body?.addition_reasons || {};
     if (!Array.isArray(requestedItems)) {
       return res.status(400).json({ error: "items array required" });
     }
@@ -7077,16 +7189,20 @@ app.patch("/api/orders/:id/items", async (req, res) => {
       .maybeSingle();
     if (orderError) throw orderError;
     if (!order) return res.status(404).json({ error: "Order not found" });
+    if (req.body?.expected_updated_at && order.updated_at && order.updated_at !== req.body.expected_updated_at) {
+      return res.status(409).json({ error: "Order changed before it could be saved. Refresh and try again.", code: "stale_write", updated_at: order.updated_at });
+    }
     if (isOrderDispatched(order)) {
       return res.status(409).json({ error: "Order items cannot be edited after courier dispatch" });
     }
 
     const { data: existingItems, error: existingItemsError } = await supabase
       .from("order_items")
-      .select("product_id")
+      .select("*")
       .eq("order_id", req.params.id)
       .eq("org_id", orgId);
     if (existingItemsError) throw existingItemsError;
+    validateAdditionReasons({ beforeItems: existingItems || [], afterItems: normalizedItems.map((item) => ({ product_id: item.productId, variant_id: item.variantId, product_name: "this product", quantity: item.quantity })), additionReasons });
     const existingProductIds = (existingItems || []).map((item) => item.product_id).filter(Boolean);
 
     const productIds = [...new Set(normalizedItems.map((item) => item.productId).filter(Boolean))];
@@ -7188,9 +7304,14 @@ app.patch("/api/orders/:id/items", async (req, res) => {
     if (updatedOrderError) throw updatedOrderError;
     if (updatedItemsError) throw updatedItemsError;
     const enrichedItems = await enrichOrderItems(supabase, orgId, items || []);
+    const changes = buildOrderChanges({ beforeOrder: order, afterOrder: updatedOrder, beforeItems: existingItems || [], afterItems: enrichedItems, additionReasons });
+    if (changes.length) {
+      const requestId = buildOperationRequestId(activityGroupId, req.params.id, "items");
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: req.params.id, orderTable: "orders", eventType: "order.edited", category: "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "order_editor", summary: "Edited order items", changes }));
+    }
     return res.json({ order: updatedOrder, items: enrichedItems, canEditItems: true });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return sendError(res, e);
   }
 });
 
@@ -7224,7 +7345,7 @@ async function persistAbandonedCheckoutCapture(supabase, orgId, capture, now) {
 
   const { data: inserted, error: insertError } = await supabase
     .from("abandoned_checkouts")
-    .insert(buildCaptureInsertRow(orgId, capture, now))
+    .insert({ ...buildCaptureInsertRow(orgId, capture, now), origin_source: capture.source, origin_actor_kind: "customer", detailed_activity_started_at: now.toISOString() })
     .select("id")
     .single();
   if (!insertError) return inserted;
@@ -7370,7 +7491,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       "status",
       "notes",
     ];
-    const row = { org_id: orgId, source: "website" };
+    const row = { org_id: orgId, source: "website", origin_source: "website", origin_actor_kind: "integration", detailed_activity_started_at: new Date().toISOString() };
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
@@ -7487,6 +7608,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 
     // Submit Order Confirmation SMS before acknowledging the webhook.
     await sendBulkSms(orgId, "confirmation", persistedOrder);
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: persistedOrder.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: null, actorKind: "customer", sourceSurface: "system", summary: "Order created through website", metadata: { origin_source: "website" } }));
 
     return res.status(201).json({
       success: true,
@@ -7896,6 +8018,16 @@ async function assertWorkspaceMember(supabase, orgId, userId) {
 // request or cause a client to retry the write.
 const MAX_EVENT_INSERT_ATTEMPTS = 3;
 
+function prepareStatusEvent(input) {
+  const event = buildStatusEvent(input);
+  return event ? { ...event, id: crypto.randomUUID() } : null;
+}
+
+function buildOperationRequestId(groupId, orderId, segment) {
+  if (!groupId || !orderId || !segment) return null;
+  return `${groupId}:${orderId}:${segment}`.slice(0, 200);
+}
+
 async function recordStatusEvent(supabase, event) {
   if (!event) return true;
 
@@ -7919,6 +8051,63 @@ async function recordStatusEvent(supabase, event) {
   console.error("[attribution] event insert failed:", errorMessage(lastError));
   return false;
 }
+
+async function recordOrderActivity(supabase, event) {
+  if (!event) return { recorded: false, id: null };
+  const row = { ...event, id: event.id || crypto.randomUUID() };
+  if (row.actor_kind === "user" && row.actor_id && !row.actor_display_name) {
+    const { data: actor } = await supabase.from("user_roles").select("display_name").eq("org_id", row.org_id).eq("user_id", row.actor_id).maybeSingle();
+    row.actor_display_name = actor?.display_name || "Unknown";
+  }
+  let lastError = null;
+  for (let attempt = 1; attempt <= MAX_EVENT_INSERT_ATTEMPTS; attempt += 1) {
+    try {
+      const { error } = await supabase.from("order_activity_events").insert(row);
+      if (!error) return { recorded: true, id: row.id };
+      if (error.code === "23505") return { recorded: false, id: row.id };
+      if (isMissingDetailedActivityTable(error)) return { recorded: false, id: null };
+      lastError = error;
+    } catch (error) { lastError = error; }
+    if (attempt < MAX_EVENT_INSERT_ATTEMPTS) await delay(50 * attempt);
+  }
+  console.error("[order-activity] event insert failed:", errorMessage(lastError));
+  return { recorded: false, id: null };
+}
+
+function normalizeOperationalFailureCode(value, fallback = "provider_error") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (normalized.includes("timeout")) return "timeout";
+  if (normalized.includes("credential") || normalized.includes("unauthor") || normalized.includes("forbidden")) return "authentication_failed";
+  if (normalized.includes("phone")) return "invalid_phone";
+  if (normalized.includes("stock")) return "stock_unavailable";
+  if (normalized.includes("already")) return "already_submitted";
+  if (normalized.includes("rate") || normalized.includes("limit")) return "rate_limited";
+  if (normalized.includes("network") || normalized.includes("fetch")) return "network_error";
+  if (normalized.includes("reject")) return "provider_rejected";
+  return fallback;
+}
+
+app.post("/api/order-activity/print", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const orderTable = req.body?.order_table;
+    const documentType = req.body?.document_type;
+    const ids = [...new Set(Array.isArray(req.body?.order_ids) ? req.body.order_ids.filter((id) => typeof id === "string" && id) : [])];
+    if (!["orders", "social_inbox_orders"].includes(orderTable)) return res.status(400).json({ error: "Invalid order table" });
+    if (!["invoice", "shipping_label", "packing_summary"].includes(documentType)) return res.status(400).json({ error: "Invalid document type" });
+    if (!ids.length || ids.length > 100) return res.status(400).json({ error: "Provide 1 to 100 order IDs" });
+    const { data: rows, error } = await supabase.from(orderTable).select("id").in("id", ids).eq("org_id", orgId);
+    if (error) throw error;
+    for (const row of rows || []) {
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: row.id, orderTable, eventType: "document.printed", category: "document", actorId: user.id, actorKind: "user", sourceSurface: orderTable === "orders" ? "order_editor" : "inbox_orders", summary: `Initiated ${documentType.replaceAll("_", " ")} print`, metadata: { document_type: documentType } }));
+    }
+    return res.json({ recorded: (rows || []).length });
+  } catch (error) { return sendError(res, error); }
+});
 
 app.post("/api/orders", async (req, res) => {
   try {
@@ -8032,6 +8221,9 @@ app.post("/api/orders", async (req, res) => {
     // New Order submits "confirmed" today. Derive the confirmation attribution
     // from that initial transition rather than hard-coding a parallel rule.
     const transitionAt = new Date().toISOString();
+    row.origin_source = row.source;
+    row.origin_actor_kind = "user";
+    row.detailed_activity_started_at = transitionAt;
     Object.assign(row, buildAttributionPatch({
       fromStatus: null,
       toStatus: row.status,
@@ -8070,7 +8262,7 @@ app.post("/api/orders", async (req, res) => {
         throw itemsError;
       }
     }
-    await recordStatusEvent(supabase, buildStatusEvent({
+    const createStatusEvent = prepareStatusEvent({
       orgId,
       orderId: data.id,
       orderTable: "orders",
@@ -8079,7 +8271,9 @@ app.post("/api/orders", async (req, res) => {
       actorId: user.id,
       actorKind: "user",
       occurredAt: transitionAt,
-    }));
+    });
+    await recordStatusEvent(supabase, createStatusEvent);
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: data.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: `Order created through ${data.origin_source || data.source || "manual_other"}`, metadata: { origin_source: data.origin_source || data.source || "manual_other", ...(createStatusEvent?.id ? { legacy_status_event_id: createStatusEvent.id } : {}) }, occurredAt: transitionAt }));
     await sendBulkSms(orgId, "confirmation", data);
     return res.status(201).json({ success: true, order: data });
   } catch (e) {
@@ -8093,6 +8287,7 @@ app.patch("/api/orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
     const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
@@ -8122,6 +8317,19 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
+    const fromBusinessStatus = normalizeBusinessStatus(orderCheck.status);
+    const toBusinessStatus = update.status === undefined ? fromBusinessStatus : normalizeBusinessStatus(update.status);
+    const isStaffCancellation = toBusinessStatus === "cancelled" && fromBusinessStatus !== "cancelled";
+    const isReopening = fromBusinessStatus === "cancelled" && toBusinessStatus !== "cancelled";
+    let cancellationReason = null;
+    if (isStaffCancellation) {
+      cancellationReason = validateCancellationReason({ code: req.body?.cancellation_reason_code, note: req.body?.cancellation_reason_note });
+      update.cancellation_reason_code = cancellationReason.code;
+      update.cancellation_reason_note = cancellationReason.note;
+    } else if (isReopening) {
+      update.cancellation_reason_code = null;
+      update.cancellation_reason_note = null;
+    }
     if (update.discount !== undefined) {
       const discountValue = Number(update.discount);
       if (!Number.isFinite(discountValue) || discountValue < 0) {
@@ -8165,11 +8373,29 @@ app.patch("/api/orders/:id", async (req, res) => {
       }));
     }
 
-    const { error: updErr } = await supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+    const writeAt = new Date().toISOString();
+    if (Object.keys(update).length > 0) update.updated_at = writeAt;
+    const expectedVersion = req.body?.expected_updated_at;
+    const { data: updatedRow, error: updErr } = await (() => {
+      let query = supabase.from("orders").update(update).eq("id", req.params.id).eq("org_id", orgId);
+      if (expectedVersion) query = query.eq("updated_at", expectedVersion);
+      return query.select("*").maybeSingle();
+    })();
     if (updErr) throw updErr;
+    if (!updatedRow) {
+      if (expectedVersion) {
+        const { data: current } = await supabase.from("orders").select("id, updated_at").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+        if (current) {
+          return res.status(409).json({ error: "Order changed before it could be saved. Refresh and try again.", code: "stale_write", updated_at: current.updated_at });
+        }
+        return res.status(404).json({ error: "Order not found" });
+      }
+      return res.status(404).json({ error: "Order not found" });
+    }
 
+    let statusEvent = null;
     if (update.status !== undefined) {
-      await recordStatusEvent(supabase, buildStatusEvent({
+      statusEvent = prepareStatusEvent({
         orgId,
         orderId: req.params.id,
         orderTable: "orders",
@@ -8178,10 +8404,19 @@ app.patch("/api/orders/:id", async (req, res) => {
         actorId: user.id,
         actorKind: "user",
         occurredAt: transitionAt,
-      }));
+      });
+      await recordStatusEvent(supabase, statusEvent);
     }
 
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
+    const changes = buildOrderChanges({ beforeOrder: orderCheck, afterOrder: data });
+    if (changes.length || update.status !== undefined) {
+      let eventType = update.status !== undefined ? "order.status_changed" : "order.edited";
+      if (isStaffCancellation) eventType = "order.cancelled";
+      if (isReopening) eventType = "order.reopened";
+      const requestId = buildOperationRequestId(activityGroupId, req.params.id, "patch");
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: req.params.id, orderTable: "orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "order_editor", summary: isStaffCancellation ? "Cancelled order" : isReopening ? "Reopened order" : update.status !== undefined ? `Status changed to ${update.status}` : "Edited order", reasonCode: cancellationReason?.code, reasonNote: cancellationReason?.note, changes, metadata: update.status !== undefined ? { from_status: orderCheck.status, to_status: update.status, legacy_status_event_id: statusEvent?.id } : {}, occurredAt: transitionAt || undefined }));
+    }
     return res.json({ success: true, order: data });
   } catch (e) {
     return sendError(res, e);
@@ -8212,7 +8447,13 @@ app.post("/api/orders/:id/send-sms", async (req, res) => {
     if (orderError) throw orderError;
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    await sendManualBulkSms(orgId, order, rawMessage);
+    try {
+      await sendManualBulkSms(orgId, order, rawMessage);
+    } catch (error) {
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "message.failed", category: "communication", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "SMS failed", metadata: { message_type: "manual_sms", provider: "bulksmsbd", failure_reason: normalizeOperationalFailureCode(errorMessage(error)) } }));
+      throw error;
+    }
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "message.sent", category: "communication", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "Sent SMS", metadata: { message_type: "manual_sms", provider: "bulksmsbd" } }));
     return res.json({ success: true });
   } catch (error) {
     return sendError(res, error);
@@ -8237,6 +8478,9 @@ app.delete("/api/orders", async (req, res) => {
       .select("id");
 
     if (error) throw error;
+    for (const row of data || []) {
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: row.id, orderTable: "orders", eventType: "order.deleted", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "Deleted order" }));
+    }
     return res.json({ success: true, deleted: data?.length || 0, ids: (data || []).map((row) => row.id) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -8442,6 +8686,7 @@ app.post("/api/send-to-courier", async (req, res) => {
       const sfError = sfData.message || (sfData.errors ? JSON.stringify(sfData.errors) : "Steadfast rejected the order");
       console.error("[Steadfast] create_order rejected:", JSON.stringify(sfData));
       await supabase.from("orders").update({ courier_message: sfError }).eq("id", orderId).eq("org_id", orgId);
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId, orderTable: "orders", eventType: "courier.failed", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "Steadfast submission failed", metadata: { courier: "steadfast", failure_reason: normalizeOperationalFailureCode(sfError), provider_status: String(sfData.status || "rejected") } }));
       return res.status(400).json({ error: sfError, details: sfData });
     }
 
@@ -8461,6 +8706,7 @@ app.post("/api/send-to-courier", async (req, res) => {
     if (updated) {
       await sendBulkSms(orgId, "dispatch", updated);
     }
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId, orderTable: "orders", eventType: "courier.submitted", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "Sent order to Steadfast", metadata: { courier: "steadfast" } }));
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -8519,6 +8765,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
 
     if (!pathaoRes.ok) {
       await supabase.from("orders").update({ courier_message: pathaoData.message || "Failed" }).eq("id", orderId).eq("org_id", orgId);
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId, orderTable: "orders", eventType: "courier.failed", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "Pathao submission failed", metadata: { courier: "pathao", failure_reason: normalizeOperationalFailureCode(pathaoData.message), provider_status: String(pathaoRes.status) } }));
       return res.status(400).json({ error: pathaoData.message || "Pathao rejected the order", details: pathaoData });
     }
 
@@ -8541,6 +8788,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
     if (updated) {
       await sendBulkSms(orgId, "dispatch", updated);
     }
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId, orderTable: "orders", eventType: "courier.submitted", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "Sent order to Pathao", metadata: { courier: "pathao" } }));
     return res.json({ success: true, consignment, order: updated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -8659,6 +8907,7 @@ app.post("/api/pathao/refresh-status", async (req, res) => {
           patch.status = "cancelled";
         }
         await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
+        await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "courier.status_changed", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "system", summary: `Pathao status changed to ${newStatus}`, metadata: { courier: "pathao", from_status: order.courier_status, to_status: newStatus } }));
         updated++;
       } catch { /* skip */ }
     }
@@ -8746,6 +8995,7 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
 
         console.log(`[Steadfast Refresh] Order ${order.id} cid=${sfPollId}: ${order.courier_status} → ${newStatus}`);
         await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
+        await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "courier.status_changed", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "system", summary: `Steadfast status changed to ${newStatus}`, metadata: { courier: "steadfast", from_status: order.courier_status, to_status: newStatus } }));
         updated++;
       } catch (err) {
         console.error(`[Steadfast Refresh] Error polling cid=${order.consignment_id}:`, err.message);
@@ -8837,6 +9087,7 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
         includeEquivalentBusinessState: true,
       }));
     }
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId: order.org_id, orderId: order.id, orderTable: "orders", eventType: "courier.status_changed", category: "courier", actorId: null, actorKind: "courier_webhook", sourceSurface: "system", summary: `Courier status changed to ${patch.courier_status}`, metadata: { courier: "steadfast", from_status: order.courier_status, to_status: patch.courier_status } }));
     console.log(`[Steadfast Webhook] Order ${order.id} status updated: ${order.courier_status} → ${status}`);
     return res.status(200).json({ ok: true, updated: true });
   } catch (e) {
@@ -9299,6 +9550,8 @@ app.post("/api/check-fraud", async (req, res) => {
         .eq("org_id", orgId)
         .single();
 
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "fraud.checked", category: "fraud", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: errorMessage ? "Fraud check completed with an error" : "Checked fraud risk", metadata: { provider: "fraudshield", ...(errorMessage ? { failure_reason: normalizeOperationalFailureCode(errorMessage) } : {}) } }));
+
       return res.json({ success: true, order: updatedOrder, fraudError: errorMessage, spentRequest });
     }
 
@@ -9381,6 +9634,7 @@ app.post("/api/inbox-orders/check-fraud", async (req, res) => {
 
     await supabase.from("social_inbox_orders").update({ fraud_checked: true, fraud_data: dataToStore }).eq("id", orderId).eq("org_id", orgId);
     const { data: updated } = await supabase.from("social_inbox_orders").select("*").eq("id", orderId).eq("org_id", orgId).single();
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId, orderTable: "social_inbox_orders", eventType: "fraud.checked", category: "fraud", actorId: user.id, actorKind: "user", sourceSurface: "inbox_orders", summary: errorMessage ? "Fraud check completed with an error" : "Checked fraud risk", metadata: { provider: "fraudshield", ...(errorMessage ? { failure_reason: normalizeOperationalFailureCode(errorMessage) } : {}) } }));
     return res.json({ success: true, order: updated, fraudError: errorMessage, spentRequest });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -10209,6 +10463,9 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
       total_price: totalPrice,
       delivery_rate: deliveryRate,
       status: "pending",
+      origin_source: `social_${platform}`,
+      origin_actor_kind: "system",
+      detailed_activity_started_at: new Date().toISOString(),
       warehouse_id: routing.warehouseId,
       warehouse_auto: true,
       weight_kg: routing.weightKg,
@@ -10239,7 +10496,7 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
     .eq("id", conversation.id)
     .eq("org_id", orgId);
 
-  await recordStatusEvent(supabase, buildStatusEvent({
+  const inboxCreateStatusEvent = prepareStatusEvent({
     orgId,
     orderId: data.id,
     orderTable: "social_inbox_orders",
@@ -10247,7 +10504,9 @@ async function saveMetaInboxOrder({ supabase, orgId, platform, conversation, con
     toStatus: data.status,
     actorId: null,
     actorKind: "system",
-  }));
+  });
+  await recordStatusEvent(supabase, inboxCreateStatusEvent);
+  await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: data.id, orderTable: "social_inbox_orders", eventType: "order.created", category: "lifecycle", actorId: null, actorKind: "system", sourceSurface: "inbox_orders", summary: `Inbox order created from ${platform}`, metadata: { origin_source: `social_${platform}`, ...(inboxCreateStatusEvent?.id ? { legacy_status_event_id: inboxCreateStatusEvent.id } : {}) } }));
 
   console.log("[OrderFields] order saved and notepad cleared:", data.id);
   return { order: data, duplicate: false };
@@ -11469,6 +11728,7 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
     const allowed = ["status", "notes", "sent_to_courier", "consignment_id", "tracking_code", "courier_status", "courier_message", "fraud_checked", "fraud_data", "delivery_rate", "items", "total_price", "contact_name", "warehouse_id", "weight_kg"];
     const update = {};
     for (const key of allowed) {
@@ -11491,12 +11751,22 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
 
     const { data: currentOrder, error: currentOrderError } = await supabase
       .from("social_inbox_orders")
-      .select("id, status, warehouse_auto")
+      .select("*")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .maybeSingle();
     if (currentOrderError) throw currentOrderError;
     if (!currentOrder) return res.status(404).json({ error: "Inbox order not found" });
+    if (req.body?.expected_updated_at && currentOrder.updated_at && currentOrder.updated_at !== req.body.expected_updated_at) {
+      return res.status(409).json({ error: "Order changed before it could be saved. Refresh and try again.", code: "stale_write", updated_at: currentOrder.updated_at });
+    }
+    const fromBusinessStatus = normalizeBusinessStatus(currentOrder.status);
+    const toBusinessStatus = update.status === undefined ? fromBusinessStatus : normalizeBusinessStatus(update.status);
+    const isStaffCancellation = toBusinessStatus === "cancelled" && fromBusinessStatus !== "cancelled";
+    const isReopening = fromBusinessStatus === "cancelled" && toBusinessStatus !== "cancelled";
+    let cancellationReason = null;
+    if (isStaffCancellation) { cancellationReason = validateCancellationReason({ code: req.body?.cancellation_reason_code, note: req.body?.cancellation_reason_note }); update.cancellation_reason_code = cancellationReason.code; update.cancellation_reason_note = cancellationReason.note; }
+    else if (isReopening) { update.cancellation_reason_code = null; update.cancellation_reason_note = null; }
 
     if (update.items !== undefined) {
       update.items = await normalizeSocialInboxItems(supabase, orgId, update.items);
@@ -11538,8 +11808,9 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ error: "Inbox order not found" });
 
+    let statusEvent = null;
     if (update.status !== undefined) {
-      await recordStatusEvent(supabase, buildStatusEvent({
+      statusEvent = prepareStatusEvent({
         orgId,
         orderId: currentOrder.id,
         orderTable: "social_inbox_orders",
@@ -11548,7 +11819,15 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
         actorId: user.id,
         actorKind: "user",
         occurredAt: transitionAt,
-      }));
+      });
+      await recordStatusEvent(supabase, statusEvent);
+    }
+    const changes = buildOrderChanges({ beforeOrder: currentOrder, afterOrder: data });
+    if (JSON.stringify(currentOrder.items || []) !== JSON.stringify(data.items || [])) changes.push({ type: "items_changed", field: "items", label: "Order items", before: currentOrder.items || [], after: data.items || [] });
+    if (changes.length || update.status !== undefined) {
+      let eventType = update.status !== undefined ? "order.status_changed" : "order.edited"; if (isStaffCancellation) eventType = "order.cancelled"; if (isReopening) eventType = "order.reopened";
+      const requestId = buildOperationRequestId(activityGroupId, currentOrder.id, "patch");
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: currentOrder.id, orderTable: "social_inbox_orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "inbox_orders", summary: isStaffCancellation ? "Cancelled inbox order" : isReopening ? "Reopened inbox order" : update.status !== undefined ? `Status changed to ${update.status}` : "Edited inbox order", reasonCode: cancellationReason?.code, reasonNote: cancellationReason?.note, changes, metadata: update.status !== undefined ? { from_status: currentOrder.status, to_status: update.status, legacy_status_event_id: statusEvent?.id } : {}, occurredAt: transitionAt || undefined }));
     }
 
     return res.json({ success: true, order: data });
@@ -11572,6 +11851,7 @@ app.delete("/api/social/inbox-orders/:id", async (req, res) => {
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: "Inbox order not found" });
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: data.id, orderTable: "social_inbox_orders", eventType: "order.deleted", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "inbox_orders", summary: "Deleted inbox order" }));
     return res.json({ success: true, id: data.id });
   } catch (err) {
     return sendError(res, err);
@@ -12857,6 +13137,9 @@ async function handlePublicHandleOrderSubmit(req, res) {
       delivery_rate: shipping,
       status: "pending",
       source: "website",
+      origin_source: "website",
+      origin_actor_kind: "customer",
+      detailed_activity_started_at: new Date().toISOString(),
       landing_page_path: landingPagePath,
       warehouse_id: routing.warehouseId,
       warehouse_auto: true,
@@ -12922,6 +13205,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     // Fraud-check the landing-page number in the background without delaying
     // the shopper's confirmation. Cached numbers cost no request.
     checkStorefrontOrderFraud(supabase, orgId, order.id, cleanPhone);
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: null, actorKind: "customer", sourceSurface: "system", summary: "Order created through website", metadata: { origin_source: "website" } }));
 
     return res.json({
       success: true,

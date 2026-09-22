@@ -213,7 +213,7 @@ describe("OrderDetail", () => {
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ source: "phone" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ source: "phone" });
     });
   });
 
@@ -240,7 +240,7 @@ describe("OrderDetail", () => {
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ source: "phone" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ source: "phone" });
     });
     expect(apiFetch.mock.calls.some(([url]) => String(url).includes("/items"))).toBe(false);
   });
@@ -281,7 +281,7 @@ describe("OrderDetail", () => {
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ status: "print" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ status: "print" });
     });
     expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
   });
@@ -308,7 +308,7 @@ describe("OrderDetail", () => {
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ status: "on_hold", notes: "Waiting for stock" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ status: "on_hold", notes: "Waiting for stock" });
     });
     expect(queryClient.getQueryData<Order[]>(["/api/orders"])?.[0]).toMatchObject({ status: "on_hold", notes: "Waiting for stock" });
   });
@@ -336,7 +336,7 @@ describe("OrderDetail", () => {
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ notes: "Waiting for stock, call Friday" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ notes: "Waiting for stock, call Friday" });
     });
     expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
   });
@@ -414,7 +414,7 @@ describe("OrderDetail", () => {
 
     await waitFor(() => expect(apiFetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
     const saveCall = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1/items" && init?.method === "PATCH");
-    expect(JSON.parse(saveCall[1].body)).toEqual({ items: [{ productId: "product-1", variantId: null, quantity: 1, discountType: "percentage", discountValue: 10 }] });
+    expect(JSON.parse(saveCall[1].body)).toMatchObject({ items: [{ productId: "product-1", variantId: null, quantity: 1, discountType: "percentage", discountValue: 10 }] });
     expect(String(saveCall[1].body)).not.toContain("unitDiscount");
     expect(String(saveCall[1].body)).not.toContain("unit_price");
   });
@@ -546,10 +546,11 @@ describe("OrderDetail", () => {
     const { queryClient } = renderPage();
     const line = await screen.findByTestId("order-item-item-1");
     fireEvent.change(within(line).getByRole("spinbutton"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Why was Premium Mango added?"), { target: { value: "upsell" } });
     fireEvent.click(screen.getByRole("button", { name: /Save changes/i }));
     expect(screen.getByRole("button", { name: /Saving/i })).toBeDisabled();
     const saveCall = apiFetch.mock.calls.find(([, init]) => init?.method === "PATCH");
-    expect(JSON.parse(saveCall[1].body)).toEqual({ items: [{ productId: "product-1", variantId: null, quantity: 2, discountType: null, discountValue: 0 }] });
+    expect(JSON.parse(saveCall[1].body)).toMatchObject({ items: [{ productId: "product-1", variantId: null, quantity: 2, discountType: null, discountValue: 0 }] });
     resolveSave(response(savedDetail));
     await waitFor(() => expect(screen.getByText("Orders dashboard")).toBeInTheDocument());
     expect(queryClient.getQueryData(["/api/orders/order-1"])).toEqual(savedDetail);
@@ -573,7 +574,7 @@ describe("OrderDetail", () => {
     await waitFor(() => expect(apiFetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
     expect(apiFetch.mock.calls.some(([url, init]) => url === "/api/orders/order-1/items" && init?.method === "PATCH")).toBe(false);
     const discountCall = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
-    expect(JSON.parse(discountCall[1].body)).toEqual({ discount: 50 });
+    expect(JSON.parse(discountCall[1].body)).toMatchObject({ discount: 50 });
     expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
   });
 
@@ -651,7 +652,7 @@ describe("OrderDetail", () => {
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ delivery_rate: 100 });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ delivery_rate: 100 });
     });
   });
 
@@ -673,6 +674,7 @@ describe("OrderDetail", () => {
     renderPage();
     await screen.findByTestId("order-item-item-1");
     fireEvent.change(within(screen.getByTestId("order-item-item-1")).getByRole("spinbutton"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Why was Premium Mango added?"), { target: { value: "upsell" } });
     fireEvent.click(screen.getByRole("button", { name: /Save changes/i }));
     expect(await screen.findByText("Insufficient stock")).toBeInTheDocument();
     expect(within(screen.getByTestId("order-item-item-1")).getByRole("spinbutton")).toHaveValue(2);
@@ -697,6 +699,7 @@ describe("OrderDetail", () => {
     fireEvent.change(screen.getByLabelText("Customer name"), { target: { value: "Nusrat Jahan" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply customer changes" }));
     fireEvent.change(within(line).getByRole("spinbutton"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Why was Premium Mango added?"), { target: { value: "upsell" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Insufficient stock");
@@ -755,7 +758,7 @@ describe("OrderDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: /Save changes/i }));
     await waitFor(() => expect(screen.getAllByText("Nusrat Jahan")).toHaveLength(2));
     const updateCall = apiFetch.mock.calls.find(([, init]) => init?.method === "PATCH" && String(init?.body).includes("customer_name"));
-    expect(JSON.parse(updateCall[1].body)).toEqual({ customer_name: "Nusrat Jahan", phone: "01822222222", address: "Gulshan, Dhaka" });
+    expect(JSON.parse(updateCall[1].body)).toMatchObject({ customer_name: "Nusrat Jahan", phone: "01822222222", address: "Gulshan, Dhaka" });
   });
 
   it("eagerly loads the catalog and shows the product default image", async () => {

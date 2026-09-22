@@ -48,6 +48,8 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
     telesales_confirmed_count: 1,
     telesales_confirmed_value: 1200,
     telesales_confirmed_kg: 2,
+    retained_upsell_count: 0,
+    retained_upsell_value: 0,
     products: [],
     ...overrides,
   };
@@ -205,6 +207,20 @@ describe("StaffPerformance", () => {
     expect(within(card).getByText("Delivered 3")).toHaveClass("bg-status-lime-background");
     expect(within(card).getByText("Cancelled 2")).toHaveClass("bg-status-rose-background");
     expect(within(card).getByText("RTO 1")).toHaveClass("bg-status-yellow-background");
+  });
+
+  it("shows retained upsell count and value for each staff member", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [reportRow({ orders: metrics({ retained_upsell_count: 3, retained_upsell_value: 875 }) })],
+    })));
+    const user = userEvent.setup();
+    renderPage();
+
+    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
+    expect(within(card).getByText("Upsell 3")).toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "Show details for Rafi" }));
+    expect(within(card).getByText("Retained upsell")).toBeInTheDocument();
+    expect(within(card).getByText("৳875")).toBeInTheDocument();
   });
 
   it("expands regular-order staff details inline", async () => {

@@ -42,6 +42,7 @@ describe("NewOrder", () => {
     expect(screen.getByRole("region", { name: "Product catalog" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create order/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveClass("bg-button-ghost-background");
     expect(screen.getByLabelText("Order source")).toHaveTextContent("Manual / Other");
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/api/products"));
     expect(screen.getByLabelText("Telesales staff")).toBeInTheDocument();

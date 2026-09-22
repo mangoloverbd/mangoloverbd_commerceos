@@ -45,6 +45,8 @@ const runtimeTables = Object.freeze([
   "order_protection_events",
   "order_protection_reviews",
   "order_status_events",
+  "fraud_checks",
+  "order_activity_events",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
@@ -230,6 +232,13 @@ begin
   if not has_table_privilege('service_role', 'public.order_status_events', 'select,insert') then
     raise exception 'service_role lacks order status event privileges';
   end if;
+  if not has_table_privilege('service_role', 'public.order_activity_events', 'select,insert') then
+    raise exception 'service_role lacks detailed order activity privileges';
+  end if;
+  if has_table_privilege('anon', 'public.order_activity_events', 'select,insert,update,delete')
+    or has_table_privilege('authenticated', 'public.order_activity_events', 'select,insert,update,delete') then
+    raise exception 'browser roles can access detailed order activity';
+  end if;
   if not exists (
     select 1 from storage.buckets
     where id = 'product-images'
@@ -251,8 +260,16 @@ begin
       ('orders', 'confirmed_at'),
       ('orders', 'cancelled_by'),
       ('orders', 'cancelled_at'),
+      ('orders', 'origin_source'),
+      ('orders', 'origin_actor_kind'),
+      ('orders', 'detailed_activity_started_at'),
+      ('orders', 'cancellation_reason_code'),
+      ('orders', 'cancellation_reason_note'),
       ('abandoned_checkouts', 'draft_key'),
       ('abandoned_checkouts', 'expires_at'),
+      ('abandoned_checkouts', 'origin_source'),
+      ('abandoned_checkouts', 'origin_actor_kind'),
+      ('abandoned_checkouts', 'detailed_activity_started_at'),
       ('products', 'selling_price'),
       ('products', 'stock_quantity'),
       ('products', 'image_embedding'),
@@ -267,6 +284,11 @@ begin
       ('social_inbox_orders', 'confirmed_at'),
       ('social_inbox_orders', 'cancelled_by'),
       ('social_inbox_orders', 'cancelled_at'),
+      ('social_inbox_orders', 'origin_source'),
+      ('social_inbox_orders', 'origin_actor_kind'),
+      ('social_inbox_orders', 'detailed_activity_started_at'),
+      ('social_inbox_orders', 'cancellation_reason_code'),
+      ('social_inbox_orders', 'cancellation_reason_note'),
       ('user_roles', 'display_name'),
       ('user_roles', 'deleted_at'),
       ('order_status_events', 'org_id'),
@@ -277,6 +299,20 @@ begin
       ('order_status_events', 'actor_id'),
       ('order_status_events', 'actor_kind'),
       ('order_status_events', 'created_at')
+      ,('order_activity_events', 'org_id')
+      ,('order_activity_events', 'order_id')
+      ,('order_activity_events', 'order_table')
+      ,('order_activity_events', 'event_type')
+      ,('order_activity_events', 'category')
+      ,('order_activity_events', 'actor_id')
+      ,('order_activity_events', 'actor_kind')
+      ,('order_activity_events', 'group_id')
+      ,('order_activity_events', 'source_surface')
+      ,('order_activity_events', 'summary')
+      ,('order_activity_events', 'changes')
+      ,('order_activity_events', 'metadata')
+      ,('order_activity_events', 'view_bucket')
+      ,('order_activity_events', 'created_at')
     except
     select table_name, column_name
     from information_schema.columns

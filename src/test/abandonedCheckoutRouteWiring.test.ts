@@ -75,7 +75,8 @@ describe("abandoned checkout route wiring", () => {
     expect(queuePatch).toContain("parseAbandonedCheckoutStaffEdit");
     expect(queuePatch).toContain("Invalid checkout edits");
     expect(queuePatch).toContain("hasAction");
-    expect(queuePatch).toContain('key !== "action"');
+    expect(queuePatch).toContain('"action"');
+    expect(queuePatch).toContain('"activity_group_id"');
     expect(queuePatch).toContain('.eq("status", current.status)');
     expect(
       queuePatch.indexOf('.in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)'),

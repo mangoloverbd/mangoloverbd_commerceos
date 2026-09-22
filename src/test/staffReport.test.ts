@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStaffReport,
+  calculateRetainedUpsells,
   classifyCourierOutcome,
   resolveStaffReportRequest,
   toDhakaInterval,
@@ -8,6 +9,161 @@ import {
 
 const ADMIN_ID = "11111111-1111-1111-1111-111111111111";
 const TEAM_MEMBER_ID = "22222222-2222-2222-2222-222222222222";
+
+describe("calculateRetainedUpsells", () => {
+  it("credits upsell additions and removes value retained no longer in the order", () => {
+    const result = calculateRetainedUpsells([
+      {
+        id: "add",
+        order_id: "order-1",
+        actor_id: TEAM_MEMBER_ID,
+        created_at: "2026-09-18T03:00:00.000Z",
+        changes: [{
+          type: "item_quantity_increased",
+          item_key: "mango:large",
+          quantity_delta: 3,
+          amount_delta: 900,
+          addition_reason: "upsell",
+        }],
+      },
+      {
+        id: "reduce",
+        order_id: "order-1",
+        actor_id: ADMIN_ID,
+        created_at: "2026-09-18T04:00:00.000Z",
+        changes: [{
+          type: "item_quantity_decreased",
+          item_key: "mango:large",
+          quantity_delta: -1,
+          amount_delta: -300,
+        }],
+      },
+      {
+        id: "discount",
+        order_id: "order-1",
+        actor_id: ADMIN_ID,
+        created_at: "2026-09-18T05:00:00.000Z",
+        changes: [{ type: "item_discount_changed", item_key: "mango:large", before: 0, after: 25 }],
+      },
+    ], {
+      selectedActorIds: [TEAM_MEMBER_ID],
+      since: "2026-09-17T18:00:00.000Z",
+      until: "2026-09-18T18:00:00.000Z",
+    });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 2, value: 550 });
+  });
+
+  it("does not credit replacement additions and removes a later full removal", () => {
+    const result = calculateRetainedUpsells([
+      {
+        id: "upsell",
+        order_id: "order-1",
+        actor_id: TEAM_MEMBER_ID,
+        created_at: "2026-09-18T03:00:00.000Z",
+        changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 1, amount_delta: 300, addition_reason: "upsell" }],
+      },
+      {
+        id: "removed",
+        order_id: "order-1",
+        actor_id: ADMIN_ID,
+        created_at: "2026-09-18T04:00:00.000Z",
+        changes: [{ type: "item_removed", item_key: "mango:large", quantity_delta: -1, amount_delta: -300 }],
+      },
+      {
+        id: "replacement",
+        order_id: "order-1",
+        actor_id: ADMIN_ID,
+        created_at: "2026-09-18T04:00:01.000Z",
+        changes: [{ type: "item_added", item_key: "mango:small", quantity_delta: 1, amount_delta: 250, addition_reason: "replacement" }],
+      },
+    ], { selectedActorIds: [TEAM_MEMBER_ID] });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 0, value: 0 });
+  });
+
+  it("reduces retained value when the order discount increases", () => {
+    const result = calculateRetainedUpsells([
+      {
+        id: "upsell",
+        order_id: "order-1",
+        actor_id: TEAM_MEMBER_ID,
+        created_at: "2026-09-18T03:00:00.000Z",
+        changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 2, amount_delta: 600, addition_reason: "upsell" }],
+      },
+      {
+        id: "discount",
+        order_id: "order-1",
+        actor_id: ADMIN_ID,
+        created_at: "2026-09-18T04:00:00.000Z",
+        changes: [{ type: "field_changed", field: "discount", before: 0, after: 100 }],
+      },
+    ], { selectedActorIds: [TEAM_MEMBER_ID] });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 2, value: 500 });
+  });
+
+  it("allocates a shared item reduction proportionally across staff lots", () => {
+    const result = calculateRetainedUpsells([
+      { id: "a", order_id: "order-1", actor_id: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00Z", changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 1, amount_delta: 300, addition_reason: "upsell" }] },
+      { id: "b", order_id: "order-1", actor_id: ADMIN_ID, created_at: "2026-09-18T02:00:00Z", changes: [{ type: "item_quantity_increased", item_key: "mango:large", quantity_delta: 3, amount_delta: 900, addition_reason: "upsell" }] },
+      { id: "c", order_id: "order-1", actor_id: ADMIN_ID, created_at: "2026-09-18T03:00:00Z", changes: [{ type: "item_quantity_decreased", item_key: "mango:large", quantity_delta: -2, amount_delta: -600 }] },
+    ], { selectedActorIds: [TEAM_MEMBER_ID, ADMIN_ID] });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 0.5, value: 150 });
+    expect(result.get(ADMIN_ID)).toEqual({ count: 1.5, value: 450 });
+  });
+
+  it("ignores reductions after the selected reporting period", () => {
+    const result = calculateRetainedUpsells([
+      { id: "a", order_id: "order-1", actor_id: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00Z", changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 2, amount_delta: 600, addition_reason: "upsell" }] },
+      { id: "b", order_id: "order-1", actor_id: ADMIN_ID, created_at: "2026-09-19T01:00:00Z", changes: [{ type: "item_removed", item_key: "mango:large", quantity_delta: -2, amount_delta: -600 }] },
+    ], { selectedActorIds: [TEAM_MEMBER_ID], until: "2026-09-18T18:00:00Z" });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 2, value: 600 });
+  });
+
+  it("zeros retained upsell for terminal-loss orders", () => {
+    const result = calculateRetainedUpsells([
+      { id: "a", order_id: "order-1", actor_id: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00Z", changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 2, amount_delta: 600, addition_reason: "upsell" }] },
+    ], {
+      selectedActorIds: [TEAM_MEMBER_ID],
+      terminalLossOrderIds: new Set(["order-1"]),
+    });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 0, value: 0 });
+  });
+
+  it("restores retained upsell when a cancelled order is reopened before period end", () => {
+    const result = calculateRetainedUpsells([
+      { id: "a", order_id: "order-1", actor_id: TEAM_MEMBER_ID, event_type: "order.edited", created_at: "2026-09-18T01:00:00Z", changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 1, amount_delta: 300, addition_reason: "upsell" }] },
+      { id: "b", order_id: "order-1", actor_id: ADMIN_ID, event_type: "order.cancelled", created_at: "2026-09-18T02:00:00Z", changes: [] },
+      { id: "c", order_id: "order-1", actor_id: ADMIN_ID, event_type: "order.reopened", created_at: "2026-09-18T03:00:00Z", changes: [] },
+    ], { selectedActorIds: [TEAM_MEMBER_ID] });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 1, value: 300 });
+  });
+
+  it("derives terminal loss from detailed lifecycle events", () => {
+    const result = calculateRetainedUpsells([
+      { id: "a", order_id: "order-1", actor_id: TEAM_MEMBER_ID, event_type: "order.edited", created_at: "2026-09-18T01:00:00Z", changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 1, amount_delta: 300, addition_reason: "upsell" }] },
+      { id: "b", order_id: "order-1", actor_id: ADMIN_ID, event_type: "order.cancelled", created_at: "2026-09-18T02:00:00Z", changes: [] },
+    ], { selectedActorIds: [TEAM_MEMBER_ID] });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 0, value: 0 });
+  });
+
+  it("keeps proportional allocation when a staff filter narrows output rows", () => {
+    const result = calculateRetainedUpsells([
+      { id: "a", order_id: "order-1", actor_id: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00Z", changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 1, amount_delta: 300, addition_reason: "upsell" }] },
+      { id: "b", order_id: "order-1", actor_id: ADMIN_ID, created_at: "2026-09-18T02:00:00Z", changes: [{ type: "item_quantity_increased", item_key: "mango:large", quantity_delta: 3, amount_delta: 900, addition_reason: "upsell" }] },
+      { id: "c", order_id: "order-1", actor_id: ADMIN_ID, created_at: "2026-09-18T03:00:00Z", changes: [{ type: "item_quantity_decreased", item_key: "mango:large", quantity_delta: -2, amount_delta: -600 }] },
+    ], { selectedActorIds: [TEAM_MEMBER_ID] });
+
+    expect(result.get(TEAM_MEMBER_ID)).toEqual({ count: 0.5, value: 150 });
+    expect(result.has(ADMIN_ID)).toBe(false);
+  });
+});
 
 describe("toDhakaInterval", () => {
   it("uses the next Dhaka midnight as an exclusive upper bound", () => {
@@ -726,6 +882,28 @@ describe("buildStaffReport", () => {
     expect(admin).toMatchObject({
       converted_count: 1,
       converted_value: 300,
+    });
+  });
+
+  it("includes retained net upsell attribution in regular-order staff metrics", () => {
+    const report = buildStaffReport(
+      [], [], [], [],
+      [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }],
+      {
+        ...toDhakaInterval("2026-09-18", "2026-09-18"),
+        upsellActivities: [{
+          id: "upsell",
+          order_id: "order-1",
+          actor_id: TEAM_MEMBER_ID,
+          created_at: "2026-09-18T03:00:00.000Z",
+          changes: [{ type: "item_added", item_key: "mango:large", quantity_delta: 2, amount_delta: 600, addition_reason: "upsell" }],
+        }],
+      },
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      retained_upsell_count: 2,
+      retained_upsell_value: 600,
     });
   });
 });
