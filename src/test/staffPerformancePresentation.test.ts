@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildStaffPerformanceSnapshot,
   sortStaffPerformanceRows,
+  type AbandonedCartMetrics,
   type StaffMetrics,
   type StaffRow,
 } from "@/lib/staffPerformancePresentation";
@@ -32,6 +33,17 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   };
 }
 
+function abandonedMetrics(overrides: Partial<AbandonedCartMetrics> = {}): AbandonedCartMetrics {
+  return {
+    contacted_count: 0,
+    dismissed_count: 0,
+    reopened_count: 0,
+    converted_count: 0,
+    converted_value: 0,
+    ...overrides,
+  };
+}
+
 function makeRow(
   { display_name = "Staff", ...orderOverrides }: Partial<StaffMetrics> & { display_name?: string } = {},
 ): StaffRow {
@@ -47,6 +59,7 @@ function makeRow(
       confirmed_value: 999999,
       delivered_count: 999,
     }),
+    abandoned_checkouts: abandonedMetrics(),
   };
 }
 

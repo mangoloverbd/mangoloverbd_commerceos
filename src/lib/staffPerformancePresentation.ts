@@ -28,12 +28,21 @@ export type StaffMetrics = {
   products: ProductDetail[];
 };
 
+export type AbandonedCartMetrics = {
+  contacted_count: number;
+  dismissed_count: number;
+  reopened_count: number;
+  converted_count: number;
+  converted_value: number;
+};
+
 export type StaffRow = {
   user_id: string;
   display_name: string;
   is_active: boolean;
   orders: StaffMetrics;
   social_inbox_orders: StaffMetrics;
+  abandoned_checkouts: AbandonedCartMetrics;
 };
 
 export type StaffPerformanceSnapshot = {

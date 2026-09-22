@@ -13,7 +13,7 @@ vi.mock("@/components/DateRangePicker", () => ({
 }));
 
 import { apiFetch } from "@/lib/api";
-import type { StaffMetrics, StaffRow } from "@/lib/staffPerformancePresentation";
+import type { AbandonedCartMetrics, StaffMetrics, StaffRow } from "@/lib/staffPerformancePresentation";
 import StaffPerformance from "@/pages/StaffPerformance";
 
 const RafiId = "11111111-1111-1111-1111-111111111111";
@@ -53,6 +53,17 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   };
 }
 
+function abandonedMetrics(overrides: Partial<AbandonedCartMetrics> = {}): AbandonedCartMetrics {
+  return {
+    contacted_count: 0,
+    dismissed_count: 0,
+    reopened_count: 0,
+    converted_count: 0,
+    converted_value: 0,
+    ...overrides,
+  };
+}
+
 function reportRow({
   user_id = RafiId,
   display_name = "Rafi",
@@ -66,8 +77,9 @@ function reportRow({
     telesales_confirmed_value: 0,
     telesales_confirmed_kg: 0,
   }),
+  abandoned_checkouts = abandonedMetrics(),
 }: Partial<StaffRow> = {}): StaffRow {
-  return { user_id, display_name, is_active, orders, social_inbox_orders };
+  return { user_id, display_name, is_active, orders, social_inbox_orders, abandoned_checkouts };
 }
 
 function reportResponse(overrides: Partial<StaffReportResponse> = {}): StaffReportResponse {
@@ -207,6 +219,44 @@ describe("StaffPerformance", () => {
     expect(screen.getByRole("button", { name: "Hide details for Rafi" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("Mango")).toBeInTheDocument();
     expect(screen.getByText("2 packs · 2 kg")).toBeInTheDocument();
+  });
+
+  it("shows abandoned-cart activity as a quick-glance chip and in the expanded detail", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [
+        reportRow({
+          abandoned_checkouts: abandonedMetrics({
+            contacted_count: 5,
+            dismissed_count: 2,
+            reopened_count: 1,
+            converted_count: 3,
+            converted_value: 4500,
+          }),
+        }),
+      ],
+    })));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
+    expect(within(card).getByText("Cart converted 3")).toBeInTheDocument();
+
+    await user.click(within(card).getByRole("button", { name: "Show details for Rafi" }));
+
+    expect(screen.getByText("Abandoned carts")).toBeInTheDocument();
+    expect(screen.getByText("Contacted")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("৳4,500")).toBeInTheDocument();
+  });
+
+  it("hides the abandoned-cart chip when there is no cart activity", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
+    expect(within(card).queryByText(/Cart converted/)).not.toBeInTheDocument();
   });
 
   it("shows weighted regular-order rates in the team snapshot", async () => {
