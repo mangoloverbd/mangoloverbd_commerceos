@@ -99,6 +99,7 @@ const SAFE_METADATA_KEYS = new Set([
 
 const TRACKED_ORDER_FIELDS = Object.freeze([
   ["customer_name", "Customer name"],
+  ["contact_name", "Contact name"],
   ["phone", "Phone"],
   ["address", "Address"],
   ["notes", "Notes"],
@@ -109,6 +110,10 @@ const TRACKED_ORDER_FIELDS = Object.freeze([
   ["payment_method", "Payment method"],
   ["advanced_payment", "Advanced payment"],
   ["price", "Order total"],
+  ["total_price", "Order total"],
+  ["subtotal", "Subtotal"],
+  ["total", "Order total"],
+  ["status", "Status"],
 ]);
 
 function activityError(message) {
@@ -255,6 +260,16 @@ export function buildOrderChanges({
   }
 
   return changes;
+}
+
+export function validateAdditionReasons({ beforeItems = [], afterItems = [], additionReasons = {} } = {}) {
+  if (!additionReasons || typeof additionReasons !== "object" || Array.isArray(additionReasons)) throw activityError("addition_reasons must be an object");
+  const beforeByKey = new Map((beforeItems || []).map((item) => [itemKey(item), Number(item?.quantity || 0)]));
+  for (const item of afterItems || []) {
+    const key = itemKey(item);
+    if (Number(item?.quantity || 0) > (beforeByKey.get(key) || 0)) additionReasonFor(additionReasons, key, item);
+  }
+  return true;
 }
 
 export function buildDetailedActivityEvent({

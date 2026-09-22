@@ -1,0 +1,4 @@
+import { ADDITION_REASON_OPTIONS, type AdditionReason } from "@/lib/orderActivity";
+export function ChangeReasonSelect({ itemName, value, disabled = false, onChange }: { itemName: string; value: AdditionReason | ""; disabled?: boolean; onChange: (reason: AdditionReason) => void }) {
+  return <label className="mt-3 block border-t border-black/[0.06] pt-3"><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-black/60">Addition reason</span><select aria-label={`Why was ${itemName} added?`} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as AdditionReason)} className="h-9 w-full rounded-lg bg-amber-50 px-3 text-[12px] text-black outline-none ring-1 ring-inset ring-amber-200"><option value="">Choose a reason</option>{ADDITION_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+}

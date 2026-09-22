@@ -24,6 +24,7 @@ import {
   type OrderEditorItem,
 } from "@/lib/orderEditor";
 import { normalizeOrderSource, type OrderSource } from "@/lib/orderSource";
+import { createActivityGroupId, orderItemActivityKey, orderViewSurface, type AdditionReason, type CancellationReason } from "@/lib/orderActivity";
 
 type Order = {
   id: string;
@@ -170,8 +171,12 @@ export default function OrderDetail() {
   const [notesDraft, setNotesDraft] = useState("");
   const [statusDraft, setStatusDraft] = useState<string | null>(null);
   const [sourceDraft, setSourceDraft] = useState<OrderSource>("manual_other");
+  const [additionReasons, setAdditionReasons] = useState<Record<string, AdditionReason | "">>({});
+  const [cancellationReasonCode, setCancellationReasonCode] = useState<CancellationReason | "">("");
+  const [cancellationReasonNote, setCancellationReasonNote] = useState("");
   const initializedOrderId = useRef<string | null>(null);
   const initializedWithPlaceholder = useRef(false);
+  const viewedOrderId = useRef<string | null>(null);
 
   const detailQuery = useQuery<OrderDetailResponse>({
     queryKey: [`/api/orders/${id}`],
@@ -233,9 +238,16 @@ export default function OrderDetail() {
     setNotesDraft(detailQuery.data.order.notes ?? "");
     setStatusDraft(detailQuery.data.order.status ?? null);
     setSourceDraft(normalizeOrderSource(detailQuery.data.order.source));
+    setAdditionReasons({}); setCancellationReasonCode(""); setCancellationReasonNote("");
     initializedOrderId.current = id;
     initializedWithPlaceholder.current = detailQuery.isPlaceholderData;
   }, [detailQuery.data, detailQuery.isPlaceholderData, id]);
+
+  useEffect(() => {
+    if (!id || !detailQuery.data || detailQuery.isPlaceholderData || viewedOrderId.current === id) return;
+    viewedOrderId.current = id;
+    void apiFetch(`/api/orders/${id}/activity/view`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_surface: orderViewSurface(location.state) }) }).then((response) => response.ok && queryClient.invalidateQueries({ queryKey: [`/api/orders/${id}/activity`] })).catch(() => {});
+  }, [detailQuery.data, detailQuery.isPlaceholderData, id, location.state, queryClient]);
 
   const detail = detailQuery.data;
   const order = detail?.order;
@@ -258,6 +270,11 @@ export default function OrderDetail() {
   const notesChanged = notesDraft.trim() !== (order?.notes ?? "").trim();
   const statusChanged = statusDraft !== (order?.status ?? null);
   const sourceChanged = sourceDraft !== normalizeOrderSource(order?.source);
+  const requiredAdditionReasonKeys = useMemo(() => {
+    const initial = new Map(detail?.items.map((item) => [orderItemActivityKey(item), Number(item.quantity) || 0]) || []);
+    return draft.filter((item) => Number(item.quantity) > (initial.get(orderItemActivityKey(item)) || 0)).map(orderItemActivityKey);
+  }, [detail?.items, draft]);
+  const cancellationRequired = ["cancelled", "canceled"].includes((statusDraft || "").toLowerCase()) && !["cancelled", "canceled"].includes((order?.status || "").toLowerCase());
   const canEditCart = Boolean(detail && !detailQuery.isPlaceholderData && detail.canEditItems);
   const cartLocked = Boolean(detail && !detailQuery.isPlaceholderData && !detail.canEditItems);
   const history = useMemo(() => {
@@ -307,9 +324,13 @@ export default function OrderDetail() {
       setSaveError("Remove or replace detached legacy items before saving cart changes");
       return;
     }
+    if (requiredAdditionReasonKeys.some((key) => !additionReasons[key])) { setSaveError("Choose a reason for every added product or quantity increase"); return; }
+    if (cancellationRequired && !cancellationReasonCode) { setSaveError("Choose a cancellation reason"); return; }
+    if (cancellationRequired && cancellationReasonCode === "other" && !cancellationReasonNote.trim()) { setSaveError("Add a cancellation note for Other"); return; }
 
     setSaving(true);
     setSaveError("");
+    const activityGroupId = createActivityGroupId();
     try {
       let currentOrder = order;
       let currentItems = detail.items;
@@ -321,6 +342,7 @@ export default function OrderDetail() {
             customer_name: customer.customerName.trim(),
             phone: customer.phone.trim(),
             address: customer.address.trim(),
+            activity_group_id: activityGroupId,
           }),
         });
         const detailsJson = await detailsRes.json().catch(() => ({}));
@@ -332,7 +354,7 @@ export default function OrderDetail() {
         const res = await apiFetch(`/api/orders/${id}/items`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: itemIntent(draft) }),
+          body: JSON.stringify({ items: itemIntent(draft), addition_reasons: additionReasons, activity_group_id: activityGroupId }),
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error || "Failed to save order items");
@@ -342,7 +364,7 @@ export default function OrderDetail() {
       }
 
       if (overallChanged || deliveryChanged || notesChanged || statusChanged || sourceChanged) {
-        const orderPatch: { discount?: number; delivery_rate?: number; notes?: string | null; status?: string; source?: OrderSource } = {};
+        const orderPatch: { discount?: number; delivery_rate?: number; notes?: string | null; status?: string; source?: OrderSource; activity_group_id: string; cancellation_reason_code?: CancellationReason; cancellation_reason_note?: string | null } = { activity_group_id: activityGroupId };
         if (overallChanged) {
           const itemTotal = currentItems.reduce(
             (sum, item) => sum + (Number(item.unit_discount) || 0) * (Number(item.quantity) || 0),
@@ -356,6 +378,7 @@ export default function OrderDetail() {
         }
         if (notesChanged) orderPatch.notes = notesDraft.trim() || null;
         if (statusChanged && statusDraft) orderPatch.status = statusDraft;
+        if (cancellationRequired && cancellationReasonCode) { orderPatch.cancellation_reason_code = cancellationReasonCode; orderPatch.cancellation_reason_note = cancellationReasonNote.trim() || null; }
         if (sourceChanged) orderPatch.source = sourceDraft;
         if (Object.keys(orderPatch).length > 0) {
           const totalsRes = await apiFetch(`/api/orders/${id}`, {
@@ -379,6 +402,8 @@ export default function OrderDetail() {
       setNotesDraft(currentOrder.notes ?? "");
       setStatusDraft(currentOrder.status ?? null);
       setSourceDraft(normalizeOrderSource(currentOrder.source));
+      setAdditionReasons({}); setCancellationReasonCode(""); setCancellationReasonNote("");
+      void queryClient.invalidateQueries({ queryKey: [`/api/orders/${id}/activity`] });
       if (hasPendingNav) {
         toast.success("Order saved");
       } else {
@@ -410,7 +435,7 @@ export default function OrderDetail() {
           <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={sourceDraft} onSourceChange={setSourceDraft} sourceDisabled={saving || detailQuery.isPlaceholderData} activityTimeline={order.id ? <OrderActivityTimeline endpoint={`/api/orders/${order.id}/activity`} /> : undefined} />
             <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
             <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
-            <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} status={statusDraft} onStatusChange={setStatusDraft} notes={notesDraft} onNotesChange={setNotesDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} />
+            <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} status={statusDraft} onStatusChange={setStatusDraft} notes={notesDraft} onNotesChange={setNotesDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} cancellationRequired={cancellationRequired} cancellationReasonCode={cancellationReasonCode} cancellationReasonNote={cancellationReasonNote} onCancellationReasonChange={setCancellationReasonCode} onCancellationReasonNoteChange={setCancellationReasonNote} />
           </div>
         </motion.div>
       )}
