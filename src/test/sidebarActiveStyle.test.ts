@@ -30,6 +30,22 @@ describe("sidebar active item style", () => {
     );
   });
 
+  it("places Warehouses immediately above Order Protection", () => {
+    const productSection = appSidebarSource.slice(
+      appSidebarSource.indexOf("const product: NavSection"),
+      appSidebarSource.indexOf("const workspace: NavSection"),
+    );
+    const routeIds = [...productSection.matchAll(/id: "([^"]+)"/g)].map((match) => match[1]);
+
+    expect(routeIds.slice(-2)).toEqual(["warehouses", "order-protection"]);
+  });
+
+  it("renders dividers between the requested sidebar sections", () => {
+    expect(source).toContain("sectionIndex > 0");
+    expect(source).toContain("border-t border-black/[0.08]");
+    expect(source).toContain("sectionIndex");
+  });
+
   it("hides the Billing & Plan sidebar item", () => {
     expect(appSidebarSource).not.toContain('title="Billing & Plan"');
     expect(appSidebarSource).not.toContain('to="/billing"');
