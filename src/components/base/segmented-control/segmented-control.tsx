@@ -40,12 +40,14 @@ export interface SegmentedControlProps
   extends Omit<AriaToggleButtonGroupProps, "selectionMode" | "disallowEmptySelection"> {
   children?: ReactNode;
   variant?: SegmentedControlVariant;
+  /** Extra classes for the sliding thumb behind the selected segment. */
+  thumbClassName?: string;
   ref?: Ref<HTMLDivElement>;
 }
 
 type Thumb = { left: number; top: number; width: number; height: number };
 
-export function SegmentedControl({ className, children, variant = "solid", ref, ...props }: SegmentedControlProps) {
+export function SegmentedControl({ className, children, variant = "solid", thumbClassName, ref, ...props }: SegmentedControlProps) {
   const innerRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState<Thumb | null>(null);
 
@@ -98,7 +100,10 @@ export function SegmentedControl({ className, children, variant = "solid", ref, 
       {variant === "solid" && thumb && (
         <span
           aria-hidden
-          className="pointer-events-none absolute left-0 top-0 rounded-md bg-segmented-control-selected-background shadow-2xs transition-[transform,width,height] duration-200 ease"
+          className={cx(
+            "pointer-events-none absolute left-0 top-0 rounded-md bg-segmented-control-selected-background shadow-2xs transition-[transform,width,height] duration-200 ease",
+            thumbClassName,
+          )}
           style={{
             transform: `translate(${thumb.left}px, ${thumb.top}px)`,
             width: thumb.width,

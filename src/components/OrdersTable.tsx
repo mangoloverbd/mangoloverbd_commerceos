@@ -1580,7 +1580,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                           return (
                             <div className="flex items-center justify-center gap-1" data-row-interactive="true">
                               {getCourierStatusBadge(order)}
-                              {id && (
+                              {id && classifyOrderStatus(order) !== "delivered" && (
                                 <CopyButton
                                   value={String(id)}
                                   size="sm"
