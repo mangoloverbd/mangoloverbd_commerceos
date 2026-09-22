@@ -15,6 +15,7 @@ type MobileOrderCardsProps = {
   onOpenOrder: (id: string) => void;
   renderActions: (order: Order) => ReactNode;
   enableOrderIdLinks?: boolean;
+  orderLinkSearch?: string;
 };
 
 function money(value: number | null) {
@@ -65,6 +66,7 @@ export function MobileOrderCards({
   onOpenOrder,
   renderActions,
   enableOrderIdLinks = false,
+  orderLinkSearch,
 }: MobileOrderCardsProps) {
   if (loading) {
     return (
@@ -116,7 +118,7 @@ export function MobileOrderCards({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   {enableOrderIdLinks ? (
-                    <OrderIdLink orderId={order.id} orderNumber={orderLabel} className="text-sm font-bold" />
+                    <OrderIdLink orderId={order.id} orderNumber={orderLabel} className="text-sm font-bold" search={orderLinkSearch} />
                   ) : (
                     <span className="text-sm font-bold text-black">{orderLabel}</span>
                   )}

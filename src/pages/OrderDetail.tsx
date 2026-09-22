@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowLeft, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
+import { readPendingOrderQueue } from "@/lib/pendingOrderQueue";
 import { toast } from "@/components/ui/sonner";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { Chip } from "@/components/base/badges/chip";
@@ -137,9 +138,15 @@ export default function OrderDetail() {
     navigate("/", backState ? { state: backState } : undefined);
   }
   const rawPendingOrderIds = (location.state as { pendingOrderIds?: unknown } | null)?.pendingOrderIds;
-  const pendingOrderIds = Array.isArray(rawPendingOrderIds)
+  const statePendingOrderIds = Array.isArray(rawPendingOrderIds)
     ? rawPendingOrderIds.filter((value): value is string => typeof value === "string")
     : null;
+  const queryFulfillmentTab = new URLSearchParams(location.search).get("fulfillmentTab");
+  const stateFulfillmentTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
+  const isPendingContext = stateFulfillmentTab === "pending" || queryFulfillmentTab === "pending";
+  const storedPendingOrderIds =
+    !statePendingOrderIds && isPendingContext ? readPendingOrderQueue() : null;
+  const pendingOrderIds = statePendingOrderIds ?? storedPendingOrderIds;
   const pendingIndex = pendingOrderIds && id ? pendingOrderIds.indexOf(id) : -1;
   const hasPendingNav = Boolean(pendingOrderIds) && pendingIndex !== -1;
   const prevPendingOrderId = hasPendingNav && pendingIndex > 0 ? pendingOrderIds![pendingIndex - 1] : null;

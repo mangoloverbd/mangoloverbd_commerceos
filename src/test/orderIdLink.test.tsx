@@ -33,4 +33,15 @@ describe("OrderIdLink", () => {
 
     expect(onParentClick).not.toHaveBeenCalled();
   });
+
+  it("encodes the pending context in the href when provided", () => {
+    render(
+      <MemoryRouter>
+        <OrderIdLink orderId="order-1" orderNumber="ML-1001" search="?fulfillmentTab=pending" />
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", { name: "Open order ML-1001 in a new tab" });
+    expect(link).toHaveAttribute("href", "/orders/order-1?fulfillmentTab=pending");
+  });
 });

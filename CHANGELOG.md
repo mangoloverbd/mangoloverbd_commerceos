@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.27] - 2026-09-22
+
+### Fixed
+
+- Pending Previous/Next navigation now appears when an order is opened in a new tab from the Dashboard Pending tab: the queue snapshot persists to localStorage with a `?fulfillmentTab=pending` link tag and a 30-minute expiry.
+
 ## [0.1.0.26] - 2026-09-22
 
 ### Added
