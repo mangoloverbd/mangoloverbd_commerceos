@@ -65,7 +65,7 @@ describe("OrderStatusSegmentedControl", () => {
     expect(screen.getByTestId("order-status-control")).toHaveClass(
       "xl:flex",
       "xl:w-full",
-      "rounded-xl",
+      "rounded-lg",
       "bg-black/[0.045]",
       "p-1",
     );
