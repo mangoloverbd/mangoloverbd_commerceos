@@ -376,35 +376,11 @@ export default function OrderDetail() {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
+    <>
+    <div className={`flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pt-0 lg:px-3 lg:pt-1 ${hasPendingNav ? "pb-16" : "pb-3"}`}>
       <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
-        {hasPendingNav && (
-          <div data-testid="order-editor-pending-nav" className="ml-auto flex items-center gap-2">
-            <span className="text-[11px] font-medium tracking-[0.1em] text-black/40">
-              {pendingIndex + 1} of {pendingOrderIds!.length} pending
-            </span>
-            <BuiButton
-              variant="ghost"
-              size="small"
-              iconOnly
-              leadingIcon={CaretLeft}
-              aria-label="Previous pending order"
-              disabled={!prevPendingOrderId}
-              onClick={() => prevPendingOrderId && goToSibling(prevPendingOrderId)}
-            />
-            <BuiButton
-              variant="ghost"
-              size="small"
-              iconOnly
-              leadingIcon={CaretRight}
-              aria-label="Next pending order"
-              disabled={!nextPendingOrderId}
-              onClick={() => nextPendingOrderId && goToSibling(nextPendingOrderId)}
-            />
-          </div>
-        )}
       </div>
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={goBack} className="mt-2 text-[13px] text-black underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
@@ -424,5 +400,39 @@ export default function OrderDetail() {
         </motion.div>
       )}
     </div>
+    {hasPendingNav && (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        data-testid="order-editor-pending-nav"
+        className="fixed inset-x-0 bottom-6 z-40 flex justify-center px-4"
+      >
+        <div className="flex items-center gap-4 rounded-full border border-black/[0.09] bg-white px-3 py-2 shadow-[0_4px_40px_-8px_rgba(0,0,0,0.14)]">
+          <BuiButton
+            variant="ghost"
+            size="small"
+            iconOnly
+            leadingIcon={CaretLeft}
+            aria-label="Previous pending order"
+            disabled={!prevPendingOrderId}
+            onClick={() => prevPendingOrderId && goToSibling(prevPendingOrderId)}
+          />
+          <span className="text-[11px] font-medium tracking-[0.1em] text-black/50">
+            {pendingIndex + 1} of {pendingOrderIds!.length} pending
+          </span>
+          <BuiButton
+            variant="ghost"
+            size="small"
+            iconOnly
+            leadingIcon={CaretRight}
+            aria-label="Next pending order"
+            disabled={!nextPendingOrderId}
+            onClick={() => nextPendingOrderId && goToSibling(nextPendingOrderId)}
+          />
+        </div>
+      </motion.div>
+    )}
+    </>
   );
 }
