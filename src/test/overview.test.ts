@@ -42,6 +42,9 @@ describe("buildOverviewData", () => {
     expect(result.kpis.totalOrders.previousValue).toBe(2);
     expect(result.kpis.revenue.value).toBe(3120); // (1000+60) + (2000+60)
     expect(result.kpis.unreadMessages.value).toBe(5); // 3 + 0 + 2
+    expect(result.kpis.pendingFulfillment.value).toBe(1);
+    expect(result.kpis.pendingFulfillment.previousValue).toBe(0);
+    expect(result.kpis.pendingFulfillment.trend).toBe(100);
   });
 
   it("computes courier performance grouped by courier name", () => {
@@ -70,6 +73,8 @@ describe("buildOverviewData", () => {
     expect(result.customerRetention.totalCustomers).toBe(3);
     expect(result.customerRetention.repeatCustomers).toBe(1); // 01711111111 has 2 orders
     expect(result.customerRetention.repeatRate).toBeCloseTo(33.33, 1);
+    expect(result.customerRetention.averageOrdersPerCustomer).toBeCloseTo(4 / 3, 5);
+    expect(result.customerRetention.averageCustomerValue).toBeCloseTo(5240 / 3, 5);
   });
 
   it("generates order volume series with current and previous period", () => {
@@ -116,6 +121,72 @@ describe("buildOverviewData", () => {
     expect(result.socialInbox.unread).toBe(5);
     expect(result.socialInbox.byChannel.facebook).toBe(1);
     expect(result.socialInbox.byChannel.whatsapp).toBe(1);
+  });
+
+  it("builds a date-scoped staff performance summary", () => {
+    const staff = [
+      { user_id: "staff-1", display_name: "Ayesha", deleted_at: null },
+      { user_id: "staff-2", display_name: "Rahim", deleted_at: null },
+    ];
+    const attributedOrders = [
+      {
+        id: "staff-order-1",
+        created_at: "2026-08-12T10:00:00.000Z",
+        assigned_to: "staff-1",
+        confirmed_by: "staff-1",
+        confirmed_at: "2026-08-12T11:00:00.000Z",
+        price: "1200",
+        courier_status: "delivered",
+      },
+      {
+        id: "staff-order-2",
+        created_at: "2026-08-12T12:00:00.000Z",
+        assigned_to: "staff-1",
+        confirmed_by: "staff-1",
+        confirmed_at: "2026-08-13T11:00:00.000Z",
+        price: "1000",
+        courier_status: "pending",
+      },
+      {
+        id: "staff-order-3",
+        created_at: "2026-08-13T09:00:00.000Z",
+        assigned_to: "staff-2",
+        price: "800",
+        courier_status: "pending",
+      },
+      {
+        id: "unattributed-order",
+        created_at: "2026-08-13T10:00:00.000Z",
+        price: "500",
+        courier_status: "pending",
+      },
+    ];
+
+    const result = buildOverviewData(attributedOrders, [], [], [], {
+      since: "2026-08-12",
+      until: "2026-08-13",
+      prevSince: "2026-08-10",
+      prevUntil: "2026-08-11",
+      now,
+      staff,
+    });
+
+    expect(result.staffPerformance).toEqual({
+      assignedCount: 3,
+      confirmedCount: 2,
+      confirmedValue: 2200,
+      confirmationRate: 2 / 3,
+      deliveredRate: 0.5,
+      topStaff: [
+        {
+          userId: "staff-1",
+          name: "Ayesha",
+          confirmedCount: 2,
+          confirmedValue: 2200,
+          deliveredRate: 0.5,
+        },
+      ],
+    });
   });
 
   it("returns empty series when no orders match", () => {

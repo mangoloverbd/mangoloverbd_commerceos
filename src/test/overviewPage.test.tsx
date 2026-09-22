@@ -20,7 +20,7 @@ const mockOverviewData = {
     revenue: { value: 184320, trend: 8.2, previousValue: 170280 },
     profitMargin: { value: 23.5, trend: -2.1, previousValue: 25.6 },
     deliverySuccess: { value: 87.3, trend: 3.2, previousValue: 84.1 },
-    unreadMessages: { value: 12, trend: -40, previousValue: 20 },
+    pendingFulfillment: { value: 12, trend: -40, previousValue: 20 },
   },
   orderVolumeSeries: [
     { date: "2026-08-07", current: 32, previous: 28 },
@@ -50,10 +50,22 @@ const mockOverviewData = {
     conversationsToday: 28,
     byChannel: { facebook: 18, instagram: 7, whatsapp: 3 },
   },
+  staffPerformance: {
+    assignedCount: 28,
+    confirmedCount: 22,
+    confirmedValue: 58200,
+    confirmationRate: 22 / 28,
+    deliveredRate: 0.75,
+    topStaff: [
+      { userId: "staff-1", name: "Ayesha", confirmedCount: 12, confirmedValue: 34200, deliveredRate: 0.8 },
+    ],
+  },
   customerRetention: {
     repeatRate: 34.2,
     repeatCustomers: 84,
     totalCustomers: 245,
+    averageOrdersPerCustomer: 1.4,
+    averageCustomerValue: 2450,
     topCustomers: [
       { name: "Ayesha", phone: "01711111111", orderCount: 12, totalSpent: 45200 },
       { name: "Bashir", phone: "01722222222", orderCount: 8, totalSpent: 32100 },
@@ -76,7 +88,7 @@ describe("Overview Page", () => {
       expect(screen.getByText("Revenue")).toBeInTheDocument();
       expect(screen.getByText("Profit Margin")).toBeInTheDocument();
       expect(screen.getByText("Delivery Success")).toBeInTheDocument();
-      expect(screen.getByText("Unread Messages")).toBeInTheDocument();
+      expect(screen.getByText("Pending Fulfillment")).toBeInTheDocument();
     });
   });
 
@@ -92,7 +104,7 @@ describe("Overview Page", () => {
     render(<Overview />);
     await waitFor(() => {
       expect(screen.getByText("Courier Performance")).toBeInTheDocument();
-      expect(screen.getByText("Inbox Activity")).toBeInTheDocument();
+      expect(screen.getByText("Staff Performance")).toBeInTheDocument();
       expect(screen.getByText("Retention")).toBeInTheDocument();
     });
   });
@@ -100,7 +112,7 @@ describe("Overview Page", () => {
   it("displays correct KPI values", async () => {
     render(<Overview />);
     await waitFor(() => {
-      expect(screen.getByText("245")).toBeInTheDocument();
+      expect(screen.getAllByText("245").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("12").length).toBeGreaterThanOrEqual(1);
     });
   });

@@ -3988,6 +3988,12 @@ app.get("/api/overview", async (req, res) => {
       .select("id, name, selling_price, cog")
       .eq("org_id", orgId);
 
+    const { data: staffRows, error: staffError } = await supabase
+      .from("user_roles")
+      .select("user_id, display_name, deleted_at")
+      .eq("org_id", orgId);
+    if (staffError) throw staffError;
+
     const { data: socialConversations } = await supabase
       .from("social_conversations")
       .select("id, platform, unread_count, created_at")
@@ -4008,7 +4014,7 @@ app.get("/api/overview", async (req, res) => {
       products || [],
       socialConversations || [],
       socialMessages,
-      { since: rangeSince, until: rangeUntil, prevSince, prevUntil }
+      { since: rangeSince, until: rangeUntil, prevSince, prevUntil, staff: staffRows || [] }
     );
 
     console.log(`[Overview] range: ${rangeSince} to ${rangeUntil}, prev: ${prevSince} to ${prevUntil}, orders: ${(allOrders || []).length}`);

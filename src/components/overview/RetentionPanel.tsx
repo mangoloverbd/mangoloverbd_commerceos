@@ -5,6 +5,8 @@ interface RetentionData {
   repeatRate: number;
   repeatCustomers: number;
   totalCustomers: number;
+  averageOrdersPerCustomer: number;
+  averageCustomerValue: number;
   topCustomers: Array<{ name: string; phone: string; orderCount: number; totalSpent: number }>;
 }
 
@@ -15,10 +17,11 @@ function fmtBDT(n: number) {
 export function RetentionPanel({ data }: { data: RetentionData }) {
   return (
     <motion.div
+      data-testid="overview-retention-panel"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: 0.3 }}
-      className="rounded-2xl bg-black/[0.04] p-5"
+      className="flex h-full flex-col rounded-2xl bg-black/[0.04] p-5"
     >
       <div className="mb-4">
         <p className="text-[8px] font-medium tracking-[0.3em] text-black uppercase">Customers</p>
@@ -38,6 +41,25 @@ export function RetentionPanel({ data }: { data: RetentionData }) {
             className="h-full bg-emerald-500 rounded-full transition-all"
             style={{ width: `${data.repeatRate}%` }}
           />
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-black/[0.08] py-3">
+        <div data-testid="retention-total-customers">
+          <p className="text-[9px] text-black/55">Total customers</p>
+          <p className="mt-0.5 text-[17px] font-light tabular-nums tracking-[-0.04em] text-black">{data.totalCustomers}</p>
+        </div>
+        <div data-testid="retention-repeat-customers">
+          <p className="text-[9px] text-black/55">Repeat customers</p>
+          <p className="mt-0.5 text-[17px] font-light tabular-nums tracking-[-0.04em] text-black">{data.repeatCustomers}</p>
+        </div>
+        <div data-testid="retention-average-orders">
+          <p className="text-[9px] text-black/55">Avg. orders / customer</p>
+          <p className="mt-0.5 text-[17px] font-light tabular-nums tracking-[-0.04em] text-black">{data.averageOrdersPerCustomer.toFixed(1)}</p>
+        </div>
+        <div data-testid="retention-average-value">
+          <p className="text-[9px] text-black/55">Avg. customer value</p>
+          <p className="mt-0.5 text-[17px] font-light tabular-nums tracking-[-0.04em] text-black">{fmtBDT(data.averageCustomerValue)}</p>
         </div>
       </div>
 

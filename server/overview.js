@@ -42,7 +42,75 @@ function customerKey(order) {
   return "";
 }
 
-export function buildOverviewData(orders, products, socialConversations, socialMessages, { since, until, prevSince, prevUntil, now = new Date() }) {
+function isDateInRange(value, since, until) {
+  const day = toDayKey(value);
+  if (!day) return false;
+  return (!since || day >= since) && (!until || day <= until);
+}
+
+function emptyStaffPerformanceMetrics(member) {
+  return {
+    userId: member.user_id,
+    name: member.display_name || "Unnamed member",
+    assignedCount: 0,
+    confirmedCount: 0,
+    confirmedAssignedCount: 0,
+    confirmedValue: 0,
+    deliveredCount: 0,
+  };
+}
+
+export function buildStaffPerformanceSummary(orders, staff, { since, until }) {
+  const metricsByUserId = new Map(
+    (staff || [])
+      .filter((member) => member?.user_id)
+      .map((member) => [member.user_id, emptyStaffPerformanceMetrics(member)]),
+  );
+
+  for (const order of orders || []) {
+    if (!isDateInRange(order?.created_at, since, until)) continue;
+
+    const assignedMetrics = metricsByUserId.get(order?.assigned_to);
+    if (assignedMetrics) assignedMetrics.assignedCount += 1;
+
+    if (!isDateInRange(order?.confirmed_at, since, until)) continue;
+    const confirmedMetrics = metricsByUserId.get(order?.confirmed_by);
+    if (!confirmedMetrics) continue;
+
+    confirmedMetrics.confirmedCount += 1;
+    confirmedMetrics.confirmedValue += Number(order?.price) || 0;
+    if (order.assigned_to === order.confirmed_by) confirmedMetrics.confirmedAssignedCount += 1;
+    if (classifyCourierStatus(order?.courier_status) === "delivered") confirmedMetrics.deliveredCount += 1;
+  }
+
+  const metrics = [...metricsByUserId.values()];
+  const assignedCount = metrics.reduce((sum, member) => sum + member.assignedCount, 0);
+  const confirmedCount = metrics.reduce((sum, member) => sum + member.confirmedCount, 0);
+  const confirmedAssignedCount = metrics.reduce((sum, member) => sum + member.confirmedAssignedCount, 0);
+  const confirmedValue = metrics.reduce((sum, member) => sum + member.confirmedValue, 0);
+  const deliveredCount = metrics.reduce((sum, member) => sum + member.deliveredCount, 0);
+
+  return {
+    assignedCount,
+    confirmedCount,
+    confirmedValue: Math.round(confirmedValue),
+    confirmationRate: assignedCount > 0 ? confirmedAssignedCount / assignedCount : 0,
+    deliveredRate: confirmedCount > 0 ? deliveredCount / confirmedCount : 0,
+    topStaff: metrics
+      .filter((member) => member.confirmedCount > 0)
+      .sort((a, b) => b.confirmedValue - a.confirmedValue || a.name.localeCompare(b.name))
+      .slice(0, 3)
+      .map((member) => ({
+        userId: member.userId,
+        name: member.name,
+        confirmedCount: member.confirmedCount,
+        confirmedValue: Math.round(member.confirmedValue),
+        deliveredRate: member.confirmedCount > 0 ? member.deliveredCount / member.confirmedCount : 0,
+      })),
+  };
+}
+
+export function buildOverviewData(orders, products, socialConversations, socialMessages, { since, until, prevSince, prevUntil, now = new Date(), staff = [] }) {
   const dayCount = daysBetween(since, until);
   const prevDayCount = prevSince && prevUntil ? daysBetween(prevSince, prevUntil) : dayCount;
 
@@ -103,6 +171,7 @@ export function buildOverviewData(orders, products, socialConversations, socialM
     profitMargin: { value: Math.round(profitMargin * 10) / 10, trend: trend(profitMargin, prevProfitMargin), previousValue: Math.round(prevProfitMargin * 10) / 10 },
     deliverySuccess: { value: Math.round(deliverySuccess * 10) / 10, trend: trend(deliverySuccess, prevDeliverySuccess), previousValue: Math.round(prevDeliverySuccess * 10) / 10 },
     unreadMessages: { value: totalUnread, trend: yesterdayUnread > 0 ? trend(totalUnread, yesterdayUnread) : 0, previousValue: yesterdayUnread },
+    pendingFulfillment: { value: currentCourier.pending, trend: trend(currentCourier.pending, prevCourier.pending), previousValue: prevCourier.pending },
   };
 
   const orderVolumeSeries = [];
@@ -159,6 +228,8 @@ export function buildOverviewData(orders, products, socialConversations, socialM
   const totalCustomers = customerOrders.size;
   const repeatCustomers = Array.from(customerOrders.values()).filter((c) => c.count >= 2).length;
   const repeatRate = totalCustomers > 0 ? (repeatCustomers / totalCustomers) * 100 : 0;
+  const totalCustomerOrders = Array.from(customerOrders.values()).reduce((sum, customer) => sum + customer.count, 0);
+  const totalCustomerValue = Array.from(customerOrders.values()).reduce((sum, customer) => sum + customer.spent, 0);
   const topCustomers = Array.from(customerOrders.values())
     .sort((a, b) => b.count - a.count)
     .slice(0, 5)
@@ -168,8 +239,12 @@ export function buildOverviewData(orders, products, socialConversations, socialM
     repeatRate: Math.round(repeatRate * 10) / 10,
     repeatCustomers,
     totalCustomers,
+    averageOrdersPerCustomer: totalCustomers > 0 ? totalCustomerOrders / totalCustomers : 0,
+    averageCustomerValue: totalCustomers > 0 ? totalCustomerValue / totalCustomers : 0,
     topCustomers,
   };
 
-  return { kpis, orderVolumeSeries, revenueSeries, courierPerformance, socialInbox, customerRetention };
+  const staffPerformance = buildStaffPerformanceSummary(currentOrders, staff, { since, until });
+
+  return { kpis, orderVolumeSeries, revenueSeries, courierPerformance, socialInbox, staffPerformance, customerRetention };
 }

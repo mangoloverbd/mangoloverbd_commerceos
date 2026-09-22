@@ -5,7 +5,7 @@ import { KpiCard } from "@/components/overview/KpiCard";
 import { OrderVolumeChart } from "@/components/overview/OrderVolumeChart";
 import { RevenueChart } from "@/components/overview/RevenueChart";
 import { CourierPanel } from "@/components/overview/CourierPanel";
-import { SocialInboxPanel } from "@/components/overview/SocialInboxPanel";
+import { StaffPerformancePanel } from "@/components/overview/StaffPerformancePanel";
 import { RetentionPanel } from "@/components/overview/RetentionPanel";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { format, subDays } from "date-fns";
@@ -25,7 +25,7 @@ interface OverviewData {
     revenue: { value: number; trend: number; previousValue: number };
     profitMargin: { value: number; trend: number; previousValue: number };
     deliverySuccess: { value: number; trend: number; previousValue: number };
-    unreadMessages: { value: number; trend: number; previousValue: number };
+    pendingFulfillment: { value: number; trend: number; previousValue: number };
   };
   orderVolumeSeries: Array<{ date: string; current: number; previous: number }>;
   revenueSeries: Array<{ date: string; revenue: number; cog: number; shipping: number; profit: number }>;
@@ -36,10 +36,26 @@ interface OverviewData {
     conversationsToday: number;
     byChannel: Record<string, number>;
   };
+  staffPerformance: {
+    assignedCount: number;
+    confirmedCount: number;
+    confirmedValue: number;
+    confirmationRate: number;
+    deliveredRate: number;
+    topStaff: Array<{
+      userId: string;
+      name: string;
+      confirmedCount: number;
+      confirmedValue: number;
+      deliveredRate: number;
+    }>;
+  };
   customerRetention: {
     repeatRate: number;
     repeatCustomers: number;
     totalCustomers: number;
+    averageOrdersPerCustomer: number;
+    averageCustomerValue: number;
     topCustomers: Array<{ name: string; phone: string; orderCount: number; totalSpent: number }>;
   };
 }
@@ -161,12 +177,12 @@ export default function Overview() {
           icon="Truck"
         />
         <KpiCard
-          label="Unread Messages"
-          value={data.kpis.unreadMessages.value.toString()}
-          trend={data.kpis.unreadMessages.trend}
-          previousValue={data.kpis.unreadMessages.previousValue}
-          sparklineValues={[data.kpis.unreadMessages.value]}
-          icon="Chats"
+          label="Pending Fulfillment"
+          value={data.kpis.pendingFulfillment.value.toString()}
+          trend={data.kpis.pendingFulfillment.trend}
+          previousValue={data.kpis.pendingFulfillment.previousValue}
+          sparklineValues={[data.kpis.pendingFulfillment.value]}
+          icon="Warning"
         />
       </div>
 
@@ -175,9 +191,9 @@ export default function Overview() {
         <RevenueChart data={data.revenueSeries.map((d) => ({ ...d, date: d.date.slice(5) }))} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-3">
         <CourierPanel data={data.courierPerformance} />
-        <SocialInboxPanel data={data.socialInbox} />
+        <StaffPerformancePanel data={data.staffPerformance} />
         <RetentionPanel data={data.customerRetention} />
       </div>
     </div>
