@@ -62,6 +62,15 @@ describe("GET /api/reports/staff", () => {
     expect(section).toContain("socialActivities");
     expect(section).toContain("chunkIds(regularConfirmedOrderIds)");
   });
+
+  it("also classifies abandoned-checkout status events and credits them to the acting staff member", () => {
+    const section = route();
+
+    expect(section).toContain('fetchStatusEvents("abandoned_checkouts")');
+    expect(section).toContain("classifyActivityEvent");
+    expect(section).toMatch(/\.from\("abandoned_checkouts"\)[\s\S]*?\.eq\("org_id", orgId\)/);
+    expect(section).toContain("abandonedActivities");
+  });
 });
 
 describe("staff report pagination helper", () => {

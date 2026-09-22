@@ -115,6 +115,19 @@ function emptyMetrics() {
   };
 }
 
+// Abandoned checkouts have their own status machine (open → contacted →
+// dismissed/recovered) — not the confirm/cancel vocabulary orders use — so
+// they get their own metrics shape instead of reusing emptyMetrics().
+function emptyAbandonedMetrics() {
+  return {
+    contacted_count: 0,
+    dismissed_count: 0,
+    reopened_count: 0,
+    converted_count: 0,
+    converted_value: 0,
+  };
+}
+
 function normalizeCourierStatus(status) {
   return String(status || "")
     .trim()
@@ -221,7 +234,7 @@ export function buildStaffReport(
   orderItems,
   products,
   staff,
-  { since = null, until = null, regularActivities, socialActivities, variants = null } = {},
+  { since = null, until = null, regularActivities, socialActivities, abandonedActivities, variants = null } = {},
   variantsArg = null,
 ) {
   const variantsList = Array.isArray(variantsArg) ? variantsArg : (Array.isArray(variants) ? variants : []);
@@ -254,6 +267,7 @@ export function buildStaffReport(
     is_active: !member.deleted_at,
     orders: emptyMetrics(),
     social_inbox_orders: emptyMetrics(),
+    abandoned_checkouts: emptyAbandonedMetrics(),
   }));
   const rowsByUserId = new Map(rows.map((row) => [row.user_id, row]));
   const missingWeightProducts = new Map();
@@ -384,6 +398,20 @@ export function buildStaffReport(
       missingWeightProducts,
       variantsById,
     );
+  }
+
+  for (const activity of abandonedActivities || []) {
+    const row = rowsByUserId.get(activity?.actor_id);
+    if (!row || !isInInterval(activity?.occurred_at, since, until)) continue;
+
+    const metrics = row.abandoned_checkouts;
+    if (activity.action === "contacted") metrics.contacted_count += 1;
+    else if (activity.action === "dismissed") metrics.dismissed_count += 1;
+    else if (activity.action === "reopened") metrics.reopened_count += 1;
+    else if (activity.action === "converted") {
+      metrics.converted_count += 1;
+      metrics.converted_value += toNumber(activity.value);
+    }
   }
 
   for (const row of rows) {
