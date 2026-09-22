@@ -91,7 +91,7 @@ export function OrderStatusSegmentedControl({
   return (
     <div
       data-testid="order-status-scroll-container"
-      className="w-full overflow-x-auto border-b border-black/[0.07] bg-[#FAFAF8] px-1 py-2.5 [scrollbar-width:thin] sm:px-2"
+      className="w-full overflow-x-auto border-b border-black/[0.07] bg-[#F2F2F0] px-1 py-2.5 [scrollbar-width:thin] sm:px-2"
     >
       <SegmentedControl
         data-testid="order-status-control"
@@ -101,8 +101,8 @@ export function OrderStatusSegmentedControl({
           const selected = [...keys][0];
           if (selected) onChange(String(selected) as FulfillmentQueueTab);
         }}
-        thumbClassName="rounded-lg border border-black bg-[#FBBB14]"
-        className="w-max min-w-full rounded-lg bg-black/[0.045] p-1 ring-1 ring-black/[0.025] xl:flex xl:w-full"
+        thumbClassName="rounded-lg border border-black/[0.08] bg-white shadow-sm"
+        className="w-max min-w-full rounded-lg bg-black/[0.055] p-1 ring-1 ring-black/[0.035] xl:flex xl:w-full"
       >
         {FULFILLMENT_QUEUE_TABS.filter((status) => status === "abandoned" || !hiddenStatuses.includes(status)).map((status) => {
           const presentation = STATUS_PRESENTATION[status];
