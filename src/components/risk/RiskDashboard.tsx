@@ -12,6 +12,25 @@ export function RiskSignalChips({ signals }: { signals: RiskSignal[] }) {
   </li>)}</ul>;
 }
 
+const REASON_LABELS: Record<string, string> = {
+  incomplete_address_unknown: "Incomplete address from a number with no trust record",
+  confirmed_fake_history: "Previously confirmed fake orders on this phone or device",
+  independent_high_families: "Strong signals from independent checks",
+  honeypot_filled: "Hidden bot-trap field was filled",
+  staff_allowlist: "Allowlisted by staff",
+  untrusted_context: "Unverified browser context",
+  dependency_unavailable: "A data source was unavailable during assessment",
+  engine_error: "Assessment error (order was not penalized)",
+  review_unavailable: "Staff review could not be saved, so the order proceeded",
+  webhook_review_unsupported: "Server-to-server order, review not supported",
+};
+export function reasonLabel(reason: string) {
+  if (REASON_LABELS[reason]) return REASON_LABELS[reason];
+  if (reason.startsWith("critical:")) return `Critical signal: ${reason.slice("critical:".length)}`;
+  if (reason.startsWith("score>=")) return `High risk score (${reason.slice("score".length)})`;
+  return reason;
+}
+
 export function RiskDetails({ attempt, related = [] }: { attempt: RiskAttempt; related?: RiskAttempt[] }) {
   return <div className="space-y-5 text-sm">
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -22,6 +41,7 @@ export function RiskDetails({ attempt, related = [] }: { attempt: RiskAttempt; r
     </div>
     <div><p className={labelClass}>Customer</p><p>{attempt.customer_name || "Unknown"} · {attempt.phone || "No phone"}</p><p>{attempt.address}</p></div>
     <div><p className={labelClass}>Why</p><RiskSignalChips signals={attempt.signals || []} />
+      {(attempt.reasons || []).length > 0 && <ul className="mt-2 list-disc pl-5 text-black" aria-label="Decision reasons">{(attempt.reasons || []).map(reason => <li key={reason}>{reasonLabel(reason)}</li>)}</ul>}
       <ul className="mt-2 list-disc pl-5 text-black/60">{(attempt.signals || []).map(signal => <li key={signal.code}>{signal.evidence}</li>)}</ul>
     </div>
     <div><p className={labelClass}>Network & device</p><p>{attempt.network_type || "Unknown network"} · {attempt.geo_city || "Unknown city"} · {attempt.user_agent_summary || "Unknown browser"}</p></div>
