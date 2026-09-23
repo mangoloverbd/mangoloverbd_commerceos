@@ -22,6 +22,14 @@ it("shows a shadow attempt's evidence without exposing hashed identifiers", asyn
   expect(screen.queryByText(/phone_hash/)).not.toBeInTheDocument();
 });
 
+it("explains the deciding reason in plain words, not just signal chips", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+  await user.click(screen.getByRole("tab", { name: "Attempts" }));
+  await user.click(await screen.findByRole("button", { name: /Rahim.*40/ }));
+  expect(await screen.findByText("High risk score (>=40)")).toBeInTheDocument();
+});
+
 it("keeps the held-review queue as the default view", () => {
   render(<OrderProtection />);
   expect(screen.getByText("Held reviews")).toBeInTheDocument();
