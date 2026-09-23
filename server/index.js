@@ -79,6 +79,7 @@ import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
 import { getTrustedRequestIp, networkKey } from "./risk/network.js";
 import { PROTECTION_MODE_SETTING_SUFFIX, resolveProtectionMode } from "./risk/mode.js";
+import { scrubExpiredRiskAttempts } from "./risk/store.js";
 import {
   FRAUD_QUOTA_RESERVE,
   FRAUD_WARM_BATCH,
@@ -2992,6 +2993,11 @@ app.get("/api/internal/abandoned-checkouts-maintenance", async (req, res) => {
 
   try {
     const result = await runAbandonedCheckoutMaintenance();
+    try {
+      await scrubExpiredRiskAttempts(getServiceSupabase());
+    } catch {
+      console.warn("[OrderRisk] maintenance failed");
+    }
     return res.json({ ok: true, ...result });
   } catch {
     console.warn("[AbandonedCheckout] maintenance failed");
