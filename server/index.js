@@ -77,6 +77,8 @@ import {
 } from "./orderProtectionStore.js";
 import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
+import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
+import { getTrustedRequestIp, networkKey } from "./risk/network.js";
 import { validateAddressWithAI } from "./addressValidation.js";
 import {
   FRAUD_QUOTA_RESERVE,
@@ -390,15 +392,11 @@ async function allowAbandonedCheckoutCapture(req, res, orgId) {
   if (!rlAbandonedCheckoutCapture) return true;
   const forwardedHeader = req.headers["x-storefront-client-ip"];
   const forwardedClientIp = (Array.isArray(forwardedHeader) ? forwardedHeader[0] : forwardedHeader)?.trim() || "";
-  const clientIp = isIP(forwardedClientIp)
-    ? forwardedClientIp
-    : req.headers["cf-connecting-ip"]
-    || req.ip
-    || req.headers["x-forwarded-for"]?.split(",")[0]?.trim()
-    || req.socket.remoteAddress
-    || "unknown";
+  const signed = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+  const clientIp = signed.ok ? signed.context.ip : isIP(forwardedClientIp) ? forwardedClientIp : getTrustedRequestIp(req) || "unknown";
+  const clientHash = hashProtectionSignal(clientIp, process.env.ORDER_PROTECTION_HASH_SECRET || "order-protection-unconfigured");
   try {
-    const { success, limit, remaining, reset } = await rlAbandonedCheckoutCapture.limit(`${orgId}:${clientIp}`);
+    const { success, limit, remaining, reset } = await rlAbandonedCheckoutCapture.limit(`${orgId}:${clientHash}`);
     res.setHeader("X-RateLimit-Limit", limit);
     res.setHeader("X-RateLimit-Remaining", remaining);
     res.setHeader("X-RateLimit-Reset", reset);
@@ -430,14 +428,13 @@ import { isWarmRequest } from "./warmToken.js";
 const rateLimitPublicRead = (req, res, next) => {
   if (isWarmRequest(req)) return next();
   if (!rlPublicRead) return next();
-  const ip = req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  const ip = getTrustedRequestIp(req) || "unknown";
   const handle = req.params.handle || req.params.storefrontId || "*";
   return makeRateLimitMiddleware(rlPublicRead, "ip")({ ...req, __forceId: `${ip}:${handle}` }, res, next);
 };
 
 function getClientIp(req) {
-  const forwarded = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
-  return req.headers["cf-connecting-ip"] || forwarded || req.socket.remoteAddress || "unknown";
+  return getTrustedRequestIp(req);
 }
 
 async function allowOrderSubmission(req, res, orgId, handle = "*") {

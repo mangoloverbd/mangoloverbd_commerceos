@@ -38,9 +38,9 @@ describe("abandoned checkout route wiring", () => {
     );
 
     expect(limiter).toContain('req.headers["x-storefront-client-ip"]');
-    expect(limiter.indexOf('req.headers["x-storefront-client-ip"]')).toBeLessThan(
-      limiter.indexOf('req.headers["cf-connecting-ip"]'),
-    );
+    expect(limiter).toContain("verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER]");
+    expect(limiter).toContain("getTrustedRequestIp(req)");
+    expect(limiter).not.toContain("cf-connecting-ip");
     expect(limiter).toContain("isIP(forwardedClientIp)");
   });
 
