@@ -122,7 +122,7 @@ describe("live visitor tracking", () => {
     const hookSource = readFileSync(resolve(process.cwd(), "src/hooks/useLiveVisitors.ts"), "utf8");
 
     expect(hookSource).toContain("/api/live-visitors");
-    expect(hookSource).toContain("setInterval");
+    expect(hookSource).toContain("useVisibleInterval");
     // Dashboard now inlines the counter using liveVisitors hook directly
     expect(dashboardSource).toContain("liveVisitors");
     expect(dashboardSource).toContain("useLiveVisitors");

@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useLiveVisitors } from "@/hooks/useLiveVisitors";
+import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
@@ -206,6 +207,28 @@ function cachedSnapshotFor(range?: DateRange | null, userId?: string) {
   return analyticsSnapshot?.userId === userId && analyticsSnapshot.rangeKey === key
     ? analyticsSnapshot
     : null;
+}
+
+const COURIER_REFRESH_MIN_INTERVAL_MS = 10 * 60 * 1000;
+
+// Courier status refreshes are expensive upstream calls; run them at most
+// once per 10 minutes per tab session. Storage failures fall back to running.
+function courierRefreshRanRecently(storageKey: string): boolean {
+  try {
+    const lastRun = Number(sessionStorage.getItem(storageKey));
+    return Boolean(lastRun) && Date.now() - lastRun < COURIER_REFRESH_MIN_INTERVAL_MS;
+  } catch {
+    // sessionStorage unavailable (private mode / blocked) — refresh anyway.
+    return false;
+  }
+}
+
+function markCourierRefreshRan(storageKey: string): void {
+  try {
+    sessionStorage.setItem(storageKey, String(Date.now()));
+  } catch {
+    // sessionStorage unavailable — next mount simply refreshes again.
+  }
 }
 
 
@@ -691,7 +714,7 @@ export default function Dashboard() {
     void fetchAnalytics(dateRange, Boolean(cached));
   }, [dateRange, fetchAnalytics, roleLoading, user?.id]);
 
-  // Auto-sync on mount, then poll orders every 30 s.
+  // Auto-sync on mount, then poll orders every 60 s (paused while hidden).
   // The Shopify sync is throttled to once per session per user via sessionStorage
   // so HMR hot-reloads and navigation back to the dashboard don't re-trigger it.
   useEffect(() => {
@@ -704,13 +727,25 @@ export default function Dashboard() {
       // Load orders from DB immediately — don't wait for Shopify sync
       fetchOrders();
 
-      // Refresh Pathao and Steadfast courier statuses in background
-      apiFetch("/api/pathao/refresh-status", { method: "POST" })
-        .then(() => fetchOrders())
-        .catch(() => {});
-      apiFetch("/api/steadfast/refresh-status", { method: "POST" })
-        .then(() => fetchOrders())
-        .catch(() => {});
+      // Refresh Pathao and Steadfast courier statuses in background, at most
+      // once per 10 minutes per browser tab session. The timestamp is only
+      // recorded when both refreshes succeed, so failures retry on next mount.
+      const courierRefreshKey = `courier_refresh_at_${user.id}`;
+      if (!courierRefreshRanRecently(courierRefreshKey)) {
+        const refreshCourier = (path: string) =>
+          apiFetch(path, { method: "POST" })
+            .then((res) => {
+              fetchOrders();
+              return res.ok;
+            })
+            .catch(() => false);
+        void Promise.all([
+          refreshCourier("/api/pathao/refresh-status"),
+          refreshCourier("/api/steadfast/refresh-status"),
+        ]).then((results) => {
+          if (results.every(Boolean)) markCourierRefreshRan(courierRefreshKey);
+        });
+      }
 
       // Sync Shopify in the background without blocking the UI
       if (!alreadySynced) {
@@ -728,25 +763,22 @@ export default function Dashboard() {
       }
     };
     runAutoSync();
-    const intervalId = setInterval(() => fetchOrders(), 30000);
-    return () => clearInterval(intervalId);
   }, [user?.id, roleLoading, fetchOrders, fetchAnalytics, todayRange]);
+
+  useVisibleInterval(() => fetchOrders(), 60000, Boolean(user?.id) && !roleLoading);
 
   // Checkout drafts are intentionally fetched and cached independently from
   // real orders so recovery work never changes fulfillment counts or P&L.
   useEffect(() => {
     if (!user?.id || roleLoading) return;
     void fetchAbandonedCheckouts();
-    const intervalId = setInterval(() => void fetchAbandonedCheckouts(true), 30000);
-    return () => clearInterval(intervalId);
   }, [fetchAbandonedCheckouts, roleLoading, user?.id]);
+
+  useVisibleInterval(() => void fetchAbandonedCheckouts(true), 60000, Boolean(user?.id) && !roleLoading);
 
   // Silent analytics tick keeps the selected range's metric values and mini
   // bars current without flashing the skeleton loader.
-  useEffect(() => {
-    const id = setInterval(() => fetchAnalytics(dateRange, true), 30000);
-    return () => clearInterval(id);
-  }, [dateRange, fetchAnalytics]);
+  useVisibleInterval(() => fetchAnalytics(dateRange, true), 60000);
 
   const applyBulkStatus = async (target: string, targetLabel: string) => {
     if (bulkUpdating) return;

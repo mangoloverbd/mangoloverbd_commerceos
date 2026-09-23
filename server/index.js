@@ -48,6 +48,7 @@ import {
   getProductImageVariantPaths,
 } from "./productImages.js";
 import { buildProductCacheUrls, purgeProductCacheUrls } from "./productCache.js";
+import { createSidebarInsightsCache } from "./sidebarAlertInsightsCache.js";
 import {
   STOREFRONT_SEO_REFRESH_SETTING,
   isAuthorizedCronRequest,
@@ -509,7 +510,7 @@ const app = express();
 // Cloudflare -> Railway proxy -> Express. Trust 2 hops so req.ip
 // reflects the real client behind Cloudflare, not the proxy IP.
 app.set("trust proxy", 2);
-app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : true }));
+app.use(cors({ origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : true, maxAge: 86400 }));
 const publicTrackerCors = cors({
   origin: true,
   methods: ["GET", "POST", "OPTIONS"],
@@ -5098,6 +5099,8 @@ async function selectViralHooks(productDetails, target = "script") {
   return ranked;
 }
 
+const getCachedSidebarInsights = createSidebarInsightsCache({ redis: redisClient });
+
 async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
   const fallback = {
     stalePending: fallbackSidebarInsight("stalePending", stalePending),
@@ -5105,7 +5108,7 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
   };
 
   if (!AI_API_KEY || !isOpenAIProvider() || (!stalePending.length && !unsentConfirmed.length)) {
-    return fallback;
+    return { insights: fallback, fromAI: false };
   }
 
   try {
@@ -5133,17 +5136,20 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
     if (!response.ok) {
       const body = await response.text();
       console.warn("[Sidebar Alerts] OpenAI failed:", response.status, body.slice(0, 240));
-      return fallback;
+      return { insights: fallback, fromAI: false };
     }
 
     const json = parseJsonObject(extractResponsesText(await response.json()));
     return {
-      stalePending: json?.stalePending || fallback.stalePending,
-      unsentConfirmed: json?.unsentConfirmed || fallback.unsentConfirmed,
+      insights: {
+        stalePending: json?.stalePending || fallback.stalePending,
+        unsentConfirmed: json?.unsentConfirmed || fallback.unsentConfirmed,
+      },
+      fromAI: true,
     };
   } catch (err) {
     console.warn("[Sidebar Alerts] AI fallback:", errorMessage(err));
-    return fallback;
+    return { insights: fallback, fromAI: false };
   }
 }
 
@@ -5641,7 +5647,13 @@ app.get("/api/sidebar-alerts", async (req, res) => {
 
     const stalePending = alerts.filter((alert) => alert.type === "stale_pending");
     const unsentConfirmed = alerts.filter((alert) => alert.type === "unsent_confirmed");
-    const aiInsights = await buildSidebarAlertInsights({ stalePending, unsentConfirmed });
+    // Only real AI output is cached; fallbacks are recomputed next request.
+    const aiInsights = alerts.length
+      ? await getCachedSidebarInsights(orgId, alerts, async () => {
+        const { insights, fromAI } = await buildSidebarAlertInsights({ stalePending, unsentConfirmed });
+        return { value: insights, cacheable: fromAI };
+      })
+      : (await buildSidebarAlertInsights({ stalePending, unsentConfirmed })).insights;
 
     return res.json({
       alerts,
@@ -7708,6 +7720,7 @@ function pruneMemoryLiveVisitors(key, now) {
 async function addLiveVisitorPresence(key, sessionId, now) {
   if (redisClient) {
     try {
+      await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
       await redisClient.zadd(key, { score: now, member: sessionId });
       await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
       return;
@@ -7832,7 +7845,7 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   window.addEventListener("popstate", function(){ window.dispatchEvent(new Event("locationchange")); });
   window.addEventListener("locationchange", function(){ setTimeout(pingCurrentLocation, 0); });
   pingCurrentLocation();
-  setInterval(ping, 15000);
+  setInterval(ping, 20000);
   document.addEventListener("visibilitychange", function(){ if (!document.hidden) ping(); });
   window.addEventListener("focus", ping);
 })();`);
@@ -7849,8 +7862,6 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
     const behaviorBucket = validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url);
     const bucketKey = behaviorBucket ? `visitors:${org_id}:${behaviorBucket}` : null;
     const now = Date.now();
-    const keys = [allKey, `visitors:${org_id}:cart`, `visitors:${org_id}:checkout`, `visitors:${org_id}:purchased`];
-    await Promise.all(keys.map((key) => countLiveVisitorsForKey(key, now)));
     await addLiveVisitorPresence(allKey, session_id, now);
     if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
     await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket, explicit });
