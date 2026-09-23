@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import OrderProtection from "@/pages/OrderProtection";
+import { fetchRiskAccuracy, fetchRiskAttempts, fetchRiskLists, updateRiskSettings } from "@/lib/orderRisk";
 
 vi.mock("@/components/OrderProtectionReviewQueue", () => ({ OrderProtectionReviewQueue: () => <div>Held reviews</div> }));
 vi.mock("@/lib/orderRisk", () => ({
@@ -53,8 +54,8 @@ it("renders report-style attempt summaries and investigation", async () => {
 
   await user.click(screen.getByRole("tab", { name: "Attempts" }));
   expect(await screen.findByText("Loaded attempts")).toBeInTheDocument();
-  expect(screen.getByText("Held")).toBeInTheDocument();
-  expect(screen.getByText("Blocked")).toBeInTheDocument();
+  expect(screen.getAllByText("Held").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
   expect(screen.getByText("Average score")).toBeInTheDocument();
 
   await user.click(await screen.findByRole("button", { name: /Rahim.*40/ }));
@@ -71,7 +72,7 @@ it("renders report-style list controls and entries", async () => {
   expect(await screen.findByRole("button", { name: "Blocklist" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "Allowlist" })).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByText("Phone ending 5678")).toBeInTheDocument();
-  expect(screen.getByText("Repeated checkout attempts")).toBeInTheDocument();
+  expect(screen.getByText(/Repeated checkout attempts/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
 });
 
@@ -81,9 +82,9 @@ it("renders accuracy summary cards and range controls", async () => {
 
   await user.click(screen.getByRole("tab", { name: "Accuracy" }));
   expect(await screen.findByText("Assessments")).toBeInTheDocument();
-  expect(screen.getByText("Hold rate")).toBeInTheDocument();
-  expect(screen.getByText("Block precision")).toBeInTheDocument();
-  expect(screen.getByText("Fake caught")).toBeInTheDocument();
+  expect(screen.getAllByText("Hold rate").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Block precision").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Fake caught").length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "30 days" })).toHaveAttribute("aria-pressed", "false");
   expect(screen.getAllByText("Not enough labels").length).toBeGreaterThan(0);
@@ -94,8 +95,56 @@ it("groups protection settings into labeled report sections", async () => {
   render(<OrderProtection />);
 
   await user.click(screen.getByRole("tab", { name: "Settings" }));
-  expect(await screen.findByText("Protection mode")).toBeInTheDocument();
-  expect(screen.getByText("Districts requiring review")).toBeInTheDocument();
+  expect((await screen.findAllByText("Protection mode")).length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Districts requiring review").length).toBeGreaterThan(0);
   expect(screen.getByText("Additional abuse terms")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save settings" })).toBeInTheDocument();
+});
+
+it("keeps the attempts decision filter connected to the risk API", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("tab", { name: "Attempts" }));
+  await screen.findByRole("button", { name: /Rahim.*40/ });
+  await user.selectOptions(screen.getByLabelText("Decision"), "hold");
+
+  await waitFor(() => expect(fetchRiskAttempts).toHaveBeenLastCalledWith({ decision: "hold", before: undefined }));
+});
+
+it("switches lists and keeps the remove action wired", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("tab", { name: "Lists" }));
+  await user.click(await screen.findByRole("button", { name: "Allowlist" }));
+  await waitFor(() => expect(fetchRiskLists).toHaveBeenLastCalledWith("allow"));
+  expect(await screen.findByText("No entries in this list.")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("tab", { name: "Lists" }));
+  await user.click(await screen.findByRole("button", { name: "Blocklist" }));
+  await user.click(await screen.findByRole("button", { name: "Remove" }));
+  await waitFor(() => expect(screen.queryByText("Phone ending 5678")).not.toBeInTheDocument());
+});
+
+it("keeps the accuracy range control connected to the risk API", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("tab", { name: "Accuracy" }));
+  await user.click(await screen.findByRole("button", { name: "30 days" }));
+
+  await waitFor(() => expect(fetchRiskAccuracy).toHaveBeenLastCalledWith(30));
+  expect(screen.getByRole("button", { name: "30 days" })).toHaveAttribute("aria-pressed", "true");
+});
+
+it("saves settings and exposes the success status", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("tab", { name: "Settings" }));
+  await user.click(await screen.findByRole("button", { name: "Save settings" }));
+
+  await waitFor(() => expect(updateRiskSettings).toHaveBeenCalled());
+  expect(await screen.findByRole("status")).toHaveTextContent("Settings saved");
 });
