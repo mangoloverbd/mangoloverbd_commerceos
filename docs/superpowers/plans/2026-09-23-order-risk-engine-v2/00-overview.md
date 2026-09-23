@@ -32,7 +32,7 @@ A, B and C can be executed in parallel. Ship A + B first: that alone makes the e
 - Never log raw phone, address, IP, device ID, or user agent.
 - Always `normalizeBdPhone()` before using a phone; valid BD mobile = `^01[3-9]\d{8}$`.
 - No AI calls anywhere in the checkout path.
-- Checkout never loses an order because of our infrastructure: dependency failure ⇒ ALLOW with a recorded reason, never BLOCK and never HOLD on infrastructure alone. A HOLD is only returned when a staff review row was actually written; if review creation fails the order proceeds.
+- Checkout never loses an order because of our infrastructure: dependency failure ⇒ ALLOW with a recorded reason, never BLOCK and never HOLD on infrastructure alone. A HOLD is only enforced when a staff review row was actually written; if review creation fails in active mode the customer gets a retryable 503 (never a silent pass-through), and the database error is logged.
 - Merchant Suite tests: `src/test/*.test.ts(x)`, run `npx vitest run <file>`; import server modules as `../../server/...js`. Full checks: `npm test`, `npm run lint`, `npm run build`.
 - Storefront tests: colocated `*.test.ts`, run `node --test <file>`; type check `npm run check`. Branch from `origin/main` (the local checkout is on another branch).
 - Migrations: new files in `supabase/migrations/`, wrapped in `begin; … commit;`, RLS enabled, `revoke all … from anon, authenticated; grant all … to service_role;`. Add new tables to `scripts/verify-supabase-baseline.mjs`. **Do not apply remote migrations, change production env vars, deploy, or submit a real order during implementation.**

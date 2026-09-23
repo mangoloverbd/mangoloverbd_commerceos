@@ -26,3 +26,18 @@ it("guards attempt, order, list, and setting APIs with staff auth and admin muta
   expect(route("get", "/api/orders/:id/risk")).toContain('.eq("org_id", orgId)');
   expect(route("delete", "/api/order-protection/lists/:id")).toContain("deleteListEntry(supabase, { orgId");
 });
+
+it("heals stale order links instead of showing dead Open order links", () => {
+  const detail = route("get", "/api/order-protection/attempts/:id");
+  expect(detail).toContain('update({ order_id: null })');
+  expect(detail).toContain("stale order link");
+});
+
+it("unlinks deleted orders from risk attempts in the same workspace", () => {
+  const start = source.indexOf('app.delete("/api/orders"');
+  expect(start).toBeGreaterThan(-1);
+  const body = source.slice(start, source.indexOf("\napp.", start + 5));
+  expect(body).toContain('from("order_risk_attempts").update({ order_id: null })');
+  expect(body).toContain('.in("order_id", deletedIds)');
+  expect(body).toContain('.eq("org_id", orgId)');
+});

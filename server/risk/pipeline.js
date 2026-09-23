@@ -49,8 +49,10 @@ async function createHold({ deps, orgId, route, body, customer, items, score, re
       ? await deps.createReview(review)
       : await createProtectionReview({ supabase: deps.supabase, review });
     return created?.id || null;
-  } catch {
-    console.warn("[OrderRisk] review creation failed; order will proceed");
+  } catch (error) {
+    // Log the database error (constraint info only, never customer data) so
+    // the root cause is visible in server logs instead of failing silently.
+    console.warn(`[OrderRisk] review creation failed: ${error?.message || error}`);
     return null;
   }
 }
@@ -137,7 +139,10 @@ async function assess({ mode, orgId, route, body, headers, requestIp, deps }) {
   if (assessment.decision !== "HOLD") return outcome(mode, assessment.decision, base);
 
   const reviewId = await createHold({ deps, orgId, route, body, customer: ctx.customer, items: ctx.items, score: assessment.score, reasonCodes: signals.map(signal => signal.code) });
-  if (!reviewId) return outcome(mode, "ALLOW", { ...base, reasons: [...assessment.reasons, "review_unavailable"] });
+  // A HOLD that cannot be stored must never silently become an order. Fail
+  // closed with a retryable HOLD so the customer retries (no order lost, no
+  // fraud waved through) and the failure is loud in logs and monitoring.
+  if (!reviewId) return outcome(mode, "HOLD", { ...base, retryable: true, reasons: [...assessment.reasons, "review_unavailable"] });
   if (attemptId) {
     try { await linkAttemptToReview(deps.supabase, { orgId, attemptId, reviewId }); }
     catch { console.warn("[OrderRisk] review attempt link failed"); }
