@@ -147,14 +147,39 @@ export type ActivityChangeLayout = GroupedActivityChanges & {
   listFields: ActivityChangeInput[];
 };
 
+function changeDeltaInCents(change?: ActivityChangeInput): number | null {
+  if (!change) return null;
+  const before = Number(change.before);
+  const after = Number(change.after);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return null;
+  return Math.round((after - before) * 100);
+}
+
+function discountIsReflectedInTotal(
+  total: ActivityChangeInput | undefined,
+  items: ActivityChangeInput[],
+  fields: ActivityChangeInput[],
+): boolean {
+  if (!total || items.length > 0 || fields.length !== 1 || fields[0].field !== "discount") return false;
+  const totalDelta = changeDeltaInCents(total);
+  const discountDelta = changeDeltaInCents(fields[0]);
+  return totalDelta !== null && discountDelta !== null
+    && totalDelta !== 0 && discountDelta !== 0
+    && totalDelta === -discountDelta;
+}
+
 // Field edits sit inline on their own; alongside a status or item summary they move to the list below.
 export function layoutActivityChanges(changes: ActivityChangeInput[] = []): ActivityChangeLayout {
   const grouped = groupActivityChanges(changes);
+  const fields = discountIsReflectedInTotal(grouped.total, grouped.items, grouped.fields)
+    ? []
+    : grouped.fields;
   const hasHeadline = Boolean(grouped.status || grouped.total || grouped.items.length);
   return {
     ...grouped,
-    inlineFields: hasHeadline ? [] : grouped.fields,
-    listFields: hasHeadline ? grouped.fields : [],
+    fields,
+    inlineFields: hasHeadline ? [] : fields,
+    listFields: hasHeadline ? fields : [],
   };
 }
 

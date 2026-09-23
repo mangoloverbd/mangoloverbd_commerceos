@@ -247,6 +247,27 @@ describe("OrderActivityTimeline", () => {
     expect(within(row).queryByTestId("activity-event-changes")).not.toBeInTheDocument();
   });
 
+  it("does not repeat the order discount below when it exactly explains the total change", async () => {
+    renderTimeline([{
+      id: "discount-total-1",
+      occurred_at: "2026-09-23T05:44:58.000Z",
+      event_type: "order.edited",
+      actor_display_name: "Tanim",
+      summary: "Edited order",
+      changes: [
+        { type: "field_changed", field: "price", label: "Order total", before: 700, after: 0 },
+        { type: "field_changed", field: "discount", label: "Order discount", before: 0, after: 700 },
+      ],
+    }], "full");
+
+    const row = await screen.findByTestId("activity-event");
+    const summary = within(row).getByTestId("activity-items-summary");
+    expect(summary).toHaveTextContent("Total ৳700 → ৳0");
+    expect(summary).toHaveTextContent("−৳700");
+    expect(row).not.toHaveTextContent("Order discount");
+    expect(within(row).queryByTestId("activity-event-changes")).not.toBeInTheDocument();
+  });
+
   it("keeps the compact popover's plain before and after table", async () => {
     renderTimeline([detailedEvent]);
 
