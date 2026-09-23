@@ -35,7 +35,7 @@ describe("order protection route wiring", () => {
       "async function handlePublicHandleOrderSubmit",
       "async function handlePublicHandleProducts",
     );
-    expect(storefront).toContain("await allowOrderSubmission(req, res, orgId, req.params.handle, mode)");
+    expect(storefront).toContain("await allowOrderSubmission(req, res, orgId, req.params.handle, mode, clientContext)");
     expect(storefront).toContain("await protectOrderSubmission(");
     expect(storefront.indexOf("await protectOrderSubmission(")).toBeLessThan(storefront.indexOf('.from("orders")'));
     expect(storefront.indexOf("await protectOrderSubmission(")).toBeLessThan(storefront.indexOf("stock_quantity: Math.max"));
@@ -50,6 +50,6 @@ describe("order protection route wiring", () => {
   });
 
   it("bypasses the order submission limiter when protection is disabled", () => {
-    expect(source).toContain('if (mode === "off" || !rlOrderSubmission) return true;');
+    expect(source).toContain('if (mode === "off" || !rlOrderDevice || !rlOrderNetwork || !rlOrderUntrustedIp) return true;');
   });
 });

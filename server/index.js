@@ -266,7 +266,9 @@ let rlHandleClaimUser = null;
 let rlHandleClaimIp = null;
 let rlPublicRead = null;
 let rlAbandonedCheckoutCapture = null;
-let rlOrderSubmission = null;
+let rlOrderDevice = null;
+let rlOrderNetwork = null;
+let rlOrderUntrustedIp = null;
 
 // Cloudflare edge-cache purge + warm-token bypass (Task 1).
 const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
@@ -315,10 +317,20 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       limiter: Ratelimit.slidingWindow(30, "10 m"),
       prefix: "rl:abandoned-checkout:capture",
     });
-    rlOrderSubmission = new Ratelimit({
+    rlOrderDevice = new Ratelimit({
       redis: redisClient,
-      limiter: Ratelimit.slidingWindow(10, "15 m"),
-      prefix: "rl:order-submission",
+      limiter: Ratelimit.slidingWindow(5, "15 m"),
+      prefix: "rl:order-submission:device",
+    });
+    rlOrderNetwork = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(20, "15 m"),
+      prefix: "rl:order-submission:network",
+    });
+    rlOrderUntrustedIp = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(60, "15 m"),
+      prefix: "rl:order-submission:untrusted-ip",
     });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
@@ -437,32 +449,32 @@ function getClientIp(req) {
   return getTrustedRequestIp(req);
 }
 
-async function allowOrderSubmission(req, res, orgId, handle = "*", mode) {
-  if (mode === "off" || !rlOrderSubmission) return true;
-  const limiterSecret = process.env.ORDER_PROTECTION_HASH_SECRET || "order-protection-unconfigured";
-  const ipHash = hashProtectionSignal(getClientIp(req), limiterSecret);
+async function allowOrderSubmission(req, res, orgId, handle = "*", mode, clientContext = null) {
+  if (mode === "off" || !rlOrderDevice || !rlOrderNetwork || !rlOrderUntrustedIp) return true;
+  const secret = process.env.ORDER_PROTECTION_HASH_SECRET;
+  if (!secret || secret.length < 16) return true;
+  const network = clientContext ? networkKey(clientContext.ip) : null;
+  const checks = clientContext?.deviceId
+    ? [[rlOrderDevice, `dev:${hashProtectionSignal(clientContext.deviceId, secret)}`],
+      [rlOrderNetwork, `net:${hashProtectionSignal(network || clientContext.ip, secret)}`]]
+    : [[rlOrderUntrustedIp, `ip:${hashProtectionSignal(getTrustedRequestIp(req) || "unknown", secret)}`]];
   try {
-    const { success, limit, remaining, reset } = await rlOrderSubmission.limit(`${orgId}:${handle}:${ipHash}`);
-    res.setHeader("X-RateLimit-Limit", limit);
-    res.setHeader("X-RateLimit-Remaining", remaining);
-    res.setHeader("X-RateLimit-Reset", reset);
-    if (success) return true;
-    const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
-    res.setHeader("Retry-After", retryAfter);
-    res.status(429).json({
-      error: "rate_limit_exceeded",
-      message: "Too many order attempts. Please try again shortly.",
-      retryAfter,
-    });
-    return false;
-  } catch (error) {
-    console.warn("[OrderProtection] order limiter unavailable:", error.message);
-    res.status(503).json({
-      error: "protection_unavailable",
-      message: "Order protection is temporarily unavailable. Please try again shortly.",
-      retryable: true,
-    });
-    return false;
+    for (const [limiter, key] of checks) {
+      const { success, limit, remaining, reset } = await limiter.limit(`${orgId}:${handle}:${key}`);
+      res.setHeader("X-RateLimit-Limit", limit);
+      res.setHeader("X-RateLimit-Remaining", remaining);
+      res.setHeader("X-RateLimit-Reset", reset);
+      if (!success && mode === "active") {
+        const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+        res.setHeader("Retry-After", retryAfter);
+        res.status(429).json({ error: "rate_limit_exceeded", message: "Too many order attempts. Please try again shortly.", retryAfter });
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    console.warn("[OrderProtection] order limiter unavailable");
+    return true;
   }
 }
 const PRODUCT_IMAGES_BUCKET = "product-images";
@@ -7455,7 +7467,15 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     const modeKey = `${orgId}:${PROTECTION_MODE_SETTING_SUFFIX}`;
     const settings = await getSettings([modeKey]);
     const mode = resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE, settingMode: settings[modeKey] });
-    if (!(await allowOrderSubmission(req, res, orgId, "*", mode))) return;
+    const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+    const clientContext = verified.ok ? verified.context : null;
+    const requestMeta = {
+      ip: clientContext?.ip || getTrustedRequestIp(req),
+      network: clientContext ? networkKey(clientContext.ip) : networkKey(getTrustedRequestIp(req)),
+      userAgent: clientContext?.userAgent ?? req.headers["user-agent"],
+      deviceId: clientContext?.deviceId || null,
+    };
+    if (!(await allowOrderSubmission(req, res, orgId, "*", mode, clientContext))) return;
     const protection = await protectOrderSubmission({
       mode,
       input: {
@@ -7472,7 +7492,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
         checkoutStartedAt: req.body?.checkout_started_at,
         shippingZoneId: req.body?.shipping_zone_id,
       },
-      requestMeta: { ip: getClientIp(req), userAgent: req.headers["user-agent"] },
+      requestMeta,
       dependencies: { redis: redisClient, supabase, validateAddress: validateAddressWithAI },
     });
     if (protection.protection.decision === "REVIEW") {
@@ -12936,7 +12956,15 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const modeKey = `${orgId}:${PROTECTION_MODE_SETTING_SUFFIX}`;
     const settings = await getSettings([modeKey]);
     const mode = resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE, settingMode: settings[modeKey] });
-    if (!(await allowOrderSubmission(req, res, orgId, req.params.handle, mode))) return;
+    const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+    const clientContext = verified.ok ? verified.context : null;
+    const requestMeta = {
+      ip: clientContext?.ip || getTrustedRequestIp(req),
+      network: clientContext ? networkKey(clientContext.ip) : networkKey(getTrustedRequestIp(req)),
+      userAgent: clientContext?.userAgent ?? req.headers["user-agent"],
+      deviceId: clientContext?.deviceId || null,
+    };
+    if (!(await allowOrderSubmission(req, res, orgId, req.params.handle, mode, clientContext))) return;
 
     const supabase = getServiceSupabase();
     const body = req.body || {};
@@ -12988,7 +13016,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
         checkoutStartedAt: body.checkoutStartedAt || body.checkout_started_at,
         shippingZoneId,
       },
-      requestMeta: { ip: getClientIp(req), userAgent: req.headers["user-agent"] },
+      requestMeta,
       dependencies: { redis: redisClient, supabase, validateAddress: validateAddressWithAI },
     });
     if (protection.protection.decision === "REVIEW") {

@@ -44,6 +44,17 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("order protection pipeline", () => {
+  test("trusted device becomes the session counter identity and verified IP reaches Turnstile", async () => {
+    const recordPhoneSignal = vi.fn();
+    const verifyTurnstile = vi.fn().mockResolvedValue({ ok: true });
+    await protectOrderSubmission({
+      mode: "active", input,
+      requestMeta: { ip: "103.12.44.7", network: "v4:103.12.44.0/24", deviceId: "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e" },
+      dependencies: dependencies({ recordPhoneSignal, verifyTurnstile }),
+    });
+    expect(recordPhoneSignal).toHaveBeenCalledWith(expect.objectContaining({ requestMeta: expect.objectContaining({ deviceId: "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e" }) }));
+    expect(verifyTurnstile).toHaveBeenCalled();
+  });
   test("shadow records a would-block event but proceeds without review or duplicate reservation", async () => {
     const recordEvent = vi.fn();
     const createReview = vi.fn();

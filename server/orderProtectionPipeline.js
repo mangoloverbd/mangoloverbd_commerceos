@@ -117,7 +117,7 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
       redis,
       orgId: input.orgId,
       phoneHash,
-      sessionHash: input.clientSessionId ? hashProtectionSignal(input.clientSessionId, secret) : null,
+      sessionHash: (requestMeta.deviceId || input.clientSessionId) ? hashProtectionSignal(requestMeta.deviceId || input.clientSessionId, secret) : null,
       networkHash: hashProtectionSignal(getClientNetwork(input, requestMeta), secret),
     });
   }
