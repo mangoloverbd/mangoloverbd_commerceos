@@ -79,6 +79,7 @@ export async function recordProtectionEvent({ supabase, secret, event }) {
     order_id: event.orderId || null,
     review_id: event.reviewId || null,
     route: event.route,
+    mode: event.mode,
     decision: event.decision,
     score: event.score,
     reason_codes: event.reasonCodes,

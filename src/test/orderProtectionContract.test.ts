@@ -23,10 +23,8 @@ describe("order protection contract", () => {
       "address_missing",
       "address_too_short",
       "address_too_vague",
-      "address_invalid",
       "abusive_content",
       "test_or_fake_content",
-      "address_validation_unavailable",
     ]);
   });
 
@@ -39,7 +37,6 @@ describe("order protection contract", () => {
       phoneAttempts24h: 8,
       phoneSessionCount: 3,
       phoneNetworkCount: 2,
-      aiHardBlockRiskScore: 60,
       reviewTtlDays: 30,
     });
   });

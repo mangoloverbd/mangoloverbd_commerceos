@@ -14,6 +14,7 @@ import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { CartPanel } from "@/components/order-editor/CartPanel";
 import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
 import { OrderEditorTabPanels, OrderEditorTabSwitch } from "@/components/order-editor/OrderEditorTabs";
+import { OrderRiskPanel } from "@/components/risk/OrderRiskPanel";
 import { useOrderEditorTab } from "@/hooks/useOrderEditorTab";
 import {
   calculateCartTotals,
@@ -476,7 +477,7 @@ export default function OrderDetail() {
       <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
-        {order?.id && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} className="sm:ml-auto" />}
+        {order?.id && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} showRisk={order.source === "website"} className="sm:ml-auto" />}
       </div>
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={goBack} className="mt-2 text-[13px] text-black underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
@@ -490,6 +491,7 @@ export default function OrderDetail() {
         >
           <OrderEditorTabPanels
             tab={editorTab}
+            risk={order.source === "website" ? <OrderRiskPanel orderId={order.id} /> : null}
             logs={
               <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.07]">
                 <OrderActivityTimeline endpoint={`/api/orders/${order.id}/activity`} variant="full" />

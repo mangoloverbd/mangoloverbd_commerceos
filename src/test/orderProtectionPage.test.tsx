@@ -56,7 +56,7 @@ describe("order protection dashboard", () => {
     expect(screen.getByRole("button", { name: /contact status: awaiting contact/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /dismiss review/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /reject/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /reject order for/i })).toBeInTheDocument();
   });
 
   test("updates the contact status dropdown", async () => {
@@ -89,5 +89,12 @@ describe("order protection dashboard", () => {
     render(<OrderProtection />);
 
     expect(await screen.findByRole("button", { name: "Contact status: Contacted" })).toBeInTheDocument();
+  });
+
+  test("staff can explicitly reject a confirmed fake without marking ordinary rejections fake", async () => {
+    const user = userEvent.setup();
+    render(<OrderProtection />);
+    await user.click(await screen.findByRole("button", { name: /reject as fake/i }));
+    expect(updateProtectionReview).toHaveBeenCalledWith("review-1", "reject", "fake");
   });
 });

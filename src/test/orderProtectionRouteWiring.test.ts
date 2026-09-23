@@ -13,9 +13,21 @@ function sectionBetween(startMarker: string, endMarker: string) {
 }
 
 describe("order protection route wiring", () => {
+  it("resolves settings and signed context before protection on both routes", () => {
+    const custom = sectionBetween('app.post("/api/custom-orders/webhook"', "// ─── Live Visitor Tracking");
+    const storefront = sectionBetween("async function handlePublicHandleOrderSubmit", "async function handlePublicHandleProducts");
+    for (const route of [custom, storefront]) {
+      expect(route).toContain("PROTECTION_MODE_SETTING_SUFFIX");
+      expect(route).toContain("verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER]");
+      expect(route.indexOf("verifyClientContext(")).toBeLessThan(route.indexOf("await assessOrderRisk("));
+      expect(route).toContain("mode, clientContext");
+    }
+    expect(source).not.toContain('from "./addressValidation.js"');
+    expect(source).not.toContain('req.headers["cf-connecting-ip"]');
+  });
   it("uses one protection pipeline on both storefront order ingress paths", () => {
-    expect(source).toContain('from "./orderProtectionPipeline.js"');
-    expect(source.match(/await protectOrderSubmission\(/g)).toHaveLength(2);
+    expect(source).toContain('from "./risk/pipeline.js"');
+    expect(source.match(/await assessOrderRisk\(/g)).toHaveLength(2);
   });
 
   it("protects the custom webhook before order numbering and persistence side effects", () => {
@@ -24,9 +36,9 @@ describe("order protection route wiring", () => {
       "// ─── Live Visitor Tracking",
     );
     expect(webhook).toContain("await allowOrderSubmission(req, res, orgId");
-    expect(webhook).toContain("await protectOrderSubmission(");
-    expect(webhook.indexOf("await protectOrderSubmission(")).toBeLessThan(webhook.indexOf("getNextManualOrderNumber"));
-    expect(webhook.indexOf("await protectOrderSubmission(")).toBeLessThan(webhook.indexOf('.from("orders")'));
+    expect(webhook).toContain("await assessOrderRisk(");
+    expect(webhook.indexOf("await assessOrderRisk(")).toBeLessThan(webhook.indexOf("getNextManualOrderNumber"));
+    expect(webhook.indexOf("await assessOrderRisk(")).toBeLessThan(webhook.indexOf('.from("orders")'));
     expect(webhook).toContain("decision: \"review\"");
   });
 
@@ -35,10 +47,10 @@ describe("order protection route wiring", () => {
       "async function handlePublicHandleOrderSubmit",
       "async function handlePublicHandleProducts",
     );
-    expect(storefront).toContain("await allowOrderSubmission(req, res, orgId, req.params.handle)");
-    expect(storefront).toContain("await protectOrderSubmission(");
-    expect(storefront.indexOf("await protectOrderSubmission(")).toBeLessThan(storefront.indexOf('.from("orders")'));
-    expect(storefront.indexOf("await protectOrderSubmission(")).toBeLessThan(storefront.indexOf("stock_quantity: Math.max"));
+    expect(storefront).toContain("await allowOrderSubmission(req, res, orgId, req.params.handle, mode, clientContext)");
+    expect(storefront).toContain("await assessOrderRisk(");
+    expect(storefront.indexOf("await assessOrderRisk(")).toBeLessThan(storefront.indexOf('.from("orders")'));
+    expect(storefront.indexOf("await assessOrderRisk(")).toBeLessThan(storefront.indexOf("stock_quantity: Math.max"));
     expect(storefront).toContain("body.customerName ?? body.customer_name");
     expect(storefront).toContain("body.shippingZoneId ?? body.shipping_zone_id");
     expect(storefront).toContain('decision: "allow"');
@@ -50,6 +62,6 @@ describe("order protection route wiring", () => {
   });
 
   it("bypasses the order submission limiter when protection is disabled", () => {
-    expect(source).toContain("if (!isOrderProtectionEnabled() || !rlOrderSubmission) return true;");
+    expect(source).toContain('if (mode !== "active" || !rlOrderDevice || !clientContext?.deviceId) return true;');
   });
 });

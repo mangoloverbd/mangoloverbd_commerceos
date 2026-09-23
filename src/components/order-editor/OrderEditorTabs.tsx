@@ -14,10 +14,12 @@ export function OrderEditorTabSwitch({
   value,
   onChange,
   className,
+  showRisk = false,
 }: {
   value: OrderEditorTab;
   onChange: (tab: OrderEditorTab) => void;
   className?: string;
+  showRisk?: boolean;
 }) {
   const itemClass = ({ isSelected }: { isSelected: boolean }) => cn(
     "px-3 py-1.5 font-sans text-[13px]",
@@ -31,13 +33,14 @@ export function OrderEditorTabSwitch({
       selectedKeys={new Set([value])}
       onSelectionChange={(keys) => {
         const selected = [...keys][0];
-        if (selected) onChange(String(selected) === "logs" ? "logs" : "details");
+        if (selected) onChange(String(selected) === "logs" ? "logs" : String(selected) === "risk" && showRisk ? "risk" : "details");
       }}
       thumbClassName="rounded-md border border-black/[0.08] bg-white shadow-sm"
       className={cn("shrink-0 rounded-lg bg-black/[0.055] p-1 ring-1 ring-black/[0.035]", className)}
     >
       <SegmentedControlItem id="details" className={itemClass}>Order details</SegmentedControlItem>
       <SegmentedControlItem id="logs" className={itemClass}>Logs</SegmentedControlItem>
+      {showRisk && <SegmentedControlItem id="risk" className={itemClass}>Risk</SegmentedControlItem>}
     </SegmentedControl>
   );
 }
@@ -46,13 +49,15 @@ export function OrderEditorTabPanels({
   tab,
   details,
   logs,
+  risk,
 }: {
   tab: OrderEditorTab;
   details: ReactNode;
   logs: ReactNode;
+  risk?: ReactNode;
 }) {
   const reduceMotion = useReducedMotion();
-  const showLogs = tab === "logs";
+  const showLogs = tab !== "details";
   // Order details stays mounted so unsaved edits survive a trip to Logs.
   const [detailsExited, setDetailsExited] = useState(showLogs);
 
@@ -79,14 +84,14 @@ export function OrderEditorTabPanels({
         {details}
       </motion.div>
 
-      {showLogs && (
+      {tab !== "details" && (
         <motion.div
           data-testid="order-editor-logs-panel"
           initial={reduceMotion ? false : { x: "6%", opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={transition}
         >
-          {logs}
+          {tab === "risk" ? risk : logs}
         </motion.div>
       )}
     </div>

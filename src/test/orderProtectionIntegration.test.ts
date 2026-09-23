@@ -44,6 +44,68 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("order protection pipeline", () => {
+  test("Redis counts unavailable produces a durable review, not a BLOCK", async () => {
+    const createReview = vi.fn().mockResolvedValue({ id: "review-redis" });
+    const result = await protectOrderSubmission({
+      mode: "active", input,
+      dependencies: dependencies({ redis: null, createReview, recordEvent: vi.fn() }),
+    });
+    expect(result.protection.decision).toBe("REVIEW");
+    expect(result.review?.id).toBe("review-redis");
+    expect(createReview).toHaveBeenCalledOnce();
+  });
+  test("Redis exceptions while counting, writing, and reserving hold the order", async () => {
+    const createReview = vi.fn().mockResolvedValue({ id: "review-exception" });
+    const redis = {
+      ...dependencies().redis,
+      get: vi.fn().mockRejectedValue(new Error("redis unavailable")),
+      incr: vi.fn().mockRejectedValue(new Error("redis unavailable")),
+      set: vi.fn().mockRejectedValue(new Error("redis unavailable")),
+    };
+    const result = await protectOrderSubmission({
+      mode: "active", input,
+      dependencies: dependencies({ redis, createReview, recordEvent: vi.fn() }),
+    });
+    expect(result.protection.decision).toBe("REVIEW");
+    expect(result.review?.id).toBe("review-exception");
+  });
+
+  test("an unavailable duplicate lookup never becomes an allow", async () => {
+    const createReview = vi.fn().mockResolvedValue({ id: "review-lookup" });
+    const redis = { ...dependencies().redis, exists: vi.fn().mockRejectedValue(new Error("redis unavailable")) };
+    const result = await protectOrderSubmission({
+      mode: "active", input,
+      dependencies: dependencies({ redis, createReview, recordEvent: vi.fn() }),
+    });
+    expect(result.protection.decision).toBe("REVIEW");
+    expect(result.review?.id).toBe("review-lookup");
+  });
+  test("trusted device becomes the session counter identity and verified IP reaches Turnstile", async () => {
+    const recordPhoneSignal = vi.fn();
+    const verifyTurnstile = vi.fn().mockResolvedValue({ ok: true });
+    await protectOrderSubmission({
+      mode: "active", input,
+      requestMeta: { ip: "103.12.44.7", network: "v4:103.12.44.0/24", deviceId: "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e" },
+      dependencies: dependencies({ recordPhoneSignal, verifyTurnstile }),
+    });
+    expect(recordPhoneSignal).toHaveBeenCalledWith(expect.objectContaining({ requestMeta: expect.objectContaining({ deviceId: "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e" }) }));
+    expect(verifyTurnstile).toHaveBeenCalled();
+  });
+  test("shadow records a would-block event but proceeds without review or duplicate reservation", async () => {
+    const recordEvent = vi.fn();
+    const createReview = vi.fn();
+    const reserveFingerprint = vi.fn();
+    const result = await protectOrderSubmission({
+      mode: "shadow", input: { ...input, website: "spam" },
+      requestMeta: { ip: "203.0.113.5", network: "v4:203.0.113.0/24" },
+      dependencies: dependencies({ recordEvent, createReview, reserveFingerprint }),
+    });
+    expect(result.protection.decision).toBe("ALLOW");
+    expect(result.response.decision).toBe("allow");
+    expect(recordEvent).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow", decision: "BLOCK", reviewId: null }));
+    expect(createReview).not.toHaveBeenCalled();
+    expect(reserveFingerprint).not.toHaveBeenCalled();
+  });
   test("bypasses protection when ORDER_PROTECTION_MODE is off", async () => {
     const previousMode = process.env.ORDER_PROTECTION_MODE;
     process.env.ORDER_PROTECTION_MODE = "off";
@@ -87,6 +149,7 @@ describe("order protection pipeline", () => {
   test("blocks without reserving an order fingerprint for a honeypot submission", async () => {
     const deps = dependencies();
     const result = await protectOrderSubmission({
+      mode: "active",
       input: { ...input, website: "spam" },
       requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
       dependencies: deps,
@@ -99,6 +162,7 @@ describe("order protection pipeline", () => {
   test("does not mutate the evaluator result when a duplicate reservation loses the race", async () => {
     const reserveFingerprint = vi.fn().mockResolvedValue({ reserved: false });
     const result = await protectOrderSubmission({
+      mode: "active",
       input,
       requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
       dependencies: dependencies({ reserveFingerprint }),
@@ -116,6 +180,7 @@ describe("order protection pipeline", () => {
     })) };
     const createReview = vi.fn().mockResolvedValue({ id: "review-1", status: "on_hold" });
     const result = await protectOrderSubmission({
+      mode: "active",
       input,
       requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
       dependencies: dependencies({

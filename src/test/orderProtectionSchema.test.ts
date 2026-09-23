@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("order protection migration", () => {
+  test("adds nullable, constrained mode to legacy events without rewriting old rows", () => {
+    const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20260923120000_order_protection_events_mode.sql"), "utf8");
+    expect(sql).toContain("add column if not exists mode text");
+    expect(sql).toContain("check (mode in ('shadow', 'active'))");
+    expect(sql).not.toContain("set not null");
+    expect(sql).toContain("begin;");
+    expect(sql).toContain("commit;");
+  });
   test("keeps protected review and event data workspace-scoped and private", () => {
     const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260912000000_order_protection.sql"), "utf8");
 

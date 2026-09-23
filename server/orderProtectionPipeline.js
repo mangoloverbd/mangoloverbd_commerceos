@@ -1,6 +1,5 @@
 import {
   evaluateProtection,
-  isOrderProtectionEnabled,
   normalizeProtectionInput,
   serializeProtectionResponse,
 } from "./orderSubmissionProtection.js";
@@ -14,6 +13,7 @@ import {
   reserveSubmissionFingerprint,
 } from "./orderProtectionStore.js";
 import { verifyTurnstileToken } from "./turnstile.js";
+import { resolveProtectionMode } from "./risk/mode.js";
 
 function getProtectionSecret(dependencies) {
   return dependencies.secret || process.env.ORDER_PROTECTION_HASH_SECRET || null;
@@ -23,7 +23,7 @@ function getClientNetwork(input, requestMeta) {
   return requestMeta.network || requestMeta.ip || "unknown";
 }
 
-function buildEvent(input, requestMeta, protection, reviewId = null) {
+function buildEvent(input, requestMeta, protection, reviewId = null, mode) {
   return {
     orgId: input.orgId,
     phone: input.phone,
@@ -32,6 +32,7 @@ function buildEvent(input, requestMeta, protection, reviewId = null) {
     network: getClientNetwork(input, requestMeta),
     userAgent: requestMeta.userAgent,
     decision: protection.decision,
+    mode,
     score: protection.score,
     reasonCodes: protection.reasonCodes,
     route: input.route,
@@ -39,8 +40,8 @@ function buildEvent(input, requestMeta, protection, reviewId = null) {
   };
 }
 
-export async function protectOrderSubmission({ input: rawInput, requestMeta = {}, dependencies = {} }) {
-  if (!isOrderProtectionEnabled()) {
+export async function protectOrderSubmission({ input: rawInput, requestMeta = {}, dependencies = {}, mode = resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE }) }) {
+  if (mode === "off") {
     return {
       protection: {
         decision: "ALLOW",
@@ -56,7 +57,7 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
 
   const input = normalizeProtectionInput(rawInput);
   const secret = getProtectionSecret(dependencies);
-  if (!secret) {
+  if (typeof secret !== "string" || secret.length < 16) {
     return {
       protection: {
         decision: "BLOCK",
@@ -73,21 +74,13 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
   const fingerprint = buildSubmissionFingerprint(input, secret);
   const redis = dependencies.redis;
 
-  const counts = typeof dependencies.countPhoneAttempts === "function"
-    ? null
-    : await countRecentPhoneSignals({ redis, orgId: input.orgId, phoneHash });
-  if (counts?.unavailable) {
-    return {
-      protection: {
-        decision: "BLOCK",
-        score: 100,
-        reasonCodes: ["rate_limit_exceeded"],
-        customerMessage: "Order protection is temporarily unavailable. Please try again shortly.",
-        retryable: true,
-      },
-      response: { decision: "block", error: "protection_unavailable", retryable: true },
-      fingerprint,
-    };
+  let dependencyUnavailable = false;
+  let counts = null;
+  if (typeof dependencies.countPhoneAttempts !== "function") {
+    try {
+      counts = await countRecentPhoneSignals({ redis, orgId: input.orgId, phoneHash });
+      if (counts?.unavailable) dependencyUnavailable = true;
+    } catch { dependencyUnavailable = true; }
   }
 
   const evaluatedProtection = await evaluateProtection(input, {
@@ -99,36 +92,47 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
       || (async () => counts?.networks || 0),
     isDuplicate: dependencies.isDuplicate || (async () => {
       if (!redis || typeof redis.exists !== "function") return false;
-      return Number(await redis.exists(`op:duplicate:${fingerprint}`)) > 0;
+      try { return Number(await redis.exists(`op:duplicate:${fingerprint}`)) > 0; }
+      catch { dependencyUnavailable = true; return false; }
     }),
     validateTurnstile: dependencies.verifyTurnstile || (async (normalizedInput) => verifyTurnstileToken({
       token: normalizedInput.turnstileToken,
       remoteIp: requestMeta.ip,
       secret: process.env.TURNSTILE_SECRET_KEY,
     })),
-    validateAddress: dependencies.validateAddress,
+    get dependencyUnavailable() { return dependencyUnavailable; },
   });
 
-  if (typeof dependencies.recordPhoneSignal === "function") {
-    await dependencies.recordPhoneSignal({ input, phoneHash, requestMeta });
-  } else if (redis && input.phone) {
-    await recordPhoneSignal({
-      redis,
-      orgId: input.orgId,
-      phoneHash,
-      sessionHash: input.clientSessionId ? hashProtectionSignal(input.clientSessionId, secret) : null,
-      networkHash: hashProtectionSignal(getClientNetwork(input, requestMeta), secret),
-    });
-  }
+  try {
+    const signalResult = typeof dependencies.recordPhoneSignal === "function"
+      ? await dependencies.recordPhoneSignal({ input, phoneHash, requestMeta })
+      : await recordPhoneSignal({
+        redis,
+        orgId: input.orgId,
+        phoneHash,
+        sessionHash: (requestMeta.deviceId || input.clientSessionId) ? hashProtectionSignal(requestMeta.deviceId || input.clientSessionId, secret) : null,
+        networkHash: hashProtectionSignal(getClientNetwork(input, requestMeta), secret),
+      });
+    if (signalResult?.unavailable) dependencyUnavailable = true;
+  } catch { dependencyUnavailable = true; }
 
   let protection = evaluatedProtection;
+  if (dependencyUnavailable && protection.decision === "ALLOW") {
+    protection = { ...protection, decision: "REVIEW", customerMessage: "Your order is being verified. We will contact you shortly." };
+  }
+
   let review = null;
-  const shouldReserve = protection.decision === "ALLOW" || protection.decision === "REVIEW";
+  const shouldReserve = mode === "active" && (protection.decision === "ALLOW" || protection.decision === "REVIEW");
   if (shouldReserve) {
-    const reservation = typeof dependencies.reserveFingerprint === "function"
-      ? await dependencies.reserveFingerprint({ fingerprint })
-      : await reserveSubmissionFingerprint({ redis, fingerprint });
-    if (!reservation.reserved) {
+    let reservation;
+    try {
+      reservation = typeof dependencies.reserveFingerprint === "function"
+        ? await dependencies.reserveFingerprint({ fingerprint })
+        : await reserveSubmissionFingerprint({ redis, fingerprint });
+    } catch { reservation = { unavailable: true }; }
+    if (reservation.unavailable) {
+      if (protection.decision === "ALLOW") protection = { ...protection, decision: "REVIEW", customerMessage: "Your order is being verified. We will contact you shortly." };
+    } else if (!reservation.reserved) {
       protection = {
         ...protection,
         decision: "BLOCK",
@@ -139,7 +143,7 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
     }
   }
 
-  if (protection.decision === "REVIEW") {
+  if (mode === "active" && protection.decision === "REVIEW") {
     const reviewInput = {
       orgId: input.orgId,
       route: input.route,
@@ -158,13 +162,18 @@ export async function protectOrderSubmission({ input: rawInput, requestMeta = {}
   }
 
   if (typeof dependencies.recordEvent === "function") {
-    await dependencies.recordEvent(buildEvent(input, requestMeta, protection, review?.id || null));
+    await dependencies.recordEvent(buildEvent(input, requestMeta, protection, review?.id || null, mode));
   } else if (dependencies.supabase) {
     await recordProtectionEvent({
       supabase: dependencies.supabase,
       secret,
-      event: buildEvent(input, requestMeta, protection, review?.id || null),
+      event: buildEvent(input, requestMeta, protection, review?.id || null, mode),
     });
+  }
+
+  if (mode === "shadow") {
+    const allowed = { decision: "ALLOW", score: 0, reasonCodes: [], customerMessage: "Order details accepted.", retryable: false };
+    return { protection: allowed, response: { decision: "allow" }, review: null, fingerprint };
   }
 
   const response = serializeProtectionResponse(protection);

@@ -5,7 +5,6 @@ import {
   detectDeterministicSignals,
   evaluateProtection,
   normalizeProtectionInput,
-  parseAddressValidationResult,
 } from "../../server/orderSubmissionProtection.js";
 
 const normalInput = (overrides: Record<string, unknown> = {}) => ({
@@ -26,39 +25,15 @@ const safeDependencies = (overrides: Record<string, unknown> = {}) => ({
   countPhoneNetworks: async () => 1,
   isDuplicate: async () => false,
   validateTurnstile: async () => ({ ok: true }),
-  validateAddress: vi.fn(async () => ({
-    action: "allow",
-    addressValid: true,
-    addressPresent: true,
-    abuse: false,
-    testOrFake: false,
-    vague: false,
-    riskScore: 5,
-    reason: "specific",
-  })),
   ...overrides,
 });
 
 describe("order submission protection", () => {
-  test("allows a normal Bangla address after the all-order AI assessment", async () => {
-    const validateAddress = vi.fn(async () => ({
-      action: "allow",
-      addressValid: true,
-      addressPresent: true,
-      abuse: false,
-      testOrFake: false,
-      vague: false,
-      riskScore: 5,
-      reason: "specific",
-    }));
-    const result = await evaluateProtection(
-      normalInput({ address: "ধানমন্ডি ৮ নম্বর রোড, বাড়ি ১২, ঢাকা" }),
-      safeDependencies({ validateAddress }),
-    );
-
-    expect(result.decision).toBe("ALLOW");
-    expect(result.reasonCodes).toEqual([]);
-    expect(validateAddress).toHaveBeenCalledOnce();
+  test("no address validator is required; vague addresses get deterministic review", async () => {
+    const normal = await evaluateProtection(normalInput(), safeDependencies({ validateAddress: undefined }));
+    const vague = await evaluateProtection(normalInput({ address: "near the market" }), safeDependencies({ validateAddress: undefined }));
+    expect(normal.decision).toBe("ALLOW");
+    expect(vague).toMatchObject({ decision: "REVIEW", reasonCodes: ["address_too_vague"] });
   });
 
   test("blocks a filled honeypot before external checks", async () => {
@@ -90,71 +65,16 @@ describe("order submission protection", () => {
     expect(normalBanglish.decision).toBe("ALLOW");
   });
 
-  test("blocks gibberish addresses from the AI assessment", async () => {
-    const validateAddress = vi.fn(async () => ({
-      action: "block",
-      addressValid: false,
-      addressPresent: true,
-      abuse: false,
-      testOrFake: true,
-      vague: true,
-      riskScore: 95,
-      reason: "Random text is not a delivery address",
-    }));
-    const result = await evaluateProtection(
-      normalInput({ address: "ghfbwsh dugejgheu ahihw" }),
-      safeDependencies({ validateAddress }),
-    );
-
-    expect(result).toMatchObject({ decision: "BLOCK" });
-    expect(result.reasonCodes).toEqual(expect.arrayContaining(["test_or_fake_content", "address_invalid"]));
-    expect(validateAddress).toHaveBeenCalledOnce();
-  });
-
-  test("blocks AI-detected harassment even when local word filters do not match it", async () => {
-    const validateAddress = vi.fn(async () => ({
-      action: "block",
-      addressValid: true,
-      addressPresent: true,
-      abuse: true,
-      testOrFake: false,
-      vague: false,
-      riskScore: 90,
-      reason: "Abusive customer text",
-    }));
-    const result = await evaluateProtection(
-      normalInput({ address: "House 1 Road 2 Dhaka" }),
-      safeDependencies({ validateAddress }),
-    );
-
-    expect(result).toMatchObject({ decision: "BLOCK", reasonCodes: ["abusive_content"] });
-    expect(validateAddress).toHaveBeenCalledOnce();
-  });
-
-  test("fails closed when the required all-order AI assessment is unavailable", async () => {
-    const result = await evaluateProtection(
-      normalInput(),
-      safeDependencies({ validateAddress: async () => ({ unavailable: true }) }),
-    );
-
-    expect(result).toMatchObject({
-      decision: "BLOCK",
-      retryable: true,
-      reasonCodes: ["address_validation_unavailable"],
-    });
-  });
 
   test("blocks Romanized Bangla harassment in customer-supplied fields before external checks", async () => {
     const validateTurnstile = vi.fn();
-    const validateAddress = vi.fn();
     const result = await evaluateProtection(
       normalInput({ address: "ami ekta bokachoda" }),
-      safeDependencies({ validateTurnstile, validateAddress }),
+      safeDependencies({ validateTurnstile }),
     );
 
     expect(result).toMatchObject({ decision: "BLOCK", reasonCodes: ["abusive_content"] });
     expect(validateTurnstile).not.toHaveBeenCalled();
-    expect(validateAddress).not.toHaveBeenCalled();
   });
 
   test("holds repeated phone, session, and network signals at the review threshold", async () => {
@@ -189,33 +109,20 @@ describe("order submission protection", () => {
     expect(result).toMatchObject({ decision: "REVIEW", reasonCodes: ["phone_velocity_15m"] });
   });
 
-  test("blocks an exact duplicate and never calls address AI", async () => {
-    const validateAddress = vi.fn();
+  test("blocks an exact duplicate", async () => {
     const result = await evaluateProtection(
       normalInput(),
-      safeDependencies({ isDuplicate: async () => true, validateAddress }),
+      safeDependencies({ isDuplicate: async () => true }),
     );
 
     expect(result.decision).toBe("BLOCK");
     expect(result.reasonCodes).toContain("duplicate_submission");
-    expect(validateAddress).not.toHaveBeenCalled();
   });
 
   test("returns input blocks for missing, short, and vague addresses", async () => {
     const missing = await evaluateProtection(normalInput({ address: "" }), safeDependencies());
     const short = await evaluateProtection(normalInput({ address: "Dhaka" }), safeDependencies());
-    const vague = await evaluateProtection(normalInput({ address: "near the market" }), safeDependencies({
-      validateAddress: async () => ({
-        action: "review",
-        addressValid: true,
-        addressPresent: true,
-        abuse: false,
-        testOrFake: false,
-        vague: true,
-        riskScore: 45,
-        reason: "Needs a more specific delivery location",
-      }),
-    }));
+    const vague = await evaluateProtection(normalInput({ address: "near the market" }), safeDependencies());
 
     expect(missing).toMatchObject({ decision: "BLOCK", reasonCodes: ["address_missing"] });
     expect(short).toMatchObject({ decision: "BLOCK", reasonCodes: ["address_too_short"] });
@@ -223,45 +130,13 @@ describe("order submission protection", () => {
     expect(vague.reasonCodes).toContain("address_too_vague");
   });
 
-  test("fails closed when Turnstile or all-order address AI is unavailable", async () => {
-    const turnstile = await evaluateProtection(normalInput(), safeDependencies({
-      validateTurnstile: async () => ({ ok: false }),
-    }));
-    const aiUnavailable = await evaluateProtection(
-      normalInput({ address: "near the market" }),
-      safeDependencies({ validateAddress: async () => ({ unavailable: true }) }),
-    );
-
-    expect(turnstile).toMatchObject({ decision: "BLOCK", reasonCodes: ["turnstile_failed"] });
-    expect(aiUnavailable).toMatchObject({
-      decision: "BLOCK",
-      retryable: true,
-      reasonCodes: ["address_validation_unavailable"],
-    });
-  });
-
-  test("parses only strict bounded address-validation JSON", () => {
-    expect(parseAddressValidationResult({
-      action: "allow",
-      addressValid: true,
-      addressPresent: true,
-      abuse: false,
-      testOrFake: false,
-      vague: false,
-      riskScore: 12,
-      reason: "Specific enough",
-    })).toEqual({
-      action: "allow",
-      addressValid: true,
-      addressPresent: true,
-      abuse: false,
-      testOrFake: false,
-      vague: false,
-      riskScore: 12,
-      reason: "Specific enough",
-    });
-    expect(() => parseAddressValidationResult({ riskScore: "12" })).toThrow();
-    expect(() => parseAddressValidationResult(null)).toThrow();
+  test("failed Turnstile adds 20 points and holds, while unconfigured adds nothing", async () => {
+    const failed = await evaluateProtection(normalInput(), safeDependencies({ validateTurnstile: async () => ({ ok: false }) }));
+    const unavailable = await evaluateProtection(normalInput(), safeDependencies({ validateTurnstile: async () => ({ ok: false, unavailable: true }) }));
+    const unconfigured = await evaluateProtection(normalInput(), safeDependencies({ validateTurnstile: async () => ({ ok: false, unconfigured: true }) }));
+    expect(failed).toMatchObject({ decision: "REVIEW", score: 20, reasonCodes: ["turnstile_failed"] });
+    expect(unavailable).toMatchObject({ decision: "REVIEW", reasonCodes: ["turnstile_failed"] });
+    expect(unconfigured).toMatchObject({ decision: "ALLOW", score: 0, reasonCodes: [] });
   });
 
   test("normalizes bounded input and calculates deterministic scores", () => {
