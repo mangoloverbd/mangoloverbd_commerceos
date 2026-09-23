@@ -33,30 +33,36 @@ async function countWindowed(redis, key, windowSeconds, now) {
 
 export async function recordIdentityLinks(redis, ctx, { countAttempt = true } = {}) {
   // Without Redis there is nothing to write: the persisted attempt row is the
-  // record, and readIdentityCounts derives every counter from it.
+  // record, and readIdentityCounts derives every counter from it. A failing
+  // Redis (e.g. exhausted quota) resolves the same way instead of stalling
+  // checkout on identity linking.
   if (!redis) return;
-  const k = keys(ctx);
-  const { phone, device, network } = ctx.hashes;
-  const tasks = [
-    addWindowed(redis, k.devicePhones, phone, WEEK, ctx.now),
-    addWindowed(redis, k.fingerprintPhones, phone, WEEK, ctx.now),
-    addWindowed(redis, k.phoneDevices, device, WEEK, ctx.now),
-    addWindowed(redis, k.deviceNetworks, network, HOUR, ctx.now),
-  ];
-  // Mobile carrier NAT puts thousands of customers behind one network.
-  if (ctx.network.type !== "mobile") tasks.push(addWindowed(redis, k.networkPhones, phone, DAY, ctx.now));
-  if (countAttempt) {
-    for (const [key, ttl] of [[k.phone15m, 900], [k.phone24h, DAY], [k.device15m, 900]]) {
-      if (!key) continue;
-      // Create the window with its TTL first; INCR keeps the TTL, so a counter
-      // can never become permanent if a later call fails.
-      tasks.push((async () => {
-        await redis.set(key, 0, { nx: true, ex: ttl });
-        await redis.incr(key);
-      })());
+  try {
+    const k = keys(ctx);
+    const { phone, device, network } = ctx.hashes;
+    const tasks = [
+      addWindowed(redis, k.devicePhones, phone, WEEK, ctx.now),
+      addWindowed(redis, k.fingerprintPhones, phone, WEEK, ctx.now),
+      addWindowed(redis, k.phoneDevices, device, WEEK, ctx.now),
+      addWindowed(redis, k.deviceNetworks, network, HOUR, ctx.now),
+    ];
+    // Mobile carrier NAT puts thousands of customers behind one network.
+    if (ctx.network.type !== "mobile") tasks.push(addWindowed(redis, k.networkPhones, phone, DAY, ctx.now));
+    if (countAttempt) {
+      for (const [key, ttl] of [[k.phone15m, 900], [k.phone24h, DAY], [k.device15m, 900]]) {
+        if (!key) continue;
+        // Create the window with its TTL first; INCR keeps the TTL, so a counter
+        // can never become permanent if a later call fails.
+        tasks.push((async () => {
+          await redis.set(key, 0, { nx: true, ex: ttl });
+          await redis.incr(key);
+        })());
+      }
     }
+    await Promise.all(tasks);
+  } catch {
+    console.warn("[OrderRisk] identity link write failed; attempt row remains the record");
   }
-  await Promise.all(tasks);
 }
 
 // Supabase fallback: derive the same counters from persisted attempt rows when
@@ -96,23 +102,35 @@ async function readSqlCounts(supabase, ctx) {
 }
 
 export async function readIdentityCounts(redis, ctx, { supabase } = {}) {
-  if (redis) {
-    const k = keys(ctx);
-    const get = async key => (key ? Number(await redis.get(key)) || 0 : 0);
-    const [devicePhones7d, phoneDevices7d, deviceNetworks1h, networkPhones24h, phone15m, phone24h, device15m] = await Promise.all([
-      countWindowed(redis, k.devicePhones, WEEK, ctx.now),
-      countWindowed(redis, k.phoneDevices, WEEK, ctx.now),
-      countWindowed(redis, k.deviceNetworks, HOUR, ctx.now),
-      ctx.network.type === "mobile" ? 0 : countWindowed(redis, k.networkPhones, DAY, ctx.now),
-      get(k.phone15m),
-      get(k.phone24h),
-      get(k.device15m),
-    ]);
-    return {
-      links: { devicePhones7d, phoneDevices7d, deviceNetworks1h, networkPhones24h },
-      attempts: { phone15m, phone24h, device15m },
-    };
+  // A dead Redis (bad credentials, exhausted quota) must not blind the
+  // engine: fall through to Supabase instead of returning empty counters.
+  if (redis && supabase) {
+    try {
+      return await readRedisCounts(redis, ctx);
+    } catch {
+      console.warn("[OrderRisk] redis counters unavailable; using database fallback");
+    }
+  } else if (redis) {
+    return readRedisCounts(redis, ctx);
   }
   if (supabase) return readSqlCounts(supabase, ctx);
   throw new Error("Risk store unavailable");
+}
+
+async function readRedisCounts(redis, ctx) {
+  const k = keys(ctx);
+  const get = async key => (key ? Number(await redis.get(key)) || 0 : 0);
+  const [devicePhones7d, phoneDevices7d, deviceNetworks1h, networkPhones24h, phone15m, phone24h, device15m] = await Promise.all([
+    countWindowed(redis, k.devicePhones, WEEK, ctx.now),
+    countWindowed(redis, k.phoneDevices, WEEK, ctx.now),
+    countWindowed(redis, k.deviceNetworks, HOUR, ctx.now),
+    ctx.network.type === "mobile" ? 0 : countWindowed(redis, k.networkPhones, DAY, ctx.now),
+    get(k.phone15m),
+    get(k.phone24h),
+    get(k.device15m),
+  ]);
+  return {
+    links: { devicePhones7d, phoneDevices7d, deviceNetworks1h, networkPhones24h },
+    attempts: { phone15m, phone24h, device15m },
+  };
 }
