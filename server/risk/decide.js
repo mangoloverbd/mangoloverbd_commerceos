@@ -19,6 +19,10 @@ export function decideRisk({ signals, contextTrusted, dependencyUnavailable = fa
   // decision rather than denying a real shopper; weak combinations pass.
   if (score >= THRESHOLDS.holdScore * 2) reasons.push("score>=80");
   if (signals.some(signal => signal.code === "phone_fake_history" || signal.code === "device_fake_history")) reasons.push("confirmed_fake_history");
+  // Prank orders use vague addresses from numbers with no record. A proven
+  // customer with a short address is never held for this alone.
+  const trusted = signals.some(signal => signal.code === "trusted_delivered_customer" || signal.code === "trusted_device" || signal.code === "courier_strong_history");
+  if (!trusted && signals.some(signal => signal.code === "address_incomplete")) reasons.push("incomplete_address_unknown");
   if (score >= THRESHOLDS.blockScore && highFamilies.size >= THRESHOLDS.blockMinHighFamilies) reasons.push("independent_high_families");
   // Missing telemetry or an unavailable dependency is not evidence about the
   // customer. Record it for diagnosis without making them wait for staff.
