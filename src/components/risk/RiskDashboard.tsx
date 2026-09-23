@@ -11,8 +11,10 @@ import {
   fetchRiskAttempts,
   fetchRiskLists,
   fetchRiskSettings,
+  isVisibleRiskSignal,
   labelRiskAttempt,
   updateRiskSettings,
+  visibleRiskSignals,
   type RiskAccuracy,
   type RiskAttempt,
   type RiskListEntry,
@@ -121,7 +123,7 @@ function RiskDetailGroup({
 export function RiskSignalChips({ signals }: { signals: RiskSignal[] }) {
   return (
     <ul className="flex flex-wrap gap-1.5">
-      {signals.map((signal) => (
+      {visibleRiskSignals(signals).map((signal) => (
         <li
           key={signal.code}
           className="rounded-md border border-black/10 bg-white px-2 py-1 text-[10px] text-black/75"
@@ -190,7 +192,7 @@ export function RiskDetails({ attempt, related = [] }: { attempt: RiskAttempt; r
           </ul>
         )}
         <ul className="mt-2 list-disc pl-5 text-xs text-black/60">
-          {(attempt.signals || []).map((signal) => <li key={`${signal.code}-evidence`}>{signal.evidence}</li>)}
+          {visibleRiskSignals(attempt.signals || []).map((signal) => <li key={`${signal.code}-evidence`}>{signal.evidence}</li>)}
         </ul>
       </div>
       <RiskDetailGroup
@@ -554,12 +556,12 @@ export function RiskAccuracyPanel() {
       </div>
 
       <section aria-labelledby="risk-signal-accuracy-heading">
-        <RiskSectionHeading id="risk-signal-accuracy-heading" title="Signal accuracy" count={`${accuracy.signals.filter((row) => row.fired).length} fired`} />
-        {accuracy.signals.filter((row) => row.fired).length === 0 ? (
+        <RiskSectionHeading id="risk-signal-accuracy-heading" title="Signal accuracy" count={`${accuracy.signals.filter((row) => row.fired && isVisibleRiskSignal(row.code)).length} fired`} />
+        {accuracy.signals.filter((row) => row.fired && isVisibleRiskSignal(row.code)).length === 0 ? (
           <RiskEmptyState>No signals recorded in this period.</RiskEmptyState>
         ) : (
           <div className="divide-y divide-black/[0.08] overflow-hidden rounded-2xl bg-black/[0.04]">
-            {accuracy.signals.filter((row) => row.fired).map((row) => {
+            {accuracy.signals.filter((row) => row.fired && isVisibleRiskSignal(row.code)).map((row) => {
               const precision = row.precisionFake === null ? null : Math.max(0, Math.min(1, row.precisionFake));
               return (
                 <div key={row.code} className="px-4 py-3 sm:px-5">

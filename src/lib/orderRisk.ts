@@ -11,6 +11,12 @@ export type RiskAttempt = {
   network_type?: string | null; geo_city?: string | null; user_agent_summary?: string | null;
   items?: Array<Record<string, unknown>>;
 };
+
+// Turnstile is not live on the storefront yet, so attempts recorded before the
+// detector was narrowed carry a meaningless "bot check failed" signal.
+const HIDDEN_RISK_SIGNAL_CODES = new Set(["bot_check_failed"]);
+export const isVisibleRiskSignal = (code: string) => !HIDDEN_RISK_SIGNAL_CODES.has(code);
+export const visibleRiskSignals = <T extends { code: string }>(signals: T[]) => signals.filter((signal) => isVisibleRiskSignal(signal.code));
 export type RiskListEntry = { id: string; list: "block" | "allow"; kind: string; display_hint: string | null; reason: string | null; created_at: string; expires_at: string | null };
 export type RiskSettings = { mode: "off" | "shadow" | "active"; haterDistrictIds: string[]; extraAbuseTerms: string[]; districtOptions: Array<{ id: string; name: string }> };
 export type RiskAccuracy = { overall: { attempts: number; holds: number; blocks: number; holdRate: number | null; labelledFake: number; labelledGenuine: number; blockPrecision: number | null; blockedGenuine: number; heldGenuine: number; fakeCaught: number | null; fakeSlipped: number; targets: Record<string, { value: number | null; target: number; pass: boolean | null }> }; signals: Array<{ code: string; fired: number; fake: number; genuine: number; precisionFake: number | null }> };
