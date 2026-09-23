@@ -13381,6 +13381,16 @@ async function handlePublicHandleOrderSubmit(req, res) {
         } },
     });
     if (protection.enforced && protection.decision === "HOLD") {
+      // No review row means the hold could not be stored (see pipeline). Tell
+      // the customer to retry instead of silently letting the order through.
+      if (!protection.reviewId) {
+        return res.status(503).json({
+          decision: "block",
+          error: "protection_unavailable",
+          message: "Order verification is temporarily unavailable. Please try again shortly.",
+          retryable: true,
+        });
+      }
       return res.status(202).json({
         success: false,
         decision: "review",
