@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.32] - 2026-09-23
+
+### Fixed
+
+- Abandoned-checkout convert now matches variant-suffixed cart names (e.g. `Katimon Mango (6KG)`) to catalog products via exact, stripped, and fuzzy match, and persists resolved `product_id`/`variant_id` into `order_items` so warehouse routing and weight stay linked.
+- Product warehouse reassignment now resyncs open auto-routed orders (`warehouse_auto = true`): bulk-assign, single product edit, and warehouse delete re-resolve affected orders and return `resynced_orders`. Manual overrides and dispatched/final orders are never touched.
+
 ## [0.1.0.31] - 2026-09-23
 
 ### Added

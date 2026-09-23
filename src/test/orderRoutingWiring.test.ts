@@ -18,7 +18,7 @@ describe("order routing wiring", () => {
     expect(source).toContain("resolveWarehouseId");
     expect(source).toContain("computeOrderWeightKg");
     expect(source.match(/async function resolveOrderRouting\(/g)).toHaveLength(1);
-    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(9);
+    expect(source.match(/await resolveOrderRouting\(/g)).toHaveLength(10);
   });
 
   it("org-scopes every routing lookup and throws lookup errors", () => {

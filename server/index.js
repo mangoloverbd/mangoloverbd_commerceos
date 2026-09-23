@@ -6735,11 +6735,25 @@ async function resolveAbandonedCatalogIds(supabase, orgId, cart) {
     .select("id, name")
     .eq("org_id", orgId);
   if (error) throw error;
+  const list = products || [];
   const byName = new Map(
-    (products || []).map((product) => [String(product.name || "").trim().toLowerCase(), product.id]),
+    list.map((product) => [String(product.name || "").trim().toLowerCase(), product.id]),
   );
+  const stripVariantSuffix = (value) =>
+    String(value || "")
+      .replace(/\s*\([^)]*\)\s*$/, "")
+      .trim();
   return Promise.all(cart.map(async (item) => {
-    const productId = byName.get(String(item.productName || "").trim().toLowerCase()) || null;
+    const rawName = String(item.productName || "").trim();
+    let productId = byName.get(rawName.toLowerCase()) || null;
+    if (!productId) {
+      const stripped = stripVariantSuffix(rawName);
+      if (stripped) productId = byName.get(stripped.toLowerCase()) || null;
+    }
+    if (!productId && rawName) {
+      const matched = matchProductFromText({ text: rawName, products: list });
+      if (matched) productId = matched.id;
+    }
     let variantId = null;
     if (productId && item.variantName) {
       const { data: candidates, error: variantError } = await supabase
@@ -6748,7 +6762,8 @@ async function resolveAbandonedCatalogIds(supabase, orgId, cart) {
         .eq("org_id", orgId)
         .eq("product_id", productId);
       if (variantError) throw variantError;
-      variantId = matchVariantId({ label: item.variantName, variants: candidates || [] });
+      variantId = matchVariantId({ label: item.variantName, variants: candidates || [] })
+        || matchVariantIdFromText({ text: `${rawName} ${item.variantName}`, variants: candidates || [] });
     }
     return { productId, variantId };
   }));
@@ -6859,7 +6874,20 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
     if (orderError) throw orderError;
 
     const { error: itemsError } = await supabase.from("order_items").insert(
-      orderItems.map((item) => ({ ...item, org_id: orgId, order_id: order.id })),
+      orderItems.map((item, index) => {
+        const resolved = routing.resolvedItems[index];
+        if (resolved?.productId) {
+          return {
+            ...item,
+            product_id: resolved.productId,
+            variant_id: resolved.variantId || item.variant_id,
+            product_name: resolved.productName || item.product_name,
+            org_id: orgId,
+            order_id: order.id,
+          };
+        }
+        return { ...item, org_id: orgId, order_id: order.id };
+      }),
     );
     if (itemsError) {
       await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
@@ -12111,6 +12139,74 @@ async function resolveOrderRouting(supabase, orgId, items) {
   };
 }
 
+// Re-syncs open auto-routed orders after a product warehouse reassignment so
+// the dashboard warehouse column reflects the current assignment. Manual
+// overrides (warehouse_auto = false), dispatched orders, and final statuses
+// are never touched. Returns the number of orders updated.
+async function resyncAutoOrderWarehouses(supabase, orgId, productIds) {
+  const ids = [...new Set((Array.isArray(productIds) ? productIds : []).filter(Boolean))];
+  if (ids.length === 0) return 0;
+
+  const { data: links, error: linksError } = await supabase
+    .from("order_items")
+    .select("order_id")
+    .eq("org_id", orgId)
+    .in("product_id", ids);
+  if (linksError) throw linksError;
+  const orderIds = [...new Set((links || []).map((row) => row.order_id).filter(Boolean))];
+  if (orderIds.length === 0) return 0;
+
+  let updated = 0;
+  const pageSize = 100;
+  for (let from = 0; from < orderIds.length; from += pageSize) {
+    const page = orderIds.slice(from, from + pageSize);
+    const { data: orders, error: ordersError } = await supabase
+      .from("orders")
+      .select("id, warehouse_id, status, fulfillment_status, sent_to_courier, consignment_id, tracking_code, warehouse_auto")
+      .eq("org_id", orgId)
+      .in("id", page)
+      .eq("warehouse_auto", true);
+    if (ordersError) throw ordersError;
+
+    for (const order of orders || []) {
+      if (order.sent_to_courier === true || order.consignment_id || order.tracking_code) continue;
+      const status = normalizeBusinessStatus(order.status);
+      if (["delivered", "cancelled", "returned", "rejected"].includes(status)) continue;
+      if (normalizeBusinessStatus(order.fulfillment_status) === "delivered") continue;
+
+      const { data: items, error: itemsError } = await supabase
+        .from("order_items")
+        .select("product_id, variant_id, product_name, quantity")
+        .eq("org_id", orgId)
+        .eq("order_id", order.id);
+      if (itemsError) throw itemsError;
+      if (!items || items.length === 0) continue;
+
+      const routing = await resolveOrderRouting(
+        supabase,
+        orgId,
+        items.map((item) => ({
+          productId: item.product_id || undefined,
+          variantId: item.variant_id || undefined,
+          productName: item.product_name,
+          quantity: item.quantity,
+        })),
+      );
+      if (!routing.warehouseId || routing.warehouseId === order.warehouse_id) continue;
+
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({ warehouse_id: routing.warehouseId })
+        .eq("id", order.id)
+        .eq("org_id", orgId)
+        .eq("warehouse_auto", true);
+      if (updateError) throw updateError;
+      updated += 1;
+    }
+  }
+  return updated;
+}
+
 app.get("/api/warehouses", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -12241,6 +12337,13 @@ app.delete("/api/warehouses/:id", async (req, res) => {
       return res.status(400).json({ error: "Cannot delete the default warehouse" });
     }
 
+    const { data: affectedProducts } = await supabase
+      .from("products")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("warehouse_id", warehouseId);
+    const affectedIds = (affectedProducts || []).map((row) => row.id).filter(Boolean);
+
     const { error } = await supabase.rpc("delete_warehouse", {
       p_org_id: orgId,
       p_warehouse_id: warehouseId,
@@ -12250,7 +12353,17 @@ app.delete("/api/warehouses/:id", async (req, res) => {
     }
     if (error?.code === "P0002") return res.status(404).json({ error: "Warehouse not found" });
     if (error) throw error;
-    return res.json({ success: true });
+    // Products fall back to the default warehouse (warehouse_id = null).
+    // Move open auto-routed orders (warehouse_auto = true) with them.
+    let resyncedOrders = 0;
+    if (affectedIds.length > 0) {
+      try {
+        resyncedOrders = await resyncAutoOrderWarehouses(supabase, orgId, affectedIds);
+      } catch (resyncError) {
+        console.warn("[Warehouses] auto order resync deferred:", errorMessage(resyncError));
+      }
+    }
+    return res.json({ success: true, resynced_orders: resyncedOrders });
   } catch (err) {
     return sendWarehouseError(res, err);
   }
@@ -12357,7 +12470,15 @@ app.post("/api/products/bulk-assign-warehouse", async (req, res) => {
       return res.status(409).json({ error: "One or more products are no longer available" });
     }
     if (error) throw error;
-    return res.json({ updated: data });
+    // Keep open auto-routed orders (warehouse_auto = true) on the current
+    // assignment so the dashboard warehouse column reflects the move.
+    let resyncedOrders = 0;
+    try {
+      resyncedOrders = await resyncAutoOrderWarehouses(supabase, orgId, productIds);
+    } catch (resyncError) {
+      console.warn("[Warehouses] auto order resync deferred:", errorMessage(resyncError));
+    }
+    return res.json({ updated: data, resynced_orders: resyncedOrders });
   } catch (err) {
     return sendWarehouseError(res, err);
   }
@@ -13936,7 +14057,18 @@ app.patch("/api/products/:id", async (req, res) => {
       }).catch(() => {});
     }
 
-    return res.json({ success: true, product: data });
+    // Keep open auto-routed orders (warehouse_auto = true) on the current
+    // assignment when the product's home warehouse changes.
+    let resyncedOrders = 0;
+    if (update.warehouse_id !== undefined) {
+      try {
+        resyncedOrders = await resyncAutoOrderWarehouses(supabase, orgId, [data.id]);
+      } catch (resyncError) {
+        console.warn("[Warehouses] auto order resync deferred:", errorMessage(resyncError));
+      }
+    }
+
+    return res.json({ success: true, product: data, resynced_orders: resyncedOrders });
   } catch (e) {
     return sendError(res, e);
   }
