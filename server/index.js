@@ -75,9 +75,9 @@ import {
   hashProtectionSignal,
   listProtectionReviews,
 } from "./orderProtectionStore.js";
-import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
-import { getTrustedRequestIp, networkKey } from "./risk/network.js";
+import { classifyNetwork, getTrustedRequestIp, networkKey } from "./risk/network.js";
+import { assessOrderRisk, finalizeOrderRisk } from "./risk/pipeline.js";
 import { PROTECTION_MODE_SETTING_SUFFIX, resolveProtectionMode } from "./risk/mode.js";
 import { scrubExpiredRiskAttempts } from "./risk/store.js";
 import {
@@ -85,6 +85,7 @@ import {
   FRAUD_WARM_BATCH,
   FRAUD_WARM_SPACING_MS,
   FRAUD_WARM_LOOKBACK_DAYS,
+  cacheState,
   fetchFraudShield,
   resolveFraudCheck,
   selectPhonesToWarm,
@@ -268,7 +269,6 @@ let rlPublicRead = null;
 let rlAbandonedCheckoutCapture = null;
 let rlOrderDevice = null;
 let rlOrderNetwork = null;
-let rlOrderUntrustedIp = null;
 
 // Cloudflare edge-cache purge + warm-token bypass (Task 1).
 const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
@@ -326,11 +326,6 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       redis: redisClient,
       limiter: Ratelimit.slidingWindow(20, "15 m"),
       prefix: "rl:order-submission:network",
-    });
-    rlOrderUntrustedIp = new Ratelimit({
-      redis: redisClient,
-      limiter: Ratelimit.slidingWindow(60, "15 m"),
-      prefix: "rl:order-submission:untrusted-ip",
     });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
@@ -450,14 +445,14 @@ function getClientIp(req) {
 }
 
 async function allowOrderSubmission(req, res, orgId, handle = "*", mode, clientContext = null) {
-  if (mode === "off" || !rlOrderDevice || !rlOrderNetwork || !rlOrderUntrustedIp) return true;
+  if (mode === "off" || !rlOrderDevice || !rlOrderNetwork) return true;
   const secret = process.env.ORDER_PROTECTION_HASH_SECRET;
   if (!secret || secret.length < 16) return true;
   const network = clientContext ? networkKey(clientContext.ip) : null;
-  const checks = clientContext?.deviceId
-    ? [[rlOrderDevice, `dev:${hashProtectionSignal(clientContext.deviceId, secret)}`],
-      [rlOrderNetwork, `net:${hashProtectionSignal(network || clientContext.ip, secret)}`]]
-    : [[rlOrderUntrustedIp, `ip:${hashProtectionSignal(getTrustedRequestIp(req) || "unknown", secret)}`]];
+  const type = clientContext ? classifyNetwork({ ip: clientContext.ip, country: clientContext.geo?.country }).type : "unknown";
+  const checks = [];
+  if (clientContext?.deviceId) checks.push([rlOrderDevice, `dev:${hashProtectionSignal(clientContext.deviceId, secret)}`]);
+  if (network && type === "broadband") checks.push([rlOrderNetwork, `net:${hashProtectionSignal(network, secret)}`]);
   try {
     for (const [limiter, key] of checks) {
       const { success, limit, remaining, reset } = await limiter.limit(`${orgId}:${handle}:${key}`);
@@ -7474,40 +7469,29 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     const mode = resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE, settingMode: settings[modeKey] });
     const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
     const clientContext = verified.ok ? verified.context : null;
-    const requestMeta = {
-      ip: clientContext?.ip || getTrustedRequestIp(req),
-      network: clientContext ? networkKey(clientContext.ip) : networkKey(getTrustedRequestIp(req)),
-      userAgent: clientContext?.userAgent ?? req.headers["user-agent"],
-      deviceId: clientContext?.deviceId || null,
-    };
     if (!(await allowOrderSubmission(req, res, orgId, "*", mode, clientContext))) return;
-    const protection = await protectOrderSubmission({
-      mode,
-      input: {
-        orgId,
-        route: "custom_webhook",
-        customerName: req.body?.customer_name,
-        phone: req.body?.phone,
-        address: req.body?.address,
-        notes: req.body?.notes,
-        items: req.body?.items,
-        website: req.body?.website,
-        turnstileToken: req.body?.turnstile_token,
-        clientSessionId: req.body?.client_session_id,
-        checkoutStartedAt: req.body?.checkout_started_at,
-        shippingZoneId: req.body?.shipping_zone_id,
-      },
-      requestMeta,
-      dependencies: { redis: redisClient, supabase },
+    const protection = await assessOrderRisk({
+      orgId, route: "custom_webhook",
+      body: { ...req.body, items: Array.isArray(req.body?.items) && req.body.items.length
+        ? req.body.items : [{ productId: null, variantId: null, quantity: Number(req.body?.quantity) || 1 }] },
+      headers: req.headers, requestIp: getTrustedRequestIp(req),
+      deps: { supabase, redis: redisClient, secret: process.env.ORDER_PROTECTION_HASH_SECRET,
+        contextSecret: process.env.STOREFRONT_CONTEXT_SECRET, turnstileSecret: process.env.TURNSTILE_SECRET_KEY,
+        getSetting: async key => (await getSettings([key]))[key],
+        fraudLookup: async phone => {
+          const cached = await readFraudCache(supabase, orgId, phone);
+          if (cached?.status !== "ok" || cacheState(cached, new Date()) !== "fresh" || !cached.summary) return null;
+          return { totalParcels: cached.summary.total_parcels, successRate: cached.summary.success_rate };
+        } },
     });
-    if (protection.protection.decision === "REVIEW") {
-      return res.status(202).json({ ok: true, decision: "review", review_id: protection.review?.id || null });
+    if (protection.enforced && protection.decision === "HOLD") {
+      return res.status(202).json({ ok: true, decision: "review", review_id: protection.reviewId });
     }
-    if (protection.protection.decision === "BLOCK") {
-      return res.status(protection.protection.retryable ? 503 : 403).json({
-        error: protection.protection.retryable ? "protection_unavailable" : "order_not_accepted",
-        message: protection.protection.customerMessage,
-        retryable: protection.protection.retryable,
+    if (protection.enforced && protection.decision === "BLOCK") {
+      return res.status(protection.retryable ? 503 : 403).json({
+        decision: "block", error: protection.retryable ? "protection_unavailable" : "order_not_accepted",
+        message: protection.retryable ? "Order verification is temporarily unavailable. Please try again shortly." : "We could not accept this order.",
+        retryable: Boolean(protection.retryable),
       });
     }
 
@@ -7583,6 +7567,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     if (error) throw error;
 
     let persistedOrder = data;
+    await finalizeOrderRisk({ supabase, orgId, attemptId: protection.attemptId, orderId: data.id });
     const linkedItems = routing.resolvedItems.length > 0 &&
       routing.resolvedItems.every((item) => item.catalogMatchComplete)
       ? mergeResolvedOrderItems(routing.resolvedItems)
@@ -12963,12 +12948,6 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const mode = resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE, settingMode: settings[modeKey] });
     const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
     const clientContext = verified.ok ? verified.context : null;
-    const requestMeta = {
-      ip: clientContext?.ip || getTrustedRequestIp(req),
-      network: clientContext ? networkKey(clientContext.ip) : networkKey(getTrustedRequestIp(req)),
-      userAgent: clientContext?.userAgent ?? req.headers["user-agent"],
-      deviceId: clientContext?.deviceId || null,
-    };
     if (!(await allowOrderSubmission(req, res, orgId, req.params.handle, mode, clientContext))) return;
 
     const supabase = getServiceSupabase();
@@ -13005,39 +12984,32 @@ async function handlePublicHandleOrderSubmit(req, res) {
       return res.status(400).json({ error: "Each item must have a variantId" });
     }
 
-    const protection = await protectOrderSubmission({
-      mode,
-      input: {
-        orgId,
-        route: "public_v1",
-        customerName,
-        phone: cleanPhone,
-        address,
-        notes,
-        items,
-        website: req.body?.website,
-        turnstileToken: body.turnstileToken || body.turnstile_token,
-        clientSessionId: body.clientSessionId || body.client_session_id,
-        checkoutStartedAt: body.checkoutStartedAt || body.checkout_started_at,
-        shippingZoneId,
-      },
-      requestMeta,
-      dependencies: { redis: redisClient, supabase },
+    const protection = await assessOrderRisk({
+      orgId, route: "public_v1", body: { ...body, customerName, phone: cleanPhone, shippingZoneId },
+      headers: req.headers, requestIp: getTrustedRequestIp(req),
+      deps: { supabase, redis: redisClient, secret: process.env.ORDER_PROTECTION_HASH_SECRET,
+        contextSecret: process.env.STOREFRONT_CONTEXT_SECRET, turnstileSecret: process.env.TURNSTILE_SECRET_KEY,
+        getSetting: async key => (await getSettings([key]))[key],
+        fraudLookup: async normalizedPhone => {
+          const cached = await readFraudCache(supabase, orgId, normalizedPhone);
+          if (cached?.status !== "ok" || cacheState(cached, new Date()) !== "fresh" || !cached.summary) return null;
+          return { totalParcels: cached.summary.total_parcels, successRate: cached.summary.success_rate };
+        } },
     });
-    if (protection.protection.decision === "REVIEW") {
+    if (protection.enforced && protection.decision === "HOLD") {
       return res.status(202).json({
         success: false,
         decision: "review",
-        reviewId: protection.review?.id || null,
-        message: protection.protection.customerMessage,
+        reviewId: protection.reviewId,
+        message: "Your order is being verified. We will contact you shortly.",
       });
     }
-    if (protection.protection.decision === "BLOCK") {
-      return res.status(protection.protection.retryable ? 503 : 403).json({
+    if (protection.enforced && protection.decision === "BLOCK") {
+      return res.status(protection.retryable ? 503 : 403).json({
         decision: "block",
-        error: protection.protection.retryable ? "protection_unavailable" : "order_not_accepted",
-        message: protection.protection.customerMessage,
-        retryable: protection.protection.retryable,
+        error: protection.retryable ? "protection_unavailable" : "order_not_accepted",
+        message: protection.retryable ? "Order verification is temporarily unavailable. Please try again shortly." : "We could not accept this order.",
+        retryable: Boolean(protection.retryable),
       });
     }
 
@@ -13202,6 +13174,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
       .select("*")
       .single();
     if (orderErr) throw orderErr;
+    await finalizeOrderRisk({ supabase, orgId, attemptId: protection.attemptId, orderId: order.id });
 
     const { error: orderItemsError } = await supabase.from("order_items").insert(
       orderItems.map((item) => ({
