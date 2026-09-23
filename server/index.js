@@ -8495,6 +8495,11 @@ app.delete("/api/orders", async (req, res) => {
       .select("id");
 
     if (error) throw error;
+    const deletedIds = (data || []).map((row) => row.id);
+    // A deleted order must not linger as "Open order" on a risk attempt.
+    if (deletedIds.length) {
+      await supabase.from("order_risk_attempts").update({ order_id: null }).in("order_id", deletedIds).eq("org_id", orgId);
+    }
     for (const row of data || []) {
       await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: row.id, orderTable: "orders", eventType: "order.deleted", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: "Deleted order" }));
     }
@@ -13017,7 +13022,16 @@ app.get("/api/order-protection/attempts/:id", async (req, res) => {
       attempt.order_id ? supabase.from("orders").select("id, order_number, status, courier_status").eq("org_id", orgId).eq("id", attempt.order_id).maybeSingle() : null,
     ]);
     if (orderResult?.error) throw orderResult.error;
-    return res.json({ attempt: toAttemptDetail(attempt), related: related.map(toAttemptSummary), review, order: orderResult?.data ?? null });
+    // The linked order may have been deleted since (e.g. test cleanup) — heal
+    // the stale link so the UI never offers an "Open order" dead end.
+    let detail = toAttemptDetail(attempt);
+    if (attempt.order_id && !orderResult?.data) {
+      try {
+        await supabase.from("order_risk_attempts").update({ order_id: null }).eq("org_id", orgId).eq("id", attempt.id);
+        detail = { ...detail, order_id: null };
+      } catch { console.warn("[OrderRisk] stale order link cleanup failed"); }
+    }
+    return res.json({ attempt: detail, related: related.map(toAttemptSummary), review, order: orderResult?.data ?? null });
   } catch (error) { return sendError(res, error); }
 });
 
