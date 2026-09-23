@@ -1,42 +1,16 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CaretDown, CaretUp } from "@phosphor-icons/react";
-import { apiFetch } from "@/lib/api";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Chip } from "@/components/base/badges/chip";
 import { activityActionColor, type ActivityAction } from "@/lib/activityLogPresentation";
-
-type Change = {
-  type?: string;
-  field?: string;
-  label?: string;
-  before?: unknown;
-  after?: unknown;
-  addition_reason?: string;
-};
-
-type Event = {
-  id: string;
-  occurred_at: string | null;
-  event_type?: string;
-  action?: string;
-  actor_display_name: string;
-  summary?: string;
-  reason_code?: string | null;
-  reason_note?: string | null;
-  changes?: Change[];
-};
-
-type Provenance = {
-  origin_source?: string | null;
-  created_at?: string | null;
-  created_by_display_name?: string | null;
-  assigned_to_display_name?: string | null;
-  last_edited_by?: string | null;
-  viewer_count?: number;
-};
-
-type Response = { events: Event[]; provenance?: Provenance };
+import {
+  ORDER_ACTIVITY_PREFETCH_STALE_MS,
+  orderActivityQueryOptions,
+  type OrderActivityEvent as Event,
+} from "@/lib/orderActivityQuery";
+import { activityReasonLabel, layoutActivityChanges } from "@/lib/orderActivityPresentation";
+import { OrderActivityChangeList, OrderActivityChangeSummary } from "@/components/OrderActivityChangeDetails";
 
 const RECENT_LIMIT = 5;
 const ACTIVITY_ACTIONS = new Set<ActivityAction>([
@@ -44,25 +18,6 @@ const ACTIVITY_ACTIONS = new Set<ActivityAction>([
   "dismissed", "converted", "expired", "viewed", "edited", "assigned", "messaged",
   "fraud_checked", "courier_updated", "printed",
 ]);
-const REASONS: Record<string, string> = {
-  customer_changed_mind: "Customer changed their mind",
-  customer_unreachable: "Customer unreachable",
-  duplicate_order: "Duplicate order",
-  wrong_product_or_quantity: "Wrong product or quantity",
-  pricing_issue: "Pricing issue",
-  delivery_charge_objection: "Delivery-charge objection",
-  delivery_delay: "Delivery delay",
-  out_of_stock: "Out of stock",
-  fraud_or_suspicious: "Fraud or suspicious order",
-  invalid_contact_information: "Invalid contact information",
-  service_area_unavailable: "Service area unavailable",
-  test_or_fake_order: "Test or fake order",
-  upsell: "Upsell",
-  customer_request: "Customer request",
-  correction: "Correction",
-  replacement: "Replacement",
-  other: "Other",
-};
 
 const humanize = (value?: string | null) =>
   value
@@ -128,6 +83,85 @@ function ActivityLogIcon() {
   );
 }
 
+function ReasonLine({ event }: { event: Event }) {
+  if (!event.reason_code && !event.reason_note) return null;
+  return (
+    <p className="text-[11px] text-black/65">
+      {event.reason_code && <span>{activityReasonLabel(event.reason_code)}</span>}
+      {event.reason_code && event.reason_note ? " · " : null}
+      {event.reason_note && <span>{event.reason_note}</span>}
+    </p>
+  );
+}
+
+function EventHeading({ event, heading }: { event: Event; heading: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <Chip
+        variant="caption"
+        color={eventChipColor(event)}
+        className="max-w-[70%] overflow-hidden text-ellipsis"
+      >
+        {heading}
+      </Chip>
+      <span className="truncate text-[11px] font-normal text-black/50">by {event.actor_display_name}</span>
+    </span>
+  );
+}
+
+/** Full-page Logs row: heading on the left, what changed in the middle, time on the right. */
+function FullEventRow({ event }: { event: Event }) {
+  const changes = event.changes || [];
+  const layout = layoutActivityChanges(changes);
+  const summary = event.summary || humanize(event.event_type || event.action);
+  // The status chips already say where it moved to, so the heading stays short.
+  const heading = layout.status && /^status changed/i.test(summary) ? "Status changed" : summary;
+  const hasInline = Boolean(
+    layout.status || layout.total || layout.items.length || layout.inlineFields.length
+    || event.reason_code || event.reason_note,
+  );
+  const hasList = layout.items.length > 0 || layout.listFields.length > 0;
+
+  return (
+    <li
+      data-testid="activity-event"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-2 border-b border-black/[0.05] py-3 last:border-0 sm:grid-cols-[minmax(14rem,1fr)_auto_minmax(14rem,1fr)]"
+    >
+      <div data-testid="activity-event-heading" className="min-w-0 sm:pt-0.5">
+        <EventHeading event={event} heading={heading} />
+        <p className="mt-1 pl-1 text-[10px] text-black/40">{timestamp(event.occurred_at)}</p>
+      </div>
+
+      {hasInline && (
+        <div
+          data-testid="activity-event-inline"
+          className="col-span-2 row-start-2 flex min-w-0 flex-col gap-1.5 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:items-center sm:text-center"
+        >
+          <OrderActivityChangeSummary layout={layout} />
+          <ReasonLine event={event} />
+        </div>
+      )}
+
+      <div
+        data-testid="activity-event-time"
+        className="col-start-2 row-start-1 whitespace-nowrap pt-1 text-right text-[10px] text-black/45 sm:col-start-3"
+      >
+        {timeAgo(event.occurred_at)}
+      </div>
+
+      {hasList && (
+        <div
+          data-testid="activity-event-changes"
+          className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2"
+        >
+          <OrderActivityChangeList layout={layout} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** Compact popover row: collapsed overview that expands to a before/after table. */
 function EventRow({ event }: { event: Event }) {
   const [open, setOpen] = useState(false);
   const changes = event.changes || [];
@@ -142,16 +176,7 @@ function EventRow({ event }: { event: Event }) {
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 py-2 text-left"
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <Chip
-            variant="caption"
-            color={eventChipColor(event)}
-            className="max-w-[70%] overflow-hidden text-ellipsis"
-          >
-            {summary}
-          </Chip>
-          <span className="truncate text-[11px] font-normal text-black/50">by {event.actor_display_name}</span>
-        </span>
+        <span className="flex min-w-0 flex-1"><EventHeading event={event} heading={summary} /></span>
         <span className="shrink-0 text-[10px] text-black/45">{timeAgo(event.occurred_at)}</span>
         {open ? (
           <CaretUp size={11} weight="light" className="shrink-0 text-black/50" />
@@ -162,13 +187,7 @@ function EventRow({ event }: { event: Event }) {
 
       {open && (
         <div className="pb-2 pl-1">
-          {(event.reason_code || event.reason_note) && (
-            <p className="text-[11px] text-black/65">
-              {event.reason_code && <span>{REASONS[event.reason_code] || humanize(event.reason_code)}</span>}
-              {event.reason_code && event.reason_note ? " · " : null}
-              {event.reason_note && <span>{event.reason_note}</span>}
-            </p>
-          )}
+          <ReasonLine event={event} />
 
           {changes.length > 0 && (
             <dl className="mt-1.5 divide-y divide-black/[0.05] border-t border-black/[0.06]">
@@ -183,7 +202,7 @@ function EventRow({ event }: { event: Event }) {
                   <dd className="break-words text-black">
                     {display(change.after)}
                     {change.addition_reason
-                      ? ` (${REASONS[change.addition_reason] || humanize(change.addition_reason)})`
+                      ? ` (${activityReasonLabel(change.addition_reason)})`
                       : ""}
                   </dd>
                 </div>
@@ -198,33 +217,55 @@ function EventRow({ event }: { event: Event }) {
   );
 }
 
-export function OrderActivityTimeline({ endpoint, enabled = true }: { endpoint: string; enabled?: boolean }) {
+const LIVE_POLL_MS = 2_000;
+
+export type OrderActivityTimelineVariant = "compact" | "full";
+
+export function OrderActivityTimeline({
+  endpoint,
+  enabled = true,
+  variant = "compact",
+}: {
+  endpoint: string;
+  enabled?: boolean;
+  variant?: OrderActivityTimelineVariant;
+}) {
   const [all, setAll] = useState(false);
+  const full = variant === "full";
   const query = useQuery({
-    queryKey: [endpoint],
+    ...orderActivityQueryOptions(endpoint),
     enabled,
-    staleTime: 15_000,
-    queryFn: async (): Promise<Response> => {
-      const response = await apiFetch(endpoint);
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Could not load activity");
-      return body;
-    },
+    staleTime: full ? 0 : ORDER_ACTIVITY_PREFETCH_STALE_MS,
+    // Polling pauses automatically while the browser tab is hidden.
+    refetchInterval: full ? LIVE_POLL_MS : false,
+    refetchOnWindowFocus: full ? "always" : undefined,
   });
 
   if (!enabled) return null;
 
   const events = query.data?.events || [];
   const provenance = query.data?.provenance;
-  const visibleEvents = all ? events : events.slice(0, RECENT_LIMIT);
+  const visibleEvents = full || all ? events : events.slice(0, RECENT_LIMIT);
   const latestEvent = events[0];
   const oldestEvent = events.at(-1);
 
   return (
-    <section aria-label="Order activity" className="rounded-xl bg-white p-3">
+    <section aria-label="Order activity" className={full ? "bg-white px-5 py-4" : "rounded-xl bg-white p-3"}>
       <div className="flex items-center gap-1.5">
         <ActivityLogIcon />
         <p className="text-[8px] font-medium uppercase tracking-[0.25em] text-black/60">Activity</p>
+        {full && (
+          <span
+            data-testid="activity-live-indicator"
+            className="ml-auto flex items-center gap-1.5 text-[10px] font-medium text-black/55"
+          >
+            <span aria-hidden className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            </span>
+            Live
+          </span>
+        )}
       </div>
 
       {query.isLoading ? (
@@ -267,8 +308,8 @@ export function OrderActivityTimeline({ endpoint, enabled = true }: { endpoint: 
             </div>
           )}
 
-          <ol className="mt-1">{visibleEvents.map((event) => <EventRow key={event.id} event={event} />)}</ol>
-          {events.length > RECENT_LIMIT && (
+          <ol className="mt-1">{visibleEvents.map((event) => (full ? <FullEventRow key={event.id} event={event} /> : <EventRow key={event.id} event={event} />))}</ol>
+          {!full && events.length > RECENT_LIMIT && (
             <button type="button" onClick={() => setAll(!all)} className="mt-3 text-[11px] font-medium underline">
               {all ? "Show recent activity" : "View all activity"}
             </button>

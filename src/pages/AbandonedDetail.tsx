@@ -10,7 +10,10 @@ import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/Cus
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { CartPanel } from "@/components/order-editor/CartPanel";
 import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
+import { OrderEditorTabPanels, OrderEditorTabSwitch } from "@/components/order-editor/OrderEditorTabs";
+import { useOrderEditorTab } from "@/hooks/useOrderEditorTab";
 import { createActivityGroupId, orderItemActivityKey, type AdditionReason } from "@/lib/orderActivity";
+import { prefetchOrderActivity, refreshOrderActivity } from "@/lib/orderActivityQuery";
 import type {
   AbandonedCheckout,
   AbandonedCheckoutResponse,
@@ -63,6 +66,7 @@ export default function AbandonedDetail() {
   const draftId = id ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [editorTab, setEditorTab] = useOrderEditorTab();
   const [draft, setDraft] = useState<OrderEditorItem[]>([]);
   const [customer, setCustomer] = useState<CustomerDraft>({ customerName: "", phone: "", address: "" });
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -121,7 +125,9 @@ export default function AbandonedDetail() {
   useEffect(() => {
     if (!checkout || viewedDraftId.current === checkout.id) return;
     viewedDraftId.current = checkout.id;
-    void apiFetch(`/api/abandoned-checkouts/${checkout.id}/activity/view`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_surface: "abandoned_queue" }) }).then((response) => response.ok && queryClient.invalidateQueries({ queryKey: [`/api/abandoned-checkouts/${checkout.id}/activity`] })).catch(() => {});
+    const activityEndpoint = `/api/abandoned-checkouts/${checkout.id}/activity`;
+    void prefetchOrderActivity(queryClient, activityEndpoint);
+    void apiFetch(`${activityEndpoint}/view`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_surface: "abandoned_queue" }) }).then((response) => response.ok && refreshOrderActivity(queryClient, activityEndpoint)).catch(() => {});
   }, [checkout, queryClient]);
 
   // When products load, try to match existing cart items (product_id: null) to catalog products by name
@@ -243,7 +249,7 @@ export default function AbandonedDetail() {
       setCustomer(customerFromDraft(updated));
       setDraft(updated.cart.map((line, index) => draftLineToItem(line, index, updated.id)));
       setAdditionReasons({});
-      void queryClient.invalidateQueries({ queryKey: [`/api/abandoned-checkouts/${draftId}/activity`] });
+      void refreshOrderActivity(queryClient, `/api/abandoned-checkouts/${draftId}/activity`);
       toast.success("Checkout updated");
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : "Could not save checkout edits");
@@ -254,7 +260,7 @@ export default function AbandonedDetail() {
 
   return (
     <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
-      <div data-testid="abandoned-editor-toolbar" className="sticky top-0 z-30 flex items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
+      <div data-testid="abandoned-editor-toolbar" className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5">
           <h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Abandoned editor</h1>
@@ -264,6 +270,7 @@ export default function AbandonedDetail() {
             </span>
           )}
         </div>
+        {checkout && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} className="sm:ml-auto" />}
       </div>
 
       {!checkout ? (
@@ -278,13 +285,23 @@ export default function AbandonedDetail() {
           </div>
         )
       ) : (
-        <div className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
-          <CustomerPanel order={{}} customer={customer} disabled={saving} onApply={setCustomer} activityTimeline={checkout ? <OrderActivityTimeline endpoint={`/api/abandoned-checkouts/${checkout.id}/activity`} /> : undefined} />
-          <div data-testid="abandoned-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
-            <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit locked={false} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
-             <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={saveError} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} status={null} onStatusChange={() => {}} notes="" onNotesChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => { void save(); }} onCancel={goBack} hideOrderSections requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} />
-          </div>
-        </div>
+        <OrderEditorTabPanels
+          tab={editorTab}
+          logs={
+            <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.07]">
+              <OrderActivityTimeline endpoint={`/api/abandoned-checkouts/${checkout.id}/activity`} variant="full" />
+            </div>
+          }
+          details={
+            <div className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
+              <CustomerPanel order={{}} customer={customer} disabled={saving} onApply={setCustomer} />
+              <div data-testid="abandoned-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
+                <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit locked={false} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
+                <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={saveError} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} status={null} onStatusChange={() => {}} notes="" onNotesChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => { void save(); }} onCancel={goBack} hideOrderSections requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} />
+              </div>
+            </div>
+          }
+        />
       )}
     </div>
   );
