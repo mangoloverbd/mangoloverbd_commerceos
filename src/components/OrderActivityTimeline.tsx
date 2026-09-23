@@ -217,7 +217,7 @@ function EventRow({ event }: { event: Event }) {
   );
 }
 
-const LIVE_POLL_MS = 2_000;
+const LIVE_POLL_MS = 10_000;
 
 export type OrderActivityTimelineVariant = "compact" | "full";
 

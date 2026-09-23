@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
+import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -153,15 +154,14 @@ export default function SocialInbox({ platform }: Props) {
       .then((d) => setConversations(d.conversations || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-
-    const interval = setInterval(() => {
-      apiFetch(`/api/social/conversations/${platform}`)
-        .then((r) => r.json())
-        .then((d) => setConversations(d.conversations || []))
-        .catch(() => {});
-    }, 2000);
-    return () => clearInterval(interval);
   }, [platform]);
+
+  useVisibleInterval(() => {
+    apiFetch(`/api/social/conversations/${platform}`)
+      .then((r) => r.json())
+      .then((d) => setConversations(d.conversations || []))
+      .catch(() => {});
+  }, 2000);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -178,18 +178,17 @@ export default function SocialInbox({ platform }: Props) {
       })
       .catch(() => {})
       .finally(() => setMsgLoading(false));
-
-    const interval = setInterval(() => {
-      apiFetch(`/api/social/messages/${selectedId}`)
-        .then((r) => r.json())
-        .then((d) => {
-          setMessages(d.messages || []);
-          setPausedAi(d.paused_ai || false);
-        })
-        .catch(() => {});
-    }, 2000);
-    return () => clearInterval(interval);
   }, [selectedId]);
+
+  useVisibleInterval(() => {
+    apiFetch(`/api/social/messages/${selectedId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setMessages(d.messages || []);
+        setPausedAi(d.paused_ai || false);
+      })
+      .catch(() => {});
+  }, 2000, Boolean(selectedId));
 
   useEffect(() => {
     isInitialLoad.current = true;

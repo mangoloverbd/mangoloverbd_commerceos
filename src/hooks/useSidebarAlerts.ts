@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 
 export interface SidebarAlert {
   id: string;
@@ -114,9 +115,9 @@ export function useSidebarAlerts() {
     }
     setLoading(true);
     fetch();
-    const intervalId = window.setInterval(fetch, 60000);
-    return () => window.clearInterval(intervalId);
   }, [user?.id, fetch]);
+
+  useVisibleInterval(fetch, 5 * 60_000, Boolean(user));
 
   const stalePending = alerts.filter((a) => a.type === "stale_pending");
   const unsentConfirmed = alerts.filter((a) => a.type === "unsent_confirmed");
