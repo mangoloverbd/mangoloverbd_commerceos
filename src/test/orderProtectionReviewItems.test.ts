@@ -69,3 +69,12 @@ describe("describeReviewItems", () => {
     expect(supabase.calls).toHaveLength(0);
   });
 });
+
+describe("withReasonLabels", () => {
+  it("adds plain labels for known risk signal codes and skips unknown ones", async () => {
+    const { withReasonLabels } = await import("../../server/orderProtectionStore.js");
+    const [review] = withReasonLabels([{ id: "r1", reason_codes: ["address_incomplete", "phone_velocity_15m"] }]);
+    expect(review.reason_labels).toEqual({ address_incomplete: "Incomplete address" });
+    expect(withReasonLabels([{ id: "r2", reason_codes: null }])[0].reason_labels).toEqual({});
+  });
+});
