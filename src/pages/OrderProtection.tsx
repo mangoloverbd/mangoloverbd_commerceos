@@ -1,5 +1,5 @@
-import { motion } from "framer-motion";
-import { useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { useState, type KeyboardEvent } from "react";
 import { OrderProtectionReviewQueue } from "@/components/OrderProtectionReviewQueue";
 import { RiskAccuracyPanel, RiskAttemptsPanel, RiskListsPanel, RiskSettingsPanel } from "@/components/risk/RiskDashboard";
 
@@ -22,14 +22,29 @@ const panelLabels: Record<OrderProtectionTab, string> = {
 };
 
 export default function OrderProtection() {
+  const reduceMotion = useReducedMotion();
   const [tab, setTab] = useState<OrderProtectionTab>("reviews");
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = tabs.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextTab = tabs[nextIndex][0];
+    setTab(nextTab);
+    document.getElementById(`order-protection-tab-${nextTab}`)?.focus();
+  }
 
   return (
     <div className="min-h-full space-y-6 bg-[#FAFAF8] p-1 max-md:p-2 lg:p-2">
       <motion.div
-        initial={{ opacity: 0, y: 6 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: reduceMotion ? 0 : 0.4 }}
         className="relative space-y-4"
       >
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -43,7 +58,7 @@ export default function OrderProtection() {
       </motion.div>
 
       <div role="tablist" aria-label="Order protection" className="flex gap-5 border-b border-black/10 text-sm">
-        {tabs.map(([value, label]) => (
+        {tabs.map(([value, label], index) => (
           <button
             key={value}
             id={`order-protection-tab-${value}`}
@@ -51,8 +66,10 @@ export default function OrderProtection() {
             role="tab"
             aria-selected={tab === value}
             aria-controls={`order-protection-panel-${value}`}
+            tabIndex={tab === value ? 0 : -1}
             className={`pb-3 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-black ${tab === value ? "border-b border-black text-black" : "text-black/50 hover:text-black"}`}
             onClick={() => setTab(value)}
+            onKeyDown={(event) => handleTabKeyDown(event, index)}
           >
             {label}
           </button>
@@ -61,9 +78,9 @@ export default function OrderProtection() {
 
       <motion.div
         key={tab}
-        initial={{ opacity: 0, y: 8 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.4 }}
+        transition={{ delay: reduceMotion ? 0 : 0.1, duration: reduceMotion ? 0 : 0.4 }}
         id={`order-protection-panel-${tab}`}
         className="overflow-hidden rounded-2xl bg-white"
         role="tabpanel"
