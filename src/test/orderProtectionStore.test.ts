@@ -8,6 +8,10 @@ import {
 } from "../../server/orderProtectionStore.js";
 
 describe("order protection storage adapters", () => {
+  test("missing Turnstile configuration does not penalize checkout", async () => {
+    expect(await verifyTurnstileToken({ token: "x", secret: "" })).toEqual({ ok: false, unconfigured: true });
+    expect(await verifyTurnstileToken({ token: "", secret: "configured" })).toEqual({ ok: false });
+  });
   test("verifies a Turnstile token without exposing the secret in the request result", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       status: 200,

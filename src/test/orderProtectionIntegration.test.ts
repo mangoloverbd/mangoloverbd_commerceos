@@ -44,6 +44,42 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("order protection pipeline", () => {
+  test("Redis counts unavailable produces a durable review, not a BLOCK", async () => {
+    const createReview = vi.fn().mockResolvedValue({ id: "review-redis" });
+    const result = await protectOrderSubmission({
+      mode: "active", input,
+      dependencies: dependencies({ redis: null, createReview, recordEvent: vi.fn() }),
+    });
+    expect(result.protection.decision).toBe("REVIEW");
+    expect(result.review?.id).toBe("review-redis");
+    expect(createReview).toHaveBeenCalledOnce();
+  });
+  test("Redis exceptions while counting, writing, and reserving hold the order", async () => {
+    const createReview = vi.fn().mockResolvedValue({ id: "review-exception" });
+    const redis = {
+      ...dependencies().redis,
+      get: vi.fn().mockRejectedValue(new Error("redis unavailable")),
+      incr: vi.fn().mockRejectedValue(new Error("redis unavailable")),
+      set: vi.fn().mockRejectedValue(new Error("redis unavailable")),
+    };
+    const result = await protectOrderSubmission({
+      mode: "active", input,
+      dependencies: dependencies({ redis, createReview, recordEvent: vi.fn() }),
+    });
+    expect(result.protection.decision).toBe("REVIEW");
+    expect(result.review?.id).toBe("review-exception");
+  });
+
+  test("an unavailable duplicate lookup never becomes an allow", async () => {
+    const createReview = vi.fn().mockResolvedValue({ id: "review-lookup" });
+    const redis = { ...dependencies().redis, exists: vi.fn().mockRejectedValue(new Error("redis unavailable")) };
+    const result = await protectOrderSubmission({
+      mode: "active", input,
+      dependencies: dependencies({ redis, createReview, recordEvent: vi.fn() }),
+    });
+    expect(result.protection.decision).toBe("REVIEW");
+    expect(result.review?.id).toBe("review-lookup");
+  });
   test("trusted device becomes the session counter identity and verified IP reaches Turnstile", async () => {
     const recordPhoneSignal = vi.fn();
     const verifyTurnstile = vi.fn().mockResolvedValue({ ok: true });

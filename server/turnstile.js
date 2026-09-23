@@ -2,9 +2,8 @@ const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/sit
 const TURNSTILE_TIMEOUT_MS = 5_000;
 
 export async function verifyTurnstileToken({ token, remoteIp, secret, fetchImpl = fetch } = {}) {
-  if (typeof token !== "string" || !token.trim() || typeof secret !== "string" || !secret.trim()) {
-    return { ok: false };
-  }
+  if (typeof secret !== "string" || !secret.trim()) return { ok: false, unconfigured: true };
+  if (typeof token !== "string" || !token.trim()) return { ok: false };
 
   const body = new URLSearchParams({ secret, response: token.trim() });
   if (typeof remoteIp === "string" && remoteIp.trim()) body.set("remoteip", remoteIp.trim());

@@ -79,7 +79,6 @@ import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
 import { getTrustedRequestIp, networkKey } from "./risk/network.js";
 import { PROTECTION_MODE_SETTING_SUFFIX, resolveProtectionMode } from "./risk/mode.js";
-import { validateAddressWithAI } from "./addressValidation.js";
 import {
   FRAUD_QUOTA_RESERVE,
   FRAUD_WARM_BATCH,
@@ -7493,7 +7492,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
         shippingZoneId: req.body?.shipping_zone_id,
       },
       requestMeta,
-      dependencies: { redis: redisClient, supabase, validateAddress: validateAddressWithAI },
+      dependencies: { redis: redisClient, supabase },
     });
     if (protection.protection.decision === "REVIEW") {
       return res.status(202).json({ ok: true, decision: "review", review_id: protection.review?.id || null });
@@ -13017,7 +13016,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
         shippingZoneId,
       },
       requestMeta,
-      dependencies: { redis: redisClient, supabase, validateAddress: validateAddressWithAI },
+      dependencies: { redis: redisClient, supabase },
     });
     if (protection.protection.decision === "REVIEW") {
       return res.status(202).json({

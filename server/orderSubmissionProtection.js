@@ -16,10 +16,8 @@ const reasonCodeValues = [
   "address_missing",
   "address_too_short",
   "address_too_vague",
-  "address_invalid",
   "abusive_content",
   "test_or_fake_content",
-  "address_validation_unavailable",
 ];
 
 export const ORDER_PROTECTION_DECISIONS = Object.freeze([...decisionValues]);
@@ -38,7 +36,6 @@ export const ORDER_PROTECTION_THRESHOLDS = Object.freeze({
   phoneAttempts24h: 8,
   phoneSessionCount: 3,
   phoneNetworkCount: 2,
-  aiHardBlockRiskScore: 60,
   reviewTtlDays: 30,
 });
 
@@ -52,7 +49,6 @@ const SCORE_WEIGHTS = Object.freeze({
   addressVague: 10,
 });
 
-const ADDRESS_ACTIONS = new Set(["allow", "review", "block"]);
 const MAX_STRING_LENGTHS = Object.freeze({
   orgId: 120,
   route: 40,
@@ -163,36 +159,6 @@ export function calculateProtectionScore(signals) {
   return Math.min(100, score);
 }
 
-export function parseAddressValidationResult(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("Address validation result must be an object");
-  }
-  if (!ADDRESS_ACTIONS.has(value.action)
-    || typeof value.addressValid !== "boolean"
-    || typeof value.addressPresent !== "boolean"
-    || typeof value.abuse !== "boolean"
-    || typeof value.testOrFake !== "boolean"
-    || typeof value.vague !== "boolean"
-    || !Number.isSafeInteger(value.riskScore)
-    || value.riskScore < 0
-    || value.riskScore > 100
-    || typeof value.reason !== "string") {
-    throw new TypeError("Malformed address validation result");
-  }
-  const reason = value.reason.trim();
-  if (reason.length > 240) throw new RangeError("Address validation reason is too long");
-  return {
-    action: value.action,
-    addressValid: value.addressValid,
-    addressPresent: value.addressPresent,
-    abuse: value.abuse,
-    testOrFake: value.testOrFake,
-    vague: value.vague,
-    riskScore: value.riskScore,
-    reason,
-  };
-}
-
 function result(decision, score, reasonCodes, retryable = false) {
   return {
     decision,
@@ -220,9 +186,12 @@ export async function evaluateProtection(rawInput, dependencies = {}) {
   if (signals.testOrFakeContent) hardContentReasons.push("test_or_fake_content");
   if (hardContentReasons.length > 0) return result("BLOCK", 100, hardContentReasons);
 
+  let turnstileFailed = false;
   if (typeof dependencies.validateTurnstile === "function") {
-    const turnstileResult = await dependencies.validateTurnstile(input);
-    if (!turnstileResult?.ok) return result("BLOCK", 100, ["turnstile_failed"], Boolean(turnstileResult?.unavailable));
+    try {
+      const check = await dependencies.validateTurnstile(input);
+      turnstileFailed = !check?.ok && !check?.unconfigured;
+    } catch { turnstileFailed = true; }
   }
 
   if (typeof dependencies.isDuplicate === "function" && await dependencies.isDuplicate(input)) {
@@ -257,38 +226,11 @@ export async function evaluateProtection(rawInput, dependencies = {}) {
   if (scoredSignals.phoneManySessions) reasonCodes.push("phone_many_sessions");
   if (scoredSignals.phoneNetworkChange) reasonCodes.push("phone_network_change");
   if (scoredSignals.checkoutTooFast) reasonCodes.push("checkout_too_fast");
-
-  // Every otherwise eligible order receives the same server-side assessment.
-  // Deterministic checks above still short-circuit obvious abuse and malformed input.
-  if (typeof dependencies.validateAddress !== "function") {
-    return result("BLOCK", 100, ["address_validation_unavailable"], true);
-  }
-  let addressResult;
-  try {
-    addressResult = parseAddressValidationResult(await dependencies.validateAddress(input));
-  } catch {
-    return result("BLOCK", 100, ["address_validation_unavailable"], true);
-  }
-  if (addressResult.abuse) reasonCodes.push("abusive_content");
-  if (addressResult.testOrFake) reasonCodes.push("test_or_fake_content");
-  if (!addressResult.addressPresent || !addressResult.addressValid) reasonCodes.push("address_invalid");
-  if (addressResult.vague) reasonCodes.push("address_too_vague");
-  if (addressResult.abuse || addressResult.testOrFake || !addressResult.addressPresent || !addressResult.addressValid) {
-    return result("BLOCK", 100, reasonCodes);
-  }
-
-  const score = calculateProtectionScore({
-    ...scoredSignals,
-    addressVague: Boolean(addressResult.vague),
-  });
-  const aiRequestsReview = addressResult
-    && (addressResult.action === "review" || addressResult.riskScore >= ORDER_PROTECTION_THRESHOLDS.reviewScore);
-  if (addressResult.action === "block" || addressResult.riskScore >= ORDER_PROTECTION_THRESHOLDS.aiHardBlockRiskScore) {
-    return result("BLOCK", 100, reasonCodes.length > 0 ? reasonCodes : ["address_invalid"]);
-  }
-  const phoneBurstRequestsReview = scoredSignals.phoneVelocity15m;
+  if (scoredSignals.addressVague) reasonCodes.push("address_too_vague");
+  if (turnstileFailed) reasonCodes.push("turnstile_failed");
+  const score = Math.min(100, calculateProtectionScore(scoredSignals) + (turnstileFailed ? 20 : 0));
   return result(
-    score >= ORDER_PROTECTION_THRESHOLDS.reviewScore || aiRequestsReview || phoneBurstRequestsReview
+    score >= ORDER_PROTECTION_THRESHOLDS.reviewScore || scoredSignals.phoneVelocity15m || scoredSignals.addressVague || turnstileFailed || dependencies.dependencyUnavailable
       ? "REVIEW"
       : "ALLOW",
     score,
