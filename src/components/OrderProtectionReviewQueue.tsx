@@ -381,10 +381,10 @@ export function OrderProtectionReviewQueue() {
                     </button>
                   )}
                 </p>
-                <div data-testid={`risk-reasons-${review.id}`} className="mt-2 flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5">
+                <div data-testid={`risk-reasons-${review.id}`} className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
                   <span className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Risk reasons</span>
                   {review.reason_codes.length > 0 ? review.reason_codes.map((reason) => (
-                    <Chip key={reason} variant="caption" color="rose" className="shrink-0">{reason}</Chip>
+                    <Chip key={reason} variant="caption" color="rose">{reason}</Chip>
                   )) : <span className="text-xs text-black">None</span>}
                 </div>
               </div>
