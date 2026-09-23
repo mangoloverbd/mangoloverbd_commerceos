@@ -1,4 +1,44 @@
 import { isIP } from "node:net";
+import networks from "./dictionaries/bdNetworks.json" with { type: "json" };
+
+export const MOBILE_ASNS = Object.freeze([24389, 24432, 45245, 45925]);
+
+function numericIp(ip) {
+  if (isIP(ip) === 4) return { family: "v4", value: ip.split(".").reduce((value, octet) => (value << 8n) + BigInt(octet), 0n) };
+  if (isIP(ip) !== 6) return null;
+  const groups = ipv6Groups(ip);
+  if (!groups) return null;
+  if (groups.slice(0, 5).every(value => value === 0) && groups[5] === 0xffff) {
+    return { family: "v4", value: BigInt((groups[6] << 16) + groups[7]) };
+  }
+  return { family: "v6", value: groups.reduce((value, group) => (value << 16n) + BigInt(group), 0n) };
+}
+
+const ranges = Object.fromEntries(["v4", "v6"].map(family => [family, networks.ranges[family].map(([start, end, asn]) => [numericIp(start)?.value, numericIp(end)?.value, asn]).filter(([start, end]) => start != null && end != null).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)]));
+
+export function lookupAsn(ip) {
+  const target = typeof ip === "string" ? numericIp(ip) : null;
+  if (!target) return null;
+  const entries = ranges[target.family];
+  let low = 0, high = entries.length - 1, candidate = -1;
+  while (low <= high) {
+    const mid = (low + high) >>> 1;
+    if (entries[mid][0] <= target.value) { candidate = mid; low = mid + 1; }
+    else high = mid - 1;
+  }
+  // Ranges normally do not overlap, but check preceding candidates for longest coverage.
+  for (let index = candidate; index >= 0 && index >= candidate - 8; index--) {
+    if (target.value <= entries[index][1]) return entries[index][2];
+  }
+  return null;
+}
+
+export function classifyNetwork({ ip, country } = {}) {
+  const asn = lookupAsn(ip);
+  if (asn != null) return { type: MOBILE_ASNS.includes(asn) ? "mobile" : "broadband", asn };
+  if (typeof country === "string" && country.toUpperCase() !== "BD") return { type: "foreign", asn: null };
+  return { type: "unknown", asn: null };
+}
 
 const first = (value) => (Array.isArray(value) ? value[0] : value)?.split(",")[0]?.trim();
 const valid = (value) => typeof value === "string" && !value.includes("%") && isIP(value.trim()) ? value.trim() : null;
