@@ -40,6 +40,18 @@ it("keeps the held-review queue as the default view", () => {
   expect(screen.getByText("Held reviews")).toBeInTheDocument();
 });
 
+it("supports arrow-key navigation across the order protection tabs", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  const reviews = screen.getByRole("tab", { name: "Reviews" });
+  reviews.focus();
+  await user.keyboard("{ArrowRight}");
+
+  expect(screen.getByRole("tab", { name: "Attempts" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Attempts" })).toHaveFocus();
+});
+
 it("reports unknown accuracy rather than calling unlabeled orders genuine", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
