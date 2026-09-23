@@ -9,7 +9,7 @@ function numericIp(ip) {
   const groups = ipv6Groups(ip);
   if (!groups) return null;
   if (groups.slice(0, 5).every(value => value === 0) && groups[5] === 0xffff) {
-    return { family: "v4", value: BigInt((groups[6] << 16) + groups[7]) };
+    return { family: "v4", value: (BigInt(groups[6]) << 16n) + BigInt(groups[7]) };
   }
   return { family: "v6", value: groups.reduce((value, group) => (value << 16n) + BigInt(group), 0n) };
 }
