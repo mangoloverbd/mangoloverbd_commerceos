@@ -36,7 +36,7 @@ describe("steadfast webhook attribution isolation", () => {
 
   it("logs a meaningful transition as a courier webhook with no actor", () => {
     const section = webhook();
-    expect(section).toContain('select("id, org_id, courier_status, status")');
+    expect(section).toContain('select("id, org_id, courier_status, status, risk_attempt_id")');
     expect(section).toContain("buildStatusEvent");
     expect(section).toContain('actorKind: "courier_webhook"');
     expect(section).toContain("actorId: null");

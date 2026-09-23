@@ -46,11 +46,11 @@ export async function fetchProtectionEvents() {
   return readApiResponse<{ events: ProtectionEvent[] }>(response);
 }
 
-export async function updateProtectionReview(reviewId: string, action: "approve" | "reject" | "open" | "contacted") {
+export async function updateProtectionReview(reviewId: string, action: "approve" | "reject" | "open" | "contacted", rejectReason?: "fake" | "other") {
   const response = await apiFetch(`/api/order-protection/reviews/${encodeURIComponent(reviewId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ action, ...(action === "reject" && rejectReason ? { rejectReason } : {}) }),
   });
   return readApiResponse<{ success: boolean; decision: string; orderRef?: string }>(response);
 }

@@ -62,6 +62,6 @@ describe("order protection route wiring", () => {
   });
 
   it("bypasses the order submission limiter when protection is disabled", () => {
-    expect(source).toContain('if (mode === "off" || !rlOrderDevice || !rlOrderNetwork) return true;');
+    expect(source).toContain('if (mode !== "active" || !rlOrderDevice || !clientContext?.deviceId) return true;');
   });
 });

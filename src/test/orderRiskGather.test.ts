@@ -8,7 +8,7 @@ function database() {
   const supabase = { from(table: string) {
     const query = { table, methods: [] as Array<[string, ...unknown[]]> }; calls.push(query);
     const chain: Record<string, (...args: unknown[]) => unknown> = {};
-    for (const method of ["select", "eq", "or", "in", "limit", "gte"]) chain[method] = (...args: unknown[]) => { query.methods.push([method, ...args]); return chain; };
+    for (const method of ["select", "eq", "or", "in", "limit", "gte", "not"]) chain[method] = (...args: unknown[]) => { query.methods.push([method, ...args]); return chain; };
     chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve);
     return chain;
   } };
@@ -18,7 +18,7 @@ function database() {
 describe("risk fact gathering", () => {
   it("scopes every order and list query, and normalizes courier results", async () => {
     const { supabase, calls } = database();
-    const redis = { scard: async () => 1, zcard: async () => 1, get: async () => 1 };
+    const redis = { zcount: async () => 1, get: async () => 1 };
     const fraudLookup = vi.fn().mockResolvedValue({ totalParcels: 5, successRate: 90 });
     const facts = await gatherRiskFacts(ctx, { redis, supabase, fraudLookup });
     expect(facts).toMatchObject({ courier: { totalParcels: 5, successRate: 90 }, unavailable: [] });

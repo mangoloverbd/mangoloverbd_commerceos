@@ -2,7 +2,7 @@ import { classifyContent } from "./content.js";
 import { parseBdLocation } from "./location.js";
 import { createSignal, THRESHOLDS } from "./signals.js";
 
-const HATER_NAMES = new Set(["rajshahi", "natore", "naogaon", "chapainawabganj", "চাঁপাইনবাবগঞ্জ", "নাটোর", "রাজশাহী", "নওগাঁ"]);
+const HATER_CITY_DISTRICTS = new Map([["rajshahi", "15"], ["natore", "16"], ["chapainawabganj", "18"], ["chapai nawabganj", "18"], ["naogaon", "19"]]);
 
 export function detectSignals(ctx, facts, config = {}) {
   const signals = [];
@@ -12,14 +12,17 @@ export function detectSignals(ctx, facts, config = {}) {
   const location = parseBdLocation(customer.address);
   const districts = Array.isArray(config.haterDistrictIds) ? config.haterDistrictIds : ["15", "16", "18", "19"];
   if (ctx.honeypot) add("honeypot_filled", "The hidden checkout field was filled");
-  if (lists.allow.length) add("staff_allowlist", "Staff allowlisted this identity");
+  const allowKinds = lists.allow.filter(kind => kind === "phone" || kind === "device" || (kind === "network" && network.type === "broadband"));
+  if (allowKinds.length) add("staff_allowlist", `Staff allowlisted this ${allowKinds[0]}`);
   for (const kind of lists.block) {
-    if (kind === "network" && network.type === "mobile") continue;
+    // Fingerprints are shared by identical phone models, and mobile networks by
+    // thousands of carrier-NAT users; neither may block an order on its own.
+    if (kind === "fingerprint" || (kind === "network" && network.type !== "broadband")) continue;
     add(kind === "network" ? "blocklist_network" : kind === "phone" ? "blocklist_phone" : "blocklist_device", `Staff blocklisted ${kind} identity`);
   }
   for (const code of classifyContent(customer, config.extraAbuseTerms || [])) add(code, "Customer details matched a prohibited content pattern");
-  const detail = [customer.name, customer.address].join(" ");
-  if (/(?:asdf|qwer|zxcv|hjkl)|([a-z\p{L}])\1{4,}/iu.test(detail)) add("gibberish_content", "Customer details contain keyboard or repeated-letter text");
+  const detailWords = [customer.name, customer.address].join(" ").toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
+  if (detailWords.some(word => /^(?:asdf\w*|qwer\w*|zxcv\w*|hjkl\w*)$/.test(word) || /(\p{L})\1{4,}/u.test(word))) add("gibberish_content", "Customer details contain keyboard or repeated-letter text");
   if (links.devicePhones7d >= THRESHOLDS.devicePhones7d) add("device_many_phones", `This device used ${links.devicePhones7d} phones in 7 days`);
   if (links.phoneDevices7d >= THRESHOLDS.phoneDevices7d) add("phone_many_devices", `This phone appeared on ${links.phoneDevices7d} devices in 7 days`);
   if (attempts.phone15m >= THRESHOLDS.phoneBurst15m) add("phone_burst_15m", `${attempts.phone15m} orders from this phone in 15 minutes`);
@@ -39,9 +42,12 @@ export function detectSignals(ctx, facts, config = {}) {
   }
   if (!location.hasPlaceMarker || !location.hasArea) add("address_incomplete", "The address needs a clearer place marker or area");
   if (districts.includes(location.districtId)) add("hater_region_address", `The address names ${location.districtName} district`);
-  if (ctx.geo?.city && HATER_NAMES.has(ctx.geo.city.toLocaleLowerCase("en")) && districts.some(id => ["15", "16", "18", "19"].includes(id))) add("hater_region_ip", `Network location reports ${ctx.geo.city.slice(0, 80)}`);
+  // Mobile-carrier IP geolocation in Bangladesh is unreliable (carrier NAT), so
+  // only fixed broadband locations count as network location evidence.
+  const ipDistrict = ctx.geo?.city ? HATER_CITY_DISTRICTS.get(ctx.geo.city.toLocaleLowerCase("en")) : null;
+  if (ipDistrict && districts.includes(ipDistrict) && network.type === "broadband") add("hater_region_ip", `Broadband network location reports ${ctx.geo.city.slice(0, 80)}`);
   if (telemetry.phoneCandidates.length >= THRESHOLDS.phoneRetypedCandidates) add("phone_retyped", `${telemetry.phoneCandidates.length} valid phone numbers were entered`);
-  if (["missing", "failed", "unavailable"].includes(ctx.turnstile)) add("bot_check_failed", "The bot check was not completed successfully");
+  if (["missing", "failed"].includes(ctx.turnstile)) add("bot_check_failed", "The bot check was not completed successfully");
   if (telemetry.firstInteractionAt != null && ctx.now - telemetry.firstInteractionAt >= 0 && ctx.now - telemetry.firstInteractionAt < THRESHOLDS.fastCheckoutSeconds * 1000) add("very_fast_checkout", "Checkout completed less than 12 seconds after first interaction");
   if (telemetry.pastedFields.includes("phone") && telemetry.pastedFields.includes("address")) add("phone_pasted", "Phone and address were pasted during checkout");
   if (/\d/.test(customer.name) || customer.name.length === 1 || customer.name.toLowerCase() === customer.address.toLowerCase()) add("name_suspicious", "Customer name needs a closer look");

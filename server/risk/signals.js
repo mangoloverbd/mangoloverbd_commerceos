@@ -10,7 +10,8 @@ export const THRESHOLDS = Object.freeze({
 });
 
 const definitions = [
-  ["honeypot_filled", "BEHAVIOUR", "critical", "Bot form fill"],
+  // Password managers can fill hidden fields, so on its own this holds for a call.
+  ["honeypot_filled", "BEHAVIOUR", "high", "Bot form fill"],
   ["blocklist_phone", "LIST", "critical", "Blocked phone"],
   ["blocklist_device", "LIST", "critical", "Blocked device"],
   ["blocklist_network", "LIST", "critical", "Blocked network"],

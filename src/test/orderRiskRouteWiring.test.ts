@@ -20,8 +20,8 @@ describe("v2 order route wiring", () => {
 
   it("does not apply a shared network or unsigned-IP rate limit on mobile/unknown context", () => {
     const limiter = source.slice(source.indexOf("async function allowOrderSubmission"), source.indexOf("const PRODUCT_IMAGES_BUCKET"));
-    expect(limiter).toContain('classifyNetwork({ ip: clientContext.ip');
-    expect(limiter).toContain('type === "broadband"');
+    expect(limiter).toContain('clientContext?.deviceId');
+    expect(limiter).not.toContain('rlOrderNetwork');
     expect(limiter).not.toContain("rlOrderUntrustedIp.limit(");
     expect(limiter).not.toContain("getTrustedRequestIp(req) || \"unknown\"");
   });

@@ -12,8 +12,8 @@ export function buildRiskContext({ orgId, route, body, clientContext, contextTru
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new TypeError("Invalid order body");
   const phone = normalizeBdPhone(body.phone);
   if (!phone || !/^01[3-9]\d{8}$/.test(phone)) throw new TypeError("Invalid BD phone");
-  const items = body.items;
-  if (!Array.isArray(items) || !items.length || items.length > 100 || items.some(item => !item || typeof item !== "object" || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 1000)) throw new TypeError("Invalid items");
+  // The order route validates items authoritatively; risk only needs a bounded view.
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, 100).filter(item => item && typeof item === "object");
   const trusted = Boolean(contextTrusted && clientContext);
   const ip = trusted && isIP(clientContext.ip) ? clientContext.ip : null;
   const deviceId = trusted && typeof clientContext.deviceId === "string" ? clientContext.deviceId : null;
@@ -33,7 +33,10 @@ export function buildRiskContext({ orgId, route, body, clientContext, contextTru
   return {
     orgId, route, now,
     customer: { name: bounded(body.customerName ?? body.customer_name, 120), phone, address: bounded(body.address, 500), notes: bounded(body.notes, 500) },
-    items: items.map(item => ({ productId: item.productId ?? item.product_id ?? null, variantId: item.variantId ?? item.variant_id ?? null, quantity: item.quantity })),
+    items: items.map(item => {
+      const quantity = Math.trunc(Number(item.quantity));
+      return { productId: item.productId ?? item.product_id ?? null, variantId: item.variantId ?? item.variant_id ?? null, quantity: Number.isFinite(quantity) && quantity > 0 ? Math.min(quantity, 100000) : 1 };
+    }),
     honeypot: bounded(body.website, 200), turnstile, contextTrusted: trusted,
     ip, networkKey: key, network: classifyNetwork({ ip, country: geo.country }), geo,
     deviceId, fingerprint, userAgent,

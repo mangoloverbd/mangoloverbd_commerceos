@@ -6,7 +6,7 @@ const server = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
 
 describe("daily risk retention", () => {
   it("runs only after cron auth and catches cleanup failures without logging personal data", () => {
-    expect(server).toMatch(/import\s*\{\s*scrubExpiredRiskAttempts\s*\}\s*from\s*"\.\/risk\/store\.js"/);
+    expect(server).toMatch(/import\s*\{[^}]*scrubExpiredRiskAttempts[^}]*\}\s*from\s*"\.\/risk\/store\.js"/);
     const start = server.indexOf('app.get("/api/internal/abandoned-checkouts-maintenance"');
     const end = server.indexOf("// Pre-fetches risk data", start);
     expect(start).toBeGreaterThan(-1);

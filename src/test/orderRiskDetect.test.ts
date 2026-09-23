@@ -27,7 +27,9 @@ describe("risk detectors", () => {
     expect(codes({ ...ctx, customer: { ...ctx.customer, address: "House 1 Road 2 Rajshahi" } })).toContain("hater_region_address");
     expect(codes({ ...ctx, customer: { ...ctx.customer, address: "House 1 Road 2 Shibganj" } })).not.toContain("hater_region_address");
     expect(codes({ ...ctx, geo: { country: "BD", region: "E", city: "Bogura" } })).not.toContain("hater_region_ip");
-    expect(codes({ ...ctx, geo: { country: "BD", region: "E", city: "Natore" } })).toContain("hater_region_ip");
+    expect(codes({ ...ctx, network: { type: "broadband" }, geo: { country: "BD", region: "E", city: "Natore" } })).toContain("hater_region_ip");
+    // Mobile carrier geolocation is unreliable and never counts.
+    expect(codes({ ...ctx, geo: { country: "BD", region: "E", city: "Natore" } })).not.toContain("hater_region_ip");
   });
 
   it("adds independent content, bot, history, list and trust signals", () => {

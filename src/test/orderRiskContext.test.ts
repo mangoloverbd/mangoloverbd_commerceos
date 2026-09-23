@@ -29,10 +29,10 @@ describe("risk context", () => {
     expect(ctx.telemetry.phoneCandidates).toEqual([]);
   });
 
-  it("rejects invalid phone, item shape, and missing secret", () => {
+  it("rejects invalid phone and missing secret, but tolerates unusual item shapes for the order route to validate", () => {
     const options = { orgId, route: "public_v1", body, clientContext, contextTrusted: true, secret };
     expect(() => buildRiskContext({ ...options, body: { ...body, phone: "invalid" } })).toThrow();
-    expect(() => buildRiskContext({ ...options, body: { ...body, items: [{ quantity: -1 }] } })).toThrow();
+    expect(buildRiskContext({ ...options, body: { ...body, items: [{ quantity: -1 }] } }).items).toEqual([{ productId: null, variantId: null, quantity: 1 }]);
     expect(() => buildRiskContext({ ...options, secret: "short" })).toThrow();
   });
 });

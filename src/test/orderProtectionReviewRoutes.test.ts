@@ -31,4 +31,11 @@ describe("order protection review routes", () => {
     expect(approval).toContain('.is("approval_claimed_at", null)');
     expect(approval).toContain('update({ approval_claimed_at:');
   });
+
+  it("restores already-decremented stock when a later variant fails", () => {
+    const approval = source.slice(source.indexOf("async function approveHeldProtectionReview"), source.indexOf('app.get("/api/order-protection/reviews"'));
+    expect(approval).toContain("const decremented = []");
+    expect(approval).toContain("decremented.push({ variantId: item.variantId, quantity: item.quantity })");
+    expect(approval).toContain("restored.stock_quantity + done.quantity");
+  });
 });

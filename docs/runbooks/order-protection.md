@@ -5,18 +5,18 @@ Order protection runs on the Merchant Suite server before an order is written or
 ## Configuration
 
 - `ORDER_PROTECTION_MODE=off|shadow|active`: `off`/`disabled` is an emergency kill switch. An explicit `shadow` or `active` overrides the workspace setting; otherwise `${orgId}:order_protection_mode` selects the mode, defaulting to `shadow`.
-- `ORDER_PROTECTION_HASH_SECRET`: server-only, at least 16 characters; rotate with a planned Redis key transition. If missing, checkout returns a retryable 503 BLOCK until the operator fixes configuration.
+- `ORDER_PROTECTION_HASH_SECRET`: server-only, at least 16 characters; rotate with a planned Redis key transition. If missing, risk assessment fails open and checkout proceeds; restore the secret promptly to regain audit and identity signals.
 - `STOREFRONT_CONTEXT_SECRET`: server-only shared HMAC secret of at least 32 characters, identical in both Vercel projects. The storefront signs client IP, geo, device cookie, and checkout telemetry. Never use a `VITE_` prefix for it.
-- `TURNSTILE_SECRET_KEY`: server-only Cloudflare secret; `VITE_TURNSTILE_SITE_KEY` is public. A missing secret does not penalize checkout. A missing, expired, failed, or unavailable challenge requests a review.
-- Upstash Redis URL and token: used for signal counters, duplicate reservations, and the 5/device, 20/network, 60/untrusted-IP per 15-minute submission limits. Redis unavailability requests a HOLD in active mode rather than a dependency BLOCK.
+- `TURNSTILE_SECRET_KEY`: server-only Cloudflare secret; `VITE_TURNSTILE_SITE_KEY` is public. A failed challenge is one medium signal; missing or unavailable verification alone never delays checkout.
+- Upstash Redis URL and token: used for identity links and velocity signals. The per-device submission limiter is advisory; Redis outages do not delay otherwise normal checkouts.
 
 No AI call is made in checkout. Name, address, notes, honeypot, duplicate, timing and velocity checks are deterministic. An incomplete or vague address is assessed locally.
 
 ## Customer flow
 
-The storefront submits canonical product/variant IDs to `/api/public/v1/:handle/orders` with a signed server-to-server client context. Merchant Suite validates stock and prices, then assesses the order before any insert or decrement. The legacy evaluator records the assessed decision in `order_protection_events` with `mode`; shadow mode always proceeds as ALLOW and creates no review or duplicate reservation. Plan D moves attempts to `order_risk_attempts`.
+The storefront submits canonical product/variant IDs to `/api/public/v1/:handle/orders` with a signed server-to-server client context. Merchant Suite assesses risk before any insert or decrement, then validates stock and prices. Attempts are recorded in `order_risk_attempts`; shadow mode never enforces a risk decision. Missing or expired context is recorded without holding an otherwise normal order.
 
-In active mode, ALLOW creates the order and decrements stock. REVIEW creates a durable staff hold and returns HTTP 202. BLOCK returns a generic customer-safe message. No order, stock decrement, or purchase event is created for active HOLD/BLOCK. Missing hash configuration is a retryable 503 response; staff should restore the secret rather than ask the customer to change details.
+In active mode, ALLOW creates the order and decrements stock. HOLD creates a durable staff review and returns HTTP 202. Explicit staff blocklist matches can return a generic BLOCK response; automated content and combined signals can only HOLD. No order or stock decrement is created for active HOLD/BLOCK. Authenticated custom-store webhooks are never held because their free-form items cannot be reconstructed by the review approval flow.
 
 ## Staff flow
 

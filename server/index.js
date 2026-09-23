@@ -73,13 +73,19 @@ import {
 } from "./abandonedCheckouts.js";
 import {
   hashProtectionSignal,
+  getProtectionReview,
   listProtectionReviews,
 } from "./orderProtectionStore.js";
 import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
 import { classifyNetwork, getTrustedRequestIp, networkKey } from "./risk/network.js";
 import { assessOrderRisk, finalizeOrderRisk } from "./risk/pipeline.js";
 import { PROTECTION_MODE_SETTING_SUFFIX, resolveProtectionMode } from "./risk/mode.js";
-import { scrubExpiredRiskAttempts } from "./risk/store.js";
+import { createListEntries, deleteListEntry, getRiskAttempt, labelRiskAttempt, listListEntries, listRelatedAttempts, listRiskAttempts, scrubExpiredRiskAttempts } from "./risk/store.js";
+import { buildDisplayHint, toAttemptDetail, toAttemptSummary } from "./risk/serialize.js";
+import { computeAccuracy } from "./risk/accuracy.js";
+import { labelOrderRiskAttempt } from "./risk/labels.js";
+import { recordAbandonedRiskLinks } from "./risk/abandoned.js";
+import bdLocations from "./risk/dictionaries/bdLocations.json" with { type: "json" };
 import {
   FRAUD_QUOTA_RESERVE,
   FRAUD_WARM_BATCH,
@@ -268,7 +274,6 @@ let rlHandleClaimIp = null;
 let rlPublicRead = null;
 let rlAbandonedCheckoutCapture = null;
 let rlOrderDevice = null;
-let rlOrderNetwork = null;
 
 // Cloudflare edge-cache purge + warm-token bypass (Task 1).
 const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
@@ -319,13 +324,8 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
     });
     rlOrderDevice = new Ratelimit({
       redis: redisClient,
-      limiter: Ratelimit.slidingWindow(5, "15 m"),
+      limiter: Ratelimit.slidingWindow(10, "15 m"),
       prefix: "rl:order-submission:device",
-    });
-    rlOrderNetwork = new Ratelimit({
-      redis: redisClient,
-      limiter: Ratelimit.slidingWindow(20, "15 m"),
-      prefix: "rl:order-submission:network",
     });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
@@ -444,27 +444,23 @@ function getClientIp(req) {
   return getTrustedRequestIp(req);
 }
 
+// Only a signed per-browser device can be hard rate-limited. Networks are never
+// limited here: Bangladeshi mobile and many broadband ISPs put many real
+// customers behind one address, so shared-network activity is a scored signal.
 async function allowOrderSubmission(req, res, orgId, handle = "*", mode, clientContext = null) {
-  if (mode === "off" || !rlOrderDevice || !rlOrderNetwork) return true;
+  if (mode !== "active" || !rlOrderDevice || !clientContext?.deviceId) return true;
   const secret = process.env.ORDER_PROTECTION_HASH_SECRET;
   if (!secret || secret.length < 16) return true;
-  const network = clientContext ? networkKey(clientContext.ip) : null;
-  const type = clientContext ? classifyNetwork({ ip: clientContext.ip, country: clientContext.geo?.country }).type : "unknown";
-  const checks = [];
-  if (clientContext?.deviceId) checks.push([rlOrderDevice, `dev:${hashProtectionSignal(clientContext.deviceId, secret)}`]);
-  if (network && type === "broadband") checks.push([rlOrderNetwork, `net:${hashProtectionSignal(network, secret)}`]);
+  const checks = [[rlOrderDevice, `dev:${hashProtectionSignal(clientContext.deviceId, secret)}`]];
   try {
     for (const [limiter, key] of checks) {
       const { success, limit, remaining, reset } = await limiter.limit(`${orgId}:${handle}:${key}`);
       res.setHeader("X-RateLimit-Limit", limit);
       res.setHeader("X-RateLimit-Remaining", remaining);
       res.setHeader("X-RateLimit-Reset", reset);
-      if (!success && mode === "active") {
-        const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
-        res.setHeader("Retry-After", retryAfter);
-        res.status(429).json({ error: "rate_limit_exceeded", message: "Too many order attempts. Please try again shortly.", retryAfter });
-        return false;
-      }
+      // Retry storms can be caused by checkout failures or a shared browser.
+      // The risk engine scores velocity; this optional limiter is advisory.
+      if (!success) console.warn("[OrderProtection] device order velocity exceeded");
     }
     return true;
   } catch {
@@ -7444,6 +7440,9 @@ app.post("/api/custom-orders/abandoned-checkouts", async (req, res) => {
       }
     }
 
+    const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+    await recordAbandonedRiskLinks({ orgId, capture, clientContext: verified.ok ? verified.context : null,
+      secret: process.env.ORDER_PROTECTION_HASH_SECRET, redis: redisClient });
     return res.status(201).json({ ok: true });
   } catch {
     console.warn("[AbandonedCheckout] capture persistence failed");
@@ -8434,6 +8433,7 @@ app.patch("/api/orders/:id", async (req, res) => {
       const requestId = buildOperationRequestId(activityGroupId, req.params.id, "patch");
       await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: req.params.id, orderTable: "orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "order_editor", summary: isStaffCancellation ? "Cancelled order" : isReopening ? "Reopened order" : update.status !== undefined ? `Status changed to ${update.status}` : "Edited order", reasonCode: cancellationReason?.code, reasonNote: cancellationReason?.note, changes, metadata: update.status !== undefined ? { from_status: orderCheck.status, to_status: update.status, legacy_status_event_id: statusEvent?.id } : {}, occurredAt: transitionAt || undefined }));
     }
+    await labelOrderRiskAttempt(supabase, orgId, data);
     return res.json({ success: true, order: data });
   } catch (e) {
     return sendError(res, e);
@@ -8875,7 +8875,7 @@ app.post("/api/pathao/refresh-status", async (req, res) => {
     const finalStatuses = ["delivered", "returned", "cancelled", "rejected"];
     const { data: pathaoOrders } = await supabase
       .from("orders")
-      .select("id, consignment_id, tracking_code, courier_status, status, courier_name, courier_message")
+      .select("id, consignment_id, tracking_code, courier_status, status, courier_name, courier_message, risk_attempt_id")
       .eq("org_id", orgId)
       .eq("sent_to_courier", true);
 
@@ -8924,6 +8924,7 @@ app.post("/api/pathao/refresh-status", async (req, res) => {
           patch.status = "cancelled";
         }
         await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
+        await labelOrderRiskAttempt(supabase, orgId, { ...order, ...patch });
         await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "courier.status_changed", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "system", summary: `Pathao status changed to ${newStatus}`, metadata: { courier: "pathao", from_status: order.courier_status, to_status: newStatus } }));
         updated++;
       } catch { /* skip */ }
@@ -8951,7 +8952,7 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
     const finalStatuses = ["delivered", "partial_delivered", "cancelled", "returned"];
     const { data: sfOrders } = await supabase
       .from("orders")
-      .select("id, consignment_id, tracking_code, courier_status, status, courier_name, courier_message")
+      .select("id, consignment_id, tracking_code, courier_status, status, courier_name, courier_message, risk_attempt_id")
       .eq("org_id", orgId)
       .eq("sent_to_courier", true);
 
@@ -9012,6 +9013,7 @@ app.post("/api/steadfast/refresh-status", async (req, res) => {
 
         console.log(`[Steadfast Refresh] Order ${order.id} cid=${sfPollId}: ${order.courier_status} → ${newStatus}`);
         await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
+        await labelOrderRiskAttempt(supabase, orgId, { ...order, ...patch });
         await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "courier.status_changed", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "system", summary: `Steadfast status changed to ${newStatus}`, metadata: { courier: "steadfast", from_status: order.courier_status, to_status: newStatus } }));
         updated++;
       } catch (err) {
@@ -9045,7 +9047,7 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     // Find the order by consignment_id
     const { data: order } = await supabase
       .from("orders")
-      .select("id, org_id, courier_status, status")
+      .select("id, org_id, courier_status, status, risk_attempt_id")
       .eq("consignment_id", consignmentId)
       .eq("sent_to_courier", true)
       .maybeSingle();
@@ -9092,6 +9094,7 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     if (!updatedOrder) {
       return res.status(200).json({ ok: true, skipped: "order not found" });
     }
+    await labelOrderRiskAttempt(supabase, order.org_id, { ...order, ...patch });
     if (patch.status !== undefined) {
       await recordStatusEvent(supabase, buildStatusEvent({
         orgId: order.org_id,
@@ -12822,6 +12825,7 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     throw itemsError;
     }
 
+    const decremented = [];
     for (const item of orderItems) {
     const currentStock = variantMap[item.variantId].stock_quantity;
     const { data: updatedVariants, error: stockError } = await supabase
@@ -12832,12 +12836,22 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
       .eq("stock_quantity", currentStock)
       .select("id");
     if (stockError || updatedVariants?.length !== 1) {
+      // Restore the variants already decremented above so a partial approval
+      // never leaves inventory lower than reality. Each restore adds back
+      // exactly what this approval subtracted.
+      for (const done of decremented) {
+        const { data: restored } = await supabase.from("product_variants").select("stock_quantity").eq("id", done.variantId).eq("org_id", orgId).maybeSingle();
+        if (restored && Number.isInteger(restored.stock_quantity)) {
+          await supabase.from("product_variants").update({ stock_quantity: restored.stock_quantity + done.quantity }).eq("id", done.variantId).eq("org_id", orgId);
+        }
+      }
       await supabase.from("order_items").delete().eq("order_id", order.id).eq("org_id", orgId);
       await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
       const err = new Error("Stock changed; review remains on hold");
       err.statusCode = 409;
       throw err;
     }
+    decremented.push({ variantId: item.variantId, quantity: item.quantity });
     }
 
     const { error: reviewUpdateError } = await supabase
@@ -12847,6 +12861,8 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     .eq("org_id", orgId)
     .eq("status", "on_hold");
     if (reviewUpdateError) throw reviewUpdateError;
+
+    await finalizeOrderRisk({ supabase, orgId, attemptId: review.attempt_id, orderId: order.id });
 
     await sendBulkSms(orgId, "confirmation", order);
     await purgeProductCache(orgId, null, { listChanged: false, warm: false });
@@ -12924,14 +12940,191 @@ app.patch("/api/order-protection/reviews/:id", async (req, res) => {
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .eq("status", "on_hold")
-      .select("id, status")
+      .select("id, status, attempt_id")
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(409).json({ error: "Review is no longer awaiting action" });
+    if (req.body?.rejectReason === "fake" && data.attempt_id) {
+      try { await labelRiskAttempt(supabase, { orgId, attemptId: data.attempt_id, label: "fake" }); }
+      catch { console.warn("[OrderRisk] fake review label unavailable"); }
+    }
     return res.json({ success: true, decision: "rejected", review: data });
   } catch (error) {
     return sendError(res, error);
   }
+});
+
+const riskDistrictOptions = bdLocations.districts.map(district => ({
+  id: district.id, name: district.name, bnName: district.bnName,
+  divisionName: bdLocations.divisions.find(division => division.id === district.divisionId)?.name || "",
+}));
+const validRiskDistricts = new Set(riskDistrictOptions.map(district => district.id));
+const riskSettingKeys = orgId => ({
+  mode: `${orgId}:order_protection_mode`, districts: `${orgId}:order_protection_hater_districts`, terms: `${orgId}:order_protection_extra_abuse_terms`,
+});
+function parseRiskArray(value, fallback) {
+  try { const parsed = typeof value === "string" ? JSON.parse(value) : value; return Array.isArray(parsed) ? parsed : fallback; }
+  catch { return fallback; }
+}
+function riskSettings(orgId, values) {
+  const keys = riskSettingKeys(orgId);
+  return {
+    mode: resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE, settingMode: values[keys.mode] }),
+    haterDistrictIds: parseRiskArray(values[keys.districts], ["15", "16", "18", "19"]),
+    extraAbuseTerms: parseRiskArray(values[keys.terms], []), districtOptions: riskDistrictOptions,
+  };
+}
+
+app.get("/api/order-protection/attempts", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const decision = String(req.query.decision ?? "all").toLowerCase();
+    const limit = Number(req.query.limit ?? 50);
+    const before = req.query.before ?? null;
+    if (!["all", "allow", "hold", "block"].includes(decision) || !Number.isInteger(limit) || limit < 1 || limit > 100 || (before !== null && (typeof before !== "string" || !Number.isFinite(Date.parse(before))))) return res.status(400).json({ error: "Invalid attempt filters" });
+    const attempts = await listRiskAttempts(supabase, { orgId, decision, limit, before });
+    return res.json({ attempts: attempts.map(toAttemptSummary) });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.get("/api/order-protection/attempts/:id", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const attempt = await getRiskAttempt(supabase, { orgId, attemptId: req.params.id });
+    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    const [related, review, orderResult] = await Promise.all([
+      listRelatedAttempts(supabase, { orgId, attempt, days: 7, limit: 50 }),
+      attempt.review_id ? getProtectionReview({ supabase, orgId, reviewId: attempt.review_id }) : null,
+      attempt.order_id ? supabase.from("orders").select("id, order_number, status, courier_status").eq("org_id", orgId).eq("id", attempt.order_id).maybeSingle() : null,
+    ]);
+    if (orderResult?.error) throw orderResult.error;
+    return res.json({ attempt: toAttemptDetail(attempt), related: related.map(toAttemptSummary), review, order: orderResult?.data ?? null });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.get("/api/orders/:id/risk", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const { data: order, error } = await supabase.from("orders").select("id, risk_attempt_id").eq("org_id", orgId).eq("id", req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const attempt = order.risk_attempt_id ? await getRiskAttempt(supabase, { orgId, attemptId: order.risk_attempt_id }) : null;
+    return res.json({ attempt: attempt ? toAttemptDetail(attempt) : null });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.get("/api/order-protection/lists", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const list = req.query.list ?? "block";
+    if (!["block", "allow"].includes(list)) return res.status(400).json({ error: "Invalid list" });
+    const entries = await listListEntries(supabase, { orgId, list });
+    return res.json({ entries: entries.map(({ value_hash, org_id, ...safe }) => safe) });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.post("/api/order-protection/lists", async (req, res) => {
+  try {
+    const { user, supabase, orgId, role } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") return res.status(403).json({ error: "Forbidden" });
+    const { attemptId, list, kinds, reason } = req.body ?? {};
+    const allowedKinds = new Set(["phone", "device", "fingerprint", "network"]);
+    if (typeof attemptId !== "string" || !["block", "allow"].includes(list) || !Array.isArray(kinds) || !kinds.length || kinds.some(kind => !allowedKinds.has(kind)) || typeof reason !== "string" || !reason.trim() || reason.length > 200) return res.status(400).json({ error: "Invalid list entry" });
+    const attempt = await getRiskAttempt(supabase, { orgId, attemptId });
+    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    const columns = { phone: "phone_hash", device: "device_hash", fingerprint: "fingerprint_hash", network: "network_hash" };
+    const entries = [...new Set(kinds)].filter(kind => attempt[columns[kind]]).map(kind => ({
+      kind, valueHash: attempt[columns[kind]], displayHint: buildDisplayHint(kind, attempt),
+      expiresAt: kind === "network" ? new Date(Date.now() + 30 * 86400_000).toISOString() : null,
+    }));
+    if (!entries.length) return res.status(400).json({ error: "No available identities for these kinds" });
+    const created = await createListEntries(supabase, { orgId, list, entries, reason: reason.trim(), sourceAttemptId: attempt.id, createdBy: user.id });
+    return res.json({ entries: created.map(({ value_hash, org_id, ...safe }) => safe) });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.delete("/api/order-protection/lists/:id", async (req, res) => {
+  try {
+    const { user, supabase, orgId, role } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") return res.status(403).json({ error: "Forbidden" });
+    const deleted = await deleteListEntry(supabase, { orgId, entryId: req.params.id });
+    if (!deleted) return res.status(404).json({ error: "Entry not found" });
+    return res.json({ success: true });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.get("/api/order-protection/settings", async (req, res) => {
+  try {
+    const { user, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const keys = riskSettingKeys(orgId);
+    return res.json(riskSettings(orgId, await getSettings(Object.values(keys))));
+  } catch (error) { return sendError(res, error); }
+});
+
+app.put("/api/order-protection/settings", async (req, res) => {
+  try {
+    const { user, orgId, role } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") return res.status(403).json({ error: "Forbidden" });
+    const { mode, haterDistrictIds, extraAbuseTerms } = req.body ?? {};
+    if (!["off", "shadow", "active"].includes(mode) || !Array.isArray(haterDistrictIds) || haterDistrictIds.some(id => !validRiskDistricts.has(id)) || !Array.isArray(extraAbuseTerms) || extraAbuseTerms.length > 200 || extraAbuseTerms.some(term => typeof term !== "string" || !term.trim() || term.trim().length > 40)) return res.status(400).json({ error: "Invalid protection settings" });
+    const keys = riskSettingKeys(orgId);
+    const updates = { [keys.mode]: mode, [keys.districts]: JSON.stringify([...new Set(haterDistrictIds)]), [keys.terms]: JSON.stringify([...new Set(extraAbuseTerms.map(term => term.trim()))]) };
+    const { error } = await saveSettings(updates);
+    if (error) throw error;
+    return res.json(riskSettings(orgId, updates));
+  } catch (error) { return sendError(res, error); }
+});
+
+app.post("/api/order-protection/attempts/:id/label", async (req, res) => {
+  try {
+    const { user, supabase, orgId, role } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") return res.status(403).json({ error: "Forbidden" });
+    const label = req.body?.label;
+    if (!["fake", "genuine"].includes(label)) return res.status(400).json({ error: "Invalid label" });
+    const attempt = await getRiskAttempt(supabase, { orgId, attemptId: req.params.id });
+    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    if (label === "genuine") {
+      const entries = ["phone", "device"].filter(kind => attempt[`${kind}_hash`]).map(kind => ({
+        kind, valueHash: attempt[`${kind}_hash`], displayHint: buildDisplayHint(kind, attempt),
+      }));
+      if (entries.length) await createListEntries(supabase, { orgId, list: "allow", entries, reason: "Marked genuine", sourceAttemptId: attempt.id, createdBy: user.id });
+    }
+    const labelled = await labelRiskAttempt(supabase, { orgId, attemptId: req.params.id, label });
+    return res.json({ attempt: toAttemptDetail(labelled) });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.get("/api/order-protection/accuracy", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const days = Number(req.query.days ?? 7);
+    if (![7, 30].includes(days)) return res.status(400).json({ error: "days must be 7 or 30" });
+    const now = new Date();
+    const since = new Date(now.getTime() - days * 86_400_000).toISOString();
+    const rows = [];
+    const pageSize = 500;
+    for (let offset = 0; rows.length < 5000; offset += pageSize) {
+      const { data, error } = await supabase.from("order_risk_attempts")
+        .select("id, decision, signals, label, mode, created_at")
+        .eq("org_id", orgId).gte("created_at", since).lte("created_at", now.toISOString())
+        .order("created_at", { ascending: false }).order("id", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      rows.push(...(data || []).slice(0, 5000 - rows.length));
+      if (!data || data.length < pageSize) break;
+    }
+    return res.json(computeAccuracy(rows, { now, days }));
+  } catch (error) { return sendError(res, error); }
 });
 
 // ─── Public Storefront Order Submission ──────────────────────────────────────

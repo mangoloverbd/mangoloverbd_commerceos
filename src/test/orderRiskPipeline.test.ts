@@ -20,7 +20,7 @@ function deps(mode = "shadow") {
     query.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: table === "order_risk_attempts" && row.decision ? { id: "30000000-0000-0000-0000-000000000001" } : table === "order_protection_reviews" && row.status ? { id: "40000000-0000-0000-0000-000000000001" } : [], error: null }).then(resolve);
     return query;
   } };
-  const redis = { sadd: vi.fn().mockResolvedValue(1), expire: vi.fn().mockResolvedValue(1), zadd: vi.fn().mockResolvedValue(1), zremrangebyscore: vi.fn().mockResolvedValue(1), incr: vi.fn().mockResolvedValue(1), scard: vi.fn().mockResolvedValue(1), zcard: vi.fn().mockResolvedValue(1), get: vi.fn().mockResolvedValue(1) };
+  const redis = { set: vi.fn().mockResolvedValue("OK"), expire: vi.fn().mockResolvedValue(1), zadd: vi.fn().mockResolvedValue(1), zremrangebyscore: vi.fn().mockResolvedValue(1), incr: vi.fn().mockResolvedValue(1), zcount: vi.fn().mockResolvedValue(1), get: vi.fn().mockResolvedValue(1) };
   return { supabase, redis, secret, contextSecret, getSetting: vi.fn().mockResolvedValue(mode), writes, createReview: vi.fn().mockResolvedValue({ id: "40000000-0000-0000-0000-000000000001" }), verifyTurnstile: vi.fn().mockResolvedValue({ ok: true }) };
 }
 const request = (dependencies: ReturnType<typeof deps>, overrides: Record<string, unknown> = {}) => ({ orgId, route: "public_v1", body, headers: { [CLIENT_CONTEXT_HEADER]: signClientContext(context, contextSecret) }, requestIp: "127.0.0.1", deps: dependencies, ...overrides });
@@ -32,36 +32,65 @@ describe("durable risk pipeline", () => {
     expect(off.writes).toEqual([]);
     const shadow = deps();
     const assessed = await assessOrderRisk(request(shadow, { body: { ...body, website: "bot" } }));
-    expect(assessed).toMatchObject({ mode: "shadow", decision: "BLOCK", assessedDecision: "BLOCK", enforced: false, attemptId: expect.any(String) });
-    expect(shadow.writes).toEqual(expect.arrayContaining([expect.objectContaining({ table: "order_risk_attempts", row: expect.objectContaining({ decision: "BLOCK", mode: "shadow" }) })]));
+    expect(assessed).toMatchObject({ mode: "shadow", decision: "HOLD", assessedDecision: "HOLD", enforced: false, attemptId: expect.any(String) });
+    expect(shadow.writes).toEqual(expect.arrayContaining([expect.objectContaining({ table: "order_risk_attempts", row: expect.objectContaining({ decision: "HOLD", mode: "shadow" }) })]));
     expect(shadow.createReview).not.toHaveBeenCalled();
   });
 
-  it("active uncertainty creates a durable staff hold", async () => {
+  it("missing signed context does not hold an otherwise normal order", async () => {
     const active = deps("active");
     const assessed = await assessOrderRisk(request(active, { headers: {} }));
-    expect(assessed).toMatchObject({ decision: "HOLD", enforced: true, reviewId: expect.any(String), attemptId: expect.any(String) });
-    expect(active.createReview).toHaveBeenCalledOnce();
-  });
-
-  it("critical honeypot blocks, while missing secret is retryable", async () => {
-    const active = deps("active");
-    expect(await assessOrderRisk(request(active, { body: { ...body, website: "bot" } }))).toMatchObject({ decision: "BLOCK", enforced: true });
+    expect(assessed).toMatchObject({ decision: "ALLOW", enforced: true, reviewId: null, attemptId: expect.any(String) });
     expect(active.createReview).not.toHaveBeenCalled();
-    const missing = deps("active"); missing.secret = "short";
-    expect(await assessOrderRisk(request(missing))).toMatchObject({ decision: "BLOCK", retryable: true, attemptId: null });
   });
 
-  it("never returns a hold without a durable review", async () => {
+  it("a normal signed customer is not blocked in active mode", async () => {
+    const active = deps("active");
+    const result = await assessOrderRisk(request(active));
+    expect(result.decision).not.toBe("BLOCK");
+  });
+
+  it("a filled honeypot holds; a missing hash secret does not hold an ordinary order", async () => {
+    const active = deps("active");
+    expect(await assessOrderRisk(request(active, { body: { ...body, website: "bot" } }))).toMatchObject({ decision: "HOLD", enforced: true });
+    const missing = deps("active"); missing.secret = "short";
+    expect(await assessOrderRisk(request(missing))).toMatchObject({ decision: "ALLOW", reviewId: null });
+  });
+
+  it("if a hold cannot be saved the order proceeds instead of being lost", async () => {
     const active = deps("active"); active.createReview.mockRejectedValueOnce(new Error("db down"));
-    const result = await assessOrderRisk(request(active, { headers: {} }));
-    expect(result).toMatchObject({ retryable: true, reviewId: null });
-    expect(result.decision).not.toBe("HOLD");
+    const result = await assessOrderRisk(request(active, { body: { ...body, website: "bot" } }));
+    expect(result).toMatchObject({ decision: "ALLOW", reviewId: null });
+    expect(result.reasons).toContain("review_unavailable");
+  });
+
+  it("never throws: malformed risk input does not delay checkout", async () => {
+    const odd = { ...body, phone: "not a phone", items: [{ variantId: "v", quantity: "2" }] };
+    expect(await assessOrderRisk(request(deps(), { body: odd }))).toMatchObject({ decision: "ALLOW", enforced: false });
+    expect(await assessOrderRisk(request(deps("active"), { body: odd }))).toMatchObject({ decision: "ALLOW", reasons: ["engine_error"] });
+    expect(await assessOrderRisk(request(deps(), { body: { ...body, items: [{ variantId: "v", quantity: "2" }] } }))).toMatchObject({ enforced: false, attemptId: expect.any(String) });
+  });
+
+  it("Redis outage and attempt-log failure do not delay a normal customer", async () => {
+    const noRedis = deps("active"); (noRedis as { redis: unknown }).redis = null;
+    expect(await assessOrderRisk(request(noRedis))).toMatchObject({ decision: "ALLOW", reviewId: null });
+    const noLog = deps("active");
+    const from = noLog.supabase.from;
+    noLog.supabase.from = (table: string) => { if (table === "order_risk_attempts") throw new Error("down"); return from(table); };
+    const result = await assessOrderRisk(request(noLog));
+    expect(result.decision).not.toBe("BLOCK");
   });
 
   it("links the risk attempt after order creation", async () => {
     const d = deps("active");
     await finalizeOrderRisk({ supabase: d.supabase, orgId, attemptId: "30000000-0000-0000-0000-000000000001", orderId: "50000000-0000-0000-0000-000000000001" });
     expect(d.writes.some(write => write.table === "orders" && write.row.risk_attempt_id)).toBe(true);
+  });
+  it("does not strand authenticated custom webhook orders in an unapprovable review", async () => {
+    const d = deps("active");
+    const assessed = await assessOrderRisk(request(d, { route: "custom_webhook", body: { ...body, website: "filled" }, headers: {} }));
+    expect(assessed).toMatchObject({ decision: "ALLOW", assessedDecision: "HOLD", reviewId: null });
+    expect(d.createReview).not.toHaveBeenCalled();
+    expect(d.writes).toEqual(expect.arrayContaining([expect.objectContaining({ table: "order_risk_attempts", row: expect.objectContaining({ decision: "ALLOW", reasons: expect.arrayContaining(["webhook_review_unsupported"]) }) })]));
   });
 });

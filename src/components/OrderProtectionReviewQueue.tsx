@@ -131,11 +131,12 @@ export function OrderProtectionReviewQueue() {
     }
   };
 
-  const handleAction = async (reviewId: string, action: "approve" | "reject") => {
+  const handleAction = async (reviewId: string, action: "approve" | "reject", rejectReason?: "fake" | "other") => {
     setBusyId(reviewId);
     setError("");
     try {
-      await updateProtectionReview(reviewId, action);
+      if (rejectReason) await updateProtectionReview(reviewId, action, rejectReason);
+      else await updateProtectionReview(reviewId, action);
       setReviews((current) => current.filter((review) => review.id !== reviewId));
       setSelectedIds((current) => {
         const next = new Set(current);
@@ -476,6 +477,7 @@ export function OrderProtectionReviewQueue() {
                   <X weight="light" size={13} aria-hidden="true" />
                   Reject
                 </button>
+                <button type="button" className={cn(actionChip, actionChipNeutral)} disabled={isUpdating} onClick={() => void handleAction(review.id, "reject", "fake")}>Reject as fake</button>
               </div>
             </article>
           );

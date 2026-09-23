@@ -16,9 +16,11 @@ async function data(query) {
 async function loadHistory(supabase, ctx) {
   const phoneOrders = await data(supabase.from("orders")
     .select("id, courier_status, status, cancellation_reason_code").eq("org_id", ctx.orgId).eq("phone", ctx.customer.phone).limit(100));
-  const deviceRows = ctx.hashes.device || ctx.hashes.fingerprint
+  // Only the per-browser device cookie links order history. A fingerprint can be
+  // shared by strangers with the same phone model.
+  const deviceRows = ctx.hashes.device
     ? await data(supabase.from("order_risk_attempts").select("order_id").eq("org_id", ctx.orgId)
-      .or([ctx.hashes.device && `device_hash.eq.${ctx.hashes.device}`, ctx.hashes.fingerprint && `fingerprint_hash.eq.${ctx.hashes.fingerprint}`].filter(Boolean).join(",")).limit(100))
+      .eq("device_hash", ctx.hashes.device).not("order_id", "is", null).limit(100))
     : [];
   const ids = [...new Set(deviceRows.map(row => row.order_id).filter(Boolean))];
   const deviceOrders = ids.length ? await data(supabase.from("orders")

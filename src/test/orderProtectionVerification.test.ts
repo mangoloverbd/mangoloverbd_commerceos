@@ -16,9 +16,9 @@ describe("order protection deployment contract", () => {
 
   it("documents the no-order side effects for held and blocked outcomes", () => {
     const runbook = readFileSync(resolve(process.cwd(), "docs/runbooks/order-protection.md"), "utf8");
-    expect(runbook).toContain("No order, stock decrement, or purchase event");
+    expect(runbook).toContain("No order or stock decrement");
     expect(runbook).toContain("shadow");
     expect(runbook).toContain("Redis");
-    expect(runbook).toContain("retryable");
+    expect(runbook).toContain("risk assessment fails open");
   });
 });

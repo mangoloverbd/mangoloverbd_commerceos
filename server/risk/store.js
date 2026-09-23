@@ -112,9 +112,12 @@ export async function createListEntries(supabase, { orgId, list, entries, reason
   if (reason != null && (typeof reason !== "string" || reason.length > 500)) throw new TypeError("Invalid reason");
   const rows = entries.map(entry => {
     if (!entry || !KINDS.includes(entry.kind)) throw new TypeError("Invalid kind");
-    hash(entry.value_hash, "value_hash");
-    if (entry.display_hint != null && (typeof entry.display_hint !== "string" || entry.display_hint.length > 120)) throw new TypeError("Invalid display_hint");
-    return { org_id: orgId, list, kind: entry.kind, value_hash: entry.value_hash, display_hint: entry.display_hint ?? null, reason, source_attempt_id: sourceAttemptId, created_by: createdBy, expires_at: entry.expires_at == null ? null : isoDate(entry.expires_at, "expires_at") };
+    const valueHash = entry.valueHash ?? entry.value_hash;
+    const displayHint = entry.displayHint ?? entry.display_hint;
+    const expiresAt = entry.expiresAt ?? entry.expires_at;
+    hash(valueHash, "value_hash");
+    if (displayHint != null && (typeof displayHint !== "string" || displayHint.length > 120)) throw new TypeError("Invalid display_hint");
+    return { org_id: orgId, list, kind: entry.kind, value_hash: valueHash, display_hint: displayHint ?? null, reason, source_attempt_id: sourceAttemptId, created_by: createdBy, expires_at: expiresAt == null ? null : isoDate(expiresAt, "expires_at") };
   });
   return (await result(supabase.from("order_risk_list_entries").upsert(rows, { onConflict: "org_id,list,kind,value_hash" }).select("*").eq("org_id", orgId))) || [];
 }
