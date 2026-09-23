@@ -21,6 +21,15 @@ describe("deterministic risk decision", () => {
     expect(decideRisk({ signals: signals("honeypot_filled"), contextTrusted: true }).decision).toBe("HOLD");
   });
 
+  it("holds an incomplete address from an unknown number, but never a proven customer", () => {
+    const prank = decideRisk({ signals: signals("address_incomplete", "bot_check_failed"), contextTrusted: true });
+    expect(prank).toMatchObject({ decision: "HOLD", reasons: ["incomplete_address_unknown"] });
+    const genuine = decideRisk({ signals: signals("address_incomplete", "bot_check_failed", "trusted_delivered_customer"), contextTrusted: true });
+    expect(genuine.decision).toBe("ALLOW");
+    const strong = decideRisk({ signals: signals("address_incomplete", "courier_strong_history"), contextTrusted: true });
+    expect(strong.decision).toBe("ALLOW");
+  });
+
   it("requires two high families to block at 100 points", () => {
     const oneFamily = decideRisk({ signals: signals("phone_many_devices", "phone_burst_15m", "phone_velocity_24h"), contextTrusted: true });
     expect(oneFamily).toMatchObject({ decision: "HOLD", score: 100 });
@@ -40,7 +49,8 @@ describe("deterministic risk decision", () => {
       expect(decideRisk({ signals: [], ...options }).decision).toBe("ALLOW");
     }
     expect(decideRisk({ signals: signals("very_fast_checkout", "name_suspicious"), contextTrusted: true }).decision).toBe("ALLOW");
-    expect(decideRisk({ signals: signals("courier_no_history", "address_incomplete"), contextTrusted: true }).decision).toBe("ALLOW");
+    expect(decideRisk({ signals: signals("courier_no_history", "address_incomplete"), contextTrusted: true })).toMatchObject({ decision: "HOLD", reasons: ["incomplete_address_unknown"] });
+    expect(decideRisk({ signals: signals("courier_no_history", "address_incomplete", "trusted_delivered_customer"), contextTrusted: true }).decision).toBe("ALLOW");
     expect(decideRisk({ signals: signals("honeypot_filled"), contextTrusted: true }).decision).toBe("HOLD");
   });
 });
