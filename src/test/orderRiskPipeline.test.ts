@@ -60,10 +60,10 @@ describe("durable risk pipeline", () => {
     expect(await assessOrderRisk(request(missing))).toMatchObject({ decision: "ALLOW", reviewId: null });
   });
 
-  it("if a hold cannot be saved the order proceeds instead of being lost", async () => {
+  it("if a hold cannot be saved the customer retries instead of sailing through", async () => {
     const active = deps("active"); active.createReview.mockRejectedValueOnce(new Error("db down"));
     const result = await assessOrderRisk(request(active, { body: { ...body, website: "bot" } }));
-    expect(result).toMatchObject({ decision: "ALLOW", reviewId: null });
+    expect(result).toMatchObject({ decision: "HOLD", reviewId: null, retryable: true });
     expect(result.reasons).toContain("review_unavailable");
   });
 

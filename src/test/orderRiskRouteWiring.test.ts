@@ -18,6 +18,12 @@ describe("v2 order route wiring", () => {
     expect(source).toContain('from "./risk/pipeline.js"');
   });
 
+  it("asks held customers to retry when no review row exists, instead of letting them through", () => {
+    expect(publicOrder).toContain("if (!protection.reviewId) {");
+    expect(publicOrder).toContain('error: "protection_unavailable"');
+    expect(publicOrder).toContain("retryable: true");
+  });
+
   it("does not apply a shared network or unsigned-IP rate limit on mobile/unknown context", () => {
     const limiter = source.slice(source.indexOf("async function allowOrderSubmission"), source.indexOf("const PRODUCT_IMAGES_BUCKET"));
     expect(limiter).toContain('clientContext?.deviceId');
