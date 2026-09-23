@@ -99,6 +99,15 @@ describe("supabase velocity fallback", () => {
     expect(counts.attempts.phone15m).toBe(1);
   });
 
+  it("falls back to Supabase when Redis is present but failing, and never throws on link writes", async () => {
+    const { redis } = mockRedis();
+    for (const method of ["zadd", "zremrangebyscore", "expire", "zcount", "set", "incr", "get"]) redis[method].mockRejectedValue(new Error("quota exhausted"));
+    const { supabase } = mockSupabase([{ phone_hash: "x".repeat(64) }], 1);
+    const counts = await readIdentityCounts(redis, ctx, { supabase });
+    expect(counts).toMatchObject({ attempts: { phone15m: 2, phone24h: 2 } });
+    await expect(recordIdentityLinks(redis, ctx)).resolves.toBeUndefined();
+  });
+
   it("throws when neither Redis nor Supabase is available, and propagates database errors", async () => {
     await expect(readIdentityCounts(null, ctx)).rejects.toThrow();
     const chain: Record<string, (...args: unknown[]) => unknown> = {};
