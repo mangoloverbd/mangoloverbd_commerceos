@@ -6548,13 +6548,13 @@ app.get("/api/orders", async (req, res) => {
       : "";
     let ordersQuery = supabase
       .from("orders")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
     if (warehouseFilter) {
       ordersQuery = ordersQuery.eq("warehouse_id", warehouseFilter);
     }
-    const { data: allData, error } = await ordersQuery;
+    const { data: allData, count, error } = await ordersQuery;
     if (error) throw error;
 
     const allOrders = allData || [];
@@ -6585,7 +6585,7 @@ app.get("/api/orders", async (req, res) => {
     });
 
     console.log(`[Orders] total=${allOrders.length}`);
-    return res.json({ orders });
+    return res.json({ orders, totalCount: count ?? allOrders.length });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

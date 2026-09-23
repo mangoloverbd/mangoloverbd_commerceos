@@ -142,6 +142,26 @@ describe("dashboard order status filter", () => {
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Cancelled Customer");
   });
 
+  it("shows the exact All Orders total without changing which orders are loaded", async () => {
+    apiFetch.mockImplementation(async (url: string) => (
+      url === "/api/orders"
+        ? jsonResponse({ orders, totalCount: 1234 })
+        : jsonResponse({ updated: 0 })
+    ));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><Dashboard /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("radio", { name: /All Orders.*1,234/ })).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Pending Customer");
+    expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Delivered Customer");
+    expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Cancelled Customer");
+  });
+
   it("passes the full pending queue to the order editor link state only on the Pending tab", async () => {
     const user = userEvent.setup();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

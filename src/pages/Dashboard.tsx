@@ -461,6 +461,9 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const [orders, setOrders] = useState<Order[]>(() => queryClient.getQueryData<Order[]>(["/api/orders"]) || []);
   const [loading, setLoading] = useState(() => !queryClient.getQueryData<Order[]>(["/api/orders"]));
+  const [totalOrdersCount, setTotalOrdersCount] = useState<number | null>(
+    () => queryClient.getQueryData<number>(["/api/orders/count"]) ?? null,
+  );
   const cachedAbandonedResponse = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"]);
   const [abandonedCheckouts, setAbandonedCheckouts] = useState<AbandonedCheckout[]>(
     () => cachedAbandonedResponse?.checkouts || [],
@@ -592,8 +595,13 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to load orders");
       const data = await res.json();
       const nextOrders = (data.orders as Order[]) || [];
+      const nextTotalOrdersCount = typeof data.totalCount === "number" && Number.isFinite(data.totalCount)
+        ? data.totalCount
+        : nextOrders.length;
       queryClient.setQueryData(["/api/orders"], nextOrders);
+      queryClient.setQueryData(["/api/orders/count"], nextTotalOrdersCount);
       setOrders(nextOrders);
+      setTotalOrdersCount(nextTotalOrdersCount);
       // Warm the product catalog cache in the background so the order
       // editor's catalog section renders instantly on open. No-op while fresh.
       void queryClient.prefetchQuery({
@@ -1016,6 +1024,12 @@ export default function Dashboard() {
   const orderStatusCounts = useMemo(
     () => countOrdersByStatus(warehouseOrders),
     [warehouseOrders],
+  );
+  const displayedOrderStatusCounts = useMemo(
+    () => warehouseFilter === "all" && totalOrdersCount !== null
+      ? { ...orderStatusCounts, all: totalOrdersCount }
+      : orderStatusCounts,
+    [orderStatusCounts, totalOrdersCount, warehouseFilter],
   );
 
   // Full pending queue (ignores search text and table pagination) so the
@@ -1637,7 +1651,7 @@ export default function Dashboard() {
         </div>
 
         <OrderStatusSegmentedControl
-          counts={orderStatusCounts}
+          counts={displayedOrderStatusCounts}
           hiddenStatuses={["ready_to_ship"]}
           abandonedCount={abandonedActiveCount}
           value={fulfillmentTab}
