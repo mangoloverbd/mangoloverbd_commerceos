@@ -71,6 +71,22 @@ describe("order activity presentation", () => {
     expect(withStatus.listFields).toHaveLength(1);
   });
 
+  it("hides an order discount field when its full change is already shown by the total", () => {
+    const redundant = layoutActivityChanges([
+      { type: "field_changed", field: "price", label: "Order total", before: 700, after: 0 },
+      { type: "field_changed", field: "discount", label: "Order discount", before: 0, after: 700 },
+    ]);
+    expect(redundant.fields).toEqual([]);
+    expect(redundant.listFields).toEqual([]);
+
+    const distinct = layoutActivityChanges([
+      { type: "field_changed", field: "price", label: "Order total", before: 700, after: 200 },
+      { type: "field_changed", field: "discount", label: "Order discount", before: 0, after: 700 },
+    ]);
+    expect(distinct.fields).toHaveLength(1);
+    expect(distinct.listFields).toHaveLength(1);
+  });
+
   it("summarizes item changes and formats taka values", () => {
     expect(summarizeItemChanges([
       { type: "item_added", before: 0, after: 1 },
