@@ -148,7 +148,7 @@ const REASON_LABELS: Record<string, string> = {
   webhook_review_unsupported: "Server-to-server order, review not supported",
 };
 
-export function reasonLabel(reason: string) {
+function reasonLabel(reason: string) {
   if (REASON_LABELS[reason]) return REASON_LABELS[reason];
   if (reason.startsWith("critical:")) return `Critical signal: ${reason.slice("critical:".length)}`;
   if (reason.startsWith("score>=")) return `High risk score (${reason.slice("score".length)})`;
