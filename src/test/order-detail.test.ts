@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import OrderDetail from "@/pages/OrderDetail";
 import { OrdersTable, type Order } from "@/components/OrdersTable";
@@ -91,7 +91,12 @@ function response(body: unknown, ok = true, status = ok ? 200 : 404) {
   return { ok, status, json: async () => body } as Response;
 }
 
-function renderPage(id = "order-1", cachedOrders?: unknown[]) {
+function LocationSearchProbe() {
+  const location = useLocation();
+  return createElement("output", { "data-testid": "location-search" }, location.search);
+}
+
+function renderPage(id = "order-1", cachedOrders?: unknown[], initialEntry = `/orders/${id}`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (cachedOrders) queryClient.setQueryData(["/api/orders"], cachedOrders);
   const result = render(createElement(
@@ -99,11 +104,12 @@ function renderPage(id = "order-1", cachedOrders?: unknown[]) {
     { client: queryClient },
     createElement(
       MemoryRouter,
-      { initialEntries: [`/orders/${id}`] },
+      { initialEntries: [initialEntry] },
       createElement(Routes, null,
         createElement(Route, { path: "/orders/:id", element: createElement(OrderDetail) }),
         createElement(Route, { path: "/", element: createElement("div", null, "Orders dashboard") }),
       ),
+      createElement(LocationSearchProbe),
     ),
   ));
   return { ...result, queryClient };
@@ -134,6 +140,57 @@ describe("OrderDetail", () => {
     expect(await screen.findByRole("region", { name: "Customer and order" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Product catalog" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
+  });
+
+  it("switches between Order details and live Logs while preserving other query parameters", async () => {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/products") return response(products);
+      if (url === "/api/orders/order-1/activity") {
+        return response({ events: [{ id: "event-1", occurred_at: "2026-09-03T10:00:00Z", event_type: "order.status_changed", actor_display_name: "Rakib", summary: "Status changed to approved" }] });
+      }
+      return response({});
+    });
+    const user = userEvent.setup();
+    renderPage("order-1", undefined, "/orders/order-1?fulfillmentTab=pending");
+
+    const customerSection = await screen.findByRole("region", { name: "Customer and order" });
+    expect(within(customerSection).queryByRole("region", { name: "Order activity" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Order details" })).toBeChecked();
+
+    await user.click(screen.getByRole("radio", { name: "Logs" }));
+    expect((await screen.findAllByText("Status changed to approved")).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("activity-live-indicator")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Order cart" })).not.toBeInTheDocument();
+    const logsParams = new URLSearchParams(screen.getByTestId("location-search").textContent || "");
+    expect(logsParams.get("tab")).toBe("logs");
+    expect(logsParams.get("fulfillmentTab")).toBe("pending");
+
+    await user.click(screen.getByRole("radio", { name: "Order details" }));
+    expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
+    const detailsParams = new URLSearchParams(screen.getByTestId("location-search").textContent || "");
+    expect(detailsParams.get("tab")).toBeNull();
+    expect(detailsParams.get("fulfillmentTab")).toBe("pending");
+  });
+
+  it("prefetches order activity so Logs opens without a loading state", async () => {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/products") return response(products);
+      if (url === "/api/orders/order-1/activity") {
+        return response({ events: [{ id: "event-1", occurred_at: "2026-09-03T10:00:00Z", event_type: "order.status_changed", actor_display_name: "Rakib", summary: "Status changed to approved" }] });
+      }
+      return response({});
+    });
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+    await screen.findByRole("region", { name: "Customer and order" });
+    await waitFor(() => expect(queryClient.getQueryData(["/api/orders/order-1/activity"])).toBeDefined());
+
+    await user.click(screen.getByRole("radio", { name: "Logs" }));
+
+    expect(screen.queryByText("Loading activity")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Status changed to approved").length).toBeGreaterThan(0);
   });
 
   it("places the order source selector in the customer section header", async () => {

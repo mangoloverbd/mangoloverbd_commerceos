@@ -61,6 +61,97 @@ describe("AbandonedDetail", () => {
     expect(screen.queryByRole("button", { name: /discount/i })).not.toBeInTheDocument();
   });
 
+  it("opens on Order details without the embedded activity timeline", async () => {
+    renderDetail();
+
+    expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("radio", { name: "Order details" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Logs" })).not.toBeChecked();
+    expect(screen.queryByRole("region", { name: "Order activity" })).not.toBeInTheDocument();
+  });
+
+  it("slides to live logs and keeps unapplied customer edits when returning", async () => {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [draft], activeCount: 1 });
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url === "/api/abandoned-checkouts/draft-1/activity") {
+        return jsonResponse({ events: [{ id: "event-1", occurred_at: "2026-09-11T12:05:00.000Z", event_type: "contacted", actor_display_name: "Sadia", summary: "Checkout contacted" }] });
+      }
+      return jsonResponse({});
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: /edit customer/i }));
+    await user.clear(screen.getByLabelText("Phone"));
+    await user.type(screen.getByLabelText("Phone"), "01799999999");
+
+    await user.click(screen.getByRole("radio", { name: "Logs" }));
+    expect(await screen.findByRole("region", { name: "Order activity" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Checkout contacted")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("region", { name: "Order cart" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "Order details" }));
+    expect(screen.getByRole("region", { name: "Order cart" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Phone")).toHaveValue("01799999999");
+  });
+
+  it("prefetches activity so Logs opens without a loading state", async () => {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [draft], activeCount: 1 });
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url === "/api/abandoned-checkouts/draft-1/activity") {
+        return jsonResponse({ events: [{ id: "event-1", occurred_at: "2026-09-11T12:05:00.000Z", event_type: "contacted", actor_display_name: "Sadia", summary: "Checkout contacted" }] });
+      }
+      return jsonResponse({});
+    });
+    const user = userEvent.setup();
+    const client = renderDetail();
+    expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(client.getQueryData(["/api/abandoned-checkouts/draft-1/activity"])).toBeDefined());
+
+    await user.click(screen.getByRole("radio", { name: "Logs" }));
+
+    expect(screen.queryByText("Loading activity")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Checkout contacted").length).toBeGreaterThan(0);
+  });
+
+  it("refreshes activity after saving even while Logs is closed", async () => {
+    const activityCalls = () => apiFetch.mock.calls.filter(([url, init]) => url === "/api/abandoned-checkouts/draft-1/activity" && !init?.method).length;
+    apiFetch.mockImplementation(async (url: string, init?: { method?: string }) => {
+      if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [draft], activeCount: 1 });
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url === "/api/abandoned-checkouts/draft-1" && init?.method === "PATCH") {
+        return jsonResponse({ checkout: { ...draft, customer_name: "Edited Name" } });
+      }
+      if (url === "/api/abandoned-checkouts/draft-1/activity") return jsonResponse({ events: [] });
+      return jsonResponse({});
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(activityCalls()).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(apiFetch.mock.calls.some(([url]) => url === "/api/abandoned-checkouts/draft-1/activity/view")).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const callsBeforeSave = activityCalls();
+
+    await user.click(screen.getByRole("button", { name: /edit customer/i }));
+    await user.clear(screen.getByLabelText("Customer name"));
+    await user.type(screen.getByLabelText("Customer name"), "Edited Name");
+    await user.click(screen.getByRole("button", { name: /apply customer changes/i }));
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(activityCalls()).toBeGreaterThan(callsBeforeSave));
+  });
+
+  it("opens directly on Logs from a ?tab=logs link", async () => {
+    renderDetail(["/abandoned/draft-1?tab=logs"]);
+
+    expect(await screen.findByRole("region", { name: "Order activity" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Logs" })).toBeChecked();
+  });
+
   it("saving with an invalid phone shows a validation error and never PATCHes", async () => {
     const user = userEvent.setup();
     renderDetail();
