@@ -113,6 +113,15 @@ export function normalizeBdPhone(phone) {
   return clean;
 }
 
+// Numbers typed by a customer or staff: English digits only, as
+// 01[3-9]XXXXXXXX or +8801[3-9]XXXXXXXX, ignoring spaces and dashes. Stored
+// and imported numbers keep using the lenient normalizeBdPhone.
+export function normalizeBdMobileInput(phone) {
+  if (typeof phone !== "string") return null;
+  const match = /^(?:0|\+880)(1[3-9]\d{8})$/.exec(phone.replace(/[\s-]/g, ""));
+  return match ? `0${match[1]}` : null;
+}
+
 export function isAbandonedCheckoutDraftKey(value) {
   return typeof value === "string" && UUID_RE.test(value);
 }
@@ -128,7 +137,7 @@ export function parseAbandonedCheckoutCapture(body) {
   const sourcePath = requiredString(body.sourcePath, 1, 120);
   if (ABANDONED_CHECKOUT_SOURCE_PATHS[source] !== sourcePath) invalidCapture();
 
-  const phone = normalizeBdPhone(body.phone);
+  const phone = normalizeBdMobileInput(body.phone);
   if (!phone) invalidCapture();
 
   const cart = parseCart(body.items);
@@ -270,7 +279,7 @@ const STAFF_EDIT_KEYS = new Set(["customerName", "phone", "address", "items", "d
 export function parseAbandonedCheckoutStaffEdit(body) {
   if (!isRecord(body) || !hasOnlyKeys(body, STAFF_EDIT_KEYS)) invalidCapture();
 
-  const phone = normalizeBdPhone(body.phone);
+  const phone = normalizeBdMobileInput(body.phone);
   if (!phone) invalidCapture();
 
   const cart = parseCart(body.items);

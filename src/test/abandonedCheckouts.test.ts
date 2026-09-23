@@ -68,6 +68,9 @@ describe("abandoned checkout capture parsing", () => {
       { ...validCapture, orgId: "visitor-controlled" },
       { ...validCapture, sourcePath: "/step/honey-nut" },
       { ...validCapture, phone: "0181234567" },
+      { ...validCapture, phone: "01212345678" },
+      { ...validCapture, phone: "০১৭১২৩৪৫৬৭৮" },
+      { ...validCapture, phone: "8801712345678" },
       { ...validCapture, items: [] },
       { ...validCapture, items: [{ ...validCapture.items[0], quantity: 0 }] },
       { ...validCapture, total: -1 },
@@ -215,6 +218,10 @@ describe("abandoned checkout staff edit parsing", () => {
       .toThrow(AbandonedCheckoutValidationError);
     expect(() => parseAbandonedCheckoutStaffEdit({ ...validEdit, phone: "123" }))
       .toThrow(AbandonedCheckoutValidationError);
+    for (const phone of ["01212345678", "০১৭১২৩৪৫৬৭৮", "8801712345678"]) {
+      expect(() => parseAbandonedCheckoutStaffEdit({ ...validEdit, phone }))
+        .toThrow(AbandonedCheckoutValidationError);
+    }
     expect(() => parseAbandonedCheckoutStaffEdit({ ...validEdit, items: [] }))
       .toThrow(AbandonedCheckoutValidationError);
     expect(() => parseAbandonedCheckoutStaffEdit({
