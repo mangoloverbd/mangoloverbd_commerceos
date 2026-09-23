@@ -8252,6 +8252,25 @@ app.post("/api/orders", async (req, res) => {
       row.assigned_to = user.id;
     }
 
+    if (row.payment_method !== undefined && row.payment_method !== null) {
+      const method = typeof row.payment_method === "string" ? row.payment_method.trim().toLowerCase() : "";
+      if (!["cod", "bkash", "nagad", "card"].includes(method)) {
+        return res.status(400).json({ error: "Invalid payment method" });
+      }
+      row.payment_method = method;
+    }
+    if (row.advanced_payment !== undefined && row.advanced_payment !== null) {
+      const advanceValue = Number(row.advanced_payment);
+      if (!Number.isFinite(advanceValue) || advanceValue < 0) {
+        return res.status(400).json({ error: "Advance payment must be a non-negative number" });
+      }
+      const orderTotal = (Number(row.price) || 0) + (Number(row.delivery_rate) || 0);
+      if (advanceValue - orderTotal > 1e-9) {
+        return res.status(400).json({ error: "Advance payment cannot exceed the order total" });
+      }
+      row.advanced_payment = Math.round((advanceValue + Number.EPSILON) * 100) / 100;
+    }
+
     // New Order submits "confirmed" today. Derive the confirmation attribution
     // from that initial transition rather than hard-coding a parallel rule.
     const transitionAt = new Date().toISOString();
@@ -8322,7 +8341,7 @@ app.patch("/api/orders/:id", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source", "advanced_payment", "payment_method"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
     if (update.source !== undefined && !isCanonicalOrderSource(update.source)) {
@@ -8379,6 +8398,26 @@ app.patch("/api/orders/:id", async (req, res) => {
         }
         update.price = Math.round(((gross - update.discount) + Number.EPSILON) * 100) / 100;
       }
+    }
+    if (update.payment_method !== undefined) {
+      const method = typeof update.payment_method === "string" ? update.payment_method.trim().toLowerCase() : "";
+      if (!["cod", "bkash", "nagad", "card"].includes(method)) {
+        return res.status(400).json({ error: "Invalid payment method" });
+      }
+      update.payment_method = method;
+    }
+    if (update.advanced_payment !== undefined) {
+      const advanceValue = Number(update.advanced_payment);
+      if (!Number.isFinite(advanceValue) || advanceValue < 0) {
+        return res.status(400).json({ error: "Advance payment must be a non-negative number" });
+      }
+      const effectivePrice = update.price !== undefined ? Number(update.price) : Number(orderCheck.price);
+      const effectiveDelivery = update.delivery_rate !== undefined ? Number(update.delivery_rate) : Number(orderCheck.delivery_rate);
+      const orderTotal = (Number.isFinite(effectivePrice) ? effectivePrice : 0) + (Number.isFinite(effectiveDelivery) ? effectiveDelivery : 0);
+      if (advanceValue - orderTotal > 1e-9) {
+        return res.status(400).json({ error: "Advance payment cannot exceed the order total" });
+      }
+      update.advanced_payment = Math.round((advanceValue + Number.EPSILON) * 100) / 100;
     }
     // Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
     if (update.status !== undefined) {
@@ -8594,7 +8633,7 @@ app.post("/api/send-to-courier/bulk", async (req, res) => {
             recipient_name: (order.customer_name || "Customer").slice(0, 100),
             recipient_phone: cleanedPhone,
             recipient_address: (order.address || "No address provided").slice(0, 250),
-            cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
+            cod_amount: Math.max(0, (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0) - (parseFloat(order.advanced_payment) || 0)),
             note: order.notes || "",
             item_description: formatCourierItems(courierItems),
           },
@@ -8705,7 +8744,7 @@ app.post("/api/send-to-courier", async (req, res) => {
       recipient_name: order.customer_name || "Customer",
       recipient_phone: cleanedPhone,
       recipient_address: order.address || "No address provided",
-      cod_amount: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
+      cod_amount: Math.max(0, (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0) - (parseFloat(order.advanced_payment) || 0)),
       note: formatCourierItems(courierItems),
     };
 
@@ -8787,7 +8826,7 @@ app.post("/api/send-to-pathao", async (req, res) => {
       special_instruction: formatCourierItems(courierItems),
       item_quantity: courierItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0),
       item_weight: 0.5,
-      amount_to_collect: (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0),
+      amount_to_collect: Math.max(0, (parseFloat(order.price) || 0) + (parseFloat(order.delivery_rate) || 0) - (parseFloat(order.advanced_payment) || 0)),
     };
 
     const pathaoRes = await fetch("https://api-hermes.pathao.com/aladdin/api/v1/orders", {

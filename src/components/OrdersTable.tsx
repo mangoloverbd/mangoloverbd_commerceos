@@ -28,6 +28,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { Chip } from "@/components/base/badges/chip";
 import { toast, DarkToast } from "@/components/ui/sonner";
 import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldCheck, Truck, Search, StickyNote, Package, Check, FileText, Trash2, Printer, ChevronDown, Copy, MapPin, ShoppingBag, FileSpreadsheet } from "lucide-react";
 import { format } from "date-fns";
@@ -251,6 +252,7 @@ export interface Order {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fraud_data: FraudData | any | null;
   delivery_rate: number | null;
+  advanced_payment?: number | null;
   warehouse_id?: string | null;
   warehouse_auto?: boolean | null;
   weight_kg?: number | null;
@@ -479,7 +481,8 @@ function FraudCell({ order, isChecking, onCheck }: {
 
 function EditableTotalCell({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: (updatedOrder: Order) => void }) {
   const [editing, setEditing] = useState(false);
-  const total = (order.price || 0) + (order.delivery_rate || 0);
+  const advance = Math.max(0, Number(order.advanced_payment) || 0);
+  const total = Math.max(0, (order.price || 0) + (order.delivery_rate || 0) - advance);
   const [saving, setSaving] = useState(false);
 
   const handleBlur = async (e: React.FocusEvent<HTMLSpanElement>) => {
@@ -492,11 +495,11 @@ function EditableTotalCell({ order, onOrderUpdate }: { order: Order; onOrderUpda
       const res = await apiFetch(`/api/orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ price: newTotal - (order.delivery_rate || 0) }),
+        body: JSON.stringify({ price: newTotal + advance - (order.delivery_rate || 0) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update total");
-      if (onOrderUpdate) onOrderUpdate(data.order || { ...order, price: newTotal - (order.delivery_rate || 0) });
+      if (onOrderUpdate) onOrderUpdate(data.order || { ...order, price: newTotal + advance - (order.delivery_rate || 0) });
       toast.success("Total updated");
     } catch {
       toast.error("Failed to update total");
@@ -511,21 +514,24 @@ function EditableTotalCell({ order, onOrderUpdate }: { order: Order; onOrderUpda
   };
 
   return (
-    <span className={cn("font-medium text-sm tabular-nums inline-flex items-center gap-0", saving && "opacity-50 pointer-events-none")}>
-      <span className="select-none">৳</span>
-      <span
-        contentEditable
-        suppressContentEditableWarning
-        onFocus={() => setEditing(true)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          "outline-none cursor-text transition-all",
-          editing ? "underline underline-offset-4 decoration-black/30" : "hover:underline hover:underline-offset-4 hover:decoration-black/20"
-        )}
-      >
-        {total.toLocaleString()}
+    <span className={cn("font-medium text-sm tabular-nums inline-flex flex-col items-center gap-0.5", saving && "opacity-50 pointer-events-none")}>
+      <span className="inline-flex items-center gap-0">
+        <span className="select-none">৳</span>
+        <span
+          contentEditable
+          suppressContentEditableWarning
+          onFocus={() => setEditing(true)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            "outline-none cursor-text transition-all",
+            editing ? "underline underline-offset-4 decoration-black/30" : "hover:underline hover:underline-offset-4 hover:decoration-black/20"
+          )}
+        >
+          {total.toLocaleString()}
+        </span>
       </span>
+      {advance > 0 && <Chip variant="caption" color="lime" className="font-mono tabular-nums">adv ৳{advance.toLocaleString()}</Chip>}
     </span>
   );
 }

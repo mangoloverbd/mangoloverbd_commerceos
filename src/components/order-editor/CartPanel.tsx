@@ -1,6 +1,7 @@
 import { Minus, Package, Plus, Trash } from "@phosphor-icons/react";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { Button as BuiButton } from "@/components/base/buttons/button";
+import { Chip } from "@/components/base/badges/chip";
 import { Switch } from "@/components/base/switch/switch";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { CartDiscountEditor } from "./CartDiscountEditor";
@@ -21,6 +22,8 @@ type CartPanelProps = {
   overallDiscountType: DiscountType | null;
   overallDiscountValue: number;
   deliveryOn: boolean;
+  advance: number;
+  onAdvanceChange: (value: number) => void;
   status: string | null | undefined;
   onStatusChange: (status: string) => void;
   notes: string;
@@ -44,7 +47,7 @@ type CartPanelProps = {
   onCancellationReasonNoteChange?: (note: string) => void;
 };
 
-export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false, requiredAdditionReasonKeys = [], additionReasons = {}, onAdditionReasonChange, cancellationRequired = false, cancellationReasonCode = "", cancellationReasonNote = "", onCancellationReasonChange, onCancellationReasonNoteChange }: CartPanelProps) {
+export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, advance, onAdvanceChange, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false, requiredAdditionReasonKeys = [], additionReasons = {}, onAdditionReasonChange, cancellationRequired = false, cancellationReasonCode = "", cancellationReasonNote = "", onCancellationReasonChange, onCancellationReasonNoteChange }: CartPanelProps) {
   const overallBase = roundTaka(totals.grossSubtotal - totals.itemDiscount);
   return (
     <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
@@ -78,7 +81,7 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
       </div>
       <div className="sticky bottom-0 mt-2 border-t border-black/[0.08] bg-[#FAFAF8] pt-2">
         {!hideOrderSections && <div className="mb-1"><CartDiscountEditor base={overallBase} discountType={overallDiscountType} discountValue={overallDiscountValue} disabled={!canEdit} onApply={onOverallDiscount} onRemove={onRemoveOverallDiscount} /></div>}
-        <dl className="space-y-1 text-[12px] leading-snug"><div className="flex justify-between"><dt className="text-black">Subtotal</dt><dd className="font-mono tabular-nums">{formatTaka(totals.grossSubtotal)}</dd></div>{totals.itemDiscount > 0 && <div className="flex justify-between"><dt className="text-black">Item discounts</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</dd></div>}{totals.legacyDiscount > 0 && <div className="flex justify-between"><dt className="text-black">Order discount</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</dd></div>}<div className="flex items-center justify-between"><dt className="text-black">Delivery</dt><dd className="flex items-center gap-2"><span className="font-mono tabular-nums">{totals.deliveryFee > 0 ? formatTaka(totals.deliveryFee) : "Free"}</span><Switch size="sm" aria-label="Toggle delivery charge" isSelected={deliveryOn} onChange={onToggleDelivery} isDisabled={!canEdit} /></dd></div><div className="flex items-baseline justify-between border-t border-black/[0.07] pt-2"><dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-black">Final total</dt><dd className="font-mono text-[17px] tabular-nums">{formatTaka(totals.finalTotal)}</dd></div></dl>
+        <dl className="space-y-1 text-[12px] leading-snug"><div className="flex justify-between"><dt className="text-black">Subtotal</dt><dd className="font-mono tabular-nums">{formatTaka(totals.grossSubtotal)}</dd></div>{totals.itemDiscount > 0 && <div className="flex justify-between"><dt className="text-black">Item discounts</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</dd></div>}{totals.legacyDiscount > 0 && <div className="flex justify-between"><dt className="text-black">Order discount</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</dd></div>}<div className="flex items-center justify-between"><dt className="text-black">Delivery</dt><dd className="flex items-center gap-2"><span className="font-mono tabular-nums">{totals.deliveryFee > 0 ? formatTaka(totals.deliveryFee) : "Free"}</span><Switch size="sm" aria-label="Toggle delivery charge" isSelected={deliveryOn} onChange={onToggleDelivery} isDisabled={!canEdit} /></dd></div><div className="flex items-center justify-between gap-2"><dt className="text-black">Advance / partial</dt><dd className="flex items-center gap-1.5"><span className="flex items-center gap-1 rounded-lg bg-black/[0.04] py-1 pl-2.5 pr-1 ring-1 ring-inset ring-black/[0.06] transition focus-within:bg-white focus-within:ring-black/20"><span className="font-mono text-[12px] text-black/40">৳</span><input aria-label="Advance payment" type="number" min={0} max={totals.finalTotal} value={advance > 0 ? advance : ""} placeholder="0" onChange={(event) => onAdvanceChange(Math.min(totals.finalTotal, Math.max(0, Number(event.target.value) || 0)))} disabled={!canEdit} className="w-20 bg-transparent text-right font-mono text-[12px] font-medium tabular-nums outline-none placeholder:text-black/30 disabled:opacity-40" /></span></dd></div><div className="flex items-baseline justify-between border-t border-black/[0.07] pt-2"><dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-black">Final total</dt><dd className="font-mono text-[17px] tabular-nums">{formatTaka(totals.finalTotal)}</dd></div>{advance > 0 && <div className="flex items-baseline justify-between"><dt className="text-[11px] text-black">Due after advance</dt><dd>{advance < totals.finalTotal ? <Chip variant="subtle" color="lime" className="font-mono tabular-nums">{formatTaka(totals.finalTotal - advance)}</Chip> : <Chip variant="subtle" color="lime" className="font-medium">Paid</Chip>}</dd></div>}</dl>
         {error && <p role="alert" className="mt-1.5 text-[12px] text-red-600">{error}</p>}
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
           {!hideOrderSections && (

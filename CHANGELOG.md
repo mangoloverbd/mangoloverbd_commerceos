@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.33] - 2026-09-23
+
+### Added
+
+- Advance / partial payment on New Order and the Order editor: inline ৳ input (empty at zero, capped at the total), green due chip, and `Paid` state at full payment. The orders table Total shows the due with a small adv chip, the invoice shows Advance paid + Amount due, and Steadfast/Pathao collect the due only.
+
 ## [0.1.0.32] - 2026-09-23
 
 ### Fixed

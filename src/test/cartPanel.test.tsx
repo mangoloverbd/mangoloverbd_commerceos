@@ -34,6 +34,8 @@ function renderCart(status: string, notes = "") {
         overallDiscountType={null}
         overallDiscountValue={0}
         deliveryOn
+        advance={0}
+        onAdvanceChange={vi.fn()}
         onToggleDelivery={vi.fn()}
         onOverallDiscount={vi.fn()}
         onRemoveOverallDiscount={vi.fn()}
@@ -117,6 +119,8 @@ describe("CartPanel draft mode", () => {
         overallDiscountType={null}
         overallDiscountValue={0}
         deliveryOn
+        advance={0}
+        onAdvanceChange={vi.fn()}
         onToggleDelivery={vi.fn()}
         onOverallDiscount={vi.fn()}
         onRemoveOverallDiscount={vi.fn()}
@@ -150,6 +154,8 @@ describe("CartPanel draft mode", () => {
         overallDiscountType={null}
         overallDiscountValue={0}
         deliveryOn
+        advance={0}
+        onAdvanceChange={vi.fn()}
         onToggleDelivery={vi.fn()}
         onOverallDiscount={vi.fn()}
         onRemoveOverallDiscount={vi.fn()}
