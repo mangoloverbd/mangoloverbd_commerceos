@@ -44,6 +44,21 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("order protection pipeline", () => {
+  test("shadow records a would-block event but proceeds without review or duplicate reservation", async () => {
+    const recordEvent = vi.fn();
+    const createReview = vi.fn();
+    const reserveFingerprint = vi.fn();
+    const result = await protectOrderSubmission({
+      mode: "shadow", input: { ...input, website: "spam" },
+      requestMeta: { ip: "203.0.113.5", network: "v4:203.0.113.0/24" },
+      dependencies: dependencies({ recordEvent, createReview, reserveFingerprint }),
+    });
+    expect(result.protection.decision).toBe("ALLOW");
+    expect(result.response.decision).toBe("allow");
+    expect(recordEvent).toHaveBeenCalledWith(expect.objectContaining({ mode: "shadow", decision: "BLOCK", reviewId: null }));
+    expect(createReview).not.toHaveBeenCalled();
+    expect(reserveFingerprint).not.toHaveBeenCalled();
+  });
   test("bypasses protection when ORDER_PROTECTION_MODE is off", async () => {
     const previousMode = process.env.ORDER_PROTECTION_MODE;
     process.env.ORDER_PROTECTION_MODE = "off";
@@ -87,6 +102,7 @@ describe("order protection pipeline", () => {
   test("blocks without reserving an order fingerprint for a honeypot submission", async () => {
     const deps = dependencies();
     const result = await protectOrderSubmission({
+      mode: "active",
       input: { ...input, website: "spam" },
       requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
       dependencies: deps,
@@ -99,6 +115,7 @@ describe("order protection pipeline", () => {
   test("does not mutate the evaluator result when a duplicate reservation loses the race", async () => {
     const reserveFingerprint = vi.fn().mockResolvedValue({ reserved: false });
     const result = await protectOrderSubmission({
+      mode: "active",
       input,
       requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
       dependencies: dependencies({ reserveFingerprint }),
@@ -116,6 +133,7 @@ describe("order protection pipeline", () => {
     })) };
     const createReview = vi.fn().mockResolvedValue({ id: "review-1", status: "on_hold" });
     const result = await protectOrderSubmission({
+      mode: "active",
       input,
       requestMeta: { ip: "203.0.113.5", userAgent: "browser" },
       dependencies: dependencies({

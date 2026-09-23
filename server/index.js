@@ -75,10 +75,10 @@ import {
   hashProtectionSignal,
   listProtectionReviews,
 } from "./orderProtectionStore.js";
-import { isOrderProtectionEnabled } from "./orderSubmissionProtection.js";
 import { protectOrderSubmission } from "./orderProtectionPipeline.js";
 import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
 import { getTrustedRequestIp, networkKey } from "./risk/network.js";
+import { PROTECTION_MODE_SETTING_SUFFIX, resolveProtectionMode } from "./risk/mode.js";
 import { validateAddressWithAI } from "./addressValidation.js";
 import {
   FRAUD_QUOTA_RESERVE,
@@ -437,8 +437,8 @@ function getClientIp(req) {
   return getTrustedRequestIp(req);
 }
 
-async function allowOrderSubmission(req, res, orgId, handle = "*") {
-  if (!isOrderProtectionEnabled() || !rlOrderSubmission) return true;
+async function allowOrderSubmission(req, res, orgId, handle = "*", mode) {
+  if (mode === "off" || !rlOrderSubmission) return true;
   const limiterSecret = process.env.ORDER_PROTECTION_HASH_SECRET || "order-protection-unconfigured";
   const ipHash = hashProtectionSignal(getClientIp(req), limiterSecret);
   try {
@@ -7452,8 +7452,12 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       return res.status(401).json({ error: "Invalid API Key" });
     }
 
-    if (!(await allowOrderSubmission(req, res, orgId))) return;
+    const modeKey = `${orgId}:${PROTECTION_MODE_SETTING_SUFFIX}`;
+    const settings = await getSettings([modeKey]);
+    const mode = resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE, settingMode: settings[modeKey] });
+    if (!(await allowOrderSubmission(req, res, orgId, "*", mode))) return;
     const protection = await protectOrderSubmission({
+      mode,
       input: {
         orgId,
         route: "custom_webhook",
@@ -12868,7 +12872,7 @@ app.get("/api/order-protection/events", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const { data, error } = await supabase
       .from("order_protection_events")
-      .select("id, review_id, order_id, route, decision, score, reason_codes, created_at, expires_at")
+      .select("id, review_id, order_id, route, mode, decision, score, reason_codes, created_at, expires_at")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -12929,7 +12933,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
     const orgId = await resolveStorefrontHandle(req.params.handle);
     if (!orgId) return res.status(404).json({ error: "not_found" });
 
-    if (!(await allowOrderSubmission(req, res, orgId, req.params.handle))) return;
+    const modeKey = `${orgId}:${PROTECTION_MODE_SETTING_SUFFIX}`;
+    const settings = await getSettings([modeKey]);
+    const mode = resolveProtectionMode({ envMode: process.env.ORDER_PROTECTION_MODE, settingMode: settings[modeKey] });
+    if (!(await allowOrderSubmission(req, res, orgId, req.params.handle, mode))) return;
 
     const supabase = getServiceSupabase();
     const body = req.body || {};
@@ -12966,6 +12973,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     }
 
     const protection = await protectOrderSubmission({
+      mode,
       input: {
         orgId,
         route: "public_v1",

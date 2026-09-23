@@ -72,6 +72,7 @@ describe("order protection storage adapters", () => {
         score: 100,
         reasonCodes: ["honeypot_filled"],
         route: "public_v1",
+        mode: "shadow",
       },
     });
 
@@ -82,6 +83,7 @@ describe("order protection storage adapters", () => {
     expect(payload).toMatchObject({
       org_id: "org-1",
       decision: "BLOCK",
+      mode: "shadow",
       score: 100,
       reason_codes: ["honeypot_filled"],
       phone_hash: expect.stringMatching(/^[a-f0-9]{64}$/),

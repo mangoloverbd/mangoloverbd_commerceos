@@ -23,6 +23,7 @@ export type ProtectionEvent = {
   review_id: string | null;
   order_id: string | null;
   route: string;
+  mode: "shadow" | "active" | null;
   decision: "ALLOW" | "REVIEW" | "BLOCK";
   score: number;
   reason_codes: string[];
