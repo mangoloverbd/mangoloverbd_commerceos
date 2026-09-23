@@ -68,6 +68,7 @@ import {
   isAbandonedCheckoutDraftKey,
   normalizeAbandonedCheckoutConvertOverrides,
   normalizeBdPhone,
+  normalizeBdMobileInput,
   parseAbandonedCheckoutCapture,
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
@@ -7490,6 +7491,10 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     if (!orgId) {
       return res.status(401).json({ error: "Invalid API Key" });
     }
+    const webhookPhone = normalizeBdMobileInput(req.body?.phone);
+    if (!webhookPhone) {
+      return res.status(400).json({ error: "A valid Bangladeshi phone number is required" });
+    }
 
     const modeKey = `${orgId}:${PROTECTION_MODE_SETTING_SUFFIX}`;
     const settings = await getSettings([modeKey]);
@@ -7499,7 +7504,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     if (!(await allowOrderSubmission(req, res, orgId, "*", mode, clientContext))) return;
     const protection = await assessOrderRisk({
       orgId, route: "custom_webhook",
-      body: { ...req.body, items: Array.isArray(req.body?.items) && req.body.items.length
+      body: { ...req.body, phone: webhookPhone, items: Array.isArray(req.body?.items) && req.body.items.length
         ? req.body.items : [{ productId: null, variantId: null, quantity: Number(req.body?.quantity) || 1 }] },
       headers: req.headers, requestIp: getTrustedRequestIp(req),
       deps: { supabase, redis: redisClient, secret: process.env.ORDER_PROTECTION_HASH_SECRET,
@@ -7538,6 +7543,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
+    row.phone = webhookPhone;
 
     const submittedDraftKey = req.body?.abandoned_checkout_draft_key;
     const abandonedDraftKey = isAbandonedCheckoutDraftKey(submittedDraftKey)
@@ -8160,6 +8166,8 @@ app.post("/api/orders", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
+    const staffPhone = normalizeBdMobileInput(req.body?.phone);
+    if (!staffPhone) return res.status(400).json({ error: "Enter a mobile number in English digits, like 01712345678 or +8801712345678" });
     const requestedItems = req.body?.items;
     const orderItems = Array.isArray(requestedItems)
       ? requestedItems.map((item) => {
@@ -8215,6 +8223,7 @@ app.post("/api/orders", async (req, res) => {
     for (const key of allowed) {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
+    row.phone = staffPhone;
     if (req.body?.source !== undefined && !isCanonicalOrderSource(req.body.source)) {
       return res.status(400).json({ error: "Invalid order source" });
     }
@@ -8380,6 +8389,13 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
+    // Older orders may hold numbers saved before the strict rule; only a
+    // changed phone is checked, so other edits to those orders still save.
+    if (update.phone !== undefined && update.phone !== orderCheck.phone) {
+      const phone = normalizeBdMobileInput(update.phone);
+      if (!phone) return res.status(400).json({ error: "Enter a mobile number in English digits, like 01712345678 or +8801712345678" });
+      update.phone = phone;
+    }
     const fromBusinessStatus = normalizeBusinessStatus(orderCheck.status);
     const toBusinessStatus = update.status === undefined ? fromBusinessStatus : normalizeBusinessStatus(update.status);
     const isStaffCancellation = toBusinessStatus === "cancelled" && fromBusinessStatus !== "cancelled";
@@ -13351,7 +13367,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     if (!customerName || typeof customerName !== "string") {
       return res.status(400).json({ error: "customer_name is required" });
     }
-    const cleanPhone = normalizeBdPhone(phone);
+    const cleanPhone = normalizeBdMobileInput(phone);
     if (!cleanPhone) {
       return res.status(400).json({ error: "A valid Bangladeshi phone number is required" });
     }
