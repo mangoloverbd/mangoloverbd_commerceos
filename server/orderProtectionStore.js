@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { SIGNAL_DEFINITIONS } from "./risk/signals.js";
 
 const EVENT_TTL_SECONDS = 30 * 24 * 60 * 60;
 const COUNTER_TTLS = Object.freeze({ last15m: 15 * 60, last1h: 60 * 60, last24h: 24 * 60 * 60 });
@@ -160,6 +161,16 @@ export async function describeReviewItems({ supabase, orgId, reviews }) {
     return { ...item, productName: product.name, variantName, unitPrice };
   };
   return reviews.map(review => Array.isArray(review.items) ? { ...review, items: review.items.map(describe) } : review);
+}
+
+// Reviews store signal codes; staff read the same plain labels the risk
+// dashboard uses. Codes without a definition are left for the client to tidy.
+export function withReasonLabels(reviews) {
+  return reviews.map(review => ({
+    ...review,
+    reason_labels: Object.fromEntries((Array.isArray(review.reason_codes) ? review.reason_codes : [])
+      .filter(code => SIGNAL_DEFINITIONS[code]).map(code => [code, SIGNAL_DEFINITIONS[code].label])),
+  }));
 }
 
 export async function getProtectionReview({ supabase, orgId, reviewId }) {

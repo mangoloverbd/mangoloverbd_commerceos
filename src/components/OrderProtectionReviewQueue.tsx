@@ -27,9 +27,11 @@ import {
 } from "@/lib/orderProtection";
 import {
   calculateProtectionTotal,
-  formatProtectionItem,
+  formatProtectionItemLabel,
+  formatProtectionLinePrice,
   formatProtectionTotal,
   protectionCopySummary,
+  protectionReasonLabel,
   protectionSourceLabel,
   protectionTelHref,
   protectionWhatsAppHref,
@@ -279,7 +281,7 @@ export function OrderProtectionReviewQueue() {
     <>
       {header}
       {error && <p role="alert" className="border-t border-black/[0.07] py-3 text-sm text-red-700">{error}</p>}
-      <div className="divide-y divide-black/[0.08] border-t border-black/[0.07]" data-testid="order-protection-queue">
+      <div className="space-y-2 border-t border-black/[0.07] bg-[#f5f5f5] p-2 sm:p-3" data-testid="order-protection-queue">
         {reviews.map((review) => {
           const callHref = protectionTelHref(review.phone);
           const whatsAppHref = protectionWhatsAppHref(review.phone);
@@ -291,194 +293,213 @@ export function OrderProtectionReviewQueue() {
           return (
             <article
               key={review.id}
-              className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 bg-[#f5f5f5] px-2 py-5 sm:px-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center"
+              className="bg-white px-3 py-4 sm:px-4"
             >
-              <div
-                data-testid={`checkbox-protection-${review.id}`}
-                role="checkbox"
-                aria-checked={selected}
-                aria-label={review.customer_name ? `Select review for ${review.customer_name}` : "Select review"}
-                tabIndex={0}
-                onClick={() => toggleSelected(review.id)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  toggleSelected(review.id);
-                }}
-                className={cn(
-                  "mt-1 flex h-[18px] w-[18px] cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-200",
-                  selected
-                    ? "border-[#0285F7] bg-[#0285F7] shadow-sm"
-                    : "border-black/20 bg-white hover:border-black/40 active:scale-95",
-                )}
-              >
-                {selected && (
-                  <motion.svg
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                    viewBox="0 0 12 12"
-                    className="h-3 w-3"
-                    fill="none"
-                    aria-hidden
-                  >
-                    <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </motion.svg>
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <ShieldCheck weight="light" size={18} aria-hidden="true" className="text-black" />
-                  <p className="text-sm font-medium text-black">{review.customer_name || "Customer name not provided"}</p>
-                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-700">On hold</span>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black">
-                  <span>{protectionSourceLabel(review.source_route)}</span>
-                  <span aria-hidden>·</span>
-                  <span>{captureTime(review.created_at)}</span>
-                  <Chip variant="subtle" color="gray" className="tabular-nums">{formatProtectionTotal(total)}</Chip>
-                  <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">
-                    <span>Risk score</span>
-                    <strong className="font-medium">{review.score}</strong>
-                  </Chip>
-                </div>
-                <div className="mt-3 space-y-1 text-xs leading-5 text-black">
-                  {review.items.length > 0 ? review.items.map((item, index) => (
-                    <Chip
-                      key={`${review.id}-item-${index}`}
-                      data-testid={`protection-product-${review.id}-${index}`}
-                      variant="subtle"
-                      color="gray"
-                      className="max-w-full overflow-hidden text-ellipsis"
-                    >
-                      {formatProtectionItem(item)}
-                    </Chip>
-                  )) : <p>No cart details</p>}
-                </div>
-                {review.phone && (
-                  <p className="mt-1 flex items-center gap-1 text-xs text-black">
-                    <Chip variant="subtle" color="gray" className="tabular-nums">{review.phone}</Chip>
-                    <button
-                      type="button"
-                      aria-label="Copy phone number"
-                      onClick={() => void copyValue(review.phone || "", "Phone number", `${review.id}:phone`)}
-                      className="inline-flex items-center rounded-md p-1 text-black transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
-                    >
-                      <CopyGlyph copied={copiedKey === `${review.id}:phone`} />
-                    </button>
-                  </p>
-                )}
-                <p className="mt-1 flex items-start gap-1 text-xs leading-5 text-black">
-                  <span>{review.address || "Address not provided"}</span>
-                  {review.address && (
-                    <button
-                      type="button"
-                      aria-label="Copy address"
-                      onClick={() => void copyValue(review.address || "", "Address", `${review.id}:address`)}
-                      className="inline-flex shrink-0 items-center rounded-md p-1 text-black transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
-                    >
-                      <CopyGlyph copied={copiedKey === `${review.id}:address`} />
-                    </button>
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3">
+                <div
+                  data-testid={`checkbox-protection-${review.id}`}
+                  role="checkbox"
+                  aria-checked={selected}
+                  aria-label={review.customer_name ? `Select review for ${review.customer_name}` : "Select review"}
+                  tabIndex={0}
+                  onClick={() => toggleSelected(review.id)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    toggleSelected(review.id);
+                  }}
+                  className={cn(
+                    "mt-1 flex h-[18px] w-[18px] cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-all duration-200",
+                    selected
+                      ? "border-[#0285F7] bg-[#0285F7] shadow-sm"
+                      : "border-black/20 bg-white hover:border-black/40 active:scale-95",
                   )}
-                </p>
-                <div data-testid={`risk-reasons-${review.id}`} className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-                  <span className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Risk reasons</span>
-                  {review.reason_codes.some(isVisibleRiskSignal) ? review.reason_codes.filter(isVisibleRiskSignal).map((reason) => (
-                    <Chip key={reason} variant="caption" color="rose">{reason}</Chip>
-                  )) : <span className="text-xs text-black">None</span>}
+                >
+                  {selected && (
+                    <motion.svg
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      viewBox="0 0 12 12"
+                      className="h-3 w-3"
+                      fill="none"
+                      aria-hidden
+                    >
+                      <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </motion.svg>
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <ShieldCheck weight="light" size={18} aria-hidden="true" className="text-black" />
+                        <p className="text-sm font-medium text-black">{review.customer_name || "Customer name not provided"}</p>
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-700">On hold</span>
+                      </div>
+                      <p className="mt-1 flex flex-wrap gap-x-1.5 text-[11px] text-black/60">
+                        <span>{protectionSourceLabel(review.source_route)}</span>
+                        <span aria-hidden>·</span>
+                        <span>{captureTime(review.created_at)}</span>
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      <span data-testid={`protection-total-${review.id}`} className="text-sm font-medium tabular-nums text-black">{formatProtectionTotal(total)}</span>
+                      <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">
+                        <span>Risk score</span>
+                        <strong className="font-medium">{review.score}</strong>
+                      </Chip>
+                    </div>
+                  </div>
+
+                  <ul className="mt-4 space-y-1.5 text-sm text-black">
+                    {review.items.length > 0 ? review.items.map((item, index) => {
+                      const linePrice = formatProtectionLinePrice(item);
+                      return (
+                        <li
+                          key={`${review.id}-item-${index}`}
+                          data-testid={`protection-product-${review.id}-${index}`}
+                          className="flex items-baseline justify-between gap-4"
+                        >
+                          <span className="min-w-0">{formatProtectionItemLabel(item)}</span>
+                          {linePrice && <span className="shrink-0 tabular-nums">{linePrice}</span>}
+                        </li>
+                      );
+                    }) : <li className="text-xs text-black/60">No cart details</li>}
+                  </ul>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-black">
+                    {review.phone && (
+                      <span className="flex items-center gap-1 tabular-nums">
+                        {review.phone}
+                        <button
+                          type="button"
+                          aria-label="Copy phone number"
+                          onClick={() => void copyValue(review.phone || "", "Phone number", `${review.id}:phone`)}
+                          className="inline-flex items-center rounded-md p-1 text-black transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                        >
+                          <CopyGlyph copied={copiedKey === `${review.id}:phone`} />
+                        </button>
+                      </span>
+                    )}
+                    <span className="flex min-w-0 items-center gap-1">
+                      <span>{review.address || "Address not provided"}</span>
+                      {review.address && (
+                        <button
+                          type="button"
+                          aria-label="Copy address"
+                          onClick={() => void copyValue(review.address || "", "Address", `${review.id}:address`)}
+                          className="inline-flex shrink-0 items-center rounded-md p-1 text-black transition-all duration-200 ease-out hover:bg-black/[0.05] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+                        >
+                          <CopyGlyph copied={copiedKey === `${review.id}:address`} />
+                        </button>
+                      )}
+                    </span>
+                  </div>
+
+                  <div data-testid={`risk-reasons-${review.id}`} className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Why held</span>
+                    {review.reason_codes.some(isVisibleRiskSignal) ? review.reason_codes.filter(isVisibleRiskSignal).map((reason) => (
+                      <Chip key={reason} variant="caption" color="rose">{protectionReasonLabel(reason, review.reason_labels)}</Chip>
+                    )) : <span className="text-xs text-black">None</span>}
+                  </div>
                 </div>
               </div>
 
-              <div className="col-start-2 flex flex-wrap items-center gap-1.5 lg:col-start-3 lg:justify-end">
-                {callHref ? (
-                  <a href={callHref} aria-label={`Call ${review.phone}`} className={cn(actionChip, actionChipNeutral)}>
-                    <Phone size={13} weight="light" aria-hidden />
-                    Call
-                  </a>
-                ) : null}
-                {whatsAppHref ? (
-                  <a
-                    href={whatsAppHref}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Open WhatsApp for ${review.phone}`}
+              <div className="mt-4 flex flex-col gap-2 border-t border-black/[0.07] pt-3 sm:ml-[30px] lg:flex-row lg:items-center lg:justify-between">
+                <div data-testid={`protection-contact-actions-${review.id}`} className="flex flex-wrap items-center gap-1.5">
+                  {callHref ? (
+                    <a href={callHref} aria-label={`Call ${review.phone}`} className={cn(actionChip, actionChipNeutral)}>
+                      <Phone size={13} weight="light" aria-hidden />
+                      Call
+                    </a>
+                  ) : null}
+                  {whatsAppHref ? (
+                    <a
+                      href={whatsAppHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Open WhatsApp for ${review.phone}`}
+                      className={cn(actionChip, actionChipNeutral)}
+                    >
+                      <WhatsappLogo size={13} weight="light" aria-hidden />
+                      WhatsApp
+                    </a>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label="Copy review summary"
+                    onClick={() => void copyValue(protectionCopySummary(review), "Review summary", `${review.id}:summary`)}
                     className={cn(actionChip, actionChipNeutral)}
                   >
-                    <WhatsappLogo size={13} weight="light" aria-hidden />
-                    WhatsApp
-                  </a>
-                ) : null}
-                <button
-                  type="button"
-                  aria-label="Copy review summary"
-                  onClick={() => void copyValue(protectionCopySummary(review), "Review summary", `${review.id}:summary`)}
-                  className={cn(actionChip, actionChipNeutral)}
-                >
-                  <CopyGlyph copied={copiedKey === `${review.id}:summary`} />
-                  {copiedKey === `${review.id}:summary` ? "Copied" : "Copy"}
-                </button>
-                <DropdownMenu
-                  open={openStatusMenuId === review.id}
-                  onOpenChange={(open) => setOpenStatusMenuId(open ? review.id : null)}
-                >
-                  <DropdownMenuTrigger
-                    aria-label={`Contact status: ${status === "open" ? "Awaiting contact" : "Contacted"}`}
-                    disabled={isUpdating}
-                    className={cn(actionChip, "w-[10.5rem] justify-start", status === "open" ? actionChipNeutral : actionChipApprove)}
+                    <CopyGlyph copied={copiedKey === `${review.id}:summary`} />
+                    {copiedKey === `${review.id}:summary` ? "Copied" : "Copy summary"}
+                  </button>
+                  <DropdownMenu
+                    open={openStatusMenuId === review.id}
+                    onOpenChange={(open) => setOpenStatusMenuId(open ? review.id : null)}
                   >
-                    <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", status === "open" ? "bg-rose-400" : "bg-lime-500")} />
-                    {status === "open" ? "Awaiting contact" : "Contacted"}
-                    <CaretDown size={11} weight="light" aria-hidden className="ml-auto shrink-0 opacity-60" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" sideOffset={6} className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0">
-                    <DropdownMenuLabel className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-black">Mark as</DropdownMenuLabel>
-                    <DropdownMenuRadioGroup
-                      value={status}
-                      onValueChange={(value) => {
-                        if (value === "open" || value === "contacted") {
-                          void handleContactStatus(review.id, value);
-                        }
-                      }}
+                    <DropdownMenuTrigger
+                      aria-label={`Contact status: ${status === "open" ? "Awaiting contact" : "Contacted"}`}
+                      disabled={isUpdating}
+                      className={cn(actionChip, "w-[10.5rem] justify-start", status === "open" ? actionChipNeutral : actionChipApprove)}
                     >
-                      {CONTACT_STATUS_OPTIONS.map((option) => (
-                        <DropdownMenuRadioItem
-                          key={option.value}
-                          value={option.value}
-                          className="gap-2 whitespace-nowrap px-2 text-[12px] font-medium [&>span:first-child]:hidden"
-                        >
-                          <span aria-hidden className="flex h-3 w-1.5 shrink-0 items-center justify-center">
-                            {option.value === status
-                              ? <Check size={12} weight="bold" />
-                              : <span className={cn("h-1.5 w-1.5 rounded-full", option.dotClassName)} />}
-                          </span>
-                          {option.label}
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <button
-                  type="button"
-                  aria-label={`Approve order for ${review.customer_name || "unnamed customer"}`}
-                  className={cn(actionChip, actionChipApprove)}
-                  disabled={isUpdating}
-                  onClick={() => void handleAction(review.id, "approve")}
-                >
-                  {isUpdating ? <Spinner size="sm" /> : <Check weight="light" size={13} aria-hidden="true" />}
-                  Accept
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Reject order for ${review.customer_name || "unnamed customer"}`}
-                  className={cn(actionChip, actionChipNeutral)}
-                  disabled={isUpdating}
-                  onClick={() => void handleAction(review.id, "reject")}
-                >
-                  <X weight="light" size={13} aria-hidden="true" />
-                  Reject
-                </button>
-                <button type="button" className={cn(actionChip, actionChipNeutral)} disabled={isUpdating} onClick={() => void handleAction(review.id, "reject", "fake")}>Reject as fake</button>
+                      <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", status === "open" ? "bg-rose-400" : "bg-lime-500")} />
+                      {status === "open" ? "Awaiting contact" : "Contacted"}
+                      <CaretDown size={11} weight="light" aria-hidden className="ml-auto shrink-0 opacity-60" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" sideOffset={6} className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0">
+                      <DropdownMenuLabel className="px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-black">Mark as</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={status}
+                        onValueChange={(value) => {
+                          if (value === "open" || value === "contacted") {
+                            void handleContactStatus(review.id, value);
+                          }
+                        }}
+                      >
+                        {CONTACT_STATUS_OPTIONS.map((option) => (
+                          <DropdownMenuRadioItem
+                            key={option.value}
+                            value={option.value}
+                            className="gap-2 whitespace-nowrap px-2 text-[12px] font-medium [&>span:first-child]:hidden"
+                          >
+                            <span aria-hidden className="flex h-3 w-1.5 shrink-0 items-center justify-center">
+                              {option.value === status
+                                ? <Check size={12} weight="bold" />
+                                : <span className={cn("h-1.5 w-1.5 rounded-full", option.dotClassName)} />}
+                            </span>
+                            {option.label}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div data-testid={`protection-decision-actions-${review.id}`} className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+                  <button type="button" className={cn(actionChip, actionChipNeutral)} disabled={isUpdating} onClick={() => void handleAction(review.id, "reject", "fake")}>Reject as fake</button>
+                  <button
+                    type="button"
+                    aria-label={`Reject order for ${review.customer_name || "unnamed customer"}`}
+                    className={cn(actionChip, actionChipNeutral)}
+                    disabled={isUpdating}
+                    onClick={() => void handleAction(review.id, "reject")}
+                  >
+                    <X weight="light" size={13} aria-hidden="true" />
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Approve order for ${review.customer_name || "unnamed customer"}`}
+                    className={cn(actionChip, actionChipApprove)}
+                    disabled={isUpdating}
+                    onClick={() => void handleAction(review.id, "approve")}
+                  >
+                    {isUpdating ? <Spinner size="sm" /> : <Check weight="light" size={13} aria-hidden="true" />}
+                    Accept
+                  </button>
+                </div>
               </div>
             </article>
           );

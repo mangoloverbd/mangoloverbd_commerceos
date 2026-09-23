@@ -76,6 +76,7 @@ import {
   hashProtectionSignal,
   getProtectionReview,
   describeReviewItems,
+  withReasonLabels,
   listProtectionReviews,
 } from "./orderProtectionStore.js";
 import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
@@ -13084,7 +13085,7 @@ app.get("/api/order-protection/reviews", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const allowedStatuses = new Set(["on_hold", "approved", "rejected", "expired"]);
     const status = allowedStatuses.has(req.query.status) ? req.query.status : "on_hold";
-    const reviews = await describeReviewItems({ supabase, orgId, reviews: await listProtectionReviews({ supabase, orgId, status }) });
+    const reviews = withReasonLabels(await describeReviewItems({ supabase, orgId, reviews: await listProtectionReviews({ supabase, orgId, status }) }));
     return res.json({ reviews });
   } catch (error) {
     return sendError(res, error);

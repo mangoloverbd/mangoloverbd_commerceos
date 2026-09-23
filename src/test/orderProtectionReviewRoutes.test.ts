@@ -11,7 +11,7 @@ describe("order protection review routes", () => {
     expect(source).toContain('app.patch("/api/order-protection/reviews/:id"');
     expect(source).toContain('getUser(getToken(req))');
     expect(source).toContain('listProtectionReviews({ supabase, orgId');
-    expect(source).toContain('describeReviewItems({ supabase, orgId, reviews: await listProtectionReviews({ supabase, orgId, status }) })');
+    expect(source).toContain('withReasonLabels(await describeReviewItems({ supabase, orgId, reviews: await listProtectionReviews({ supabase, orgId, status }) }))');
     expect(source).toContain('from("order_protection_events")');
   });
 
