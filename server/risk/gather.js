@@ -50,7 +50,7 @@ async function courierFacts(fraudLookup, phone, timeoutMs) {
 
 export async function gatherRiskFacts(ctx, { redis, supabase, fraudLookup, fraudTimeoutMs = 2000 }) {
   const tasks = [
-    Promise.resolve().then(() => readIdentityCounts(redis, ctx)),
+    Promise.resolve().then(() => readIdentityCounts(redis, ctx, { supabase })),
     Promise.resolve().then(() => loadHistory(supabase, ctx)),
     Promise.resolve().then(() => findListHits(supabase, { orgId: ctx.orgId, hashes: ctx.hashes })),
     Promise.resolve().then(() => courierFacts(fraudLookup, ctx.customer.phone, fraudTimeoutMs)),
