@@ -114,7 +114,23 @@ async function assess({ mode, orgId, route, body, headers, requestIp, deps }) {
   catch { console.warn("[OrderRisk] attempt log unavailable"); }
 
   const base = { mode, score: assessment.score, signals, reasons: assessment.reasons, attemptId, assessedDecision: assessment.decision, ctx };
-  if (mode === "shadow") return outcome(mode, assessment.decision, { ...base, enforced: false });
+  if (mode === "shadow") {
+    // Staff rehearse on real would-be holds: a review row is created so the
+    // Reviews tab shows it, but the order still proceeds normally. Approving
+    // such a review links to the already-placed order (see
+    // approveHeldProtectionReview) and never creates a duplicate.
+    if (assessment.decision === "HOLD" && route !== "custom_webhook") {
+      const reviewId = await createHold({ deps, orgId, route, body, customer: ctx.customer, items: ctx.items, score: assessment.score, reasonCodes: signals.map(signal => signal.code) });
+      if (reviewId) {
+        if (attemptId) {
+          try { await linkAttemptToReview(deps.supabase, { orgId, attemptId, reviewId }); }
+          catch { console.warn("[OrderRisk] review attempt link failed"); }
+        }
+        return outcome(mode, assessment.decision, { ...base, enforced: false, reviewId });
+      }
+    }
+    return outcome(mode, assessment.decision, { ...base, enforced: false });
+  }
   // The authenticated custom-store webhook sends free-form products rather
   // than canonical variants. Staff cannot safely approve its held payload.
   if (route === "custom_webhook") return outcome(mode, "ALLOW", { ...base, reasons: row.reasons });

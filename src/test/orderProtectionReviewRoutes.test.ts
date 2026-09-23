@@ -32,6 +32,12 @@ describe("order protection review routes", () => {
     expect(approval).toContain('update({ approval_claimed_at:');
   });
 
+  it("links shadow approvals to the placed order instead of duplicating it", () => {
+    const approval = source.slice(source.indexOf("async function approveHeldProtectionReview"), source.indexOf('app.get("/api/order-protection/reviews"'));
+    expect(approval).toContain("linkedAttempt");
+    expect(approval).toContain('select("order_id")');
+  });
+
   it("restores already-decremented stock when a later variant fails", () => {
     const approval = source.slice(source.indexOf("async function approveHeldProtectionReview"), source.indexOf('app.get("/api/order-protection/reviews"'));
     expect(approval).toContain("const decremented = []");
