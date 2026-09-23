@@ -5,7 +5,8 @@ import OrderProtection from "@/pages/OrderProtection";
 import { fetchRiskAccuracy, fetchRiskAttempts, fetchRiskLists, updateRiskSettings } from "@/lib/orderRisk";
 
 vi.mock("@/components/OrderProtectionReviewQueue", () => ({ OrderProtectionReviewQueue: () => <div>Held reviews</div> }));
-vi.mock("@/lib/orderRisk", () => ({
+vi.mock("@/lib/orderRisk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/orderRisk")>()),
   fetchRiskAttempts: vi.fn().mockResolvedValue({ attempts: [{ id: "attempt-1", created_at: "2026-09-23T00:00:00Z", decision: "HOLD", mode: "shadow", score: 40, customer_name: "Rahim", phone: "01712345678", topSignals: [{ code: "address_incomplete", label: "Address incomplete", severity: "medium", evidence: "More address detail needed" }], label: null }] }),
   fetchRiskAttempt: vi.fn().mockResolvedValue({ attempt: { id: "attempt-1", decision: "HOLD", mode: "shadow", score: 40, customer_name: "Rahim", phone: "01712345678", signals: [{ code: "address_incomplete", label: "Address incomplete", severity: "medium", evidence: "More address detail needed" }], reasons: ["score>=40"], context_trusted: true, items: [] }, related: [], order: null, review: null }),
   fetchRiskLists: vi.fn((list: "block" | "allow") => Promise.resolve({ entries: list === "block" ? [{ id: "list-1", list: "block", kind: "phone", display_hint: "Phone ending 5678", reason: "Repeated checkout attempts", created_at: "2026-09-23T00:00:00Z", expires_at: null }] : [] })),

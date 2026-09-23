@@ -38,4 +38,11 @@ describe("risk detectors", () => {
     expect(codes(suspicious, history)).toEqual(expect.arrayContaining(["honeypot_filled", "bot_check_failed", "hosting_or_vpn_network", "quantity_unusual", "test_content", "abusive_content", "address_incomplete", "phone_fake_history", "device_fake_history", "courier_bad_history", "blocklist_phone", "staff_allowlist", "trusted_device"]));
     expect(codes(ctx, { ...facts, courier: { totalParcels: 5, successRate: 90 }, history: { ...facts.history, phoneDelivered: 1 } })).toEqual(expect.arrayContaining(["courier_strong_history", "trusted_delivered_customer"]));
   });
+
+  it("flags only a rejected bot-check token, not a storefront that sends none", () => {
+    expect(codes({ ...ctx, turnstile: "failed" })).toContain("bot_check_failed");
+    for (const turnstile of ["missing", "unconfigured", "unavailable", "ok"]) {
+      expect(codes({ ...ctx, turnstile })).not.toContain("bot_check_failed");
+    }
+  });
 });

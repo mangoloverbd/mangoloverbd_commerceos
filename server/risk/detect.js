@@ -47,7 +47,9 @@ export function detectSignals(ctx, facts, config = {}) {
   const ipDistrict = ctx.geo?.city ? HATER_CITY_DISTRICTS.get(ctx.geo.city.toLocaleLowerCase("en")) : null;
   if (ipDistrict && districts.includes(ipDistrict) && network.type === "broadband") add("hater_region_ip", `Broadband network location reports ${ctx.geo.city.slice(0, 80)}`);
   if (telemetry.phoneCandidates.length >= THRESHOLDS.phoneRetypedCandidates) add("phone_retyped", `${telemetry.phoneCandidates.length} valid phone numbers were entered`);
-  if (["missing", "failed"].includes(ctx.turnstile)) add("bot_check_failed", "The bot check was not completed successfully");
+  // The storefront does not render Turnstile yet, so a missing token is not
+  // evidence about the shopper. Only a token that was sent and rejected counts.
+  if (ctx.turnstile === "failed") add("bot_check_failed", "The bot check was not completed successfully");
   if (telemetry.firstInteractionAt != null && ctx.now - telemetry.firstInteractionAt >= 0 && ctx.now - telemetry.firstInteractionAt < THRESHOLDS.fastCheckoutSeconds * 1000) add("very_fast_checkout", "Checkout completed less than 12 seconds after first interaction");
   if (telemetry.pastedFields.includes("phone") && telemetry.pastedFields.includes("address")) add("phone_pasted", "Phone and address were pasted during checkout");
   if (/\d/.test(customer.name) || customer.name.length === 1 || customer.name.toLowerCase() === customer.address.toLowerCase()) add("name_suspicious", "Customer name needs a closer look");
