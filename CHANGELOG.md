@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.31] - 2026-09-23
+
+### Added
+
+- Order and abandoned-checkout editors now have an **Order details | Logs** switch. Logs slides in with the order's full, always-expanded activity history, updates live every 2 seconds while open, and opens instantly because activity is loaded with the page.
+- Logs explain changes at a glance: status changes show before and after status chips, item edits show a summary with the total difference plus Added, Removed, quantity, and discount chips with taka impact, and other field edits read as `Label before → after`.
+
+### Changed
+
+- The compact activity timeline was removed from the customer panel; the Logs tab replaces it. Unsaved edits are kept when switching tabs, and `?tab=logs` reopens Logs after a reload.
+- Legacy variant names stored as JSON, such as `{"size":"১ কেজি"}`, now display as readable text in Logs.
+
 ## [0.1.0.30] - 2026-09-23
 
 ### Added
