@@ -34,7 +34,10 @@ describe("durable risk pipeline", () => {
     const assessed = await assessOrderRisk(request(shadow, { body: { ...body, website: "bot" } }));
     expect(assessed).toMatchObject({ mode: "shadow", decision: "HOLD", assessedDecision: "HOLD", enforced: false, attemptId: expect.any(String) });
     expect(shadow.writes).toEqual(expect.arrayContaining([expect.objectContaining({ table: "order_risk_attempts", row: expect.objectContaining({ decision: "HOLD", mode: "shadow" }) })]));
-    expect(shadow.createReview).not.toHaveBeenCalled();
+    // Staff rehearse on real would-be holds: a review row exists for the
+    // Reviews tab, but nothing is enforced at checkout.
+    expect(shadow.createReview).toHaveBeenCalledOnce();
+    expect(assessed).toMatchObject({ reviewId: expect.any(String) });
   });
 
   it("missing signed context does not hold an otherwise normal order", async () => {

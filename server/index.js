@@ -12872,6 +12872,23 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     throw err;
   }
 
+  // Shadow-mode rehearsal: the order already went through at checkout, so the
+  // attempt is linked to a real order. Approve by linking to it — never by
+  // creating a duplicate order, decrementing stock again, or re-sending SMS.
+  if (review.attempt_id) {
+    const { data: linkedAttempt } = await supabase.from("order_risk_attempts").select("order_id").eq("org_id", orgId).eq("id", review.attempt_id).maybeSingle();
+    if (linkedAttempt?.order_id) {
+      const { data: existingOrder } = await supabase.from("orders").select("*").eq("org_id", orgId).eq("id", linkedAttempt.order_id).maybeSingle();
+      if (existingOrder) {
+        const { error: linkError } = await supabase.from("order_protection_reviews")
+          .update({ status: "approved", approval_claimed_at: null, updated_at: new Date().toISOString() })
+          .eq("id", reviewId).eq("org_id", orgId).eq("status", "on_hold");
+        if (linkError) throw linkError;
+        return { orderRef: String(existingOrder.order_number), order: existingOrder };
+      }
+    }
+  }
+
   try {
     const items = Array.isArray(review.items) ? review.items : [];
     const variantIds = items.map((item) => item?.variantId).filter(Boolean);
