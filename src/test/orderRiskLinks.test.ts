@@ -58,9 +58,12 @@ function mockSupabase(rows: Array<Record<string, unknown>>, count: number) {
   const queries: Array<{ column: string; filters: Array<[string, ...unknown[]]> }> = [];
   const supabase = { from: vi.fn(() => {
     const filters: Array<[string, ...unknown[]]> = [];
+    let selected = false;
     const chain: Record<string, (...args: unknown[]) => unknown> = {};
     for (const method of ["select", "eq", "gte", "limit"]) chain[method] = (...args: unknown[]) => {
-      if (method === "select") queries.push({ column: String(args[0]), filters });
+      // Mirror the real client: filters before .select() do not exist.
+      if (method !== "select" && !selected) throw new TypeError(`supabase.from(...).${method} is not a function`);
+      if (method === "select") { selected = true; queries.push({ column: String(args[0]), filters }); }
       else filters.push([method, ...args]);
       return chain;
     };
