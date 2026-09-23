@@ -19,6 +19,7 @@ export interface InvoiceOrder {
   status: string;
   created_at: string;
   delivery_rate: number | null;
+  advanced_payment?: number | null;
   courier_status?: string | null;
   consignment_id?: string | number | null;
   tracking_code?: string | null;
@@ -132,6 +133,8 @@ const invoicePage = (order: InvoiceOrder, businessName: string) => {
   const subtotal = Number(order.price || 0);
   const deliveryFee = Number(order.delivery_rate || 0);
   const total = subtotal + deliveryFee;
+  const advance = Math.max(0, Number(order.advanced_payment) || 0);
+  const due = Math.max(0, total - advance);
   const customerName = order.customer_name || "Customer";
   const phone = order.phone ? formatPhone(order.phone) : "—";
   const address = order.address ? cleanAddress(order.address) : "—";
@@ -201,7 +204,8 @@ const invoicePage = (order: InvoiceOrder, businessName: string) => {
               <div><span>Subtotal</span><strong>${formatMoney(subtotal)}</strong></div>
               <div><span>Delivery fee</span><strong>${formatMoney(deliveryFee)}</strong></div>
               <div class="grand-total"><span>Grand total</span><strong>${formatMoney(total)}</strong></div>
-              <div class="due-total"><span>Amount due</span><strong>${formatMoney(total)}</strong></div>
+              ${advance > 0 ? `<div><span>Advance paid</span><strong>${formatMoney(advance)}</strong></div>` : ""}
+              <div class="due-total"><span>Amount due</span><strong>${formatMoney(due)}</strong></div>
             </div>
           </section>
 

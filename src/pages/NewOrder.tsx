@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle, MapPin, Minus, NotePencil, Package, Phone as PhoneIcon, Plus, ShieldCheck, ShoppingCartSimple, Trash, Truck, User, UserPlus } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
+import { Chip } from "@/components/base/badges/chip";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -280,7 +281,7 @@ export default function NewOrder() {
           notes: notes.trim() || null,
           payment_method: paymentMethod,
           discount: totals.aggregateDiscount,
-          advanced_payment: advance,
+          advanced_payment: Math.min(advance, total),
           source,
           assigned_to: assignedTo,
         }),
@@ -411,9 +412,9 @@ export default function NewOrder() {
                 <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Subtotal</span><span className="font-mono text-[13px] tabular-nums">{formatTaka(totals.grossSubtotal)}</span></div>
                 {totals.itemDiscount > 0 && <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Item discounts</span><span className="font-mono text-[13px] tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</span></div>}
                 {totals.legacyDiscount > 0 && <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Order discount</span><span className="font-mono text-[13px] tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</span></div>}
-                <label className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Advance / partial</span><input aria-label="Advance payment" type="number" min={0} value={advance} onChange={(event) => setAdvance(Math.max(0, Number(event.target.value) || 0))} className="w-20 bg-transparent text-right font-mono text-[13px] outline-none" /></label>
+                <div className="flex items-center justify-between gap-2 border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Advance / partial</span><span className="flex items-center gap-1.5"><span className="flex items-center gap-1 rounded-lg bg-black/[0.04] py-1 pl-2.5 pr-1 ring-1 ring-inset ring-black/[0.06] transition focus-within:bg-white focus-within:ring-black/25"><span className="font-mono text-[13px] text-black/40">৳</span><input aria-label="Advance payment" type="number" min={0} max={total} value={advance > 0 ? advance : ""} placeholder="0" onChange={(event) => setAdvance(Math.min(total, Math.max(0, Number(event.target.value) || 0)))} className="w-20 bg-transparent text-right font-mono text-[13px] font-medium tabular-nums outline-none placeholder:text-black/30" /></span></span></div>
                 <div className="flex items-center justify-between bg-black/[0.035] px-4 py-2"><span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-black">Final total</span><span className="font-mono text-[19px] font-semibold tabular-nums text-black">{formatTaka(total)}</span></div>
-                {advance > 0 && <div className="flex items-center justify-between border-t border-black/[0.07] px-4 py-2"><span className="text-[11px] text-black">Due after advance</span><span className="font-mono text-[11px] font-semibold tabular-nums">{formatTaka(total - advance)}</span></div>}
+                {advance > 0 && <div className="flex items-center justify-between border-t border-black/[0.07] px-4 py-2"><span className="text-[11px] text-black">Due after advance</span>{advance < total ? <Chip variant="subtle" color="lime" className="font-mono tabular-nums">{formatTaka(total - advance)}</Chip> : <Chip variant="subtle" color="lime" className="font-medium">Paid</Chip>}</div>}
                 <div className="flex flex-wrap items-center gap-2 border-t border-black/[0.07] px-4 py-1.5">
                   <Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger aria-label="Payment method" className="h-9 w-[150px] rounded-lg border-0 bg-black/[0.04] text-[12px] shadow-none"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_METHODS.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}</SelectContent></Select>
                   <Popover open={noteOpen} onOpenChange={(open) => { if (open) setNoteDraft(notes); setNoteOpen(open); }}>
