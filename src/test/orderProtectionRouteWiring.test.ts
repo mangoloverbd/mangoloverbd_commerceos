@@ -13,6 +13,18 @@ function sectionBetween(startMarker: string, endMarker: string) {
 }
 
 describe("order protection route wiring", () => {
+  it("resolves settings and signed context before protection on both routes", () => {
+    const custom = sectionBetween('app.post("/api/custom-orders/webhook"', "// ─── Live Visitor Tracking");
+    const storefront = sectionBetween("async function handlePublicHandleOrderSubmit", "async function handlePublicHandleProducts");
+    for (const route of [custom, storefront]) {
+      expect(route).toContain("PROTECTION_MODE_SETTING_SUFFIX");
+      expect(route).toContain("verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER]");
+      expect(route.indexOf("verifyClientContext(")).toBeLessThan(route.indexOf("await protectOrderSubmission("));
+      expect(route).toContain("mode,");
+    }
+    expect(source).not.toContain('from "./addressValidation.js"');
+    expect(source).not.toContain('req.headers["cf-connecting-ip"]');
+  });
   it("uses one protection pipeline on both storefront order ingress paths", () => {
     expect(source).toContain('from "./orderProtectionPipeline.js"');
     expect(source.match(/await protectOrderSubmission\(/g)).toHaveLength(2);
