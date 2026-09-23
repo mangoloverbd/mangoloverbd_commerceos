@@ -72,14 +72,15 @@ export async function recordIdentityLinks(redis, ctx, { countAttempt = true } = 
 async function readSqlCounts(supabase, ctx) {
   const { phone, device, network } = ctx.hashes;
   const since = seconds => new Date(ctx.now - seconds * 1000).toISOString();
-  const scoped = () => supabase.from("order_risk_attempts").eq("org_id", ctx.orgId);
+  // NOTE: supabase-js requires .select() before any filter — .from().eq()
+  // does not exist. Keep .select() first on every query.
   const countRows = async build => {
-    const { count, error } = await build(scoped().select("id", { count: "exact", head: true }));
+    const { count, error } = await build(supabase.from("order_risk_attempts").select("id", { count: "exact", head: true }).eq("org_id", ctx.orgId));
     if (error) throw error;
     return count || 0;
   };
   const distinctCount = async (column, build, current) => {
-    const { data, error } = await build(scoped().select(column).limit(1000));
+    const { data, error } = await build(supabase.from("order_risk_attempts").select(column).eq("org_id", ctx.orgId).limit(1000));
     if (error) throw error;
     const values = new Set((data || []).map(row => row?.[column]).filter(Boolean));
     if (current) values.add(current);
