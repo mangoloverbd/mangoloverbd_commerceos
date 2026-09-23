@@ -51,7 +51,6 @@ export default function OrderProtection() {
             role="tab"
             aria-selected={tab === value}
             aria-controls={`order-protection-panel-${value}`}
-            tabIndex={tab === value ? 0 : -1}
             className={`pb-3 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-black ${tab === value ? "border-b border-black text-black" : "text-black/50 hover:text-black"}`}
             onClick={() => setTab(value)}
           >

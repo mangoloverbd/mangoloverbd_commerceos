@@ -1,7 +1,7 @@
 # Order Protection Risk Tabs Redesign
 
-**Date:** 2026-09-23  
-**Status:** Approved for implementation  
+**Date:** 2026-09-23
+**Status:** Approved for implementation
 **Scope:** `feat/order-risk-engine-v2`
 
 ## Goal

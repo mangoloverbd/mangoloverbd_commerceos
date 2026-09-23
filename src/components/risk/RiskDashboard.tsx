@@ -677,6 +677,7 @@ export function RiskSettingsPanel() {
         <h2 id="risk-terms-heading" className={riskLabelClass}>Additional abuse terms</h2>
         <p className="mt-1 text-xs text-black/55">Add one term per line for product or checkout language that should increase review.</p>
         <textarea
+          aria-label="Additional abuse terms"
           className="mt-4 min-h-28 w-full rounded-lg border border-black/15 bg-transparent p-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-black"
           rows={4}
           value={settings.extraAbuseTerms.join("\n")}
