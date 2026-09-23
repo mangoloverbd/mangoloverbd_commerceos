@@ -132,6 +132,36 @@ export async function listProtectionReviews({ supabase, orgId, status = "on_hold
   return data || [];
 }
 
+// Held storefront attempts store only catalog ids and quantities. Staff need
+// the product, pack and price, so id-only lines are described from the
+// workspace catalog when read; stored review rows are left unchanged.
+export async function describeReviewItems({ supabase, orgId, reviews }) {
+  const needsName = item => item && typeof item === "object" && !item.productName && !item.product_name && item.variantId;
+  const variantIds = [...new Set(reviews.flatMap(review => (Array.isArray(review.items) ? review.items : []).filter(needsName).map(item => item.variantId)))];
+  if (!variantIds.length) return reviews;
+
+  const { data: variants, error: variantsError } = await supabase.from("product_variants")
+    .select("id, product_id, attributes, price_adjustment").in("id", variantIds).eq("org_id", orgId);
+  if (variantsError) throw variantsError;
+  const productIds = [...new Set((variants || []).map(variant => variant.product_id))];
+  const { data: products, error: productsError } = productIds.length
+    ? await supabase.from("products").select("id, name, selling_price").in("id", productIds).eq("org_id", orgId)
+    : { data: [], error: null };
+  if (productsError) throw productsError;
+
+  const variantMap = new Map((variants || []).map(variant => [variant.id, variant]));
+  const productMap = new Map((products || []).map(product => [product.id, product]));
+  const describe = item => {
+    const variant = needsName(item) ? variantMap.get(item.variantId) : null;
+    const product = variant ? productMap.get(variant.product_id) : null;
+    if (!product) return item;
+    const variantName = Object.values(variant.attributes || {}).filter(Boolean).join(" · ") || null;
+    const unitPrice = (parseFloat(product.selling_price) || 0) + (parseFloat(variant.price_adjustment) || 0);
+    return { ...item, productName: product.name, variantName, unitPrice };
+  };
+  return reviews.map(review => Array.isArray(review.items) ? { ...review, items: review.items.map(describe) } : review);
+}
+
 export async function getProtectionReview({ supabase, orgId, reviewId }) {
   const { data, error } = await supabase
     .from("order_protection_reviews")
