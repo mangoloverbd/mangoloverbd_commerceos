@@ -28,7 +28,7 @@ import {
   type AbandonedCheckoutConvertStatus,
 } from "@/lib/abandonedCheckouts";
 import { toast, DarkToast } from "@/components/ui/sonner";
-import { savePendingOrderQueue } from "@/lib/pendingOrderQueue";
+import { savePendingOrderQueue, saveTabOrderQueue } from "@/lib/pendingOrderQueue";
 import {
   Search, AlertTriangle,
   Info, Check, X, Plus,
@@ -1032,16 +1032,21 @@ export default function Dashboard() {
     [orderStatusCounts, totalOrdersCount, warehouseFilter],
   );
 
-  // Full pending queue (ignores search text and table pagination) so the
+  // Full pending + print queues (ignores search text and table pagination) so the
   // order editor can offer Previous/Next navigation through the whole tab.
   const pendingOrderIds = useMemo(
     () => filterOrdersByStatus(warehouseOrders, "pending").map((order) => order.id),
     [warehouseOrders],
   );
+  const printOrderIds = useMemo(
+    () => filterOrdersByStatus(warehouseOrders, "print").map((order) => order.id),
+    [warehouseOrders],
+  );
 
   useEffect(() => {
     if (fulfillmentTab === "pending") savePendingOrderQueue(pendingOrderIds);
-  }, [fulfillmentTab, pendingOrderIds]);
+    if (fulfillmentTab === "print") saveTabOrderQueue("print", printOrderIds);
+  }, [fulfillmentTab, pendingOrderIds, printOrderIds]);
 
   const filteredOrders = useMemo(() => {
     return filterOrdersByStatus(warehouseOrders, activeOrderStatusFilter).filter((order) =>
@@ -1701,7 +1706,11 @@ export default function Dashboard() {
               onSelectionChange={setSelectedOrderIds}
               enableOrderIdLinks
               orderLinkState={
-                fulfillmentTab === "pending" ? { fulfillmentTab, pendingOrderIds } : { fulfillmentTab }
+                fulfillmentTab === "pending"
+                  ? { fulfillmentTab, pendingOrderIds }
+                  : fulfillmentTab === "print"
+                    ? { fulfillmentTab, printOrderIds }
+                    : { fulfillmentTab }
               }
             />
 

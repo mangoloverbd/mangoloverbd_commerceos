@@ -1251,7 +1251,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         onToggleSelectAll={toggleSelectAll}
         onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, orderLinkState ? { state: orderLinkState } : undefined)}
         enableOrderIdLinks={enableOrderIdLinks}
-        orderLinkSearch={(orderLinkState as { fulfillmentTab?: unknown } | undefined)?.fulfillmentTab === "pending" ? "?fulfillmentTab=pending" : undefined}
+        orderLinkSearch={((tab) => (tab === "pending" || tab === "print" ? `?fulfillmentTab=${tab}` : undefined))((orderLinkState as { fulfillmentTab?: unknown } | undefined)?.fulfillmentTab)}
         renderActions={(order) => (
           <div className="flex flex-wrap gap-2">
             {!order.fraud_checked && (
@@ -1377,7 +1377,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                           orderId={order.id}
                           orderNumber={order.order_number}
                           className="font-bold text-[13px] tracking-tight"
-                          search={(orderLinkState as { fulfillmentTab?: unknown } | undefined)?.fulfillmentTab === "pending" ? "?fulfillmentTab=pending" : undefined}
+                          search={((tab) => (tab === "pending" || tab === "print" ? `?fulfillmentTab=${tab}` : undefined))((orderLinkState as { fulfillmentTab?: unknown } | undefined)?.fulfillmentTab)}
                         />
                       ) : (
                         <span className="font-bold text-[13px] tracking-tight">{order.order_number}</span>

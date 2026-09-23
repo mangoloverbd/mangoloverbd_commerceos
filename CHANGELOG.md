@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.34] - 2026-09-23
+
+### Added
+
+- Print tab gets the same bottom Previous/Next order navigator as the Pending tab (`N of M print`, print-orders only). The order queue is now per-tab with separate snapshots.
+
 ## [0.1.0.33] - 2026-09-23
 
 ### Added

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowLeft, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
-import { readPendingOrderQueue } from "@/lib/pendingOrderQueue";
+import { readTabOrderQueue, type NavigableQueueTab } from "@/lib/pendingOrderQueue";
 import { toast } from "@/components/ui/sonner";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { Chip } from "@/components/base/badges/chip";
@@ -147,20 +147,34 @@ export default function OrderDetail() {
   const statePendingOrderIds = Array.isArray(rawPendingOrderIds)
     ? rawPendingOrderIds.filter((value): value is string => typeof value === "string")
     : null;
+  const rawPrintOrderIds = (location.state as { printOrderIds?: unknown } | null)?.printOrderIds;
+  const statePrintOrderIds = Array.isArray(rawPrintOrderIds)
+    ? rawPrintOrderIds.filter((value): value is string => typeof value === "string")
+    : null;
   const queryFulfillmentTab = new URLSearchParams(location.search).get("fulfillmentTab");
   const stateFulfillmentTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
-  const isPendingContext = stateFulfillmentTab === "pending" || queryFulfillmentTab === "pending";
-  const storedPendingOrderIds =
-    !statePendingOrderIds && isPendingContext ? readPendingOrderQueue() : null;
-  const pendingOrderIds = statePendingOrderIds ?? storedPendingOrderIds;
-  const pendingIndex = pendingOrderIds && id ? pendingOrderIds.indexOf(id) : -1;
-  const hasPendingNav = Boolean(pendingOrderIds) && pendingIndex !== -1;
-  const prevPendingOrderId = hasPendingNav && pendingIndex > 0 ? pendingOrderIds![pendingIndex - 1] : null;
-  const nextPendingOrderId =
-    hasPendingNav && pendingIndex < pendingOrderIds!.length - 1 ? pendingOrderIds![pendingIndex + 1] : null;
-  // Carries pendingOrderIds forward on any jump to another order (Prev/Next,
+  const navTab: NavigableQueueTab | null =
+    stateFulfillmentTab === "print" || queryFulfillmentTab === "print"
+      ? "print"
+      : stateFulfillmentTab === "pending" || queryFulfillmentTab === "pending"
+        ? "pending"
+        : null;
+  const stateQueueIds = navTab === "print" ? statePrintOrderIds : navTab === "pending" ? statePendingOrderIds : null;
+  const storedQueueIds =
+    !stateQueueIds && navTab ? readTabOrderQueue(navTab) : null;
+  const queueIds = stateQueueIds ?? storedQueueIds;
+  const queueIndex = queueIds && id ? queueIds.indexOf(id) : -1;
+  const hasQueueNav = Boolean(queueIds) && queueIndex !== -1;
+  const prevQueueOrderId = hasQueueNav && queueIndex > 0 ? queueIds![queueIndex - 1] : null;
+  const nextQueueOrderId =
+    hasQueueNav && queueIndex < queueIds!.length - 1 ? queueIds![queueIndex + 1] : null;
+  // Carries the queue forward on any jump to another order (Prev/Next,
   // customer history) so the snapshot survives the hop; falls back to backState.
-  const siblingState = pendingOrderIds ? { fulfillmentTab: returnTab, pendingOrderIds } : backState;
+  const siblingState = queueIds
+    ? navTab === "print"
+      ? { fulfillmentTab: returnTab, printOrderIds: queueIds }
+      : { fulfillmentTab: returnTab, pendingOrderIds: queueIds }
+    : backState;
   function goToSibling(targetId: string) {
     navigate(`/orders/${targetId}`, { state: siblingState, replace: true });
   }
@@ -304,8 +318,8 @@ export default function OrderDetail() {
     for (const cached of historyQuery.data || []) map.set(cached.id, cached);
     return map;
   }, [historyQuery.data]);
-  const prevPendingOrder = prevPendingOrderId ? ordersById.get(prevPendingOrderId) : null;
-  const nextPendingOrder = nextPendingOrderId ? ordersById.get(nextPendingOrderId) : null;
+  const prevQueueOrder = prevQueueOrderId ? ordersById.get(prevQueueOrderId) : null;
+  const nextQueueOrder = nextQueueOrderId ? ordersById.get(nextQueueOrderId) : null;
 
   function addCatalogItem(product: CatalogProduct, variant?: CatalogVariant) {
     setDraft((items) => upsertCartItem(items, product, variant));
@@ -330,7 +344,7 @@ export default function OrderDetail() {
     const detailsChanged = JSON.stringify(customer) !== JSON.stringify(originalCustomer);
     const cartChanged = !cartsMatch(draft, detail.items);
     if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged && !advanceChanged && !notesChanged && !statusChanged && !sourceChanged) {
-      if (!hasPendingNav) goBack();
+      if (!hasQueueNav) goBack();
       return;
     }
     if (cartChanged && draft.some((item) => !item.product_id && !item.variant_id)) {
@@ -445,7 +459,7 @@ export default function OrderDetail() {
       setSourceDraft(normalizeOrderSource(currentOrder.source));
       setAdditionReasons({}); setCancellationReasonCode(""); setCancellationReasonNote("");
       void refreshOrderActivity(queryClient, `/api/orders/${id}/activity`);
-      if (hasPendingNav) {
+      if (hasQueueNav) {
         toast.success("Order saved");
       } else {
         goBack();
@@ -494,7 +508,7 @@ export default function OrderDetail() {
         </motion.div>
       )}
 
-      {hasPendingNav && (
+      {hasQueueNav && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -508,23 +522,23 @@ export default function OrderDetail() {
               size="small"
               iconOnly
               leadingIcon={CaretLeft}
-              aria-label="Previous pending order"
-              disabled={!prevPendingOrderId}
-              onClick={() => prevPendingOrderId && goToSibling(prevPendingOrderId)}
+              aria-label={`Previous ${navTab} order`}
+              disabled={!prevQueueOrderId}
+              onClick={() => prevQueueOrderId && goToSibling(prevQueueOrderId)}
             />
-            {prevPendingOrder && (
+            {prevQueueOrder && (
               <Chip variant="subtle" color="cyan" className="h-8 min-w-8 px-2 font-mono">
-                {orderNumberLabel(prevPendingOrder.order_number)}
+                {orderNumberLabel(prevQueueOrder.order_number)}
               </Chip>
             )}
           </div>
           <span className="shrink-0 text-[11px] font-medium tracking-[0.1em] text-black/50">
-            {pendingIndex + 1} of {pendingOrderIds!.length} pending
+            {queueIndex + 1} of {queueIds!.length} {navTab}
           </span>
           <div className="flex min-w-0 items-center gap-2">
-            {nextPendingOrder && (
+            {nextQueueOrder && (
               <Chip variant="subtle" color="purple" className="h-8 min-w-8 px-2 font-mono">
-                {orderNumberLabel(nextPendingOrder.order_number)}
+                {orderNumberLabel(nextQueueOrder.order_number)}
               </Chip>
             )}
             <BuiButton
@@ -532,9 +546,9 @@ export default function OrderDetail() {
               size="small"
               iconOnly
               leadingIcon={CaretRight}
-              aria-label="Next pending order"
-              disabled={!nextPendingOrderId}
-              onClick={() => nextPendingOrderId && goToSibling(nextPendingOrderId)}
+              aria-label={`Next ${navTab} order`}
+              disabled={!nextQueueOrderId}
+              onClick={() => nextQueueOrderId && goToSibling(nextQueueOrderId)}
             />
           </div>
         </motion.div>
