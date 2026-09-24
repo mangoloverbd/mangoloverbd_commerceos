@@ -18,7 +18,8 @@ export class OrdersSyncError extends Error {
 interface OrdersResponse<T> {
   orders?: T[];
   totalCount?: number;
-  syncedAt?: string;
+  // Latest DB updated_at the server saw; null when there were no rows.
+  syncedAt?: string | null;
   delta?: boolean;
 }
 
@@ -27,8 +28,12 @@ const FULL_REFRESH_MS = 10 * 60_000;
 // Cursor for the list currently held in the ["/api/orders"] cache.
 let cursor: { syncedAt: string; fullAt: number } | null = null;
 
+// The sync currently running per query client, shared by overlapping callers.
+let inFlight = new WeakMap<QueryClient, Promise<unknown>>();
+
 export function resetOrdersSyncCursor(): void {
   cursor = null;
+  inFlight = new WeakMap();
 }
 
 /** Replace changed orders by id, insert new ones, sort by created_at desc (stable). */
@@ -72,10 +77,30 @@ async function fullSync<T extends SyncableOrder>(queryClient: QueryClient): Prom
  * Refresh the cached orders list. Uses a delta request when a cached list and
  * a recent cursor exist; otherwise (or with `full`) reloads the whole list.
  * Writes ["/api/orders"] and ["/api/orders/count"] and returns the list.
+ * An overlapping non-full call shares the in-flight sync; an overlapping full
+ * call waits for it and then runs.
  */
-export async function syncOrders<T extends SyncableOrder>(
+export function syncOrders<T extends SyncableOrder>(
   queryClient: QueryClient,
   opts: { full?: boolean } = {},
+): Promise<T[]> {
+  const previous = inFlight.get(queryClient);
+  if (previous && !opts.full) return previous as Promise<T[]>;
+
+  const run = previous
+    ? previous.catch(() => undefined).then(() => runSync<T>(queryClient, opts))
+    : runSync<T>(queryClient, opts);
+  inFlight.set(queryClient, run);
+  const clear = () => {
+    if (inFlight.get(queryClient) === run) inFlight.delete(queryClient);
+  };
+  run.then(clear, clear);
+  return run;
+}
+
+async function runSync<T extends SyncableOrder>(
+  queryClient: QueryClient,
+  opts: { full?: boolean },
 ): Promise<T[]> {
   const current = queryClient.getQueryData<T[]>(["/api/orders"]);
   if (opts.full || !Array.isArray(current) || !cursor || Date.now() - cursor.fullAt > FULL_REFRESH_MS) {
@@ -92,7 +117,11 @@ export async function syncOrders<T extends SyncableOrder>(
     return orders;
   }
 
-  const merged = mergeOrderDelta(current, data.orders || []);
+  // Merge into the cache as it is now, not as it was before the request, so
+  // optimistic updates made while the delta was in flight are kept.
+  const latest = queryClient.getQueryData<T[]>(["/api/orders"]);
+  if (!Array.isArray(latest)) return fullSync<T>(queryClient);
+  const merged = mergeOrderDelta(latest, data.orders || []);
   const totalCount = totalCountOf(data, merged.length);
   // Deletes are invisible to a delta; a count mismatch means reload.
   if (merged.length !== totalCount) return fullSync<T>(queryClient);

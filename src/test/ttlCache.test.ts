@@ -83,6 +83,26 @@ describe("createTtlCache", () => {
     expect(compute).toHaveBeenCalledTimes(1);
   });
 
+  it("skips the cache read with { fresh: true } but still stores the new value", async () => {
+    const redis = fakeRedis();
+    const cache = createTtlCache({ redis });
+    const stale = { revenue: 1 };
+    const fresh = { revenue: 2 };
+    await cache.get("k", 60_000, async () => ({ value: stale, cacheable: true }));
+
+    const compute = vi.fn(async () => ({ value: fresh, cacheable: true }));
+    expect(await cache.get("k", 60_000, compute, { fresh: true })).toEqual(fresh);
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(redis.get).toHaveBeenCalledTimes(1);
+    expect(redis.set).toHaveBeenLastCalledWith("k", fresh, { ex: 60 });
+
+    // Later normal reads see the refreshed value (memory and Redis).
+    const unused = vi.fn(async () => ({ value: stale, cacheable: true }));
+    expect(await cache.get("k", 60_000, unused)).toEqual(fresh);
+    expect(await createTtlCache({ redis }).get("k", 60_000, unused)).toEqual(fresh);
+    expect(unused).not.toHaveBeenCalled();
+  });
+
   it("caps the in-memory map size", async () => {
     const cache = createTtlCache({ redis: null, maxEntries: 2 });
     const compute = vi.fn(async () => ({ value, cacheable: true }));

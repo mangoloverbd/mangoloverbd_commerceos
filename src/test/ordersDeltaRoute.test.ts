@@ -19,22 +19,37 @@ describe("GET /api/orders delta sync", () => {
     expect(route).toMatch(/res\.status\(400\)/);
   });
 
-  it("records a 5s-overlap syncedAt cursor before querying and returns it on both paths", () => {
+  it("derives syncedAt from database updated_at values, not the server clock", () => {
     const route = ordersListHandler();
-    const syncedAtIndex = route.indexOf("new Date(Date.now() - 5000).toISOString()");
-    const firstOrdersQuery = route.indexOf('.from("orders")');
-    expect(syncedAtIndex).toBeGreaterThan(-1);
-    expect(syncedAtIndex).toBeLessThan(firstOrdersQuery);
+    expect(route).not.toContain("Date.now()");
     expect(route).toContain("totalCount: count ?? allOrders.length, syncedAt");
     expect(route).toContain("delta: true");
+    // Full path: max over the returned orders and their items (null when empty).
+    expect(route).toMatch(/const syncedAt = maxUpdatedAt\(\[\s*\.\.\.allOrders\.map\(\(order\) => order\.updated_at\),\s*itemsMaxUpdatedAt,?\s*\]\);/);
+    // Delta path: max over the rows looked at, never older than the incoming cursor.
+    expect(route).toMatch(/const deltaSyncedAt = maxUpdatedAt\(\[\s*changedSince,/);
+    expect(route).toContain("syncedAt: deltaSyncedAt, delta: true");
+  });
+
+  it("selects updated_at on the rows the cursor is derived from", () => {
+    const route = ordersListHandler();
+    expect(route).toContain('.select("id, updated_at")');
+    expect(route).toContain('.select("order_id, updated_at")');
+    expect(route).toMatch(/from\("order_items"\)\.select\("order_id, [^"]*updated_at[^"]*"\)\.in\("order_id", idBatch\)/);
+  });
+
+  it("re-reads a 120s overlap window before the cursor for orders and items", () => {
+    const route = ordersListHandler();
+    expect(route).toContain("Date.parse(changedSince) - 120 * 1000");
+    expect((route.match(/\.gt\("updated_at", overlapSince\)/g) || []).length).toBe(2);
+    expect(route).not.toContain('.gt("updated_at", changedSince)');
   });
 
   it("finds changed orders and changed items by updated_at within the workspace", () => {
     const route = ordersListHandler();
-    expect(route).toContain('.gt("updated_at", changedSince)');
-    const itemsChange = route.slice(route.indexOf('.select("order_id")'));
+    const itemsChange = route.slice(route.indexOf('.select("order_id, updated_at")'));
     expect(itemsChange).toContain('.eq("org_id", orgId)');
-    expect(itemsChange).toContain('.gt("updated_at", changedSince)');
+    expect(itemsChange).toContain('.gt("updated_at", overlapSince)');
   });
 
   it("counts the workspace orders with a head count on the delta path", () => {

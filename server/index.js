@@ -4741,7 +4741,11 @@ app.get("/api/analytics", async (req, res) => {
     // past ranges change rarely; ranges touching today refresh every 60s.
     const cacheKey = `${orgId}:${since || ""}:${until || ""}`;
     const ttlMs = until && until < todayDhaka() ? 10 * 60 * 1000 : 60 * 1000;
+    // fresh=1 (user-triggered refresh) skips the cached read but still stores.
+    const fresh = req.query.fresh === "1";
     const payload = await analyticsCache.get(cacheKey, ttlMs, async () => {
+      // Set when a best-effort sub-lookup fails; such results are not cached.
+      let degraded = false;
       let ordersQuery = supabase.from("orders").select("id, created_at, price, delivery_rate, product").eq("org_id", orgId);
       if (since) ordersQuery = ordersQuery.gte("created_at", `${since}T00:00:00+06:00`);
       if (until) ordersQuery = ordersQuery.lte("created_at", `${until}T23:59:59+06:00`);
@@ -4804,17 +4808,20 @@ app.get("/api/analytics", async (req, res) => {
       let cogCoverage = { set: 0, total: 0 };
       const cogByOrderId = new Map();
       try {
-        const { data: prods } = await supabase
+        const { data: prods, error: productsError } = await supabase
           .from("products")
           .select("id, name, selling_price, cog")
           .eq("org_id", orgId);
+        if (productsError) degraded = true;
         const result = computeOrderCogs(orders, prods || []);
         totalCog = result.totalCog;
         cogCoverage = result.coverage;
         for (const [orderId, orderCog] of result.cogByOrderId) {
           cogByOrderId.set(orderId, orderCog);
         }
-      } catch { /* ignore – no products yet */ }
+      } catch {
+        degraded = true;
+      }
 
       // price = total_price from Shopify (subtotal + shipping − discounts) = what the customer pays.
       // delivery_rate = shipping component (kept separately for the Shipping card display).
@@ -4847,23 +4854,25 @@ app.get("/api/analytics", async (req, res) => {
       let fbAccountCurrency = null;
       if (!fbToken || !fbAccountId) {
         try {
-          const { data: connection } = await supabase
+          const { data: connection, error: connectionError } = await supabase
             .from("meta_connections")
             .select("encrypted_user_access_token")
             .eq("org_id", orgId)
             .maybeSingle();
-          const { data: adAccount } = await supabase
+          const { data: adAccount, error: adAccountError } = await supabase
             .from("meta_ad_accounts")
             .select("ad_account_id, currency")
             .eq("org_id", orgId)
             .limit(1)
             .maybeSingle();
+          if (connectionError || adAccountError) degraded = true;
           if (connection?.encrypted_user_access_token && adAccount?.ad_account_id) {
             fbToken = decryptToken(connection.encrypted_user_access_token);
             fbAccountId = adAccount.ad_account_id;
             fbAccountCurrency = adAccount.currency;
           }
         } catch (err) {
+          degraded = true;
           console.warn("[Meta Analytics] OAuth ad account fallback unavailable:", errorMessage(err));
         }
       }
@@ -4873,15 +4882,17 @@ app.get("/api/analytics", async (req, res) => {
             fbAccountId,
             fbAccountId.startsWith("act_") ? fbAccountId.slice(4) : `act_${fbAccountId}`,
           ];
-          const { data: adAccount } = await supabase
+          const { data: adAccount, error: currencyError } = await supabase
             .from("meta_ad_accounts")
             .select("currency")
             .eq("org_id", orgId)
             .in("ad_account_id", storedAccountIds)
             .limit(1)
             .maybeSingle();
+          if (currencyError) degraded = true;
           fbAccountCurrency = adAccount?.currency || null;
         } catch (err) {
+          degraded = true;
           console.warn("[Meta Analytics] Ad account currency unavailable:", errorMessage(err));
         }
       }
@@ -5002,8 +5013,8 @@ app.get("/api/analytics", async (req, res) => {
           profit: seriesBuckets.map((bucket) => bucket.profit ?? 0),
         },
       };
-      return { value: response, cacheable: !fbError };
-    });
+      return { value: response, cacheable: !fbError && !degraded };
+    }, { fresh });
     return res.json(payload);
   } catch (err) {
     return sendError(res, err);
@@ -6614,18 +6625,32 @@ app.get("/api/orders", async (req, res) => {
       ? req.query.warehouse_id.trim()
       : "";
 
-    // Recorded before querying, with a 5s overlap so rows committed while this
-    // request is in flight are picked up by the next delta.
-    const syncedAt = new Date(Date.now() - 5000).toISOString();
+    // The sync cursor comes from Postgres updated_at values (never this
+    // server's clock). Returns the latest parseable timestamp as ISO, or null.
+    const maxUpdatedAt = (values) => {
+      let max = null;
+      for (const value of values) {
+        const time = value ? Date.parse(value) : NaN;
+        if (!Number.isNaN(time) && (max === null || time > max)) max = time;
+      }
+      return max === null ? null : new Date(max).toISOString();
+    };
 
+    // Returns orders with items attached and the latest item updated_at seen.
     const attachOrderItems = async (allOrders) => {
       const orderIds = allOrders.map((order) => order.id).filter(Boolean);
       const itemRows = [];
+      const itemUpdatedAts = [];
       for (const idBatch of chunkIds(orderIds)) {
-        const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+        const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity, updated_at").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
         if (itemsError) throw itemsError;
-        itemRows.push(...(batchItems || []));
+        // updated_at only feeds the cursor; keep the item payload unchanged.
+        for (const { updated_at: itemUpdatedAt, ...item } of batchItems || []) {
+          itemUpdatedAts.push(itemUpdatedAt);
+          itemRows.push(item);
+        }
       }
+      const itemsMaxUpdatedAt = maxUpdatedAt(itemUpdatedAts);
       const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
       const itemsByOrder = new Map();
       for (const item of enrichedItems) {
@@ -6633,7 +6658,7 @@ app.get("/api/orders", async (req, res) => {
         list.push(item);
         itemsByOrder.set(item.order_id, list);
       }
-      return allOrders.map((order) => {
+      const ordersWithItems = allOrders.map((order) => {
         const storedItems = itemsByOrder.get(order.id);
         if (storedItems?.length) return { ...order, items: storedItems };
 
@@ -6644,16 +6669,21 @@ app.get("/api/orders", async (req, res) => {
         }));
         return { ...order, items: legacyItems };
       });
+      return { ordersWithItems, itemsMaxUpdatedAt };
     };
 
     if (changedSinceParam) {
       const changedSince = new Date(Date.parse(changedSinceParam)).toISOString();
+      // Re-read a 120s window before the cursor so rows from long-running
+      // transactions (updated_at = transaction start) are not missed. Repeats
+      // are harmless: the client merges by id.
+      const overlapSince = new Date(Date.parse(changedSince) - 120 * 1000).toISOString();
 
       let changedOrdersQuery = supabase
         .from("orders")
-        .select("id")
+        .select("id, updated_at")
         .eq("org_id", orgId)
-        .gt("updated_at", changedSince);
+        .gt("updated_at", overlapSince);
       if (warehouseFilter) {
         changedOrdersQuery = changedOrdersQuery.eq("warehouse_id", warehouseFilter);
       }
@@ -6664,9 +6694,9 @@ app.get("/api/orders", async (req, res) => {
       // BEFORE UPDATE trigger, so it covers both new and edited items.
       const { data: changedItemRows, error: changedItemsError } = await supabase
         .from("order_items")
-        .select("order_id")
+        .select("order_id, updated_at")
         .eq("org_id", orgId)
-        .gt("updated_at", changedSince);
+        .gt("updated_at", overlapSince);
       if (changedItemsError) throw changedItemsError;
 
       const changedIds = [...new Set([
@@ -6699,9 +6729,15 @@ app.get("/api/orders", async (req, res) => {
       const { count: deltaCount, error: countError } = await countQuery;
       if (countError) throw countError;
 
-      const changedOrders = await attachOrderItems(changedRows);
+      const { ordersWithItems: changedOrders } = await attachOrderItems(changedRows);
+      // Max updated_at over the rows looked at; never behind the incoming cursor.
+      const deltaSyncedAt = maxUpdatedAt([
+        changedSince,
+        ...(changedOrderRows || []).map((row) => row.updated_at),
+        ...(changedItemRows || []).map((row) => row.updated_at),
+      ]);
       console.log(`[Orders] delta=${changedOrders.length}`);
-      return res.json({ orders: changedOrders, totalCount: deltaCount ?? 0, syncedAt, delta: true });
+      return res.json({ orders: changedOrders, totalCount: deltaCount ?? 0, syncedAt: deltaSyncedAt, delta: true });
     }
 
     let ordersQuery = supabase
@@ -6716,7 +6752,12 @@ app.get("/api/orders", async (req, res) => {
     if (error) throw error;
 
     const allOrders = allData || [];
-    const orders = await attachOrderItems(allOrders);
+    const { ordersWithItems: orders, itemsMaxUpdatedAt } = await attachOrderItems(allOrders);
+    // null for an empty workspace: the client then does a full sync next time.
+    const syncedAt = maxUpdatedAt([
+      ...allOrders.map((order) => order.updated_at),
+      itemsMaxUpdatedAt,
+    ]);
 
     console.log(`[Orders] total=${allOrders.length}`);
     return res.json({ orders, totalCount: count ?? allOrders.length, syncedAt });

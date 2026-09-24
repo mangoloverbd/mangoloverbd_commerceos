@@ -24,9 +24,48 @@ describe("GET /api/analytics caching wiring", () => {
     expect(route).toContain("const cacheKey = `${orgId}:${since || \"\"}:${until || \"\"}`;");
     expect(route).toContain("until && until < todayDhaka() ? 10 * 60 * 1000 : 60 * 1000");
     expect(route).toContain("analyticsCache.get(cacheKey, ttlMs, async () => {");
-    expect(route).toContain("return { value: response, cacheable: !fbError };");
+    expect(route).toContain("return { value: response, cacheable: !fbError && !degraded };");
     expect(route).toContain("return res.json(payload);");
     expect(route.indexOf("await getUserOrg(")).toBeLessThan(route.indexOf("analyticsCache.get("));
+  });
+
+  it("does not cache results computed while a sub-lookup failed", () => {
+    expect(route).toContain("let degraded = false;");
+    const products = route.slice(route.indexOf("let cogCoverage"), route.indexOf("// price = total_price"));
+    expect(products).toContain("error: productsError");
+    expect(products).toContain("if (productsError) degraded = true;");
+    expect(products).toMatch(/catch \{\s*degraded = true;/);
+
+    const meta = route.slice(route.indexOf("let fbAccountCurrency"), route.indexOf("const usdToBdt"));
+    expect(meta).toContain("error: connectionError");
+    expect(meta).toContain("error: adAccountError");
+    expect(meta).toContain("if (connectionError || adAccountError) degraded = true;");
+    expect(meta).toContain("error: currencyError");
+    expect(meta).toContain("if (currencyError) degraded = true;");
+    // Both warn-only catch blocks mark the result degraded.
+    expect((meta.match(/catch \(err\) \{\s*degraded = true;/g) || []).length).toBe(2);
+  });
+
+  it("supports fresh=1 to skip the cache read while keeping the same key", () => {
+    expect(route).toContain('const fresh = req.query.fresh === "1";');
+    expect(route).toContain("}, { fresh });");
+    const cacheKeyLine = route.slice(route.indexOf("const cacheKey"), route.indexOf("\n", route.indexOf("const cacheKey")));
+    expect(cacheKeyLine).not.toContain("fresh");
+    expect(cacheKeyLine).not.toContain("req.query.t");
+  });
+});
+
+describe("Dashboard analytics fresh=1 wiring", () => {
+  const dashboard = readFileSync(resolve(process.cwd(), "src/pages/Dashboard.tsx"), "utf8");
+
+  it("requests fresh analytics only for the main range on user-triggered refreshes", () => {
+    expect(dashboard).toContain('if (fresh) mainParams.set("fresh", "1");');
+    expect(dashboard).toContain("apiFetch(`/api/analytics?${buildParams(prev)}`");
+    // After a Shopify sync and after a price/shipping edit.
+    expect(dashboard).toContain("fetchAnalytics(todayRange, true, true);");
+    expect(dashboard).toContain("fetchAnalytics(dateRange, false, true);");
+    // The 60s poll stays cached.
+    expect(dashboard).toContain("useVisibleInterval(() => fetchAnalytics(dateRange, true), 60000);");
   });
 });
 

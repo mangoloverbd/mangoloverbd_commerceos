@@ -557,7 +557,9 @@ export default function Dashboard() {
   const liveVisitors = useLiveVisitors();
   const isMobile = useIsMobile();
 
-  const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false) => {
+  // `fresh` bypasses the server's short analytics cache for the selected range
+  // (user-triggered refreshes); the previous-period call stays cached.
+  const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false, fresh = false) => {
     if (!silent) setAnalyticsLoading(true);
     try {
       const buildParams = (r?: DateRange | null) => {
@@ -566,9 +568,11 @@ export default function Dashboard() {
         if (r?.to)   p.set("until", toYMD(r.to));
         return p;
       };
+      const mainParams = buildParams(range);
+      if (fresh) mainParams.set("fresh", "1");
       const prev = prevRangeOf(range);
       const [res, prevRes] = await Promise.all([
-        apiFetch(`/api/analytics?${buildParams(range)}`, { cache: "no-store" }),
+        apiFetch(`/api/analytics?${mainParams}`, { cache: "no-store" }),
         prev ? apiFetch(`/api/analytics?${buildParams(prev)}`, { cache: "no-store" }) : Promise.resolve(null),
       ]);
       const data = await res.json();
@@ -750,7 +754,7 @@ export default function Dashboard() {
           sessionStorage.setItem(syncKey, "1");
           // Refresh orders after sync completes
           fetchOrders({ full: true });
-          fetchAnalytics(todayRange, true);
+          fetchAnalytics(todayRange, true, true);
         } catch { /* ignore */ }
         finally {
           setAutoSyncing(false);
@@ -833,7 +837,7 @@ export default function Dashboard() {
         oldOrder.quantity !== updatedOrder.quantity
       );
       if (needsAnalyticsRefresh) {
-        fetchAnalytics(dateRange);
+        fetchAnalytics(dateRange, false, true);
       }
       const next = prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o));
       queryClient.setQueryData(["/api/orders"], next);

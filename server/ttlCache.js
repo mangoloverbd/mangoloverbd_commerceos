@@ -4,6 +4,7 @@
  * `{ value, cacheable }`. Non-cacheable values (and thrown errors) are never
  * stored. Uses Redis get/set with EX when a client is provided, and always
  * keeps an in-process Map with the same TTL as the fallback for Redis errors.
+ * `{ fresh: true }` skips the read (both layers) but still stores the result.
  */
 export function createTtlCache({ redis = null, now = Date.now, prefix = "", maxEntries = 200 } = {}) {
   const memory = new Map();
@@ -14,10 +15,10 @@ export function createTtlCache({ redis = null, now = Date.now, prefix = "", maxE
     }
   }
 
-  async function get(key, ttlMs, compute) {
+  async function get(key, ttlMs, compute, { fresh = false } = {}) {
     const fullKey = `${prefix}${key}`;
 
-    if (redis) {
+    if (redis && !fresh) {
       try {
         const cached = await redis.get(fullKey);
         if (cached != null) return cached;
@@ -28,7 +29,7 @@ export function createTtlCache({ redis = null, now = Date.now, prefix = "", maxE
 
     const current = now();
     const entry = memory.get(fullKey);
-    if (entry && entry.expiresAt > current) return entry.value;
+    if (!fresh && entry && entry.expiresAt > current) return entry.value;
 
     const { value, cacheable } = await compute();
     if (!cacheable) return value;
