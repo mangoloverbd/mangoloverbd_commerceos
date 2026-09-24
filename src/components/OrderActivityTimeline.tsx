@@ -9,7 +9,7 @@ import {
   orderActivityQueryOptions,
   type OrderActivityEvent as Event,
 } from "@/lib/orderActivityQuery";
-import { activityReasonLabel, layoutActivityChanges } from "@/lib/orderActivityPresentation";
+import { activityReasonLabel, layoutActivityChanges, readableActivitySummary } from "@/lib/orderActivityPresentation";
 import { OrderActivityChangeList, OrderActivityChangeSummary } from "@/components/OrderActivityChangeDetails";
 
 const RECENT_LIMIT = 5;
@@ -104,7 +104,7 @@ function EventHeading({ event, heading }: { event: Event; heading: string }) {
       >
         {heading}
       </Chip>
-      <span className="truncate text-[11px] font-normal text-black/50">by {event.actor_display_name}</span>
+      <span className="truncate text-[12px] font-medium text-black/75">by {event.actor_display_name}</span>
     </span>
   );
 }
@@ -113,9 +113,7 @@ function EventHeading({ event, heading }: { event: Event; heading: string }) {
 function FullEventRow({ event }: { event: Event }) {
   const changes = event.changes || [];
   const layout = layoutActivityChanges(changes);
-  const summary = event.summary || humanize(event.event_type || event.action);
-  // The status chips already say where it moved to, so the heading stays short.
-  const heading = layout.status && /^status changed/i.test(summary) ? "Status changed" : summary;
+  const heading = readableActivitySummary(event.summary, humanize(event.event_type || event.action));
   const hasInline = Boolean(
     layout.status || layout.total || layout.items.length || layout.inlineFields.length
     || event.reason_code || event.reason_note,
@@ -165,7 +163,7 @@ function FullEventRow({ event }: { event: Event }) {
 function EventRow({ event }: { event: Event }) {
   const [open, setOpen] = useState(false);
   const changes = event.changes || [];
-  const summary = event.summary || humanize(event.event_type || event.action);
+  const summary = readableActivitySummary(event.summary, humanize(event.event_type || event.action));
 
   return (
     <li data-testid="activity-event" className="border-b border-black/[0.05] last:border-0">
@@ -285,7 +283,7 @@ export function OrderActivityTimeline({
                 <p className="text-[8px] uppercase tracking-[.2em] text-black/45">Latest activity</p>
                 <div className="mt-1">
                   <Chip variant="caption" color={eventChipColor(latestEvent)}>
-                    {latestEvent?.summary || "No recorded activity"}
+                    {readableActivitySummary(latestEvent?.summary, "No recorded activity")}
                   </Chip>
                 </div>
                 {latestEvent && (

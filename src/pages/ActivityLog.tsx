@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { apiFetch } from "@/lib/api";
+import { readableActivitySummary } from "@/lib/orderActivityPresentation";
 import { cn } from "@/lib/utils";
 import {
   activityActionColor,
@@ -245,11 +246,14 @@ function ActivityRow({ event, index, reduceMotion }: { event: ActivityEvent; ind
           {activityActionLabel(event.action)}
         </Chip>
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-medium text-black">
-            {event.actor_display_name}
-            <span className="font-normal text-black/45"> · {activityTableLabel(event.order_table)}</span>
+          <p data-testid="activity-row-title" className="truncate text-[13px] font-medium text-black">
+            {readableActivitySummary(event.summary, activityActionLabel(event.action))}
+            <span className="font-normal text-black/60"> · {event.order_label || activityTableLabel(event.order_table)}</span>
           </p>
-          <p className="truncate text-[10.5px] text-black/50">{event.summary ? `${event.summary} · ` : ""}{event.order_label || "—"}</p>
+          <p data-testid="activity-row-actor" className="truncate text-[11px] text-black/60">
+            by <span className="font-medium text-black">{event.actor_display_name}</span>
+            <span> · {activityTableLabel(event.order_table)}</span>
+          </p>
         </div>
       </div>
       <div className="shrink-0 text-right">

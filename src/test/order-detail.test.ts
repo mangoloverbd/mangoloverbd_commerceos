@@ -159,7 +159,7 @@ describe("OrderDetail", () => {
     expect(screen.getByRole("radio", { name: "Order details" })).toBeChecked();
 
     await user.click(screen.getByRole("radio", { name: "Logs" }));
-    expect((await screen.findAllByText("Status changed to approved")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Approved order")).length).toBeGreaterThan(0);
     expect(screen.getByTestId("activity-live-indicator")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Order cart" })).not.toBeInTheDocument();
     const logsParams = new URLSearchParams(screen.getByTestId("location-search").textContent || "");
@@ -190,7 +190,7 @@ describe("OrderDetail", () => {
     await user.click(screen.getByRole("radio", { name: "Logs" }));
 
     expect(screen.queryByText("Loading activity")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Status changed to approved").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Approved order").length).toBeGreaterThan(0);
   });
 
   it("places the order source selector in the customer section header", async () => {

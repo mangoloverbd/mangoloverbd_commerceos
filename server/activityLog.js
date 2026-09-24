@@ -173,16 +173,20 @@ export function buildOrderLookup({ orders, socialInboxOrders, abandonedCheckouts
 // assembled -> one feed entry ready for the client.
 export function buildActivityLogEntry(event, { orderLookup, staffById }) {
   const reference = orderLookup?.get(orderReferenceKey(event.order_table, event.order_id)) || null;
+  const action = event.action || classifyActivityEvent(event);
+  // Legacy status rows carry no summary; name the destination so the feed
+  // does not show a bare "Status changed".
+  const summary = event.summary || (action === "status_changed" && event.to_status ? `Status changed to ${event.to_status}` : null);
   return {
     id: event.id,
     occurred_at: event.created_at,
-    action: event.action || classifyActivityEvent(event),
+    action,
     order_table: event.order_table,
     order_id: event.order_id,
     order_label: reference?.label || null,
     order_value: reference?.value ?? null,
     actor_id: event.actor_id || null,
     actor_display_name: (event.actor_id && staffById?.get(event.actor_id)) || "Unknown",
-    ...(event.summary ? { summary: event.summary } : {}),
+    ...(summary ? { summary } : {}),
   };
 }

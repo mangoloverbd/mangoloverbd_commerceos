@@ -85,6 +85,58 @@ export function activityStatusLabel(value: unknown): string {
   return STATUS_PRESENTATION[normalized]?.label || humanize(normalized) || String(value);
 }
 
+const ORDER_SOURCE_LABELS: Record<string, string> = {
+  manual_other: "Manual entry",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+  telesales: "Telesales",
+  phone: "Phone",
+  website: "Website",
+  storefront: "Website",
+  custom_store: "Website",
+};
+
+const CHECKOUT_FOLLOW_UP_LABELS: Record<string, string> = {
+  dismissed: "Dismissed abandoned cart",
+  contacted: "Contacted cart customer",
+  open: "Reopened abandoned cart",
+  recovered: "Converted cart to order",
+  expired: "Abandoned cart expired",
+};
+
+function courierStatusLabel(code: string): string {
+  const pending = code.match(/^(.+)_approval_pending$/);
+  return pending ? `${humanize(pending[1])} (awaiting approval)` : humanize(code);
+}
+
+/** Rewrites stored activity summaries ("Status changed to confirmed",
+ * "Steadfast status changed to delivered_approval_pending") into plain titles. */
+export function readableActivitySummary(summary: string | null | undefined, fallback = ""): string {
+  const text = summary?.trim();
+  if (!text) return fallback;
+
+  const status = text.match(/^Status changed to (\S+)$/i);
+  if (status) {
+    const normalized = normalizeBusinessStatus(status[1]);
+    if (normalized === "confirmed" || normalized === "approved") return "Approved order";
+    if (normalized === "cancelled" || normalized === "canceled") return "Cancelled order";
+    return `Moved to ${activityStatusLabel(status[1])}`;
+  }
+
+  const courier = text.match(/^(\w+) status changed to (\S+)$/i);
+  if (courier) return `${courier[1]}: ${courierStatusLabel(courier[2])}`;
+
+  const created = text.match(/^Order created through (\S+)$/i);
+  if (created) return `Created order · ${ORDER_SOURCE_LABELS[created[1]] || humanize(created[1])}`;
+  if (/^Order created from abandoned checkout$/i.test(text)) return "Created order from abandoned cart";
+
+  const checkout = text.match(/^Checkout marked (\S+)$/i);
+  if (checkout) return CHECKOUT_FOLLOW_UP_LABELS[checkout[1]] || `Marked cart ${humanize(checkout[1]).toLowerCase()}`;
+
+  return text;
+}
+
 export function activityStatusColor(value: unknown): ActivityChipColor {
   if (isEmpty(value)) return "neutral";
   return STATUS_PRESENTATION[normalizeBusinessStatus(String(value))]?.color || "neutral";

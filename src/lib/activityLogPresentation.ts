@@ -51,9 +51,9 @@ export type ActivityLogResponse = {
 
 const ACTION_LABELS: Record<ActivityAction, string> = {
   created: "Created",
-  confirmed: "Confirmed",
+  confirmed: "Approved",
   cancelled: "Cancelled",
-  status_changed: "Updated",
+  status_changed: "Status changed",
   contacted: "Contacted",
   reopened: "Reopened",
   dismissed: "Dismissed",
@@ -69,7 +69,7 @@ const ACTION_LABELS: Record<ActivityAction, string> = {
 };
 
 export function activityActionLabel(action: ActivityAction): string {
-  return ACTION_LABELS[action] || "Updated";
+  return ACTION_LABELS[action] || "Status changed";
 }
 
 type ChipColor = "lime" | "rose" | "yellow" | "blue" | "soft";

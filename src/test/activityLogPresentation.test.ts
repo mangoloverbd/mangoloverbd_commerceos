@@ -25,9 +25,9 @@ function makeEvent(overrides: Partial<ActivityEvent>): ActivityEvent {
 
 describe("activityActionLabel / activityActionColor", () => {
   it("labels every action with a human-readable string", () => {
-    expect(activityActionLabel("confirmed")).toBe("Confirmed");
+    expect(activityActionLabel("confirmed")).toBe("Approved");
     expect(activityActionLabel("converted")).toBe("Converted to order");
-    expect(activityActionLabel("status_changed")).toBe("Updated");
+    expect(activityActionLabel("status_changed")).toBe("Status changed");
   });
 
   it("colors positive and negative outcomes distinctly", () => {

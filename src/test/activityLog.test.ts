@@ -205,3 +205,24 @@ describe("buildOrderLookup and buildActivityLogEntry", () => {
     expect(entry.order_label).toBeNull();
   });
 });
+
+describe("buildActivityLogEntry summaries for legacy status rows", () => {
+  const orderLookup = buildOrderLookup({ orders: [], socialInboxOrders: [], abandonedCheckouts: [] });
+  const staffById = new Map([["actor-1", "Rakib"]]);
+  const base = { id: "e", order_id: "o", actor_id: "actor-1", created_at: "2026-09-22T10:00:00.000Z" };
+
+  it("describes an order status move so the feed row is not a bare 'Updated'", () => {
+    const entry = buildActivityLogEntry({ ...base, order_table: "orders", from_status: "confirmed", to_status: "print" }, { orderLookup, staffById });
+    expect(entry.summary).toBe("Status changed to print");
+  });
+
+  it("leaves rows whose action already names them (approved, dismissed) unchanged", () => {
+    const entry = buildActivityLogEntry({ ...base, order_table: "abandoned_checkouts", from_status: "open", to_status: "dismissed" }, { orderLookup, staffById });
+    expect(entry.summary).toBeUndefined();
+  });
+
+  it("keeps an existing detailed summary", () => {
+    const entry = buildActivityLogEntry({ ...base, order_table: "orders", event_type: "order.edited", summary: "Edited order items" }, { orderLookup, staffById });
+    expect(entry.summary).toBe("Edited order items");
+  });
+});
