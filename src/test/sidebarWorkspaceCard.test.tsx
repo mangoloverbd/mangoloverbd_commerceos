@@ -44,6 +44,7 @@ describe("sidebar brand header", () => {
     renderSidebar();
     const brand = screen.getByTestId("sidebar-brand");
     expect(within(brand).getByTestId("sidebar-brand-logo")).toHaveClass("bg-white");
+    expect(within(within(brand).getByTestId("sidebar-brand-logo")).getByRole("img", { name: "Mango Lover BD" })).toHaveAttribute("src", "/brand/mango-lover-logo.webp");
     const name = within(brand).getByText("Mango Lover BD");
     const product = within(brand).getByText("Merchant Suite");
     expect(name.compareDocumentPosition(product) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
