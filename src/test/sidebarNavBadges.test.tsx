@@ -1,5 +1,5 @@
 import { MemoryRouter } from "react-router-dom";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -75,7 +75,8 @@ describe("collapsible sidebar groups", () => {
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("link", { name: /Staff/ })).not.toBeInTheDocument();
+    // The group clips shut with an exit animation before it unmounts.
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Staff/ })).not.toBeInTheDocument());
     unmount();
 
     renderNav(sections());
@@ -92,5 +93,42 @@ describe("collapsible sidebar groups", () => {
   it("marks the active page with a side bar", () => {
     renderNav(sections(), { path: "/returns" });
     expect(within(screen.getByRole("link", { name: /Returns/ })).getByTestId("nav-active-bar")).toBeInTheDocument();
+  });
+});
+
+describe("active item card", () => {
+  it("renders exactly one sliding card, inside the active link", () => {
+    renderNav(sections(), { path: "/returns" });
+    const pills = screen.getAllByTestId("nav-active-pill");
+    expect(pills).toHaveLength(1);
+    expect(within(screen.getByRole("link", { name: /Returns/ })).getByTestId("nav-active-pill")).toBeInTheDocument();
+  });
+});
+
+describe("hover card", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("fades the hover background in on the hovered item and out of the previous one", async () => {
+    renderNav(sections(), { path: "/returns" });
+    const home = screen.getByRole("link", { name: /Home/ });
+    const staff = screen.getByRole("link", { name: /Staff/ });
+
+    fireEvent.mouseEnter(home);
+    expect(within(home).getByTestId("nav-hover-pill")).toBeInTheDocument();
+
+    fireEvent.mouseEnter(staff);
+    expect(within(staff).getByTestId("nav-hover-pill")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByTestId("nav-hover-pill")).toHaveLength(1));
+  });
+
+  it("never draws the hover card on the active item and clears when the pointer leaves the menu", async () => {
+    renderNav(sections(), { path: "/returns" });
+    const returns = screen.getByRole("link", { name: /Returns/ });
+    fireEvent.mouseEnter(returns);
+    expect(within(returns).queryByTestId("nav-hover-pill")).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(screen.getByRole("link", { name: /Home/ }));
+    fireEvent.mouseLeave(screen.getByTestId("sidebar-nav"));
+    await waitFor(() => expect(screen.queryByTestId("nav-hover-pill")).not.toBeInTheDocument());
   });
 });

@@ -502,7 +502,7 @@
 .glass-button-wrap {
   position: relative;
   z-index: 12;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   pointer-events: none;
   transition: all 400ms cubic-bezier(0.25, 1, 0.5, 1);
@@ -529,8 +529,9 @@
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
   pointer-events: auto;
   z-index: 13;
-  background: #dedede; /* match sidebar bg so the row blends and only the beam shows */
-  border-radius: 8px;
+  /* The white card is the sliding .nav-active-pill (nav-main.tsx) */
+  background: transparent;
+  border-radius: 6px;
   transition: transform 400ms cubic-bezier(0.25, 1, 0.5, 1);
   width: 100%;
   display: flex;
@@ -542,40 +543,15 @@
   transform: scale(0.99);
 }
 
-/* Keep the icon + label above the beam pseudo-element */
+/* Keep the icon + label above the card background */
 .glass-button > * {
   position: relative;
   z-index: 2;
 }
 
-/* Rotating gradient border beam (same effect as the dashboard's "Online visitors" pill) */
-.glass-button::after {
-  content: "";
+.glass-button > .nav-active-pill {
   position: absolute;
-  inset: 0;
-  z-index: 1;
-  border-radius: 8px;
-  padding: 1.5px;
-  background:
-    conic-gradient(
-      from var(--uv-angle) at 50% 50%,
-      rgba(0, 0, 0, 0.5),
-      rgba(0, 0, 0, 0) 5% 40%,
-      rgba(0, 0, 0, 0.5) 50%,
-      rgba(0, 0, 0, 0) 60% 95%,
-      rgba(0, 0, 0, 0.5)
-    ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-  animation: uv-beam-spin 6s linear infinite;
+  z-index: 0;
 }
 
 /* Smooth, non-jumpy press feedback for sidebar nav items.

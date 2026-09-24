@@ -18,10 +18,10 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronRight, Lock } from "lucide-react";
-import { ReactNode, useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
+import { ReactNode, createContext, useContext, useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 export interface Route {
     id: string;
@@ -44,14 +44,14 @@ export interface NavSection {
     collapsible?: boolean;
 }
 
-const activeNavLabelClass = "font-medium text-black/90";
+const activeNavLabelClass = "font-medium text-black";
 const inactiveNavLabelClass =
-    "font-normal text-black/80 group-hover/nav-link:text-black/85 group-hover/nav-button:text-black/85";
+    "font-normal text-black/75 group-hover/nav-link:text-black/90 group-hover/nav-button:text-black/90";
 
 function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
     return (
         <span className={cn(
-            "block truncate font-sans text-[13px] normal-case tracking-normal min-w-0",
+            "relative block truncate font-sans text-[13px] normal-case tracking-normal min-w-0 transition-colors duration-200 ease-out",
             active ? activeNavLabelClass : inactiveNavLabelClass
         )}>
             {text}
@@ -63,13 +63,13 @@ const navIconFrame =
     "flex h-[17px] w-[17px] shrink-0 items-center justify-center [&>img]:h-[17px] [&>img]:w-[17px] [&>img]:object-contain [&>svg]:h-[17px] [&>svg]:w-[17px]";
 
 const activeIconStyle = { "--fillg": "#000000" } as React.CSSProperties;
-const inactiveIconStyle = { "--fillg": "#000000" } as React.CSSProperties;
+const inactiveIconStyle = { "--fillg": "rgba(0, 0, 0, 0.55)" } as React.CSSProperties;
 
 const navIconMotion =
     "transform-gpu will-change-transform transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover/nav-link:-translate-y-px group-hover/nav-link:scale-110 group-hover/nav-link:text-black group-hover/nav-button:-translate-y-px group-hover/nav-button:scale-110 group-hover/nav-button:text-black";
 
 const activeNavItemClass =
-    "rounded-[8px] text-black";
+    "rounded-[6px] text-black";
 
 function NavBadge({ count }: { count?: number }) {
     if (!count || count <= 0) return null;
@@ -94,6 +94,69 @@ function NavBadgeDot({ count }: { count?: number }) {
             />
             <span className="sr-only">{count} pending</span>
         </>
+    );
+}
+
+// Motion adapted from beui.dev's animated sidebar: eased hover fades, a soft
+// press, and a clip reveal for groups.
+const NAV_PRESS_SPRING = { type: "spring", stiffness: 600, damping: 34 } as const;
+const NAV_EASE_OUT = [0.23, 1, 0.32, 1] as const;
+// The hover background fades in place on each item; it never slides.
+const NAV_HOVER_IN = { duration: 0.2, ease: NAV_EASE_OUT } as const;
+const NAV_HOVER_OUT = { duration: 0.14, ease: NAV_EASE_OUT } as const;
+const NAV_GROUP_VARIANTS = {
+    closed: { opacity: 0, clipPath: "inset(0 0 100% 0 round 6px)", transition: { duration: 0.14, ease: NAV_EASE_OUT } },
+    open: { opacity: 1, clipPath: "inset(0 0 0% 0 round 6px)", transition: { duration: 0.22, ease: NAV_EASE_OUT } },
+};
+
+const MotionLink = motion.create(Link);
+
+// Which item the pointer is over; that item's hover background fades in.
+const NavHoverContext = createContext<{ hovered: string | null; setHovered: (id: string | null) => void }>({
+    hovered: null,
+    setHovered: () => {},
+});
+
+function useNavHover() {
+    const { setHovered } = useContext(NavHoverContext);
+    // Entering the active item hides the hover card; its white card is enough.
+    return (id: string, active = false) => ({ onMouseEnter: () => setHovered(active ? null : id) });
+}
+
+function useNavPress() {
+    const reduceMotion = useReducedMotion();
+    return { whileTap: reduceMotion ? undefined : { scale: 0.98 }, transition: NAV_PRESS_SPRING };
+}
+
+function HoverPill({ id }: { id: string }) {
+    const { hovered } = useContext(NavHoverContext);
+    const reduceMotion = useReducedMotion();
+    return (
+        <AnimatePresence initial={false}>
+            {hovered === id && (
+                <motion.span
+                    key="hover"
+                    data-testid="nav-hover-pill"
+                    aria-hidden="true"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1, transition: reduceMotion ? { duration: 0 } : NAV_HOVER_IN }}
+                    exit={{ opacity: 0, transition: reduceMotion ? { duration: 0 } : NAV_HOVER_OUT }}
+                    className="pointer-events-none absolute inset-0 rounded-[6px] bg-black/[0.05]"
+                />
+            )}
+        </AnimatePresence>
+    );
+}
+
+// The selected item's white card. Static: it appears on the new item on
+// navigation (only the hover card glides).
+function ActivePill() {
+    return (
+        <span
+            data-testid="nav-active-pill"
+            aria-hidden="true"
+            className="nav-active-pill pointer-events-none absolute inset-0 rounded-[6px] border border-[#d4d4d4] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+        />
     );
 }
 
@@ -166,6 +229,9 @@ function TreeSvgLines({ offsets, className }: { offsets: number[]; className?: s
 
 function CollapsibleSection({ section }: { section: NavSection }) {
     const location = useLocation();
+    const hoverFor = useNavHover();
+    const press = useNavPress();
+    const reduceMotion = useReducedMotion();
     const [offsets, setOffsets] = useState<number[]>([]);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -211,7 +277,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                 type="button"
                 onClick={toggle}
                 aria-expanded={open}
-                className="group/section mb-0 flex h-6 w-full items-center gap-1 rounded-md px-2 font-sans text-[11px] font-medium normal-case tracking-normal text-black transition-colors hover:bg-black/5"
+                className="group/section mb-0 flex h-6 w-full items-center gap-1 rounded-[6px] px-2 font-sans text-[11px] font-medium normal-case tracking-normal text-black transition-colors hover:bg-black/5"
             >
                 <span className="truncate">{section.label}</span>
                 <ChevronRight
@@ -220,7 +286,15 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                 />
             </button>
 
+            <AnimatePresence initial={false}>
             {open && (
+            <motion.div
+                key="group"
+                variants={reduceMotion ? undefined : NAV_GROUP_VARIANTS}
+                initial={reduceMotion ? false : "closed"}
+                animate={reduceMotion ? { opacity: 1 } : "open"}
+                exit={reduceMotion ? { opacity: 0 } : "closed"}
+            >
             <SidebarGroupContent>
                 <div ref={containerRef} className="relative flex flex-col gap-0.5 list-none">
                     <TreeSvgLines offsets={offsets} />
@@ -258,10 +332,12 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                         >
                                             <Link
                                                 to={route.link}
+                                                {...hoverFor(route.id, true)}
                                                 className="group/nav-link relative flex items-center gap-2 w-full"
                                             >
                                                 <ActiveBar />
                                                 <button className="glass-button flex items-center gap-2 !h-[28px] w-full !p-0 !justify-start">
+                                                    <ActivePill />
                                                     <div className="flex items-center gap-2 w-full px-2 pl-8">
                                                         <span className={cn(
                                                             navIconFrame,
@@ -283,24 +359,27 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                         asChild
                                         tooltip={route.title}
                                         className={cn(
-                                            "h-7 rounded-lg px-2 pl-8 gap-2 font-sans text-[13px] tracking-normal transition-all",
-                                            "text-black hover:bg-black/5 hover:text-black"
+                                            "h-7 rounded-[6px] px-2 pl-8 gap-2 font-sans text-[13px] tracking-normal transition-colors",
+                                            "text-black hover:bg-transparent hover:text-black"
                                         )}
                                     >
-                                        <Link
+                                        <MotionLink
                                             to={route.link}
-                                            className="group/nav-link flex items-center gap-2"
+                                            {...hoverFor(route.id)}
+                                            {...press}
+                                            className="group/nav-link relative flex items-center gap-2"
                                         >
+                                            <HoverPill id={route.id} />
                                             <span className={cn(
                                                 navIconFrame,
                                                 navIconMotion,
-                                                "text-black"
+                                                "relative text-black"
                                             )} style={inactiveIconStyle}>
                                                 {route.icon}
                                             </span>
                                             <SidebarLabel text={route.title} active={false} />
                                             <NavBadge count={route.badge} />
-                                        </Link>
+                                        </MotionLink>
                                     </SidebarMenuButton>
                                 )}
                             </SidebarMenuItem>
@@ -308,7 +387,9 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                     })}
                 </div>
             </SidebarGroupContent>
+            </motion.div>
             )}
+            </AnimatePresence>
         </SidebarGroup>
     );
 }
@@ -317,9 +398,14 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
     const location = useLocation();
+    const [hovered, setHovered] = useState<string | null>(null);
+    // This component owns the hover state, so it cannot read it from context.
+    const hoverFor = (id: string, active = false) => ({ onMouseEnter: () => setHovered(active ? null : id) });
+    const press = useNavPress();
 
     return (
-        <>
+        <NavHoverContext.Provider value={{ hovered, setHovered }}>
+        <div data-testid="sidebar-nav" className="flex flex-col" onMouseLeave={() => setHovered(null)}>
             {sections.map((section, sectionIndex) => {
                 const sectionKey = section.label || section.routes[0]?.id;
                 const sectionBoundaryClass = sectionIndex > 0
@@ -373,13 +459,15 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 asChild
                                                 tooltip={route.title}
                                                 className={cn(
-                                                    "mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all",
-                                                    isActive ? activeNavItemClass : "text-black hover:bg-black/5 hover:text-black"
+                                                    "mx-auto flex h-8 w-8 items-center justify-center rounded-[6px] transition-all",
+                                                    isActive ? cn(activeNavItemClass, "hover:bg-transparent") : "text-black hover:bg-black/5 hover:text-black"
                                                 )}
                                             >
                                                 <Link to={route.link} aria-label={route.title} className="group/nav-link relative flex h-full w-full items-center justify-center">
+                                                    {isActive && <ActivePill />}
                                                     <span className={cn(
                                                         navIconFrame,
+                                                        "relative",
                                                         "transform-gpu will-change-transform transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover/nav-link:-translate-y-px group-hover/nav-link:scale-110 group-hover/nav-link:text-black"
                                                     )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                         {route.icon}
@@ -427,8 +515,10 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             <div className="glass-button-wrap w-full">
                                                                 <SidebarMenuButton
                                                                     tooltip={route.title}
+                                                                    {...hoverFor(route.id, true)}
                                                                     className="glass-button h-7 gap-2 font-sans text-[13px] tracking-normal w-full !p-0 !justify-start"
                                                                 >
+                                                                    <ActivePill />
                                                                     <span className={cn(navIconFrame)} style={activeIconStyle}>
                                                                         {route.icon}
                                                                     </span>
@@ -442,20 +532,22 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                         ) : (
                                                             <SidebarMenuButton
                                                                 tooltip={route.title}
+                                                                {...hoverFor(route.id)}
                                                                 className={cn(
-                                                                     "group/nav-button h-7 rounded-lg px-2 gap-2 font-sans text-[13px] tracking-normal transition-all",
-                                                                    "text-black hover:bg-black/5 hover:text-black"
+                                                                     "group/nav-button relative h-7 rounded-[6px] px-2 gap-2 font-sans text-[13px] tracking-normal transition-colors",
+                                                                    "text-black hover:bg-transparent hover:text-black"
                                                                 )}
                                                             >
+                                                                <HoverPill id={route.id} />
                                                                 <span className={cn(
                                                                     navIconFrame,
                                                                     navIconMotion,
-                                                                    "text-black"
+                                                                    "relative text-black"
                                                                 )} style={inactiveIconStyle}>
                                                                     {route.icon}
                                                                 </span>
                                                                 <SidebarLabel text={route.title} active={false} />
-                                                                <ChevronRight className="ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                                                <ChevronRight className="relative ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                                             </SidebarMenuButton>
                                                         )}
                                                     </CollapsibleTrigger>
@@ -471,7 +563,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                  "font-sans text-[11.5px] font-medium tracking-normal transition-all",
                                                                                 subActive
                                                                                     ? cn(activeNavItemClass, "h-7 w-full !p-0 !justify-start")
-                                                                                    : "h-6 rounded-md px-2 text-black hover:bg-black/5 hover:text-black"
+                                                                                    : "h-6 rounded-[6px] px-2 text-black hover:bg-black/5 hover:text-black"
                                                                             )}
                                                                         >
                                                                             <Link
@@ -481,6 +573,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                 {subActive ? (
                                                                                     <div className="glass-button-wrap w-full">
                                                                                         <button className="glass-button flex items-center gap-2 !h-7 w-full !p-0 !justify-start">
+                                                                                            <ActivePill />
                                                                                             <div className="flex items-center gap-2 w-full px-2">
                                                                                                 {sub.icon && (
                                                                                                     <span className={cn(navIconFrame)} style={activeIconStyle}>{sub.icon}</span>
@@ -525,18 +618,21 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                          "gap-2 font-sans text-[13px] tracking-normal transition-all",
                                                         isActive
                                                             ? cn(activeNavItemClass, "h-[28px] w-full !p-0 !justify-start")
-                                                            : "h-7 rounded-lg px-2 text-black hover:bg-black/5 hover:text-black"
+                                                            : "h-7 rounded-[6px] px-2 text-black hover:bg-transparent hover:text-black"
                                                     )}
                                                 >
-                                                    <Link
+                                                    <MotionLink
                                                         to={route.link}
-                                                        className={cn("group/nav-link flex items-center gap-2", isActive && "relative w-full")}
+                                                        {...hoverFor(route.id, isActive)}
+                                                        {...(isActive ? {} : press)}
+                                                        className={cn("group/nav-link relative flex items-center gap-2", isActive && "w-full")}
                                                     >
                                                         {isActive ? (
                                                             <>
                                                                 <ActiveBar />
                                                                 <div className="glass-button-wrap w-full">
                                                                     <button className="glass-button flex items-center gap-2 !h-[28px] w-full !p-0 !justify-start">
+                                                                        <ActivePill />
                                                                         <div className="flex items-center gap-2 w-full px-2">
                                                                             <span className={cn(navIconFrame)} style={activeIconStyle}>
                                                                                 {route.icon}
@@ -552,10 +648,11 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                             </>
                                                         ) : (
                                                             <>
+                                                                <HoverPill id={route.id} />
                                                                 <span className={cn(
                                                                     navIconFrame,
                                                                     navIconMotion,
-                                                                    "text-black"
+                                                                    "relative text-black"
                                                                 )} style={inactiveIconStyle}>
                                                                     {route.icon}
                                                                 </span>
@@ -563,7 +660,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                 <NavBadge count={route.badge} />
                                                             </>
                                                         )}
-                                                    </Link>
+                                                    </MotionLink>
                                                 </SidebarMenuButton>
                                             )}
                                         </SidebarMenuItem>
@@ -576,6 +673,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                 </div>
                 );
             })}
-        </>
+        </div>
+        </NavHoverContext.Provider>
     );
 }
