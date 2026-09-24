@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowLeft, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
+import { syncOrders } from "@/lib/ordersSync";
 import { readTabOrderQueue, type NavigableQueueTab } from "@/lib/pendingOrderQueue";
 import { toast } from "@/components/ui/sonner";
 import { Button as BuiButton } from "@/components/base/buttons/button";
@@ -236,12 +237,8 @@ export default function OrderDetail() {
     queryKey: ["/api/orders"],
     staleTime: 30_000,
     enabled: Boolean(id),
-    queryFn: async () => {
-      const res = await apiFetch("/api/orders");
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Failed to load orders");
-      return ((json as { orders?: Order[] }).orders || []) as Order[];
-    },
+    // Delta-syncs the shared list when it is already cached.
+    queryFn: () => syncOrders<Order>(queryClient),
   });
 
   useEffect(() => {

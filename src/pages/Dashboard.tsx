@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { OrdersSyncError, syncOrders } from "@/lib/ordersSync";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
@@ -604,25 +605,12 @@ export default function Dashboard() {
   }, [user?.id]);
 
   // Hoisted to useCallback so effects can reference it without stale closures
-  const fetchOrders = useCallback(async () => {
+  // Polls sync by delta; pass { full: true } after actions that change many orders.
+  const fetchOrders = useCallback(async (opts: { full?: boolean } = {}) => {
     try {
-      const res = await apiFetch("/api/orders");
-      // A 401 here means the token was invalid (apiFetch already retried a
-      // refresh once). Revalidate /api/me so role/org recover, and skip the
-      // error toast — the next poll/refetch will load normally.
-      if (res.status === 401) {
-        void queryClient.invalidateQueries({ queryKey: ["/api/me"] });
-        setLoading(false);
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to load orders");
-      const data = await res.json();
-      const nextOrders = (data.orders as Order[]) || [];
-      const nextTotalOrdersCount = typeof data.totalCount === "number" && Number.isFinite(data.totalCount)
-        ? data.totalCount
-        : nextOrders.length;
-      queryClient.setQueryData(["/api/orders"], nextOrders);
-      queryClient.setQueryData(["/api/orders/count"], nextTotalOrdersCount);
+      // syncOrders writes ["/api/orders"] and ["/api/orders/count"].
+      const nextOrders = await syncOrders<Order>(queryClient, opts);
+      const nextTotalOrdersCount = queryClient.getQueryData<number>(["/api/orders/count"]) ?? nextOrders.length;
       setOrders(nextOrders);
       setTotalOrdersCount(nextTotalOrdersCount);
       // Warm the product catalog cache in the background so the order
@@ -637,7 +625,14 @@ export default function Dashboard() {
           return productsJson;
         },
       });
-    } catch {
+    } catch (err) {
+      // A 401 here means the token was invalid (apiFetch already retried a
+      // refresh once). Revalidate /api/me so role/org recover, and skip the
+      // error toast — the next poll/refetch will load normally.
+      if (err instanceof OrdersSyncError && err.status === 401) {
+        void queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+        return;
+      }
       toast.custom(() => (
         <DarkToast className="flex items-center gap-3">
           <div className="flex h-9 w-9 rounded-lg bg-red-500/15 items-center justify-center shrink-0">
@@ -735,7 +730,7 @@ export default function Dashboard() {
         const refreshCourier = (path: string) =>
           apiFetch(path, { method: "POST" })
             .then((res) => {
-              fetchOrders();
+              fetchOrders({ full: true });
               return res.ok;
             })
             .catch(() => false);
@@ -754,7 +749,7 @@ export default function Dashboard() {
           await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
           sessionStorage.setItem(syncKey, "1");
           // Refresh orders after sync completes
-          fetchOrders();
+          fetchOrders({ full: true });
           fetchAnalytics(todayRange, true);
         } catch { /* ignore */ }
         finally {

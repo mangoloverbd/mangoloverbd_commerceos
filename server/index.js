@@ -6562,10 +6562,110 @@ app.get("/api/orders", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     console.log(`[Orders] user=${user.id}`);
 
+    // Optional delta cursor: when present, only orders (or their items)
+    // changed after it are returned, so the dashboard poll stays small.
+    const changedSinceParam = typeof req.query.changed_since === "string"
+      ? req.query.changed_since.trim()
+      : "";
+    if (req.query.changed_since !== undefined && (!changedSinceParam || Number.isNaN(Date.parse(changedSinceParam)))) {
+      return res.status(400).json({ error: "Invalid changed_since timestamp" });
+    }
+
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);    const warehouseFilter = typeof req.query.warehouse_id === "string"
       ? req.query.warehouse_id.trim()
       : "";
+
+    // Recorded before querying, with a 5s overlap so rows committed while this
+    // request is in flight are picked up by the next delta.
+    const syncedAt = new Date(Date.now() - 5000).toISOString();
+
+    const attachOrderItems = async (allOrders) => {
+      const orderIds = allOrders.map((order) => order.id).filter(Boolean);
+      const itemRows = [];
+      for (const idBatch of chunkIds(orderIds)) {
+        const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+        if (itemsError) throw itemsError;
+        itemRows.push(...(batchItems || []));
+      }
+      const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
+      const itemsByOrder = new Map();
+      for (const item of enrichedItems) {
+        const list = itemsByOrder.get(item.order_id) || [];
+        list.push(item);
+        itemsByOrder.set(item.order_id, list);
+      }
+      return allOrders.map((order) => {
+        const storedItems = itemsByOrder.get(order.id);
+        if (storedItems?.length) return { ...order, items: storedItems };
+
+        const legacyItems = parseLegacyProductLines(order.product, order.quantity).map((line) => ({
+          product_name: line.productName,
+          variant_name: null,
+          quantity: line.quantity,
+        }));
+        return { ...order, items: legacyItems };
+      });
+    };
+
+    if (changedSinceParam) {
+      const changedSince = new Date(Date.parse(changedSinceParam)).toISOString();
+
+      let changedOrdersQuery = supabase
+        .from("orders")
+        .select("id")
+        .eq("org_id", orgId)
+        .gt("updated_at", changedSince);
+      if (warehouseFilter) {
+        changedOrdersQuery = changedOrdersQuery.eq("warehouse_id", warehouseFilter);
+      }
+      const { data: changedOrderRows, error: changedOrdersError } = await changedOrdersQuery;
+      if (changedOrdersError) throw changedOrdersError;
+
+      // order_items.updated_at defaults to now() on insert and is bumped by a
+      // BEFORE UPDATE trigger, so it covers both new and edited items.
+      const { data: changedItemRows, error: changedItemsError } = await supabase
+        .from("order_items")
+        .select("order_id")
+        .eq("org_id", orgId)
+        .gt("updated_at", changedSince);
+      if (changedItemsError) throw changedItemsError;
+
+      const changedIds = [...new Set([
+        ...(changedOrderRows || []).map((row) => row.id),
+        ...(changedItemRows || []).map((row) => row.order_id),
+      ].filter(Boolean))];
+
+      const changedRows = [];
+      for (const idBatch of chunkIds(changedIds)) {
+        let changedBatchQuery = supabase
+          .from("orders")
+          .select("*")
+          .in("id", idBatch)
+          .eq("org_id", orgId);
+        if (warehouseFilter) {
+          changedBatchQuery = changedBatchQuery.eq("warehouse_id", warehouseFilter);
+        }
+        const { data: batchOrders, error: batchError } = await changedBatchQuery;
+        if (batchError) throw batchError;
+        changedRows.push(...(batchOrders || []));
+      }
+
+      let countQuery = supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId);
+      if (warehouseFilter) {
+        countQuery = countQuery.eq("warehouse_id", warehouseFilter);
+      }
+      const { count: deltaCount, error: countError } = await countQuery;
+      if (countError) throw countError;
+
+      const changedOrders = await attachOrderItems(changedRows);
+      console.log(`[Orders] delta=${changedOrders.length}`);
+      return res.json({ orders: changedOrders, totalCount: deltaCount ?? 0, syncedAt, delta: true });
+    }
+
     let ordersQuery = supabase
       .from("orders")
       .select("*", { count: "exact" })
@@ -6578,34 +6678,10 @@ app.get("/api/orders", async (req, res) => {
     if (error) throw error;
 
     const allOrders = allData || [];
-    const orderIds = allOrders.map((order) => order.id).filter(Boolean);
-    const itemRows = [];
-    for (const idBatch of chunkIds(orderIds)) {
-      const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
-      if (itemsError) throw itemsError;
-      itemRows.push(...(batchItems || []));
-    }
-    const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
-    const itemsByOrder = new Map();
-    for (const item of enrichedItems) {
-      const list = itemsByOrder.get(item.order_id) || [];
-      list.push(item);
-      itemsByOrder.set(item.order_id, list);
-    }
-    const orders = allOrders.map((order) => {
-      const storedItems = itemsByOrder.get(order.id);
-      if (storedItems?.length) return { ...order, items: storedItems };
-
-      const legacyItems = parseLegacyProductLines(order.product, order.quantity).map((line) => ({
-        product_name: line.productName,
-        variant_name: null,
-        quantity: line.quantity,
-      }));
-      return { ...order, items: legacyItems };
-    });
+    const orders = await attachOrderItems(allOrders);
 
     console.log(`[Orders] total=${allOrders.length}`);
-    return res.json({ orders, totalCount: count ?? allOrders.length });
+    return res.json({ orders, totalCount: count ?? allOrders.length, syncedAt });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
