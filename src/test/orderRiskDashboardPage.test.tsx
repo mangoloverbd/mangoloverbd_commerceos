@@ -21,7 +21,7 @@ vi.mock("@/lib/orderRisk", async (importOriginal) => ({
 it("shows a shadow attempt's evidence without exposing hashed identifiers", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
-  await user.click(screen.getByRole("tab", { name: "Attempts" }));
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
   await user.click(await screen.findByRole("button", { name: /Rahim.*40/ }));
   expect(await screen.findByText("More address detail needed")).toBeInTheDocument();
   expect(screen.getByText("Shadow · not enforced")).toBeInTheDocument();
@@ -31,7 +31,7 @@ it("shows a shadow attempt's evidence without exposing hashed identifiers", asyn
 it("explains the deciding reason in plain words, not just signal chips", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
-  await user.click(screen.getByRole("tab", { name: "Attempts" }));
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
   await user.click(await screen.findByRole("button", { name: /Rahim.*40/ }));
   expect(await screen.findByText("High risk score (>=40)")).toBeInTheDocument();
 });
@@ -45,18 +45,19 @@ it("supports arrow-key navigation across the order protection tabs", async () =>
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  const reviews = screen.getByRole("tab", { name: "Reviews" });
+  const reviews = screen.getByRole("radio", { name: "Reviews" });
   reviews.focus();
   await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("radio", { name: "Attempts" })).toHaveFocus();
+  await user.keyboard(" ");
 
-  expect(screen.getByRole("tab", { name: "Attempts" })).toHaveAttribute("aria-selected", "true");
-  expect(screen.getByRole("tab", { name: "Attempts" })).toHaveFocus();
+  expect(screen.getByRole("radio", { name: "Attempts" })).toHaveAttribute("aria-checked", "true");
 });
 
 it("reports unknown accuracy rather than calling unlabeled orders genuine", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
-  await user.click(screen.getByRole("tab", { name: "Accuracy" }));
+  await user.click(screen.getByRole("radio", { name: "Accuracy" }));
   expect(await screen.findByText("20.0%" )).toBeInTheDocument();
   expect(screen.getAllByText("Not enough labels").length).toBeGreaterThan(0);
 });
@@ -65,7 +66,7 @@ it("renders report-style attempt summaries and investigation", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Attempts" }));
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
   expect(await screen.findByText("Loaded attempts")).toBeInTheDocument();
   expect(screen.getAllByText("Held").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
@@ -81,7 +82,7 @@ it("renders report-style list controls and entries", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Lists" }));
+  await user.click(screen.getByRole("radio", { name: "Lists" }));
   expect(await screen.findByRole("button", { name: "Blocklist" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "Allowlist" })).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByText("Phone ending 5678")).toBeInTheDocument();
@@ -93,7 +94,7 @@ it("renders accuracy summary cards and range controls", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Accuracy" }));
+  await user.click(screen.getByRole("radio", { name: "Accuracy" }));
   expect(await screen.findByText("Assessments")).toBeInTheDocument();
   expect(screen.getAllByText("Hold rate").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Block precision").length).toBeGreaterThan(0);
@@ -107,7 +108,7 @@ it("groups protection settings into labeled report sections", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Settings" }));
+  await user.click(screen.getByRole("radio", { name: "Settings" }));
   expect((await screen.findAllByText("Protection mode")).length).toBeGreaterThan(0);
   expect(screen.getAllByText("Districts requiring review").length).toBeGreaterThan(0);
   expect(screen.getByText("Additional abuse terms")).toBeInTheDocument();
@@ -118,7 +119,7 @@ it("keeps the attempts decision filter connected to the risk API", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Attempts" }));
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
   await screen.findByRole("button", { name: /Rahim.*40/ });
   await user.selectOptions(screen.getByLabelText("Decision"), "hold");
 
@@ -129,12 +130,12 @@ it("switches lists and keeps the remove action wired", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Lists" }));
+  await user.click(screen.getByRole("radio", { name: "Lists" }));
   await user.click(await screen.findByRole("button", { name: "Allowlist" }));
   await waitFor(() => expect(fetchRiskLists).toHaveBeenLastCalledWith("allow"));
   expect(await screen.findByText("No entries in this list.")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("tab", { name: "Lists" }));
+  await user.click(screen.getByRole("radio", { name: "Lists" }));
   await user.click(await screen.findByRole("button", { name: "Blocklist" }));
   await user.click(await screen.findByRole("button", { name: "Remove" }));
   await waitFor(() => expect(screen.queryByText("Phone ending 5678")).not.toBeInTheDocument());
@@ -144,7 +145,7 @@ it("keeps the accuracy range control connected to the risk API", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Accuracy" }));
+  await user.click(screen.getByRole("radio", { name: "Accuracy" }));
   await user.click(await screen.findByRole("button", { name: "30 days" }));
 
   await waitFor(() => expect(fetchRiskAccuracy).toHaveBeenLastCalledWith(30));
@@ -155,7 +156,7 @@ it("saves settings and exposes the success status", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("tab", { name: "Settings" }));
+  await user.click(screen.getByRole("radio", { name: "Settings" }));
   await user.click(await screen.findByRole("button", { name: "Save settings" }));
 
   await waitFor(() => expect(updateRiskSettings).toHaveBeenCalled());

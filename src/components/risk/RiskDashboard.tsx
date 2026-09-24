@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, Check, Eye, MagnifyingGlass, MapPin, Plus, Prohibit, ShieldCheck, ShieldSlash, X, type Icon } from "@phosphor-icons/react";
 import { Spinner } from "@/components/ui/ios-spinner";
 import {
   addRiskListEntry,
@@ -595,11 +595,52 @@ export function RiskAccuracyPanel() {
   );
 }
 
+const riskModeOptions: Array<{ value: RiskSettings["mode"]; label: string; description: string; icon: Icon }> = [
+  { value: "off", label: "Off", description: "No risk checks run at checkout.", icon: ShieldSlash },
+  { value: "shadow", label: "Shadow", description: "Score every order and log decisions without blocking anyone.", icon: Eye },
+  { value: "active", label: "Active", description: "Enforce decisions — risky orders are held or blocked at checkout.", icon: ShieldCheck },
+];
+
+function RiskSettingsGroup({
+  icon: GroupIcon,
+  title,
+  description,
+  aside,
+  children,
+}: {
+  icon: Icon;
+  title: string;
+  description: string;
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
+  const headingId = `risk-settings-${title.toLowerCase().replace(/\s+/g, "-")}`;
+  return (
+    <section className="space-y-3" aria-labelledby={headingId}>
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/[0.05] text-black">
+            <GroupIcon weight="light" size={16} />
+          </span>
+          <div className="min-w-0">
+            <h2 id={headingId} className="text-[14px] font-semibold leading-none text-black">{title}</h2>
+            <p className="mt-1 text-[12px] leading-snug text-black/60">{description}</p>
+          </div>
+        </div>
+        {aside}
+      </div>
+      <div className="overflow-hidden rounded-2xl bg-black/[0.04]">{children}</div>
+    </section>
+  );
+}
+
 export function RiskSettingsPanel() {
   const [settings, setSettings] = useState<RiskSettings | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [districtQuery, setDistrictQuery] = useState("");
+  const [termDraft, setTermDraft] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -617,17 +658,45 @@ export function RiskSettingsPanel() {
     );
   }
 
+  const query = districtQuery.trim().toLowerCase();
+  const visibleDistricts = query
+    ? settings.districtOptions.filter((district) => district.name.toLowerCase().includes(query))
+    : settings.districtOptions;
+
+  function toggleDistrict(id: string) {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      haterDistrictIds: settings.haterDistrictIds.includes(id)
+        ? settings.haterDistrictIds.filter((value) => value !== id)
+        : [...settings.haterDistrictIds, id],
+    });
+  }
+
+  function addTerms(raw: string) {
+    if (!settings) return;
+    const incoming = raw.split(/[\n,]/).map((term) => term.trim()).filter(Boolean);
+    const next = [...settings.extraAbuseTerms];
+    for (const term of incoming) {
+      if (!next.some((existing) => existing.toLowerCase() === term.toLowerCase())) next.push(term);
+    }
+    setSettings({ ...settings, extraAbuseTerms: next });
+    setTermDraft("");
+  }
+
   return (
     <form
-      className="max-w-3xl space-y-4 p-4 sm:p-5"
+      className="space-y-8 p-4 sm:p-6"
       onSubmit={async (event) => {
         event.preventDefault();
         setSaving(true);
         setError("");
         setMessage("");
         try {
-          const saved = await updateRiskSettings(settings);
+          const pending = termDraft.trim() ? { ...settings, extraAbuseTerms: [...settings.extraAbuseTerms, termDraft.trim()] } : settings;
+          const saved = await updateRiskSettings(pending);
           setSettings(saved);
+          setTermDraft("");
           setMessage("Settings saved");
         } catch (err) {
           setError(errorMessage(err));
@@ -636,62 +705,180 @@ export function RiskSettingsPanel() {
         }
       }}
     >
-      <section className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5" aria-labelledby="risk-mode-heading">
-        <h2 id="risk-mode-heading" className={riskLabelClass}>Protection mode</h2>
-        <p className="mt-1 text-xs text-black/55">Choose whether risk decisions are observed only or enforced at checkout.</p>
-        <label className="mt-4 block">
-          <span className="sr-only">Protection mode</span>
-          <select
-            className="block w-full rounded-lg border border-black/15 bg-transparent p-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-black"
-            value={settings.mode}
-            onChange={(event) => setSettings({ ...settings, mode: event.target.value as RiskSettings["mode"] })}
+      <div className="grid gap-10 lg:grid-cols-2 lg:gap-8">
+        <div className="space-y-10">
+          <RiskSettingsGroup icon={ShieldCheck} title="Protection mode" description="Choose whether risk decisions are observed only or enforced at checkout.">
+            <div role="radiogroup" aria-label="Protection mode" className="divide-y divide-black/[0.06]">
+              {riskModeOptions.map(({ value, label, description, icon: ModeIcon }) => {
+                const selected = settings.mode === value;
+                return (
+                  <label
+                    key={value}
+                    className="flex min-h-[60px] cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-black/[0.02] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-black"
+                  >
+                    <input
+                      type="radio"
+                      name="risk-mode"
+                      value={value}
+                      checked={selected}
+                      onChange={() => setSettings({ ...settings, mode: value })}
+                      className="sr-only"
+                    />
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${selected ? "bg-black text-white" : "bg-white text-black"}`}>
+                      <ModeIcon weight="light" size={16} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-medium text-black">{label}</span>
+                      <span className="mt-0.5 block text-[11px] text-black/60">{description}</span>
+                    </span>
+                    <span
+                      aria-hidden
+                      className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border transition-colors ${selected ? "border-black bg-black text-white" : "border-black/20 bg-white"}`}
+                    >
+                      {selected && <Check weight="bold" size={10} />}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </RiskSettingsGroup>
+
+          <RiskSettingsGroup
+            icon={Prohibit}
+            title="Additional abuse terms"
+            description="Product or checkout language that should push an order toward review."
+            aside={settings.extraAbuseTerms.length > 0 ? (
+              <span className="shrink-0 rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] tabular-nums text-black/70">
+                {settings.extraAbuseTerms.length} {settings.extraAbuseTerms.length === 1 ? "term" : "terms"}
+              </span>
+            ) : undefined}
           >
-            <option value="off">Off</option>
-            <option value="shadow">Shadow · observe only</option>
-            <option value="active">Active · enforce decisions</option>
-          </select>
-        </label>
-      </section>
-
-      <section className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5" aria-labelledby="risk-districts-heading">
-        <h2 id="risk-districts-heading" className={riskLabelClass}>Districts requiring review</h2>
-        <p className="mt-1 text-xs text-black/55">Select districts where incomplete or unfamiliar checkout context should be held for review.</p>
-        <div className="mt-4 grid max-h-48 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
-          {settings.districtOptions.map((district) => (
-            <label key={district.id} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2 text-xs text-black/75">
-              <input
-                type="checkbox"
-                checked={settings.haterDistrictIds.includes(district.id)}
-                onChange={(event) => setSettings({
-                  ...settings,
-                  haterDistrictIds: event.target.checked
-                    ? [...settings.haterDistrictIds, district.id]
-                    : settings.haterDistrictIds.filter((id) => id !== district.id),
-                })}
-              />
-              {district.name}
-            </label>
-          ))}
+            <div className="space-y-3 p-3">
+              <div className="flex items-center gap-2">
+                <input
+                  aria-label="Add abuse term"
+                  placeholder="Type a term and press Enter"
+                  value={termDraft}
+                  onChange={(event) => setTermDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === ",") {
+                      event.preventDefault();
+                      addTerms(termDraft);
+                    }
+                  }}
+                  onPaste={(event) => {
+                    const text = event.clipboardData.getData("text");
+                    if (/[\n,]/.test(text)) {
+                      event.preventDefault();
+                      addTerms(text);
+                    }
+                  }}
+                  className="h-9 flex-1 rounded-lg border border-black/[0.1] bg-white px-3 text-[13px] text-black placeholder:text-black/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => addTerms(termDraft)}
+                  disabled={!termDraft.trim()}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-white px-3 text-[12px] text-black transition-colors hover:bg-black/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-black disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus weight="light" size={14} /> Add
+                </button>
+              </div>
+              {settings.extraAbuseTerms.length === 0 ? (
+                <p className="px-1 text-[12px] text-black/50">No extra terms yet — the built-in abuse list still applies.</p>
+              ) : (
+                <ul className="flex flex-wrap gap-1.5" aria-label="Abuse terms">
+                  {settings.extraAbuseTerms.map((term) => (
+                    <li key={term} className="inline-flex h-8 items-center gap-1 rounded-full bg-white pl-3 pr-1 text-[12px] text-black">
+                      {term}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${term}`}
+                        onClick={() => setSettings({ ...settings, extraAbuseTerms: settings.extraAbuseTerms.filter((value) => value !== term) })}
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-black/45 transition-colors hover:bg-black/[0.06] hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-black"
+                      >
+                        <X weight="light" size={12} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </RiskSettingsGroup>
         </div>
-      </section>
 
-      <section className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5" aria-labelledby="risk-terms-heading">
-        <h2 id="risk-terms-heading" className={riskLabelClass}>Additional abuse terms</h2>
-        <p className="mt-1 text-xs text-black/55">Add one term per line for product or checkout language that should increase review.</p>
-        <textarea
-          aria-label="Additional abuse terms"
-          className="mt-4 min-h-28 w-full rounded-lg border border-black/15 bg-transparent p-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-black"
-          rows={4}
-          value={settings.extraAbuseTerms.join("\n")}
-          onChange={(event) => setSettings({ ...settings, extraAbuseTerms: event.target.value.split("\n").map((term) => term.trim()).filter(Boolean) })}
-        />
-      </section>
+        <RiskSettingsGroup
+          icon={MapPin}
+          title="Districts requiring review"
+          description="Hold incomplete or unfamiliar checkouts from these districts for review."
+          aside={(
+            <span className="shrink-0 rounded-full bg-black/[0.05] px-2.5 py-1 text-[11px] tabular-nums text-black/70">
+              {settings.haterDistrictIds.length} selected
+            </span>
+          )}
+        >
+          <div className="flex items-center gap-2 border-b border-black/[0.06] px-3 py-2.5">
+            <div className="relative flex-1">
+              <MagnifyingGlass weight="light" size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-black/40" />
+              <input
+                type="search"
+                aria-label="Search districts"
+                placeholder="Search districts"
+                value={districtQuery}
+                onChange={(event) => setDistrictQuery(event.target.value)}
+                className="h-9 w-full rounded-lg border border-black/[0.1] bg-white pl-8 pr-3 text-[13px] text-black placeholder:text-black/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/20"
+              />
+            </div>
+            {settings.haterDistrictIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSettings({ ...settings, haterDistrictIds: [] })}
+                className="h-9 shrink-0 rounded-lg px-3 text-[12px] text-black/60 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-black"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="max-h-72 overflow-y-auto p-3 lg:max-h-[420px]">
+            {visibleDistricts.length === 0 ? (
+              <p className="py-6 text-center text-[12px] text-black/50">No districts match “{districtQuery}”.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {visibleDistricts.map((district) => {
+                  const selected = settings.haterDistrictIds.includes(district.id);
+                  return (
+                    <button
+                      key={district.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleDistrict(district.id)}
+                      className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black ${selected ? "bg-black text-white" : "bg-white text-black/75 hover:bg-black/[0.06] hover:text-black"}`}
+                    >
+                      {selected && <Check weight="bold" size={10} />}
+                      {district.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </RiskSettingsGroup>
+      </div>
 
-      {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      {message && <p role="status" className="rounded-lg bg-lime-50 px-3 py-2 text-sm text-lime-900">{message}</p>}
-      <button type="submit" className={riskActionClass} disabled={saving}>
-        {saving ? <><Spinner size="sm" className="mr-2 inline-flex" /> Saving…</> : "Save settings"}
-      </button>
+      <div className="flex flex-col-reverse gap-3 border-t border-black/[0.08] pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-h-5 text-[12px]">
+          {error && <p role="alert" className="text-red-700">{error}</p>}
+          {message && <p role="status" className="inline-flex items-center gap-1.5 text-black/70"><Check weight="light" size={14} /> {message}</p>}
+        </div>
+        <button
+          type="submit"
+          disabled={saving}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] text-white transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          {saving && <Spinner size="sm" />}
+          {saving ? "Saving…" : "Save settings"}
+        </button>
+      </div>
     </form>
   );
 }
