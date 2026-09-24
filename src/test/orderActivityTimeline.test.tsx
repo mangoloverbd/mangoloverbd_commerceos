@@ -139,7 +139,7 @@ describe("OrderActivityTimeline", () => {
     }], "full");
 
     const row = await screen.findByTestId("activity-event");
-    expect(within(row).getByText("Status changed")).toBeInTheDocument();
+    expect(within(row).getByTestId("activity-event-heading")).toHaveTextContent("Approved order");
     const status = within(row).getByTestId("activity-status-change");
     expect(within(status).getByText("Pending")).toBeInTheDocument();
     expect(within(status).getByText("Approved")).toBeInTheDocument();

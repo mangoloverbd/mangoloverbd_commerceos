@@ -8,6 +8,7 @@ import {
   groupActivityChanges,
   itemChangeKind,
   layoutActivityChanges,
+  readableActivitySummary,
   summarizeItemChanges,
 } from "@/lib/orderActivityPresentation";
 
@@ -171,5 +172,39 @@ describe("order activity presentation", () => {
     expect(formatActivityFieldValue("delivery_rate", 80)).toBe("৳80");
     expect(formatActivityFieldValue("phone", "01711111111")).toBe("01711111111");
     expect(formatActivityFieldValue("address", "")).toBe("Not set");
+  });
+});
+
+describe("readableActivitySummary", () => {
+  it("names approvals and status moves in plain words", () => {
+    expect(readableActivitySummary("Status changed to confirmed")).toBe("Approved order");
+    expect(readableActivitySummary("Status changed to approved")).toBe("Approved order");
+    expect(readableActivitySummary("Status changed to cancelled")).toBe("Cancelled order");
+    expect(readableActivitySummary("Status changed to print")).toBe("Moved to Print");
+    expect(readableActivitySummary("Status changed to processing")).toBe("Moved to Processing");
+    expect(readableActivitySummary("Status changed to on_hold")).toBe("Moved to On Hold");
+  });
+
+  it("turns raw courier status codes into readable text", () => {
+    expect(readableActivitySummary("Steadfast status changed to delivered")).toBe("Steadfast: Delivered");
+    expect(readableActivitySummary("Steadfast status changed to delivered_approval_pending")).toBe("Steadfast: Delivered (awaiting approval)");
+    expect(readableActivitySummary("Pathao status changed to partial_delivered_approval_pending")).toBe("Pathao: Partial Delivered (awaiting approval)");
+  });
+
+  it("names where an order was created", () => {
+    expect(readableActivitySummary("Order created through manual_other")).toBe("Created order · Manual entry");
+    expect(readableActivitySummary("Order created through facebook")).toBe("Created order · Facebook");
+    expect(readableActivitySummary("Order created from abandoned checkout")).toBe("Created order from abandoned cart");
+  });
+
+  it("describes abandoned-cart follow-ups", () => {
+    expect(readableActivitySummary("Checkout marked dismissed")).toBe("Dismissed abandoned cart");
+    expect(readableActivitySummary("Checkout marked contacted")).toBe("Contacted cart customer");
+    expect(readableActivitySummary("Checkout marked open")).toBe("Reopened abandoned cart");
+  });
+
+  it("keeps summaries that are already readable, and falls back when empty", () => {
+    expect(readableActivitySummary("Edited order items")).toBe("Edited order items");
+    expect(readableActivitySummary(null, "Updated")).toBe("Updated");
   });
 });

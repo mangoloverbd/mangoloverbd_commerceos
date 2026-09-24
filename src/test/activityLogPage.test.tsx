@@ -72,7 +72,7 @@ describe("ActivityLog table filter", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByText("Order #1042");
+    await screen.findByText(/Order #1042/);
     expect(screen.queryByText("Loading activity log")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("radio", { name: "Orders" }));
@@ -81,7 +81,7 @@ describe("ActivityLog table filter", () => {
     // request is in flight — the page must not revert to the full-screen
     // loading state that was only appropriate for the very first load.
     expect(screen.queryByText("Loading activity log")).not.toBeInTheDocument();
-    expect(screen.getByText("Order #1042")).toBeInTheDocument();
+    expect(screen.getByText(/Order #1042/)).toBeInTheDocument();
 
     resolveSecondFetch(jsonResponse(baseResponse({
       events: [{
@@ -99,8 +99,8 @@ describe("ActivityLog table filter", () => {
       action_counts: { cancelled: 1 },
     })));
 
-    await waitFor(() => expect(screen.getByText("Order #1099")).toBeInTheDocument());
-    expect(screen.queryByText("Order #1042")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Order #1099/)).toBeInTheDocument());
+    expect(screen.queryByText(/Order #1042/)).not.toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledTimes(2);
     expect(vi.mocked(apiFetch).mock.calls[1][0]).toContain("table=orders");
   });
