@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, MapPin, Minus, NotePencil, Package, Phone as PhoneIcon, Plus, ShieldCheck, ShoppingCartSimple, Trash, Truck, User, UserPlus } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowLeft, CheckCircle, MapPin, Minus, NotePencil, Package, PencilSimple, Phone as PhoneIcon, Plus, ShieldCheck, ShoppingCartSimple, Trash, Truck, User, UserPlus } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Chip } from "@/components/base/badges/chip";
 import { Button as BuiButton } from "@/components/base/buttons/button";
@@ -32,6 +32,7 @@ import { normalizeBdMobileInput } from "@/lib/bdPhone";
 import { StaffSelect } from "@/components/order-editor/StaffSelect";
 import { useAuth } from "@/hooks/useAuth";
 import type { OrderSource } from "@/lib/orderSource";
+import { blurOnWheel } from "@/lib/numberInput";
 
 type Line = OrderEditorItem;
 
@@ -52,6 +53,47 @@ const PAYMENT_METHODS = [
 ];
 
 const DEFAULT_DELIVERY_FEE = 100;
+
+function catalogUnitPrice(line: Line, products: CatalogProduct[]): number | null {
+  const product = products.find((item) => item.id === line.product_id);
+  if (!product) return null;
+  const variant = line.variant_id ? product.variants?.find((item) => item.id === line.variant_id) : null;
+  return (product.selling_price || 0) + (variant?.price_adjustment || 0);
+}
+
+// Keeps its own text so the field can be cleared mid-edit without
+// snapping back to 0; only valid numbers are committed to the cart.
+function UnitPriceInput({ value, label, disabled, onCommit }: { value: number; label: string; disabled: boolean; onCommit: (price: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => {
+    setDraft((current) => (Number(current) === value && current.trim() !== "" ? current : String(value)));
+  }, [value]);
+  return (
+    <label
+      title="Click to edit the price for this order"
+      className="group flex h-8 w-32 cursor-text items-center gap-1 rounded-lg border border-dashed border-black/25 bg-white px-2 transition-colors hover:border-black/50 focus-within:border-solid focus-within:border-black focus-within:ring-2 focus-within:ring-black/10"
+    >
+      <span aria-hidden="true" className="font-mono text-[12px] text-black/45">৳</span>
+      <input
+        aria-label={label}
+        type="number" onWheel={blurOnWheel}
+        inputMode="decimal"
+        min={0}
+        step="any"
+        value={draft}
+        disabled={disabled}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          const next = Number(event.target.value);
+          if (event.target.value.trim() !== "" && Number.isFinite(next) && next >= 0) onCommit(roundTaka(next));
+        }}
+        onBlur={() => setDraft(String(value))}
+        className="w-full min-w-0 bg-transparent font-mono text-[13px] tabular-nums text-black outline-none [appearance:textfield] disabled:opacity-40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <PencilSimple aria-hidden="true" weight="light" size={13} className="shrink-0 text-black/40 group-hover:text-black/70 group-focus-within:text-black" />
+    </label>
+  );
+}
 
 export default function NewOrder() {
   const { user } = useAuth();
@@ -162,6 +204,19 @@ export default function NewOrder() {
       discount_value: discountType ? discountValue : 0,
       unit_discount: calculateUnitDiscount(line.unit_price, discountType, discountValue),
     } : line));
+  }
+
+  function updateLinePrice(lineId: string, price: number) {
+    setLines((current) => current.map((line) => {
+      if (line.id !== lineId) return line;
+      const discountValue = line.discount_type === "fixed" ? Math.min(line.discount_value, price) : line.discount_value;
+      return {
+        ...line,
+        unit_price: price,
+        discount_value: discountValue,
+        unit_discount: calculateUnitDiscount(price, line.discount_type, discountValue),
+      };
+    }));
   }
 
   function removeLine(lineId: string) {
@@ -387,7 +442,7 @@ export default function NewOrder() {
           </div>
         </section>
 
-        <div data-testid="new-order-workspace" className="grid min-h-0 grid-cols-1 gap-px bg-black/[0.07] xl:h-[calc(100vh-68px)] xl:min-h-[560px] xl:grid-cols-2">
+        <div data-testid="new-order-workspace" className="grid min-h-0 grid-cols-1 gap-px bg-black/[0.07] xl:h-[calc(100vh+200px)] xl:min-h-[900px] xl:grid-cols-2">
           <CatalogPanel products={products} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={!creating} locked={false} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
 
           <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-3 xl:h-full">
@@ -400,10 +455,12 @@ export default function NewOrder() {
                 const unitDiscount = calculateUnitDiscount(line.unit_price, line.discount_type, line.discount_value);
                 const netUnit = line.unit_price - unitDiscount;
                 const maxQty = line.available_stock ?? undefined;
+                const catalogPrice = catalogUnitPrice(line, products);
+                const priceEdited = catalogPrice !== null && roundTaka(catalogPrice) !== roundTaka(line.unit_price);
                 return (
                 <article key={line.id} className="rounded-lg bg-white p-4 ring-1 ring-inset ring-black/[0.06]">
                   <div className="flex min-w-0 gap-3"><div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-black/[0.04]">{line.image_url ? <img src={line.image_url} alt="" className="h-full w-full object-cover" /> : <Package weight="light" size={18} className="text-black/25" />}</div><div className="min-w-0 flex-1"><h3 className="truncate text-[13px] font-medium text-black">{lineName}</h3><p className="mt-1 truncate text-[11px] text-black">{line.variant_name || (line.product_id ? "Standard" : "Manual item")}</p></div><button type="button" aria-label={`Remove ${lineName}`} onClick={() => removeLine(line.id)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-black/35 hover:bg-red-50 hover:text-red-600"><Trash weight="light" size={15} /></button></div>
-                  <div className="mt-3 flex min-w-0 flex-wrap items-end justify-between gap-2 border-t border-black/[0.06] pt-3"><div className="flex flex-col gap-1">{line.product_id && variantOptions.length > 0 && <select aria-label={`Variant for ${lineName}`} value={line.variant_id || ""} onChange={(event) => updateLineVariant(line.id, event.target.value)} className="h-8 min-w-24 max-w-36 truncate rounded-lg bg-black/[0.04] px-2 text-[12px] text-black outline-none"><option value="">Select variant</option>{variantOptions.map((variant) => <option key={variant.id} value={variant.id}>{variantLabel(variant.attributes) || "Default variant"}</option>)}</select>}<div className="flex items-baseline gap-2"><span className="font-mono text-[13px] tabular-nums text-black">{formatTaka(netUnit)}</span>{unitDiscount > 0 && <span className="font-mono text-[10px] tabular-nums text-black/35 line-through">{formatTaka(line.unit_price)}</span>}</div><DiscountEditor item={line} disabled={creating} onApply={(type, value) => updateLineDiscount(line.id, type, value)} onRemove={() => updateLineDiscount(line.id, null, 0)} /></div><div className="flex items-center rounded-lg bg-black/[0.04] p-1"><button type="button" aria-label={`Decrease ${lineName} quantity`} onClick={() => updateLineQty(line.id, -1)} className="grid h-7 w-7 place-items-center rounded-md text-black disabled:opacity-20" disabled={line.quantity <= 1}><Minus weight="light" size={13} /></button><input aria-label={`Quantity for ${lineName}`} type="number" min={1} max={maxQty} value={line.quantity} onChange={(event) => setLineQty(line.id, Number.parseInt(event.target.value, 10))} disabled={creating} className="h-7 w-10 bg-transparent text-center font-mono text-[12px] outline-none disabled:opacity-40" /><button type="button" aria-label={`Increase ${lineName} quantity`} onClick={() => updateLineQty(line.id, 1)} disabled={creating || (maxQty != null && line.quantity >= maxQty)} className="grid h-7 w-7 place-items-center rounded-md text-black disabled:opacity-20"><Plus weight="light" size={13} /></button></div></div>
+                  <div className="mt-3 flex min-w-0 flex-wrap items-end justify-between gap-2 border-t border-black/[0.06] pt-3"><div className="flex flex-col gap-1">{line.product_id && variantOptions.length > 0 && <select aria-label={`Variant for ${lineName}`} value={line.variant_id || ""} onChange={(event) => updateLineVariant(line.id, event.target.value)} className="h-8 min-w-24 max-w-36 truncate rounded-lg bg-black/[0.04] px-2 text-[12px] text-black outline-none"><option value="">Select variant</option>{variantOptions.map((variant) => <option key={variant.id} value={variant.id}>{variantLabel(variant.attributes) || "Default variant"}</option>)}</select>}<div className="flex flex-col gap-1"><UnitPriceInput value={line.unit_price} label={`Unit price for ${lineName}`} disabled={creating} onCommit={(price) => updateLinePrice(line.id, price)} />{priceEdited ? <div className="flex items-center gap-1.5 text-[10px]"><span className="font-mono tabular-nums text-amber-700">Catalog {formatTaka(catalogPrice)}</span><button type="button" aria-label={`Reset ${lineName} to catalog price`} onClick={() => updateLinePrice(line.id, roundTaka(catalogPrice))} disabled={creating} className="inline-flex items-center gap-0.5 rounded px-1 text-black/55 hover:bg-black/[0.05] hover:text-black disabled:opacity-40"><ArrowCounterClockwise weight="light" size={11} />Reset</button></div> : <span className="text-[10px] text-black/45">Tap to edit price</span>}{unitDiscount > 0 && <span className="font-mono text-[10px] tabular-nums text-black/60">Net {formatTaka(netUnit)} after discount</span>}</div><DiscountEditor item={line} disabled={creating} onApply={(type, value) => updateLineDiscount(line.id, type, value)} onRemove={() => updateLineDiscount(line.id, null, 0)} /></div><div className="flex items-center rounded-lg bg-black/[0.04] p-1"><button type="button" aria-label={`Decrease ${lineName} quantity`} onClick={() => updateLineQty(line.id, -1)} className="grid h-7 w-7 place-items-center rounded-md text-black disabled:opacity-20" disabled={line.quantity <= 1}><Minus weight="light" size={13} /></button><input aria-label={`Quantity for ${lineName}`} type="number" onWheel={blurOnWheel} min={1} max={maxQty} value={line.quantity} onChange={(event) => setLineQty(line.id, Number.parseInt(event.target.value, 10))} disabled={creating} className="h-7 w-10 bg-transparent text-center font-mono text-[12px] outline-none disabled:opacity-40" /><button type="button" aria-label={`Increase ${lineName} quantity`} onClick={() => updateLineQty(line.id, 1)} disabled={creating || (maxQty != null && line.quantity >= maxQty)} className="grid h-7 w-7 place-items-center rounded-md text-black disabled:opacity-20"><Plus weight="light" size={13} /></button></div></div>
                   <p className="mt-2 text-right font-mono text-[11px] tabular-nums text-black">Line total {formatTaka(netUnit * line.quantity)}</p>
                 </article>
                 );
@@ -416,7 +473,7 @@ export default function NewOrder() {
                 <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Subtotal</span><span className="font-mono text-[13px] tabular-nums">{formatTaka(totals.grossSubtotal)}</span></div>
                 {totals.itemDiscount > 0 && <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Item discounts</span><span className="font-mono text-[13px] tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</span></div>}
                 {totals.legacyDiscount > 0 && <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Order discount</span><span className="font-mono text-[13px] tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</span></div>}
-                <div className="flex items-center justify-between gap-2 border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Advance / partial</span><span className="flex items-center gap-1.5"><span className="flex items-center gap-1 rounded-lg bg-black/[0.04] py-1 pl-2.5 pr-1 ring-1 ring-inset ring-black/[0.06] transition focus-within:bg-white focus-within:ring-black/25"><span className="font-mono text-[13px] text-black/40">৳</span><input aria-label="Advance payment" type="number" min={0} max={total} value={advance > 0 ? advance : ""} placeholder="0" onChange={(event) => setAdvance(Math.min(total, Math.max(0, Number(event.target.value) || 0)))} className="w-20 bg-transparent text-right font-mono text-[13px] font-medium tabular-nums outline-none placeholder:text-black/30" /></span></span></div>
+                <div className="flex items-center justify-between gap-2 border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Advance / partial</span><span className="flex items-center gap-1.5"><span className="flex items-center gap-1 rounded-lg bg-black/[0.04] py-1 pl-2.5 pr-1 ring-1 ring-inset ring-black/[0.06] transition focus-within:bg-white focus-within:ring-black/25"><span className="font-mono text-[13px] text-black/40">৳</span><input aria-label="Advance payment" type="number" onWheel={blurOnWheel} min={0} max={total} value={advance > 0 ? advance : ""} placeholder="0" onChange={(event) => setAdvance(Math.min(total, Math.max(0, Number(event.target.value) || 0)))} className="w-20 bg-transparent text-right font-mono text-[13px] font-medium tabular-nums outline-none placeholder:text-black/30" /></span></span></div>
                 <div className="flex items-center justify-between bg-black/[0.035] px-4 py-2"><span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-black">Final total</span><span className="font-mono text-[19px] font-semibold tabular-nums text-black">{formatTaka(total)}</span></div>
                 {advance > 0 && <div className="flex items-center justify-between border-t border-black/[0.07] px-4 py-2"><span className="text-[11px] text-black">Due after advance</span>{advance < total ? <Chip variant="subtle" color="lime" className="font-mono tabular-nums">{formatTaka(total - advance)}</Chip> : <Chip variant="subtle" color="lime" className="font-medium">Paid</Chip>}</div>}
                 <div className="flex flex-wrap items-center gap-2 border-t border-black/[0.07] px-4 py-1.5">

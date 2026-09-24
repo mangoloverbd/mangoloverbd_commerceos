@@ -9,6 +9,7 @@ export type RiskAttempt = {
   topSignals?: RiskSignal[];
   context_trusted: boolean; order_id: string | null; review_id: string | null;
   network_type?: string | null; geo_city?: string | null; user_agent_summary?: string | null;
+  ip_address?: string | null; ip_prefix?: string | null;
   items?: Array<Record<string, unknown>>;
 };
 
@@ -17,6 +18,26 @@ export type RiskAttempt = {
 const HIDDEN_RISK_SIGNAL_CODES = new Set(["bot_check_failed"]);
 export const isVisibleRiskSignal = (code: string) => !HIDDEN_RISK_SIGNAL_CODES.has(code);
 export const visibleRiskSignals = <T extends { code: string }>(signals: T[]) => signals.filter((signal) => isVisibleRiskSignal(signal.code));
+const REASON_LABELS: Record<string, string> = {
+  incomplete_address_unknown: "Incomplete address from a number with no trust record",
+  confirmed_fake_history: "Previously confirmed fake orders on this phone or device",
+  independent_high_families: "Strong signals from independent checks",
+  honeypot_filled: "Hidden bot-trap field was filled",
+  staff_allowlist: "Allowlisted by staff",
+  untrusted_context: "Unverified browser context",
+  dependency_unavailable: "A data source was unavailable during assessment",
+  engine_error: "Assessment error (order was not penalized)",
+  review_unavailable: "Staff review could not be saved, so the order proceeded",
+  webhook_review_unsupported: "Server-to-server order, review not supported",
+};
+
+export function reasonLabel(reason: string) {
+  if (REASON_LABELS[reason]) return REASON_LABELS[reason];
+  if (reason.startsWith("critical:")) return `Critical signal: ${reason.slice("critical:".length)}`;
+  if (reason.startsWith("score>=")) return `High risk score (${reason.slice("score".length)})`;
+  return reason;
+}
+
 export type RiskListEntry = { id: string; list: "block" | "allow"; kind: string; display_hint: string | null; reason: string | null; created_at: string; expires_at: string | null };
 export type RiskSettings = { mode: "off" | "shadow" | "active"; haterDistrictIds: string[]; extraAbuseTerms: string[]; districtOptions: Array<{ id: string; name: string }> };
 export type RiskAccuracy = { overall: { attempts: number; holds: number; blocks: number; holdRate: number | null; labelledFake: number; labelledGenuine: number; blockPrecision: number | null; blockedGenuine: number; heldGenuine: number; fakeCaught: number | null; fakeSlipped: number; targets: Record<string, { value: number | null; target: number; pass: boolean | null }> }; signals: Array<{ code: string; fired: number; fake: number; genuine: number; precisionFake: number | null }> };

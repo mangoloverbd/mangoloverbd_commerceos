@@ -142,7 +142,7 @@ export async function scrubExpiredRiskAttempts(supabase, { now = new Date() } = 
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new TypeError("Invalid now");
   // Internal service-role maintenance sweeps the fixed workspace database; no client supplies its scope.
   const { count: scrubbed, error: scrubError } = await supabase.from("order_risk_attempts")
-    .update({ customer_name: null, phone: null, address: null, ip_prefix: null, items: [] }, { count: "exact" })
+    .update({ customer_name: null, phone: null, address: null, ip_prefix: null, ip_address: null, items: [] }, { count: "exact" })
     .lt("expires_at", now.toISOString());
   if (scrubError) throw scrubError;
   const cutoff = new Date(now.getTime() - 180 * 86_400_000).toISOString();
