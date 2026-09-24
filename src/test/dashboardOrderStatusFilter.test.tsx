@@ -142,6 +142,53 @@ describe("dashboard order status filter", () => {
     expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Cancelled Customer");
   });
 
+  it("loads the picked date range from the server so orders beyond the dashboard's loaded list still appear", async () => {
+    const user = userEvent.setup();
+    // Older than anything in the main /api/orders load (the server caps that list).
+    const olderDelivered = {
+      ...orders[1], id: "older-delivered", order_number: "#90", customer_name: "Older Delivered Customer",
+      created_at: new Date(2026, 8, 2, 12).toISOString(),
+    };
+    const baseImpl = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/orders?created_from=")) return jsonResponse({ orders: [olderDelivered, { ...olderDelivered, id: "older-delivered-2", customer_name: "Second Older Customer" }] });
+      return baseImpl(url);
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><Dashboard /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("radio", { name: /Delivered.*1/ }));
+    const filter = screen.getByTestId("orders-date-filter");
+    await user.click(within(filter).getByTestId("button-date-range-picker"));
+    const september = await screen.findByRole("grid", { name: /September 2026/ });
+    await user.click(within(september).getByRole("button", { name: /September 1, 2026/ }));
+    await user.click(within(september).getByRole("button", { name: /September 3, 2026/ }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    const from = encodeURIComponent(new Date(2026, 8, 1).toISOString());
+    const to = encodeURIComponent(new Date(2026, 8, 4).toISOString());
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(`/api/orders?created_from=${from}&created_to=${to}`);
+      expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Older Delivered Customer");
+    });
+
+    // Delivered's count follows its own dates; Processing keeps its own (unset) range.
+    expect(screen.getByRole("radio", { name: /Delivered.*2/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /Processing/ }));
+    expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("All Time");
+    // Switching back restores Delivered's range.
+    await user.click(screen.getByRole("radio", { name: /Delivered/ }));
+    expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("Sep 1 – Sep 3, 2026");
+    // Leaving the date tabs clears both.
+    await user.click(screen.getByRole("radio", { name: /All Orders/ }));
+    await user.click(screen.getByRole("radio", { name: /Delivered/ }));
+    expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("All Time");
+  });
+
   it("shows the exact All Orders total without changing which orders are loaded", async () => {
     apiFetch.mockImplementation(async (url: string) => (
       url === "/api/orders"
