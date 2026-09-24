@@ -19,6 +19,39 @@ const ALIASES = new Map([
   ["chapai nawabganj", "18"], ["chapai", "18"], ["চাঁপাই", "18"], ["চাঁপাই নবাবগঞ্জ", "18"], ["rajshahi city", "15"],
 ].map(([name, id]) => [normalized(name), id]));
 const byId = new Map(locations.districts.map(district => [district.id, district]));
+// District spellings and filler words that name no place below the district.
+const DISTRICT_SPELLINGS = new Map([
+  ["chittagong", "8"], ["ctg", "8"], ["চিটাগাং", "8"], ["cumilla", "1"], ["cox s bazar", "9"], ["coxs bazar", "9"], ["bogra", "14"],
+  ["jessore", "20"], ["barishal", "33"], ["chapai nawabganj", "18"], ["chapai", "18"], ["চাঁপাই", "18"], ["চাঁপাই নবাবগঞ্জ", "18"],
+].map(([name, id]) => [normalized(name), id]));
+const FILLER_WORDS = new Set(["bangladesh", "bd", "sadar", "sodor", "sader", "shodor", "zila", "zilla", "jela", "jila", "district", "city", "বাংলাদেশ", "সদর", "জেলা", "শহর"].map(normalized));
+const withoutPhrase = (text, phrase) => {
+  let result = ` ${text} `;
+  while (result.includes(` ${phrase} `)) result = result.replace(` ${phrase} `, " ");
+  return result.trim();
+};
+
+// A courier can deliver to "village, upazila, district" without house or road
+// words, so a named district plus any other place counts as a full address.
+function hasLocalityWithDistrict(address) {
+  // "Manikgonj" and "Kishorganj" are common spellings of Manikganj and Kishoreganj.
+  const text = address.replace(/gonj\b/g, "ganj").replace(/\bkishorganj\b/g, "kishoreganj");
+  const named = [];
+  for (const district of locations.districts) {
+    for (const name of [district.name, district.bnName]) if (contains(text, name)) named.push([normalized(name), district.id]);
+  }
+  for (const [name, id] of DISTRICT_SPELLINGS) if (contains(text, name)) named.push([name, id]);
+  if (!named.length) return false;
+  const namedIds = new Set(named.map(([, id]) => id));
+  let rest = text;
+  for (const [name, id] of named) {
+    // "Sherpur, Bogura": Sherpur is also an upazila of Bogura, so it is the locality.
+    const upazilaOfOther = locations.upazilas.some(row => row.districtId !== id && namedIds.has(row.districtId)
+      && (normalized(row.name) === name || normalized(row.bnName) === name));
+    if (!upazilaOfOther) rest = withoutPhrase(rest, name);
+  }
+  return rest.split(" ").some(word => word.length >= 3 && !FILLER_WORDS.has(word));
+}
 
 export function parseBdLocation(address) {
   const text = normalized(address);
@@ -37,5 +70,6 @@ export function parseBdLocation(address) {
     districtName: district?.name || null,
     hasPlaceMarker,
     hasArea: Boolean(district || ids.size > 1 || text.length >= 20),
+    hasLocality: hasLocalityWithDistrict(text),
   };
 }
