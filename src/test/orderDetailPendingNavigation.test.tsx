@@ -232,3 +232,32 @@ describe("pending order prev/next navigation", () => {
     localStorage.clear();
   });
 });
+
+describe("order editor cancellation reason", () => {
+  function mockOrder(order: Record<string, unknown>) {
+    apiFetch.mockImplementation((url: string) => {
+      if (url === "/api/orders/order-1") return Promise.resolve(response({ order, items: [], canEditItems: true }));
+      if (url === "/api/products") return Promise.resolve(response({ products: [] }));
+      return Promise.resolve(response({}));
+    });
+  }
+
+  it("shows the staff cancellation reason beside the order number", async () => {
+    mockOrder({ ...orderOne, status: "cancelled", cancellation_reason_code: "customer_unreachable", cancellation_reason_note: "Phone off for 2 days" });
+
+    renderNewTabOrderDetail("/orders/order-1");
+
+    const reason = await screen.findByTestId("order-editor-cancellation-reason");
+    expect(reason).toHaveTextContent(/^Cancelled: Customer unreachable$/);
+    expect(reason).toHaveClass("bg-status-yellow-background");
+  });
+
+  it("hides the reason when the order is not cancelled", async () => {
+    mockOrder({ ...orderOne, status: "confirmed", cancellation_reason_code: "customer_unreachable" });
+
+    renderNewTabOrderDetail("/orders/order-1");
+
+    await screen.findByTestId("customer-name");
+    expect(screen.queryByTestId("order-editor-cancellation-reason")).not.toBeInTheDocument();
+  });
+});

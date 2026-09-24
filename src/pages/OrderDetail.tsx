@@ -28,7 +28,7 @@ import {
   type OrderEditorItem,
 } from "@/lib/orderEditor";
 import { normalizeOrderSource, type OrderSource } from "@/lib/orderSource";
-import { createActivityGroupId, orderItemActivityKey, orderViewSurface, type AdditionReason, type CancellationReason } from "@/lib/orderActivity";
+import { CANCELLATION_REASON_OPTIONS, createActivityGroupId, orderItemActivityKey, orderViewSurface, type AdditionReason, type CancellationReason } from "@/lib/orderActivity";
 import { prefetchOrderActivity, refreshOrderActivity } from "@/lib/orderActivityQuery";
 
 type Order = {
@@ -53,6 +53,8 @@ type Order = {
   created_at?: string | null;
   updated_at?: string | null;
   sent_to_courier?: boolean | null;
+  cancellation_reason_code?: string | null;
+  cancellation_reason_note?: string | null;
   items?: Array<Partial<OrderEditorItem> & Pick<OrderEditorItem, "product_name" | "variant_name" | "quantity">>;
 };
 
@@ -274,6 +276,9 @@ export default function OrderDetail() {
 
   const detail = detailQuery.data;
   const order = detail?.order;
+  const cancellationReasonLabel = ["cancelled", "canceled"].includes((order?.status || "").toLowerCase()) && order?.cancellation_reason_code
+    ? CANCELLATION_REASON_OPTIONS.find((option) => option.value === order.cancellation_reason_code)?.label ?? order.cancellation_reason_code
+    : null;
   const legacyDiscount = useMemo(() => {
     if (!detail) return 0;
     return legacyDiscountOf(detail.order.discount, detail.items);
@@ -470,10 +475,10 @@ export default function OrderDetail() {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
+    <div className="flex min-h-full flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
       <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
-        <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
+        <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span>{cancellationReasonLabel && <Chip data-testid="order-editor-cancellation-reason" color="yellow" className="max-w-[min(28rem,60vw)] self-center truncate" title={`Cancelled: ${cancellationReasonLabel}`}>Cancelled: {cancellationReasonLabel}</Chip>}</div>
         {order?.id && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} showRisk={order.source === "website"} className="sm:ml-auto" />}
       </div>
 
