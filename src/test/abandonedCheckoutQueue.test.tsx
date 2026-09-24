@@ -249,4 +249,20 @@ describe("AbandonedCheckoutQueue", () => {
       screen.getByRole("checkbox", { name: `Select checkout for ${checkout.customer_name}` }),
     ).toHaveAttribute("data-testid", `checkbox-abandoned-${checkout.id}`);
   });
+
+  it("tags a checkout that is held in Order Protection", () => {
+    render(
+      <AbandonedCheckoutQueue
+        checkouts={[{ ...checkout, protection_review_id: "review-1" }, { ...checkout, id: "other", customer_name: "Other" }]}
+        loading={false}
+        error={null}
+        actionInFlightId={null}
+        onAction={vi.fn()}
+      />,
+    );
+    const tags = screen.getAllByRole("link", { name: "Held in Order Protection" });
+    expect(tags).toHaveLength(1);
+    expect(tags[0]).toHaveAttribute("href", "/order-protection");
+    expect(tags[0]).toHaveClass("bg-status-yellow-background");
+  });
 });

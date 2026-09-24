@@ -65,6 +65,7 @@ import {
   buildExpiryPatch,
   buildPersonalDataScrubPatch,
   buildRecoveredPatch,
+  buildProtectionRejectedPatch,
   buildStaffActionPatch,
   canAcceptBrowserCapture,
   hashAbandonedCheckoutDraftKey,
@@ -6812,10 +6813,27 @@ app.get("/api/abandoned-checkouts", async (req, res) => {
       .order("created_at", { ascending: false });
     if (error) throw error;
 
-    const checkouts = (data || []).sort((left, right) => {
-      if (left.status !== right.status) return left.status === "open" ? -1 : 1;
-      return Date.parse(right.created_at) - Date.parse(left.created_at);
-    });
+    // Checkouts whose order is waiting in Order Protection get a review id so
+    // staff see it is being handled there instead of chasing it twice.
+    const heldByCheckout = new Map();
+    const checkoutIds = (data || []).map((checkout) => checkout.id);
+    if (checkoutIds.length > 0) {
+      const { data: heldReviews, error: heldError } = await supabase
+        .from("order_protection_reviews")
+        .select("id, abandoned_checkout_id")
+        .eq("org_id", orgId)
+        .eq("status", "on_hold")
+        .in("abandoned_checkout_id", checkoutIds);
+      if (heldError) throw heldError;
+      for (const review of heldReviews || []) heldByCheckout.set(review.abandoned_checkout_id, review.id);
+    }
+
+    const checkouts = (data || [])
+      .map((checkout) => ({ ...checkout, protection_review_id: heldByCheckout.get(checkout.id) || null }))
+      .sort((left, right) => {
+        if (left.status !== right.status) return left.status === "open" ? -1 : 1;
+        return Date.parse(right.created_at) - Date.parse(left.created_at);
+      });
     return res.json({ checkouts, activeCount: checkouts.length });
   } catch {
     console.warn("[AbandonedCheckout] active queue read failed");
@@ -7605,6 +7623,39 @@ async function recoverCapturedCheckoutForOrder(supabase, orgId, checkoutId, orde
     .gt("expires_at", now.toISOString());
   if (recoveryError) throw recoveryError;
   return true;
+}
+
+// A held order is not an order yet, so the checkout handoff above never runs.
+// Remember which abandoned checkout the hold came from so staff decisions in
+// Order Protection can close it. Best-effort: a failed link never blocks the hold.
+async function linkHeldReviewToAbandonedCheckout(supabase, orgId, reviewId, draftKey) {
+  if (!reviewId || !draftKey) return;
+  const { data: checkout, error: checkoutError } = await supabase
+    .from("abandoned_checkouts")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("draft_key", draftKey)
+    .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+    .maybeSingle();
+  if (checkoutError) throw checkoutError;
+  if (!checkout) return;
+  const { error: linkError } = await supabase
+    .from("order_protection_reviews")
+    .update({ abandoned_checkout_id: checkout.id })
+    .eq("id", reviewId)
+    .eq("org_id", orgId);
+  if (linkError) throw linkError;
+}
+
+async function dismissHeldAbandonedCheckout(supabase, orgId, checkoutId, now = new Date()) {
+  if (!checkoutId) return;
+  const { error } = await supabase
+    .from("abandoned_checkouts")
+    .update(buildProtectionRejectedPatch(now))
+    .eq("id", checkoutId)
+    .eq("org_id", orgId)
+    .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES);
+  if (error) throw error;
 }
 
 app.post("/api/custom-orders/abandoned-checkouts", async (req, res) => {
@@ -13278,6 +13329,14 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
 
     await finalizeOrderRisk({ supabase, orgId, attemptId: review.attempt_id, orderId: order.id });
 
+    if (review.abandoned_checkout_id) {
+      try {
+        await recoverCapturedCheckoutForOrder(supabase, orgId, review.abandoned_checkout_id, order, new Date());
+      } catch {
+        console.warn("[OrderProtection] approved hold abandoned-checkout recovery deferred");
+      }
+    }
+
     await sendBulkSms(orgId, "confirmation", order);
     await purgeProductCache(orgId, null, { listChanged: false, warm: false });
     return { orderRef: String(orderNumber), order };
@@ -13354,10 +13413,15 @@ app.patch("/api/order-protection/reviews/:id", async (req, res) => {
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .eq("status", "on_hold")
-      .select("id, status, attempt_id")
+      .select("id, status, attempt_id, abandoned_checkout_id")
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(409).json({ error: "Review is no longer awaiting action" });
+    try {
+      await dismissHeldAbandonedCheckout(supabase, orgId, data.abandoned_checkout_id);
+    } catch {
+      console.warn("[OrderProtection] rejected hold abandoned-checkout dismissal deferred");
+    }
     if (req.body?.rejectReason === "fake" && data.attempt_id) {
       try { await labelRiskAttempt(supabase, { orgId, attemptId: data.attempt_id, label: "fake" }); }
       catch { console.warn("[OrderRisk] fake review label unavailable"); }
@@ -13622,6 +13686,14 @@ async function handlePublicHandleOrderSubmit(req, res) {
           message: "Order verification is temporarily unavailable. Please try again shortly.",
           retryable: true,
         });
+      }
+      const heldDraftKey = body.abandonedCheckoutDraftKey || body.abandoned_checkout_draft_key;
+      if (isAbandonedCheckoutDraftKey(heldDraftKey)) {
+        try {
+          await linkHeldReviewToAbandonedCheckout(supabase, orgId, protection.reviewId, heldDraftKey.toLowerCase());
+        } catch {
+          console.warn("[OrderProtection] held review abandoned-checkout link deferred");
+        }
       }
       return res.status(202).json({
         success: false,

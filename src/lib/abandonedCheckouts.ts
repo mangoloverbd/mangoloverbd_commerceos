@@ -23,6 +23,8 @@ export type AbandonedCheckout = {
   contacted_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Set while this shopper's order is waiting in Order Protection. */
+  protection_review_id?: string | null;
 };
 
 export type AbandonedCheckoutResponse = {

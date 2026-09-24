@@ -320,6 +320,15 @@ export function AbandonedCheckoutQueue({
                   >
                     {isNew ? "New" : "Contacted"}
                   </span>
+                  {checkout.protection_review_id && (
+                    <a
+                      href="/order-protection"
+                      title="This order is waiting for a decision in Order Protection"
+                      className="inline-flex items-center rounded-md bg-status-yellow-background px-1.5 py-0.5 text-[10.5px] font-medium text-status-yellow-text transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                    >
+                      Held in Order Protection
+                    </a>
+                  )}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black">
                   <span>{abandonedCheckoutSourceLabel(checkout.source)}</span>
