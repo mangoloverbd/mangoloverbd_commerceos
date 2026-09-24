@@ -4318,7 +4318,7 @@ app.get("/api/reports/staff", async (req, res) => {
         .eq("org_id", orgId)),
       fetchReportPages(() => supabase
         .from("product_variants")
-        .select("id, product_id, weight_kg")
+        .select("id, product_id, attributes, weight_kg")
         .eq("org_id", orgId)),
       fetchRetainedUpsellActivities(),
     ]);
@@ -4688,18 +4688,28 @@ app.get("/api/reports/business", async (req, res) => {
       from: req.query.from,
       to: req.query.to,
     });
-    const fields = "id, created_at, source, landing_page_path, status, fulfillment_status, price, delivery_rate, courier_fee, courier_status, return_status";
-    const orders = await fetchReportPages(() => {
-      let query = supabase
-        .from("orders")
-        .select(fields)
-        .eq("org_id", orgId);
-      if (request.since) query = query.gte("created_at", request.since);
-      if (request.until) query = query.lt("created_at", request.until);
-      return query;
-    });
+    const fields = "id, created_at, source, landing_page_path, status, fulfillment_status, price, weight_kg, delivery_rate, courier_fee, courier_status, return_status, order_items(product_id, variant_id, product_name, quantity)";
+    const [orders, products, variants] = await Promise.all([
+      fetchReportPages(() => {
+        let query = supabase
+          .from("orders")
+          .select(fields)
+          .eq("org_id", orgId);
+        if (request.since) query = query.gte("created_at", request.since);
+        if (request.until) query = query.lt("created_at", request.until);
+        return query;
+      }),
+      fetchReportPages(() => supabase
+        .from("products")
+        .select("id, name, weight_kg")
+        .eq("org_id", orgId)),
+      fetchReportPages(() => supabase
+        .from("product_variants")
+        .select("id, product_id, attributes, weight_kg")
+        .eq("org_id", orgId)),
+    ]);
 
-    return res.json(buildBusinessReport(orders, request));
+    return res.json(buildBusinessReport(orders, request, { products, variants }));
   } catch (err) {
     return sendError(res, err);
   }

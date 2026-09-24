@@ -36,6 +36,10 @@ describe("GET /api/reports/business", () => {
     expect(section).toContain("courier_fee");
     expect(section).toContain("return_status");
     expect(section).toContain("fulfillment_status");
+    expect(section).toContain("weight_kg");
+    expect(section).toContain("order_items(");
+    expect(section).toMatch(/from\("products"\)[\s\S]*?\.eq\("org_id", orgId\)/);
+    expect(section).toMatch(/from\("product_variants"\)[\s\S]*?\.eq\("org_id", orgId\)/);
     expect(section).toContain("request.since");
     expect(section).toContain("request.until");
     expect(section).not.toContain('from("social_inbox_orders")');
@@ -48,7 +52,7 @@ describe("GET /api/reports/business", () => {
     expect(section).toContain("resolveBusinessReportRequest");
     expect(section).toContain("from: req.query.from");
     expect(section).toContain("to: req.query.to");
-    expect(section).toContain("buildBusinessReport(orders, request)");
+    expect(section).toContain("buildBusinessReport(orders, request, { products, variants })");
   });
 });
 

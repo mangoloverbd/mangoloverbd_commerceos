@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { DateRange } from "react-day-picker";
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, WarningCircle } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Chip } from "@/components/base/badges/chip";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,12 @@ type Metrics = {
   courier_fees_recorded: number;
   net_delivery_position: number;
   courier_fee_order_count: number;
+  order_kg: number;
+  approved_kg: number;
+  cancelled_kg: number;
+  returned_kg: number;
+  pending_kg: number;
+  weight_order_count: number;
 };
 
 type IntakeBucket = {
@@ -43,11 +50,29 @@ type LandingPage = {
   cancelled_count: number;
   returned_count: number;
   pending_count: number;
+  order_kg: number;
+};
+
+type ProductWeight = {
+  product_id: string | null;
+  product_name: string;
+  packs: number;
+  kg: number;
+  approved_packs: number;
+  approved_kg: number;
+  cancelled_packs: number;
+  cancelled_kg: number;
+  returned_packs: number;
+  returned_kg: number;
+  pending_packs: number;
+  pending_kg: number;
+  order_count: number;
 };
 
 type BusinessReportSource = Metrics & {
   source: string;
   label: string;
+  products: ProductWeight[];
   landing_pages: LandingPage[];
 };
 
@@ -60,6 +85,8 @@ type BusinessReportResponse = {
     buckets: IntakeBucket[];
   };
   sources: BusinessReportSource[];
+  products: ProductWeight[];
+  missing_weight_products: Array<{ id: string; name: string }>;
 };
 
 function dhakaToday(): Date {
@@ -74,6 +101,14 @@ function formatTaka(value: number) {
 
 function formatNumber(value: number) {
   return Number(value || 0).toLocaleString("en-BD");
+}
+
+function formatKg(value: number) {
+  return `${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 2 })} kg`;
+}
+
+function withKg(label: string, kg: number) {
+  return kg > 0 ? `${label} · ${formatKg(kg)}` : label;
 }
 
 function formatPercent(numerator: number, denominator: number) {
@@ -199,12 +234,46 @@ function LandingPageList({ landingPages }: { landingPages: LandingPage[] }) {
                 )}
               </div>
               <span className="shrink-0 text-right text-[10px] tabular-nums text-black/60">
-                {formatNumber(landingPage.intake_count)} orders · {formatTaka(landingPage.order_value)}
+                {withKg(`${formatNumber(landingPage.intake_count)} orders · ${formatTaka(landingPage.order_value)}`, landingPage.order_kg)}
               </span>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ProductWeightRow({ product, maxKg }: { product: ProductWeight; maxKg: number }) {
+  const share = maxKg > 0 ? Math.max(product.kg > 0 ? 2 : 0, (product.kg / maxKg) * 100) : 0;
+  return (
+    <div className="min-w-0 rounded-xl bg-white px-3 py-2.5">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="truncate text-[11px] font-medium text-black">{product.product_name}</span>
+        <span className="shrink-0 text-[10px] tabular-nums text-black/60">{formatNumber(product.packs)} packs · {formatKg(product.kg)}</span>
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <div className="h-1 flex-1 overflow-hidden rounded-full bg-black/[0.06]" aria-hidden="true">
+          <div className="h-full rounded-full bg-black/70" style={{ width: `${share}%` }} />
+        </div>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular-nums">
+        <span className="text-lime-800">Approved {formatKg(product.approved_kg)}</span>
+        <span className="text-rose-700">Cancelled {formatKg(product.cancelled_kg)}</span>
+        {product.returned_kg > 0 && <span className="text-amber-700">RTO {formatKg(product.returned_kg)}</span>}
+        {product.pending_kg > 0 && <span className="text-black/50">Pending {formatKg(product.pending_kg)}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ProductWeightList({ products, className }: { products: ProductWeight[]; className?: string }) {
+  const maxKg = Math.max(0, ...products.map((product) => product.kg));
+  return (
+    <div className={className}>
+      {products.map((product) => (
+        <ProductWeightRow key={product.product_id || product.product_name} product={product} maxKg={maxKg} />
+      ))}
     </div>
   );
 }
@@ -226,6 +295,12 @@ function SourceCard({
     { label: "Courier fees recorded", value: formatTaka(source.courier_fees_recorded) },
     { label: "Net delivery position", value: formatTaka(source.net_delivery_position) },
     { label: "Fee coverage", value: `${formatNumber(source.courier_fee_order_count)} of ${formatNumber(source.intake_count)} orders` },
+  ];
+  const weightItems = [
+    { label: "Approved / progressing", value: formatKg(source.approved_kg) },
+    { label: "Cancelled", value: formatKg(source.cancelled_kg) },
+    { label: "RTO", value: formatKg(source.returned_kg) },
+    { label: "Pending", value: formatKg(source.pending_kg) },
   ];
 
   return (
@@ -253,7 +328,7 @@ function SourceCard({
         </span>
       </button>
 
-      <div className="grid grid-cols-3 gap-2 px-5 pb-3">
+      <div className="grid grid-cols-2 gap-2 px-5 pb-3 sm:grid-cols-4">
         <div>
           <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Intake</p>
           <p className="mt-1 text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatNumber(source.intake_count)}</p>
@@ -262,7 +337,11 @@ function SourceCard({
           <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Order value</p>
           <p className="mt-1 truncate text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatTaka(source.order_value)}</p>
         </div>
-        <div className="text-right">
+        <div>
+          <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Weight</p>
+          <p className="mt-1 truncate text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatKg(source.order_kg)}</p>
+        </div>
+        <div className="sm:text-right">
           <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Net delivery</p>
           <p className="mt-1 truncate text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatTaka(source.net_delivery_position)}</p>
         </div>
@@ -270,15 +349,16 @@ function SourceCard({
 
       <div className="mx-5 border-t border-black/[0.08]" />
       <div className="flex flex-wrap gap-1.5 px-5 pt-3">
-        <Chip variant="caption" color="blue" className="gap-1 tabular-nums">Intake {formatNumber(source.intake_count)}</Chip>
-        <Chip variant="caption" color="lime" className="gap-1 tabular-nums">Approved {formatNumber(source.approved_count)}</Chip>
-        <Chip variant="caption" color="rose" className="gap-1 tabular-nums">Cancelled {formatNumber(source.cancelled_count)}</Chip>
-        <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">RTO {formatNumber(source.returned_count)}</Chip>
-        <Chip variant="caption" color="soft" className="gap-1 tabular-nums">Pending {formatNumber(source.pending_count)}</Chip>
+        <Chip variant="caption" color="blue" className="gap-1 tabular-nums">{withKg(`Intake ${formatNumber(source.intake_count)}`, source.order_kg)}</Chip>
+        <Chip variant="caption" color="lime" className="gap-1 tabular-nums">{withKg(`Approved ${formatNumber(source.approved_count)}`, source.approved_kg)}</Chip>
+        <Chip variant="caption" color="rose" className="gap-1 tabular-nums">{withKg(`Cancelled ${formatNumber(source.cancelled_count)}`, source.cancelled_kg)}</Chip>
+        <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">{withKg(`RTO ${formatNumber(source.returned_count)}`, source.returned_kg)}</Chip>
+        <Chip variant="caption" color="soft" className="gap-1 tabular-nums">{withKg(`Pending ${formatNumber(source.pending_count)}`, source.pending_kg)}</Chip>
       </div>
-      <p className="px-5 pb-3 pt-2 text-[10px] tabular-nums text-black/55">
-        Courier fee coverage: {formatNumber(source.courier_fee_order_count)} of {formatNumber(source.intake_count)} orders
-      </p>
+      <div className="flex flex-wrap gap-x-3 px-5 pb-3 pt-2 text-[10px] tabular-nums text-black/55">
+        <p>Courier fee coverage: {formatNumber(source.courier_fee_order_count)} of {formatNumber(source.intake_count)} orders</p>
+        <p>Weight recorded: {formatNumber(source.weight_order_count)} of {formatNumber(source.intake_count)} orders</p>
+      </div>
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -294,8 +374,19 @@ function SourceCard({
               <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Operational detail</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <DetailGroup title="Delivery economics" items={detailItems} />
+                <DetailGroup title="Weight by outcome" items={weightItems} />
                 {source.source === "website" && <LandingPageList landingPages={source.landing_pages} />}
               </div>
+
+              {source.products.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Products</p>
+                    <div className="h-px flex-1 bg-black/[0.08]" />
+                  </div>
+                  <ProductWeightList products={source.products} className="mt-3 grid gap-1.5 sm:grid-cols-2" />
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -383,13 +474,23 @@ export default function BusinessReport() {
           </div>
         </header>
 
+        {data.missing_weight_products.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-y border-amber-500/20 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-950/70">
+            <WarningCircle size={16} weight="light" className="text-amber-700" />
+            <span>
+              {data.missing_weight_products.length} product{data.missing_weight_products.length === 1 ? " is" : "s are"} missing a catalog weight: {data.missing_weight_products.slice(0, 3).map((product) => product.name).join(", ")}{data.missing_weight_products.length > 3 ? `, and ${data.missing_weight_products.length - 3} more` : ""}.
+            </span>
+            <Link to="/products" className="font-medium text-amber-950 underline underline-offset-2">Review products</Link>
+          </div>
+        )}
+
         {summary.intake_count === 0 ? (
           <div className="border-y border-black/[0.08] py-12 text-center text-[12px] text-black/60">
             No regular orders were created in this range.
           </div>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <SnapshotCard
                 label="Intake"
                 value={formatNumber(summary.intake_count)}
@@ -407,9 +508,17 @@ export default function BusinessReport() {
                 reduceMotion={reduceMotion}
               />
               <SnapshotCard
+                label="Weight"
+                value={formatKg(summary.order_kg)}
+                description={`Recorded on ${formatNumber(summary.weight_order_count)} of ${formatNumber(summary.intake_count)} orders`}
+                testId="business-report-summary-weight"
+                delay={0.08}
+                reduceMotion={reduceMotion}
+              />
+              <SnapshotCard
                 label="Approved / progressing"
                 value={formatNumber(summary.approved_count)}
-                description={`${formatPercent(summary.approved_count, summary.intake_count)} of intake`}
+                description={withKg(`${formatPercent(summary.approved_count, summary.intake_count)} of intake`, summary.approved_kg)}
                 testId="business-report-summary-approved"
                 delay={0.1}
                 reduceMotion={reduceMotion}
@@ -417,7 +526,7 @@ export default function BusinessReport() {
               <SnapshotCard
                 label="Cancelled"
                 value={formatNumber(summary.cancelled_count)}
-                description={`${formatPercent(summary.cancelled_count, summary.intake_count)} of intake`}
+                description={withKg(`${formatPercent(summary.cancelled_count, summary.intake_count)} of intake`, summary.cancelled_kg)}
                 testId="business-report-summary-cancelled"
                 delay={0.14}
                 reduceMotion={reduceMotion}
@@ -447,6 +556,23 @@ export default function BusinessReport() {
               </div>
               <IntakeSeries series={data.series} />
             </section>
+
+            {data.products.length > 0 && (
+              <motion.section
+                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: reduceMotion ? 0 : 0.08, duration: 0.4 }}
+                aria-labelledby="product-weight-heading"
+              >
+                <div className="flex items-center gap-2.5 py-3">
+                  <h2 id="product-weight-heading" className="font-sf-display text-[15px] font-semibold tracking-normal text-black">Product weight</h2>
+                  <div className="h-3.5 w-px bg-black/10" />
+                  <span className="text-[13px] tabular-nums text-black/60">{formatNumber(data.products.length)} products</span>
+                  <span className="hidden text-[11px] text-black/45 sm:inline">All sources · ranked by kg</span>
+                </div>
+                <ProductWeightList products={data.products} className="grid gap-2 rounded-2xl bg-black/[0.04] p-2 sm:grid-cols-2 lg:grid-cols-3" />
+              </motion.section>
+            )}
 
             <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 8 }}

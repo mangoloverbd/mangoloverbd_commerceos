@@ -111,6 +111,102 @@ describe("business report normalization", () => {
 });
 
 describe("buildBusinessReport", () => {
+  it("resolves kg for variant-only products from size-suffixed names and the order weight", () => {
+    const catalog = {
+      products: [
+        { id: "p-bori", name: "Pumpkin Bori", weight_kg: null },
+        { id: "p-ghee", name: "Pure Ghee", weight_kg: null },
+        { id: "p-honey", name: "Honey", weight_kg: null },
+      ],
+      variants: [
+        { id: "v-bori-500", product_id: "p-bori", attributes: { size: "৫০০ গ্রাম" }, weight_kg: "0.500" },
+        { id: "v-bori-1", product_id: "p-bori", attributes: { size: "১ কেজি" }, weight_kg: "1.000" },
+        { id: "v-ghee-1", product_id: "p-ghee", attributes: { size: "১ কেজি" }, weight_kg: 1 },
+      ],
+    };
+    const report = buildBusinessReport([
+      order({
+        id: "suffixed", status: "processing",
+        order_items: [{ product_id: null, variant_id: null, product_name: "Pumpkin Bori (৫০০ গ্রাম)", quantity: 2 }],
+      }),
+      order({
+        id: "no-variant", status: "processing", weight_kg: 1,
+        order_items: [{ product_id: "p-ghee", variant_id: null, product_name: "Pure Ghee", quantity: 1 }],
+      }),
+      order({
+        id: "truly-missing", status: "processing",
+        order_items: [{ product_id: "p-honey", variant_id: null, product_name: "Honey", quantity: 1 }],
+      }),
+    ], dayRequest(), catalog);
+
+    expect(report.products).toEqual(expect.arrayContaining([
+      expect.objectContaining({ product_id: "p-bori", product_name: "Pumpkin Bori", packs: 2, kg: 1 }),
+      expect.objectContaining({ product_id: "p-ghee", product_name: "Pure Ghee", packs: 1, kg: 1 }),
+    ]));
+    expect(report.missing_weight_products).toEqual([{ id: "p-honey", name: "Honey" }]);
+  });
+
+  it("breaks product packs and kg down by source and overall from order items", () => {
+    const catalog = {
+      products: [
+        { id: "p-himsagar", name: "Himsagar", weight_kg: 5 },
+        { id: "p-langra", name: "Langra", weight_kg: null },
+      ],
+      variants: [{ id: "v-himsagar-10", product_id: "p-himsagar", weight_kg: 10 }],
+    };
+    const report = buildBusinessReport([
+      order({
+        id: "web-1", status: "processing", price: 1000,
+        order_items: [
+          { product_id: "p-himsagar", variant_id: null, product_name: "Himsagar", quantity: 2 },
+          { product_id: "p-himsagar", variant_id: "v-himsagar-10", product_name: "Himsagar", quantity: 1 },
+        ],
+      }),
+      order({
+        id: "web-2", status: "cancelled", price: 500,
+        order_items: [{ product_id: null, variant_id: null, product_name: "himsagar", quantity: 1 }],
+      }),
+      order({
+        id: "fb-1", source: "facebook", status: "confirmed", price: 700,
+        order_items: [{ product_id: "p-langra", variant_id: null, product_name: "Langra", quantity: 3 }],
+      }),
+    ], dayRequest(), catalog);
+
+    const website = report.sources.find((source) => source.source === "website");
+    expect(website?.products).toEqual([
+      { product_id: "p-himsagar", product_name: "Himsagar", packs: 4, kg: 25, approved_packs: 3, approved_kg: 20, cancelled_packs: 1, cancelled_kg: 5, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0, order_count: 2 },
+    ]);
+    expect(report.products).toEqual([
+      { product_id: "p-himsagar", product_name: "Himsagar", packs: 4, kg: 25, approved_packs: 3, approved_kg: 20, cancelled_packs: 1, cancelled_kg: 5, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0, order_count: 2 },
+      { product_id: "p-langra", product_name: "Langra", packs: 3, kg: 0, approved_packs: 3, approved_kg: 0, cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0, order_count: 1 },
+    ]);
+    expect(report.missing_weight_products).toEqual([{ id: "p-langra", name: "Langra" }]);
+  });
+
+  it("totals order weight in kg by outcome, source, and landing page", () => {
+    const report = buildBusinessReport([
+      order({ id: "web-approved", landing_page_path: "/step/katimon-mango", status: "processing", price: 1000, weight_kg: "5" }),
+      order({ id: "web-cancelled", status: "cancelled", price: 400, weight_kg: 2.5 }),
+      order({ id: "fb-rto", source: "facebook", status: "confirmed", courier_status: "Returned", price: 700, weight_kg: 3 }),
+      order({ id: "fb-pending", source: "facebook", status: "pending", price: 300, weight_kg: 1.5 }),
+      order({ id: "fb-no-weight", source: "facebook", status: "confirmed", price: 200, weight_kg: null }),
+    ], dayRequest());
+
+    expect(report.summary).toMatchObject({
+      order_kg: 12,
+      approved_kg: 5,
+      cancelled_kg: 2.5,
+      returned_kg: 3,
+      pending_kg: 1.5,
+      weight_order_count: 4,
+    });
+    const website = report.sources.find((source) => source.source === "website");
+    const facebook = report.sources.find((source) => source.source === "facebook");
+    expect(website).toMatchObject({ order_kg: 7.5, approved_kg: 5, cancelled_kg: 2.5, weight_order_count: 2 });
+    expect(facebook).toMatchObject({ order_kg: 4.5, returned_kg: 3, pending_kg: 1.5, weight_order_count: 2, intake_count: 3 });
+    expect(website?.landing_pages.find((page) => page.path === "/step/katimon-mango")?.order_kg).toBe(5);
+  });
+
   it("aggregates current outcomes, source economics, landing pages, and hourly intake", () => {
     const report = buildBusinessReport([
       order({
@@ -175,6 +271,12 @@ describe("buildBusinessReport", () => {
       courier_fees_recorded: 130,
       net_delivery_position: -10,
       courier_fee_order_count: 3,
+      order_kg: 0,
+      approved_kg: 0,
+      cancelled_kg: 0,
+      returned_kg: 0,
+      pending_kg: 0,
+      weight_order_count: 0,
     });
     expect(report.sources.map((source) => source.label))
       .toEqual(["Website", "Facebook", "Manual / Other"]);
@@ -201,6 +303,7 @@ describe("buildBusinessReport", () => {
         cancelled_count: 0,
         returned_count: 0,
         pending_count: 0,
+        order_kg: 0,
       },
       {
         path: null,
@@ -211,6 +314,7 @@ describe("buildBusinessReport", () => {
         cancelled_count: 1,
         returned_count: 0,
         pending_count: 0,
+        order_kg: 0,
       },
     ]);
     expect(report.series).toMatchObject({ granularity: "hour", label: "Intake by hour" });

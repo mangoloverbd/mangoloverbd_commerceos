@@ -29,6 +29,28 @@ type Metrics = {
   courier_fees_recorded: number;
   net_delivery_position: number;
   courier_fee_order_count: number;
+  order_kg: number;
+  approved_kg: number;
+  cancelled_kg: number;
+  returned_kg: number;
+  pending_kg: number;
+  weight_order_count: number;
+};
+
+type ProductWeight = {
+  product_id: string | null;
+  product_name: string;
+  packs: number;
+  kg: number;
+  approved_packs: number;
+  approved_kg: number;
+  cancelled_packs: number;
+  cancelled_kg: number;
+  returned_packs: number;
+  returned_kg: number;
+  pending_packs: number;
+  pending_kg: number;
+  order_count: number;
 };
 
 type BusinessReportResponse = {
@@ -39,9 +61,12 @@ type BusinessReportResponse = {
     label: string;
     buckets: Array<{ key: string; label: string; intake_count: number; order_value: number }>;
   };
+  products: ProductWeight[];
+  missing_weight_products: Array<{ id: string; name: string }>;
   sources: Array<Metrics & {
     source: string;
     label: string;
+    products: ProductWeight[];
     landing_pages: Array<{
       path: string | null;
       label: string;
@@ -51,6 +76,7 @@ type BusinessReportResponse = {
       cancelled_count: number;
       returned_count: number;
       pending_count: number;
+      order_kg: number;
     }>;
   }>;
 };
@@ -71,6 +97,12 @@ function metrics(overrides: Partial<Metrics> = {}): Metrics {
     courier_fees_recorded: 0,
     net_delivery_position: 0,
     courier_fee_order_count: 0,
+    order_kg: 0,
+    approved_kg: 0,
+    cancelled_kg: 0,
+    returned_kg: 0,
+    pending_kg: 0,
+    weight_order_count: 0,
     ...overrides,
   };
 }
@@ -136,6 +168,7 @@ function reportResponse(overrides: Partial<BusinessReportResponse> = {}): Busine
           net_delivery_position: 40,
           courier_fee_order_count: 1,
         }),
+        products: [],
         landing_pages: [
           {
             path: "/step/katimon-mango",
@@ -146,6 +179,7 @@ function reportResponse(overrides: Partial<BusinessReportResponse> = {}): Busine
             cancelled_count: 0,
             returned_count: 0,
             pending_count: 0,
+            order_kg: 0,
           },
           {
             path: null,
@@ -156,6 +190,7 @@ function reportResponse(overrides: Partial<BusinessReportResponse> = {}): Busine
             cancelled_count: 1,
             returned_count: 0,
             pending_count: 0,
+            order_kg: 0,
           },
         ],
       },
@@ -173,9 +208,12 @@ function reportResponse(overrides: Partial<BusinessReportResponse> = {}): Busine
           net_delivery_position: -50,
           courier_fee_order_count: 2,
         }),
+        products: [],
         landing_pages: [],
       },
     ],
+    products: [],
+    missing_weight_products: [],
     ...overrides,
   };
 }
@@ -261,6 +299,74 @@ describe("BusinessReport", () => {
     expect(within(website).getByText("/step/katimon-mango")).toBeInTheDocument();
     expect(within(website).getByText("Other website")).toBeInTheDocument();
     expect(within(website).getByText("Fee coverage")).toBeInTheDocument();
+  });
+
+  it("shows kg totals in the summary, source breakdown, and landing pages", async () => {
+    const user = userEvent.setup();
+    const base = reportResponse();
+    const website = base.sources[0];
+    apiFetch.mockResolvedValue(jsonResponse({
+      ...base,
+      summary: { ...base.summary, order_kg: 12.5, approved_kg: 5, cancelled_kg: 2.5, weight_order_count: 3 },
+      sources: [
+        {
+          ...website,
+          order_kg: 7.5,
+          approved_kg: 5,
+          cancelled_kg: 2.5,
+          weight_order_count: 2,
+          landing_pages: [{ ...website.landing_pages[0], order_kg: 5 }, website.landing_pages[1]],
+        },
+        base.sources[1],
+      ],
+    }));
+
+    renderPage();
+
+    const weight = await screen.findByTestId("business-report-summary-weight");
+    expect(weight).toHaveTextContent("12.5 kg");
+    expect(weight).toHaveTextContent("Recorded on 3 of 4 orders");
+    expect(screen.getByTestId("business-report-summary-approved")).toHaveTextContent("5 kg");
+
+    const card = screen.getByTestId("business-report-source-website");
+    expect(within(card).getByText("7.5 kg")).toBeInTheDocument();
+    expect(within(card).getByText("Approved 1 · 5 kg")).toBeInTheDocument();
+    expect(within(card).getByText("Cancelled 1 · 2.5 kg")).toBeInTheDocument();
+    expect(within(card).getByText("Weight recorded: 2 of 2 orders")).toBeInTheDocument();
+
+    await user.click(within(card).getByRole("button", { name: "Show details for Website" }));
+    expect(within(card).getByText("Weight by outcome")).toBeInTheDocument();
+    expect(within(card).getByText("1 orders · ৳1,000 · 5 kg")).toBeInTheDocument();
+  });
+
+  it("shows product packs and kg overall and inside each source", async () => {
+    const user = userEvent.setup();
+    const outcomeDefaults = { cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0 };
+    const himsagar = { ...outcomeDefaults, product_id: "p-1", product_name: "Himsagar", packs: 4, kg: 25, approved_packs: 3, approved_kg: 20, cancelled_packs: 1, cancelled_kg: 5, order_count: 2 };
+    const langra = { ...outcomeDefaults, product_id: "p-2", product_name: "Langra", packs: 3, kg: 0, approved_packs: 3, approved_kg: 0, order_count: 1 };
+    const base = reportResponse();
+    apiFetch.mockResolvedValue(jsonResponse({
+      ...base,
+      products: [himsagar, langra],
+      missing_weight_products: [{ id: "p-2", name: "Langra" }],
+      sources: [{ ...base.sources[0], products: [himsagar] }, base.sources[1]],
+    }));
+
+    renderPage();
+
+    const overall = await screen.findByRole("region", { name: "Product weight" });
+    expect(within(overall).getByText("Himsagar")).toBeInTheDocument();
+    expect(within(overall).getByText("4 packs · 25 kg")).toBeInTheDocument();
+    expect(within(overall).getByText("Approved 20 kg")).toBeInTheDocument();
+    expect(within(overall).getByText("Cancelled 5 kg")).toBeInTheDocument();
+    expect(within(overall).queryByText(/RTO/)).not.toBeInTheDocument();
+    expect(screen.getByText(/1 product is missing a catalog weight: Langra/)).toBeInTheDocument();
+
+    const website = screen.getByTestId("business-report-source-website");
+    expect(within(website).queryByText("Himsagar")).not.toBeInTheDocument();
+    await user.click(within(website).getByRole("button", { name: "Show details for Website" }));
+    expect(within(website).getByText("Himsagar")).toBeInTheDocument();
+    expect(within(website).getByText("4 packs · 25 kg")).toBeInTheDocument();
   });
 
   it("removes date parameters when the user chooses All Time", async () => {
