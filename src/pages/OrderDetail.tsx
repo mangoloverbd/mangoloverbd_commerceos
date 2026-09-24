@@ -174,8 +174,8 @@ export default function OrderDetail() {
   // customer history) so the snapshot survives the hop; falls back to backState.
   const siblingState = queueIds
     ? navTab === "print"
-      ? { fulfillmentTab: returnTab, printOrderIds: queueIds }
-      : { fulfillmentTab: returnTab, pendingOrderIds: queueIds }
+      ? { fulfillmentTab: navTab, printOrderIds: queueIds }
+      : { fulfillmentTab: navTab, pendingOrderIds: queueIds }
     : backState;
   function goToSibling(targetId: string) {
     navigate(`/orders/${targetId}`, { state: siblingState, replace: true });

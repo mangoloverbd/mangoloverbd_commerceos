@@ -1,4 +1,4 @@
-import { toDhakaInterval } from "./reports.js";
+import { addProductDetails, createProductLookups, toDhakaInterval } from "./reports.js";
 
 const SOURCE_OPTIONS = [
   ["website", "Website"],
@@ -145,6 +145,12 @@ function createMetrics() {
     courier_fees_recorded: 0,
     net_delivery_position: 0,
     courier_fee_order_count: 0,
+    order_kg: 0,
+    approved_kg: 0,
+    cancelled_kg: 0,
+    returned_kg: 0,
+    pending_kg: 0,
+    weight_order_count: 0,
   };
 }
 
@@ -158,29 +164,37 @@ function createLandingPageMetrics(path) {
     cancelled_count: 0,
     returned_count: 0,
     pending_count: 0,
+    order_kg: 0,
   };
 }
 
-function addOutcome(metrics, outcome, value) {
+function addOutcome(metrics, outcome, value, kg) {
   if (outcome === "approved") {
     metrics.approved_count += 1;
     metrics.approved_value += value;
+    metrics.approved_kg += kg;
   } else if (outcome === "cancelled") {
     metrics.cancelled_count += 1;
     metrics.cancelled_value += value;
+    metrics.cancelled_kg += kg;
   } else if (outcome === "returned") {
     metrics.returned_count += 1;
     metrics.returned_value += value;
+    metrics.returned_kg += kg;
   } else {
     metrics.pending_count += 1;
     metrics.pending_value += value;
+    metrics.pending_kg += kg;
   }
 }
 
 function addOrderMetrics(metrics, order, outcome, value) {
+  const kg = toNumber(order.weight_kg);
   metrics.intake_count += 1;
   metrics.order_value += value;
-  addOutcome(metrics, outcome, value);
+  metrics.order_kg += kg;
+  if (kg > 0) metrics.weight_order_count += 1;
+  addOutcome(metrics, outcome, value, kg);
 
   if (outcome === "approved") {
     metrics.delivery_charged += toNumber(order.delivery_rate);
@@ -191,9 +205,10 @@ function addOrderMetrics(metrics, order, outcome, value) {
   }
 }
 
-function addLandingPageMetrics(metrics, outcome, value) {
+function addLandingPageMetrics(metrics, outcome, value, kg) {
   metrics.intake_count += 1;
   metrics.order_value += value;
+  metrics.order_kg += kg;
 
   if (outcome === "approved") metrics.approved_count += 1;
   else if (outcome === "cancelled") metrics.cancelled_count += 1;
@@ -204,6 +219,38 @@ function addLandingPageMetrics(metrics, outcome, value) {
 function finalizeMetrics(metrics) {
   metrics.net_delivery_position = metrics.delivery_charged - metrics.courier_fees_recorded;
   return metrics;
+}
+
+function addOrderProducts(productRows, orderProducts, outcome) {
+  for (const [key, item] of orderProducts) {
+    const row = productRows.get(key) || {
+      product_id: item.product_id,
+      product_name: item.product_name,
+      packs: 0,
+      kg: 0,
+      approved_packs: 0,
+      approved_kg: 0,
+      cancelled_packs: 0,
+      cancelled_kg: 0,
+      returned_packs: 0,
+      returned_kg: 0,
+      pending_packs: 0,
+      pending_kg: 0,
+      order_count: 0,
+    };
+    row.packs += item.packs;
+    row.kg += item.kg;
+    row.order_count += 1;
+    row[`${outcome}_packs`] += item.packs;
+    row[`${outcome}_kg`] += item.kg;
+    productRows.set(key, row);
+  }
+}
+
+function sortProducts(productRows) {
+  return [...productRows.values()].sort((a, b) => b.kg - a.kg
+    || b.packs - a.packs
+    || a.product_name.localeCompare(b.product_name));
 }
 
 function sortByValueThenCount(a, b) {
@@ -353,10 +400,13 @@ export function classifyBusinessReportOutcome(order) {
     : "pending";
 }
 
-export function buildBusinessReport(orders, request) {
+export function buildBusinessReport(orders, request, { products = [], variants = [] } = {}) {
   const summary = createMetrics();
   const sourceGroups = new Map();
   const seriesRows = [];
+  const { productsById, productsByName, variantsById, variantsByProductId } = createProductLookups(products, variants);
+  const missingWeightProducts = new Map();
+  const allProducts = new Map();
 
   for (const order of orders || []) {
     const dhakaParts = toDhakaParts(order?.created_at);
@@ -371,15 +421,24 @@ export function buildBusinessReport(orders, request) {
       label: sourceLabel,
       metrics: createMetrics(),
       landingPages: new Map(),
+      products: new Map(),
     };
 
     addOrderMetrics(summary, order, outcome, value);
     addOrderMetrics(sourceGroup.metrics, order, outcome, value);
 
+    const orderProducts = new Map();
+    addProductDetails(orderProducts, order.order_items, productsById, productsByName, missingWeightProducts, variantsById, {
+      orderWeightKg: order.weight_kg,
+      variantsByProductId,
+    });
+    addOrderProducts(sourceGroup.products, orderProducts, outcome);
+    addOrderProducts(allProducts, orderProducts, outcome);
+
     if (source === "website") {
       const path = normalizeBusinessReportLandingPage(order.landing_page_path);
       const landingPage = sourceGroup.landingPages.get(path) || createLandingPageMetrics(path);
-      addLandingPageMetrics(landingPage, outcome, value);
+      addLandingPageMetrics(landingPage, outcome, value, toNumber(order.weight_kg));
       sourceGroup.landingPages.set(path, landingPage);
     }
 
@@ -388,10 +447,11 @@ export function buildBusinessReport(orders, request) {
   }
 
   const sources = [...sourceGroups.values()]
-    .map(({ source, label, metrics, landingPages }) => ({
+    .map(({ source, label, metrics, landingPages, products: sourceProducts }) => ({
       source,
       label,
       ...finalizeMetrics(metrics),
+      products: sortProducts(sourceProducts),
       landing_pages: source === "website"
         ? [...landingPages.values()].sort(sortByValueThenCount)
         : [],
@@ -403,5 +463,7 @@ export function buildBusinessReport(orders, request) {
     summary: finalizeMetrics(summary),
     series: buildSeries(seriesRows, request),
     sources,
+    products: sortProducts(allProducts),
+    missing_weight_products: [...missingWeightProducts.values()].sort((a, b) => a.name.localeCompare(b.name)),
   };
 }

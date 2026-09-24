@@ -276,18 +276,63 @@ function normalizeProductName(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-function addProductDetails(productRows, items, productsById, productsByName, missingWeightProducts, variantsById) {
+function normalizeSizeLabel(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+// Storefront lines can arrive as "Product (size)" with no product/variant id;
+// split the size back out so the line maps to the catalog variant.
+function resolveSizeSuffixedItem(itemName, productsByName, variantsByProductId) {
+  const match = /^(.*\S)\s*\(([^()]+)\)\s*$/.exec(String(itemName ?? ""));
+  if (!match) return null;
+  const product = productsByName.get(normalizeProductName(match[1]));
+  if (!product) return null;
+  const label = normalizeSizeLabel(match[2]);
+  const variant = (variantsByProductId.get(product.id) || []).find((candidate) =>
+    Object.values(candidate?.attributes || {}).some((value) => normalizeSizeLabel(value) === label)) || null;
+  return { product, variant };
+}
+
+export function addProductDetails(
+  productRows,
+  items,
+  productsById,
+  productsByName,
+  missingWeightProducts,
+  variantsById,
+  { orderWeightKg = null, variantsByProductId = new Map() } = {},
+) {
+  const lines = [];
   for (const item of Array.isArray(items) ? items : []) {
     const packs = toValidQuantity(item?.quantity);
     if (!packs) continue;
 
     const itemName = item?.product_name ?? item?.product;
-    const variant = (variantsById && item?.variant_id) ? variantsById.get(item.variant_id) : null;
-    const product = productsById.get(item?.product_id)
+    let variant = (variantsById && item?.variant_id) ? variantsById.get(item.variant_id) : null;
+    let product = productsById.get(item?.product_id)
       || (variant?.product_id ? productsById.get(variant.product_id) : null)
       || productsByName.get(normalizeProductName(itemName));
+    if (!product) {
+      const resolved = resolveSizeSuffixedItem(itemName, productsByName, variantsByProductId);
+      if (resolved) ({ product, variant } = resolved);
+    }
+    const resolvedWeight = variant?.weight_kg ?? product?.weight_kg ?? null;
+    lines.push({ product, itemName, packs, kg: resolvedWeight === null ? null : packs * toNumber(resolvedWeight) });
+  }
+
+  // A single line whose size is unknown takes whatever order weight the
+  // resolved lines don't account for.
+  const unresolved = lines.filter((line) => line.kg === null);
+  const orderKg = toNumber(orderWeightKg);
+  if (unresolved.length === 1 && orderKg > 0) {
+    const resolvedKg = lines.reduce((sum, line) => sum + (line.kg ?? 0), 0);
+    unresolved[0].kg = Math.max(0, orderKg - resolvedKg);
+  }
+
+  for (const line of lines) {
+    const { product } = line;
     const productId = product?.id || null;
-    const productName = product?.name || itemName || "Unknown product";
+    const productName = product?.name || line.itemName || "Unknown product";
     const key = productId || `name:${normalizeProductName(productName)}`;
     const detail = productRows.get(key) || {
       product_id: productId,
@@ -295,10 +340,11 @@ function addProductDetails(productRows, items, productsById, productsByName, mis
       packs: 0,
       kg: 0,
     };
-    const resolvedWeight = variant?.weight_kg ?? product?.weight_kg ?? null;
-    detail.packs += packs;
-    detail.kg += packs * toNumber(resolvedWeight);
-    if (product?.id && resolvedWeight === null) {
+    detail.packs += line.packs;
+    detail.kg += line.kg ?? 0;
+    const hasCatalogWeight = product?.weight_kg != null
+      || (variantsByProductId.get(product?.id) || []).some((candidate) => candidate?.weight_kg != null);
+    if (product?.id && !hasCatalogWeight) {
       missingWeightProducts.set(product.id, { id: product.id, name: product.name });
     }
     productRows.set(key, detail);
@@ -339,17 +385,8 @@ function selectActivities(activities, orders, action) {
   return activities.filter((activity) => activity?.action === action);
 }
 
-export function buildStaffReport(
-  orders,
-  inboxOrders,
-  orderItems,
-  products,
-  staff,
-  { since = null, until = null, regularActivities, socialActivities, abandonedActivities, upsellActivities, variants = null } = {},
-  variantsArg = null,
-) {
-  const variantsList = Array.isArray(variantsArg) ? variantsArg : (Array.isArray(variants) ? variants : []);
-  const variantsById = new Map((variantsList || []).filter((variant) => variant?.id).map((variant) => [variant.id, variant]));
+export function createProductLookups(products, variants) {
+  const variantsById = new Map((variants || []).filter((variant) => variant?.id).map((variant) => [variant.id, variant]));
   const productsById = new Map((products || []).filter((product) => product?.id).map((product) => [product.id, product]));
   const productsByName = new Map();
   const ambiguousProductNames = new Set();
@@ -363,6 +400,27 @@ export function buildStaffReport(
     }
     productsByName.set(name, product);
   }
+  const variantsByProductId = new Map();
+  for (const variant of variants || []) {
+    if (!variant?.product_id) continue;
+    const list = variantsByProductId.get(variant.product_id) || [];
+    list.push(variant);
+    variantsByProductId.set(variant.product_id, list);
+  }
+  return { productsById, productsByName, variantsById, variantsByProductId };
+}
+
+export function buildStaffReport(
+  orders,
+  inboxOrders,
+  orderItems,
+  products,
+  staff,
+  { since = null, until = null, regularActivities, socialActivities, abandonedActivities, upsellActivities, variants = null } = {},
+  variantsArg = null,
+) {
+  const variantsList = Array.isArray(variantsArg) ? variantsArg : (Array.isArray(variants) ? variants : []);
+  const { productsById, productsByName, variantsById, variantsByProductId } = createProductLookups(products, variantsList);
 
   const itemsByOrderId = new Map();
   for (const item of orderItems || []) {
@@ -475,6 +533,7 @@ export function buildStaffReport(
       productsByName,
       missingWeightProducts,
       variantsById,
+      { orderWeightKg: order.weight_kg, variantsByProductId },
     );
   }
 
@@ -518,6 +577,7 @@ export function buildStaffReport(
       productsByName,
       missingWeightProducts,
       variantsById,
+      { orderWeightKg: order.weight_kg, variantsByProductId },
     );
   }
 
