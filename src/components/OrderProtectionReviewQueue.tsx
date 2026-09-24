@@ -349,7 +349,7 @@ export function OrderProtectionReviewQueue() {
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                      <span data-testid={`protection-total-${review.id}`} className="text-sm font-medium tabular-nums text-black">{formatProtectionTotal(total)}</span>
+                      <span data-testid={`protection-total-${review.id}`} className="text-sm font-medium tabular-nums text-black"><span className="text-[11px] font-normal text-black/50">Total</span>{" "}{formatProtectionTotal(total)}</span>
                       <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">
                         <span>Risk score</span>
                         <strong className="font-medium">{review.score}</strong>
@@ -359,7 +359,9 @@ export function OrderProtectionReviewQueue() {
 
                   <ul className="mt-4 space-y-1.5 text-sm text-black">
                     {review.items.length > 0 ? review.items.map((item, index) => {
-                      const linePrice = formatProtectionLinePrice(item);
+                      // With one product its price equals the total above; only
+                      // show per-line prices when there is something to add up.
+                      const linePrice = review.items.length > 1 ? formatProtectionLinePrice(item) : null;
                       return (
                         <li
                           key={`${review.id}-item-${index}`}
