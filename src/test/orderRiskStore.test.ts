@@ -90,7 +90,7 @@ describe("risk store", () => {
     await labelRiskAttempt(supabase, { orgId, attemptId: id, label: "fake" });
     expect(await scrubExpiredRiskAttempts(supabase, { now: new Date("2026-09-23T00:00:00Z") })).toEqual({ scrubbed: 2, deleted: 1 });
     guarded(queries.slice(0, 1));
-    expect(queries[1].calls).toContainEqual(["update", expect.objectContaining({ customer_name: null, phone: null, address: null, ip_prefix: null, items: [] }), { count: "exact" }]);
+    expect(queries[1].calls).toContainEqual(["update", expect.objectContaining({ customer_name: null, phone: null, address: null, ip_prefix: null, ip_address: null, items: [] }), { count: "exact" }]);
     expect(queries[2].calls).toContainEqual(["lt", "created_at", "2026-03-27T00:00:00.000Z"]);
   });
 

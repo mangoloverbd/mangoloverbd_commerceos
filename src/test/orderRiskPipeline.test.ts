@@ -47,6 +47,16 @@ describe("durable risk pipeline", () => {
     expect(active.createReview).not.toHaveBeenCalled();
   });
 
+  it("stores the customer's real IP from the signed context, and none without it", async () => {
+    const signed = deps();
+    await assessOrderRisk(request(signed));
+    expect(signed.writes).toEqual(expect.arrayContaining([expect.objectContaining({ table: "order_risk_attempts", row: expect.objectContaining({ ip_address: "103.12.44.7", ip_prefix: "v4:103.12.44.0/24" }) })]));
+    const unsigned = deps();
+    await assessOrderRisk(request(unsigned, { headers: {} }));
+    const attempt = unsigned.writes.find((write) => write.table === "order_risk_attempts" && write.row.decision);
+    expect(attempt?.row.ip_address).toBeNull();
+  });
+
   it("a normal signed customer is not blocked in active mode", async () => {
     const active = deps("active");
     const result = await assessOrderRisk(request(active));

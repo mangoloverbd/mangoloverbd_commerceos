@@ -106,7 +106,7 @@ async function assess({ mode, orgId, route, body, headers, requestIp, deps }) {
     items: ctx.items, context_trusted: ctx.contextTrusted,
     phone_hash: ctx.hashes.phone, device_hash: ctx.hashes.device, fingerprint_hash: ctx.hashes.fingerprint,
     network_hash: ctx.hashes.network, ip_hash: ctx.hashes.ip, user_agent_hash: ctx.hashes.userAgent,
-    ip_prefix: ctx.networkKey, network_type: ctx.network.type,
+    ip_address: ctx.ip, ip_prefix: ctx.networkKey, network_type: ctx.network.type,
     geo_city: ctx.geo.city, geo_region: ctx.geo.region, geo_country: ctx.geo.country,
     user_agent_summary: summarizeAgent(ctx.userAgent),
   };

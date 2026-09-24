@@ -42,4 +42,13 @@ describe("risk engine schema", () => {
     expect(script).toContain("('orders', 'risk_attempt_id')");
     expect(script).toContain("('order_protection_reviews', 'attempt_id')");
   });
+
+  it("adds a private raw IP column to risk attempts", () => {
+    const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20260924120000_order_risk_attempts_ip_address.sql"), "utf8");
+    expect(sql).toMatch(/^begin;$/m);
+    expect(sql.trim().endsWith("commit;")).toBe(true);
+    expect(sql).toContain("alter table public.order_risk_attempts");
+    expect(sql).toContain("add column if not exists ip_address inet");
+    expect(sql).not.toMatch(/grant\s+.*\s+to\s+(anon|authenticated)\b/i);
+  });
 });
