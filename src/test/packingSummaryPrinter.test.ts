@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
-import { buildPackingSummary, buildPackingSummaryHtml } from "@/utils/packingSummaryPrinter";
+import { describe, expect, it, vi } from "vitest";
+import { buildPackingSummary, buildPackingSummaryHtml, printPackingSummary } from "@/utils/packingSummaryPrinter";
 
 describe("buildPackingSummary", () => {
   it("groups by product and pack with order counts and kg totals", () => {
@@ -73,5 +73,40 @@ describe("packing summary action wiring", () => {
     );
     expect(dashboardSource).toContain("printPackingSummary(filteredOrders, orgName)");
     expect(dashboardSource).toContain("Failed to prepare packing summary for printing");
+  });
+});
+
+describe("printPackingSummary", () => {
+  it("keeps the weighted print document when cleanup timers or early afterprint fire", () => {
+    vi.useFakeTimers();
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    const createElement = document.createElement.bind(document);
+    const createSpy = vi.spyOn(document, "createElement").mockImplementation((tagName, options) =>
+      tagName === "iframe" ? frame : createElement(tagName, options),
+    );
+
+    try {
+      printPackingSummary([{
+        id: "o1", order_number: "#1", product: "Honey", quantity: 1,
+        items: [{ product_name: "Honey", variant_name: "1KG", quantity: 2, weight_kg: 1 }],
+      }]);
+      const printWindow = frame.contentWindow!;
+      const print = vi.spyOn(printWindow, "print").mockImplementation(() => {});
+      vi.spyOn(printWindow, "focus").mockImplementation(() => {});
+      vi.advanceTimersByTime(150);
+      expect(print).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(6_000);
+      expect(frame.isConnected).toBe(true);
+      expect(frame.contentDocument!.body.textContent).toContain("2kg");
+
+      printWindow.dispatchEvent(new Event("afterprint"));
+      expect(frame.isConnected).toBe(true);
+      expect(frame.contentDocument!.body.textContent).toContain("2kg");
+    } finally {
+      createSpy.mockRestore();
+      frame.remove();
+      vi.useRealTimers();
+    }
   });
 });
