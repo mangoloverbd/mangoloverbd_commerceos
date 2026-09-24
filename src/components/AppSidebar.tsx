@@ -14,12 +14,17 @@ import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
+import { useNavCounts } from "@/hooks/useNavCounts";
 import { Link } from "react-router-dom";
+import { CaretUpDown } from "@phosphor-icons/react";
 
 export function AppSidebar() {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
-    const { isAdmin } = useUserRole();
+    const { isAdmin, role } = useUserRole();
+    const { data: navCounts } = useNavCounts();
+    const returnsPending = navCounts?.returns_pending ?? 0;
+    const protectionHeld = navCounts?.order_protection_held ?? 0;
     const { orgName, isLoading: orgLoading } = useOrgName();
 
     const iconCls = "shrink-0 transition-colors";
@@ -45,6 +50,7 @@ export function AppSidebar() {
                     title: "Returns",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><g clipPath="url(#clip0_655_9411)"><path d="M13.1204 20.02C13.0904 19.71 13.1204 19.4 13.2104 19.12C13.2504 19.01 13.2904 18.9 13.3504 18.79C13.7104 18.06 14.4604 17.56 15.3304 17.56H6.44043V4.22C6.44043 3 7.44043 2 8.67043 2H19.7804M13.1204 20.02C13.1304 20.1 13.1404 20.18 13.1604 20.26C13.1704 20.29 13.1704 20.32 13.1904 20.35M13.1204 20.02C13.1304 20.13 13.1604 20.24 13.1904 20.35M13.1904 20.35C13.2104 20.45 13.2404 20.54 13.2804 20.63C13.3404 20.77 13.4104 20.9 13.4904 21.02C13.5604 21.11 13.6204 21.19 13.6904 21.26C14.0304 21.63 14.5004 21.88 15.0004 21.97C15.1104 21.99 15.2204 22 15.3304 22C15.4204 22 15.5104 22 15.6004 21.99C16.3604 21.91 16.9404 21.49 17.3304 20.89C17.3304 20.78 17.4404 20.78 17.4404 20.67C17.5604 20.44 17.6704 20.11 17.6704 19.78V5.61C17.6704 4.11 18.4704 2.73 19.7804 2M19.7804 2C21.0004 2 22.0004 3 22.0004 4.22C22.0004 5.44 21.0004 6.44 19.7804 6.44" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M16.0802 22C16.0802 22.41 15.7402 22.75 15.3302 22.75H4.22023C3.23023 22.75 2.31023 22.26 1.76023 21.44C1.20023 20.6 1.09023 19.57 1.48023 18.6C1.92023 17.53 3.05023 16.81 4.28023 16.81H15.3302C15.7402 16.81 16.0802 17.15 16.0802 17.56C16.0802 17.97 15.7402 18.31 15.3302 18.31C14.7702 18.31 14.2702 18.62 14.0202 19.12C13.9602 19.22 13.9502 19.28 13.9302 19.33C13.8702 19.53 13.8502 19.74 13.8702 19.95C13.8702 19.98 13.8702 20.02 13.8802 20.07C13.9002 20.11 13.9202 20.16 13.9302 20.21C13.9302 20.25 13.9502 20.28 13.9602 20.32C14.0102 20.43 14.0602 20.52 14.1102 20.6C14.1302 20.62 14.1702 20.68 14.2202 20.73C14.4802 21.02 14.7702 21.18 15.1002 21.23H15.1402C15.2002 21.24 15.2702 21.25 15.3302 21.25C15.7402 21.25 16.0802 21.59 16.0802 22Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_655_9411"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
                     link: "/returns",
+                    badge: returnsPending,
                 },
                 {
                     id: "products",
@@ -77,6 +83,7 @@ export function AppSidebar() {
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path d="M3 11.9914C3 17.6294 7.23896 20.3655 9.89856 21.5273C10.62 21.8424 10.9807 22 12 22V8L3 11V11.9914Z" style={{fill: 'var(--fillg)'}}/><path d="M14.1014 21.5273C16.761 20.3655 21 17.6294 21 11.9914V11L12 8V22C13.0193 22 13.38 21.8424 14.1014 21.5273Z" style={{fill: 'var(--fillg)', opacity: 0.5}}/><path d="M8.83772 2.80472L8.26491 3.00079C5.25832 4.02996 3.75503 4.54454 3.37752 5.08241C3 5.62028 3 7.21907 3 10.4167V11L12 8V2C11.1886 2 10.405 2.26824 8.83772 2.80472Z" style={{fill: 'var(--fillg)', opacity: 0.5}}/><path d="M15.7351 3.00079L15.1623 2.80472C13.595 2.26824 12.8114 2 12 2V8L21 11V10.4167C21 7.21907 21 5.62028 20.6225 5.08241C20.245 4.54454 18.7417 4.02996 15.7351 3.00079Z" style={{fill: 'var(--fillg)'}}/></svg>,
                     link: "/order-protection",
                     disabled: !isAdmin,
+                    badge: isAdmin ? protectionHeld : 0,
                 },
             ],
         };
@@ -163,7 +170,7 @@ export function AppSidebar() {
         sections.push(workspace);
         sections.push(socialInbox);
         return sections;
-    }, [isAdmin]);
+    }, [isAdmin, returnsPending, protectionHeld]);
 
 
     return (
@@ -215,27 +222,39 @@ export function AppSidebar() {
                 <DashboardNavigation sections={navSections} />
             </SidebarContent>
 
-            {/* ── Footer ──────────────────────────────────── */}
-            <SidebarFooter className="border-t-0 p-1.5">
-                {/* Settings button */}
-                <div className={cn("px-2", isCollapsed && "flex justify-center px-0")}>
-                    <Link
-                        to="/settings"
-                        className={cn(
-                            "group/footer-link flex items-center gap-2 rounded-lg transition-all hover:bg-black/5 hover:text-black",
-                            isCollapsed ? "h-8 w-8 justify-center" : "w-full h-7 px-2 py-2"
-                        )}
-                        title="System Settings"
+            {/* ── Footer: workspace card (opens settings) ─── */}
+            <SidebarFooter className="p-2">
+                <Link
+                    to="/settings"
+                    data-testid="sidebar-workspace-card"
+                    title="System Settings"
+                    className={cn(
+                        "group/workspace flex items-center rounded-[6px] border border-black/[0.06] bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.06)] transition-colors hover:bg-white/60",
+                        isCollapsed ? "justify-center p-1" : "gap-2 px-1.5 py-1"
+                    )}
+                >
+                    <span
+                        data-testid="sidebar-workspace-logo"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border border-black/[0.05] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
                     >
-                        <span className="flex h-[20px] w-[20px] shrink-0 items-center justify-center transform-gpu transition-all duration-300 ease-out group-hover/footer-link:-translate-y-0.5 group-hover/footer-link:-rotate-6 group-hover/footer-link:scale-125">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" className="text-black"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" d="M12 3v2m0 0a7 7 0 0 0-7 7m7-7a7 7 0 0 1 7 7m0 0h2m-2 0a7 7 0 0 1-7 7m0 0v2m0-2a7 7 0 0 1-7-7m0 0H3m4.5-7.794l1 1.732M18.062 8.5l1.732-1M15.5 18.062l1 1.732M5.938 15.5l-1.732 1m0-9l1.732 1M15.5 5.938l1-1.732M18.062 15.5l1.732 1M8.5 18.062l-1 1.732M12 12L7 7.101M12 12l-1.812 6.762M12 12l6.762-1.812"/></svg>
-                        </span>
-                        {!isCollapsed && (
-                            <span className="text-[12.5px] font-medium text-black font-sans tracking-normal">System Settings</span>
-                        )}
-                    </Link>
-                </div>
-
+                        <Logo className="h-[15px] w-auto" />
+                    </span>
+                    {!isCollapsed && (
+                        <>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate font-sans text-[10.5px] leading-tight text-black/45">
+                                    {role === "admin" ? "Admin" : role === "team_member" ? "Staff" : "Workspace"}
+                                </p>
+                                {orgLoading ? (
+                                    <div className="mt-0.5 h-2.5 w-24 animate-pulse rounded bg-black/10" />
+                                ) : (
+                                    <p className="truncate font-sans text-[12.5px] font-medium leading-tight text-black">{orgName || "My workspace"}</p>
+                                )}
+                            </div>
+                            <CaretUpDown aria-hidden="true" weight="bold" size={12} className="shrink-0 text-black/30 transition-colors group-hover/workspace:text-black/55" />
+                        </>
+                    )}
+                </Link>
             </SidebarFooter>
         </Sidebar>
     );

@@ -38,6 +38,8 @@ import {
 } from "@/lib/orderProtectionDisplay";
 import { cn } from "@/lib/utils";
 import { isVisibleRiskSignal } from "@/lib/orderRisk";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshNavCounts } from "@/hooks/useNavCounts";
 
 type ContactStatus = "open" | "contacted";
 
@@ -85,6 +87,7 @@ export function OrderProtectionReviewQueue() {
   const [reviews, setReviews] = useState<ProtectionReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [contactStatus, setContactStatus] = useState<Record<string, ContactStatus>>({});
@@ -141,6 +144,7 @@ export function OrderProtectionReviewQueue() {
       if (rejectReason) await updateProtectionReview(reviewId, action, rejectReason);
       else await updateProtectionReview(reviewId, action);
       setReviews((current) => current.filter((review) => review.id !== reviewId));
+      void refreshNavCounts(queryClient);
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(reviewId);

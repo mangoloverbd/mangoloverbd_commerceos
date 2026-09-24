@@ -13,6 +13,12 @@ vi.mock("@/lib/orderProtection", () => ({
 }));
 
 import OrderProtection from "@/pages/OrderProtection";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}><OrderProtection /></QueryClientProvider>);
+}
 
 describe("order protection dashboard", () => {
   beforeEach(() => {
@@ -36,7 +42,7 @@ describe("order protection dashboard", () => {
   });
 
   test("shows the abandoned-style held order row with protection details", async () => {
-    render(<OrderProtection />);
+    renderPage();
 
     expect(await screen.findByText("Rahim Uddin")).toBeInTheDocument();
     expect(screen.getByText("On hold")).toBeInTheDocument();
@@ -77,7 +83,7 @@ describe("order protection dashboard", () => {
 
   test("updates the contact status dropdown", async () => {
     const user = userEvent.setup();
-    render(<OrderProtection />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "Contact status: Awaiting contact" }));
     await user.click(await screen.findByRole("menuitemradio", { name: "Contacted" }));
@@ -102,14 +108,14 @@ describe("order protection dashboard", () => {
       created_at: "2026-09-12T08:00:00.000Z",
     }] });
 
-    render(<OrderProtection />);
+    renderPage();
 
     expect(await screen.findByRole("button", { name: "Contact status: Contacted" })).toBeInTheDocument();
   });
 
   test("staff can explicitly reject a confirmed fake without marking ordinary rejections fake", async () => {
     const user = userEvent.setup();
-    render(<OrderProtection />);
+    renderPage();
     await user.click(await screen.findByRole("button", { name: /reject as fake/i }));
     expect(updateProtectionReview).toHaveBeenCalledWith("review-1", "reject", "fake");
   });

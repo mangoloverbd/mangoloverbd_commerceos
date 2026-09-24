@@ -29,6 +29,8 @@ export interface Route {
     icon: ReactNode;
     link: string;
     disabled?: boolean;
+    /** Count shown as a pill beside the label (dot when collapsed); hidden at 0. */
+    badge?: number;
     subs?: {
         title: string;
         link: string;
@@ -68,6 +70,60 @@ const navIconMotion =
 
 const activeNavItemClass =
     "rounded-[8px] text-black";
+
+function NavBadge({ count }: { count?: number }) {
+    if (!count || count <= 0) return null;
+    return (
+        <span
+            data-testid="nav-badge"
+            className="ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-status-yellow-background px-1.5 font-sans text-[10.5px] font-semibold tabular-nums leading-none text-status-yellow-text"
+        >
+            {count > 99 ? "99+" : count}
+        </span>
+    );
+}
+
+function NavBadgeDot({ count }: { count?: number }) {
+    if (!count || count <= 0) return null;
+    return (
+        <>
+            <span
+                data-testid="nav-badge-dot"
+                aria-hidden="true"
+                className="pointer-events-none absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-[#dedede]"
+            />
+            <span className="sr-only">{count} pending</span>
+        </>
+    );
+}
+
+function ActiveBar() {
+    return (
+        <span
+            data-testid="nav-active-bar"
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-1/2 z-10 h-3.5 w-[3px] -translate-y-1/2 rounded-r-full bg-black"
+        />
+    );
+}
+
+const groupStorageKey = (label: string) => `ml:sidebar-group:${label}`;
+
+function readGroupOpen(label: string) {
+    try {
+        return window.localStorage.getItem(groupStorageKey(label)) !== "closed";
+    } catch {
+        return true;
+    }
+}
+
+function writeGroupOpen(label: string, open: boolean) {
+    try {
+        window.localStorage.setItem(groupStorageKey(label), open ? "open" : "closed");
+    } catch {
+        // Private mode or blocked storage: the group still toggles for this visit.
+    }
+}
 
 function TreeSvgLines({ offsets, className }: { offsets: number[]; className?: string }) {
     if (offsets.length === 0) return null;
@@ -131,13 +187,40 @@ function CollapsibleSection({ section }: { section: NavSection }) {
     }, [updateOffsets]);
 
     const routes = section.routes;
+    const hasActiveRoute = routes.some((route) => location.pathname === route.link);
+    const [open, setOpen] = useState(() => hasActiveRoute || readGroupOpen(section.label));
+
+    useEffect(() => {
+        if (hasActiveRoute) setOpen(true);
+    }, [hasActiveRoute]);
+
+    useLayoutEffect(() => {
+        if (open) updateOffsets();
+    }, [open, updateOffsets]);
+
+    const toggle = () => {
+        setOpen((current) => {
+            writeGroupOpen(section.label, !current);
+            return !current;
+        });
+    };
 
     return (
         <SidebarGroup className="px-1.5 py-0.5">
-            <div className="mb-0 flex h-auto w-full items-center gap-1 px-2 py-0.5 font-sans text-[11px] font-medium normal-case tracking-normal text-black">
+            <button
+                type="button"
+                onClick={toggle}
+                aria-expanded={open}
+                className="group/section mb-0 flex h-6 w-full items-center gap-1 rounded-md px-2 font-sans text-[11px] font-medium normal-case tracking-normal text-black transition-colors hover:bg-black/5"
+            >
                 <span className="truncate">{section.label}</span>
-            </div>
+                <ChevronRight
+                    aria-hidden="true"
+                    className={cn("ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-hover/section:opacity-70", open && "rotate-90")}
+                />
+            </button>
 
+            {open && (
             <SidebarGroupContent>
                 <div ref={containerRef} className="relative flex flex-col gap-0.5 list-none">
                     <TreeSvgLines offsets={offsets} />
@@ -175,8 +258,9 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                         >
                                             <Link
                                                 to={route.link}
-                                                className="group/nav-link flex items-center gap-2 w-full"
+                                                className="group/nav-link relative flex items-center gap-2 w-full"
                                             >
+                                                <ActiveBar />
                                                 <button className="glass-button flex items-center gap-2 !h-[28px] w-full !p-0 !justify-start">
                                                     <div className="flex items-center gap-2 w-full px-2 pl-8">
                                                         <span className={cn(
@@ -187,6 +271,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                                         <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
                                                             {route.title}
                                                         </span>
+                                                        <NavBadge count={route.badge} />
                                                     </div>
                                                 </button>
                                             </Link>
@@ -214,6 +299,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                                 {route.icon}
                                             </span>
                                             <SidebarLabel text={route.title} active={false} />
+                                            <NavBadge count={route.badge} />
                                         </Link>
                                     </SidebarMenuButton>
                                 )}
@@ -222,6 +308,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                     })}
                 </div>
             </SidebarGroupContent>
+            )}
         </SidebarGroup>
     );
 }
@@ -290,13 +377,14 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                     isActive ? activeNavItemClass : "text-black hover:bg-black/5 hover:text-black"
                                                 )}
                                             >
-                                                <Link to={route.link} className="group/nav-link flex h-full w-full items-center justify-center">
+                                                <Link to={route.link} aria-label={route.title} className="group/nav-link relative flex h-full w-full items-center justify-center">
                                                     <span className={cn(
                                                         navIconFrame,
                                                         "transform-gpu will-change-transform transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover/nav-link:-translate-y-px group-hover/nav-link:scale-110 group-hover/nav-link:text-black"
                                                     )} style={isActive ? activeIconStyle : inactiveIconStyle}>
                                                         {route.icon}
                                                     </span>
+                                                    <NavBadgeDot count={route.badge} />
                                                 </Link>
                                             </SidebarMenuButton>
                                         </SidebarMenuItem>
@@ -442,10 +530,11 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                 >
                                                     <Link
                                                         to={route.link}
-                                                        className={cn("group/nav-link flex items-center gap-2", isActive && "w-full")}
+                                                        className={cn("group/nav-link flex items-center gap-2", isActive && "relative w-full")}
                                                     >
                                                         {isActive ? (
                                                             <>
+                                                                <ActiveBar />
                                                                 <div className="glass-button-wrap w-full">
                                                                     <button className="glass-button flex items-center gap-2 !h-[28px] w-full !p-0 !justify-start">
                                                                         <div className="flex items-center gap-2 w-full px-2">
@@ -455,6 +544,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                               <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
                                                                                 {route.title}
                                                                             </span>
+                                                                            <NavBadge count={route.badge} />
                                                                         </div>
                                                                     </button>
                                                                     <div className="glass-button-shadow"></div>
@@ -470,6 +560,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                     {route.icon}
                                                                 </span>
                                                                 <SidebarLabel text={route.title} active={false} />
+                                                                <NavBadge count={route.badge} />
                                                             </>
                                                         )}
                                                     </Link>
