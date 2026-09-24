@@ -49,6 +49,8 @@ import {
 } from "./productImages.js";
 import { buildProductCacheUrls, purgeProductCacheUrls } from "./productCache.js";
 import { createSidebarInsightsCache } from "./sidebarAlertInsightsCache.js";
+import { createTtlCache } from "./ttlCache.js";
+import { createAuthCache } from "./authCache.js";
 import {
   STOREFRONT_SEO_REFRESH_SETTING,
   isAuthorizedCronRequest,
@@ -600,6 +602,14 @@ async function hasAnyAdmin(supabase) {
   return Array.isArray(data) && data.length > 0;
 }
 
+// In-process auth cache (per warm Vercel instance). A role change or soft
+// delete can stay invisible to other warm instances for up to 30s.
+const authCache = createAuthCache();
+
+function invalidateAuthCacheForUser(userId) {
+  if (userId) authCache.invalidateUser(userId);
+}
+
 async function ensureUserRole(supabase, user) {
   const { data: existingRole, error: roleError } = await supabase
     .from("user_roles")
@@ -618,11 +628,14 @@ async function ensureUserRole(supabase, user) {
   }
 
   if (existingRole?.role === "admin" || configuredAdmin) {
+    // The upsert below would be a no-op; skip the write.
+    if (existingRole?.role === "admin" && existingRole?.org_id === user.id) return existingRole;
     const { data, error } = await supabase
       .from("user_roles")
       .upsert({ user_id: user.id, role: "admin", org_id: user.id }, { onConflict: "user_id" })
       .select("org_id, role")
       .single();
+    invalidateAuthCacheForUser(user.id);
     if (error) throw error;
     return data;
   }
@@ -635,6 +648,7 @@ async function ensureUserRole(supabase, user) {
       .upsert({ user_id: user.id, role: "team_member", org_id: orgId }, { onConflict: "user_id" })
       .select("org_id, role")
       .single();
+    invalidateAuthCacheForUser(user.id);
     if (error) throw error;
     return data;
   }
@@ -645,6 +659,7 @@ async function ensureUserRole(supabase, user) {
       .upsert({ user_id: user.id, role: "admin", org_id: user.id }, { onConflict: "user_id" })
       .select("org_id, role")
       .single();
+    invalidateAuthCacheForUser(user.id);
     if (error) throw error;
     return data;
   }
@@ -654,6 +669,8 @@ async function ensureUserRole(supabase, user) {
 
 async function getUser(token) {
   if (!token) return { user: null };
+  const cached = authCache.getUser(token);
+  if (cached) return { user: cached.user };
   try {
     const supabase = getServiceSupabase();
     const { data: { user }, error } = await supabase.auth.getUser(token);
@@ -665,6 +682,9 @@ async function getUser(token) {
       return { user: null, missingRole: true };
     }
 
+    // Only successful lookups are cached (TTL capped at the JWT's exp).
+    authCache.setUser(token, user.id, { user });
+    authCache.setOrg(user.id, { orgId: existingRole.org_id, role: existingRole.role });
     return { user };
   } catch (err) {
     console.error("[Auth] getUser error:", err.message);
@@ -673,6 +693,8 @@ async function getUser(token) {
 }
 
 async function getUserOrg(supabase, userId) {
+  const cached = authCache.getOrg(userId);
+  if (cached) return { orgId: cached.orgId, role: cached.role };
   const { data: roleRow, error } = await supabase
     .from("user_roles")
     .select("org_id, role")
@@ -687,6 +709,7 @@ async function getUserOrg(supabase, userId) {
     err.statusCode = 403;
     throw err;
   }
+  authCache.setOrg(userId, { orgId, role });
   return { orgId, role };
 }
 
@@ -991,6 +1014,7 @@ app.post("/api/auth/register", rateLimitAuth, async (req, res) => {
     const { error: roleError } = await supabase
       .from("user_roles")
       .upsert({ user_id: newUser.user.id, role: "admin", org_id: newUser.user.id }, { onConflict: "user_id" });
+    invalidateAuthCacheForUser(newUser.user.id);
 
     if (roleError) throw roleError;
 
@@ -1060,6 +1084,7 @@ app.post("/api/admin/assign-role", async (req, res) => {
       const { error: upsertError } = await supabase
         .from("user_roles")
         .upsert({ user_id: assignTo, role: roleToAssign, org_id: callerRole.org_id }, { onConflict: "user_id" });
+      invalidateAuthCacheForUser(assignTo);
 
       if (upsertError) throw upsertError;
 
@@ -1071,6 +1096,7 @@ app.post("/api/admin/assign-role", async (req, res) => {
     const { error: upsertError } = await supabase
       .from("user_roles")
       .upsert({ user_id: assignTo, role: roleToAssign, org_id: assignTo }, { onConflict: "user_id" });
+    invalidateAuthCacheForUser(assignTo);
 
     if (upsertError) throw upsertError;
 
@@ -1236,6 +1262,7 @@ async function createTeamMemberHandler(req, res) {
       )
       .select("id, user_id, role, org_id, display_name, created_at")
       .single();
+    invalidateAuthCacheForUser(newUser.user.id);
 
     if (roleError) throw roleError;
 
@@ -1274,6 +1301,7 @@ app.patch("/api/team-members/:id", async (req, res) => {
       .is("deleted_at", null)
       .select("id, user_id, display_name")
       .maybeSingle();
+    if (data) invalidateAuthCacheForUser(data.user_id);
     if (error) throw error;
     if (!data) return res.status(404).json({ error: "Team member not found" });
 
@@ -1312,6 +1340,7 @@ app.delete("/api/team-members/:id", async (req, res) => {
       .is("deleted_at", null)
       .select("id")
       .maybeSingle();
+    invalidateAuthCacheForUser(member.user_id);
     if (archiveError) throw archiveError;
     if (!archivedMember) return res.status(404).json({ error: "Team member not found" });
 
@@ -1324,6 +1353,7 @@ app.delete("/api/team-members/:id", async (req, res) => {
         .eq("id", member.id)
         .eq("org_id", orgId)
         .eq("deleted_at", archivedAt);
+      invalidateAuthCacheForUser(member.user_id);
       if (restoreError) console.error("[Team] could not restore archived role:", restoreError.message);
       throw deleteUserError;
     }
@@ -4677,6 +4707,8 @@ app.get("/api/reports/business", async (req, res) => {
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
+const analyticsCache = createTtlCache({ redis: redisClient, prefix: "analytics:" });
+
 app.get("/api/analytics", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -4687,20 +4719,6 @@ app.get("/api/analytics", async (req, res) => {
     // Optional date range from query params (YYYY-MM-DD)
     const since = req.query.since || null;
     const until = req.query.until || null;
-
-    // Use SELECT * so PostgREST doesn't validate individual column names against
-    // its schema cache. If org_id isn't cached yet, named selects throw a 500;
-    // with * PostgREST returns whatever Postgres gives and we filter in JS.
-    let ordersQuery = supabase.from("orders").select("*").eq("org_id", orgId);
-    if (since) ordersQuery = ordersQuery.gte("created_at", `${since}T00:00:00+06:00`);
-    if (until) ordersQuery = ordersQuery.lte("created_at", `${until}T23:59:59+06:00`);
-
-    const { data: rawOrders, error: ordersError } = await ordersQuery;
-    if (ordersError) throw ordersError;
-
-    const orders = rawOrders || [];
-
-    console.log(`[Analytics] date filter: since=${since} until=${until}, matched ${orders.length} orders`);
 
     const dhakaParts = (value) => {
       const parts = new Intl.DateTimeFormat("en-CA", {
@@ -4718,255 +4736,286 @@ app.get("/api/analytics", async (req, res) => {
       };
     };
     const todayDhaka = () => dhakaParts(new Date()).ymd;
-    const addDaysYmd = (ymd, days) => {
-      const date = new Date(`${ymd}T00:00:00Z`);
-      date.setUTCDate(date.getUTCDate() + days);
-      return date.toISOString().slice(0, 10);
-    };
-    const compareYmd = (a, b) => a.localeCompare(b);
-    const orderDays = orders
-      .map((order) => dhakaParts(order.created_at).ymd)
-      .sort();
-    const seriesStart = since || orderDays[0] || todayDhaka();
-    const seriesEnd = until || orderDays[orderDays.length - 1] || seriesStart;
-    const singleDaySeries = seriesStart === seriesEnd;
-    const seriesBuckets = [];
 
-    if (singleDaySeries) {
-      for (let hour = 0; hour < 24; hour++) {
-        const hh = String(hour).padStart(2, "0");
-        seriesBuckets.push({
-          key: `${seriesStart}-${hh}`,
-          label: `${hour}:00`,
-          revenue: 0,
-          shipping: 0,
-          adSpend: 0,
-          totalCog: 0,
-          profit: null,
-        });
-      }
-    } else {
-      for (let ymd = seriesStart; compareYmd(ymd, seriesEnd) <= 0; ymd = addDaysYmd(ymd, 1)) {
-        seriesBuckets.push({
-          key: ymd,
-          label: ymd,
-          revenue: 0,
-          shipping: 0,
-          adSpend: 0,
-          totalCog: 0,
-          profit: null,
-        });
-      }
-    }
-    const seriesByKey = new Map(seriesBuckets.map((bucket) => [bucket.key, bucket]));
+    // Cache per org + date range (the `t` cache-buster is ignored). Closed
+    // past ranges change rarely; ranges touching today refresh every 60s.
+    const cacheKey = `${orgId}:${since || ""}:${until || ""}`;
+    const ttlMs = until && until < todayDhaka() ? 10 * 60 * 1000 : 60 * 1000;
+    // fresh=1 (user-triggered refresh) skips the cached read but still stores.
+    const fresh = req.query.fresh === "1";
+    const payload = await analyticsCache.get(cacheKey, ttlMs, async () => {
+      // Set when a best-effort sub-lookup fails; such results are not cached.
+      let degraded = false;
+      let ordersQuery = supabase.from("orders").select("id, created_at, price, delivery_rate, product").eq("org_id", orgId);
+      if (since) ordersQuery = ordersQuery.gte("created_at", `${since}T00:00:00+06:00`);
+      if (until) ordersQuery = ordersQuery.lte("created_at", `${until}T23:59:59+06:00`);
 
-    // Compute COG per order by matching each line item in the order's
-    // `product` string against the org's products catalog. Line items with
-    // no catalog match or with cog=0 contribute 0 (not an estimate).
-    // coverage.set counts priced line items; coverage.total counts all parsed
-    // line items.
-    let totalCog = 0;
-    let cogCoverage = { set: 0, total: 0 };
-    const cogByOrderId = new Map();
-    try {
-      const { data: prods } = await supabase
-        .from("products")
-        .select("id, name, selling_price, cog")
-        .eq("org_id", orgId);
-      const result = computeOrderCogs(orders, prods || []);
-      totalCog = result.totalCog;
-      cogCoverage = result.coverage;
-      for (const [orderId, orderCog] of result.cogByOrderId) {
-        cogByOrderId.set(orderId, orderCog);
-      }
-    } catch { /* ignore – no products yet */ }
+      const { data: rawOrders, error: ordersError } = await ordersQuery;
+      if (ordersError) throw ordersError;
 
-    // price = total_price from Shopify (subtotal + shipping − discounts) = what the customer pays.
-    // delivery_rate = shipping component (kept separately for the Shipping card display).
-    // Revenue = total sales (price + delivery_rate per order)
-    let revenue = 0;
-    let shipping = 0;
-    for (const o of orders || []) {
-      const orderPrice = parseFloat(o.price || 0);
-      const orderShipping = parseFloat(o.delivery_rate || 0);
-      const orderRevenue = orderPrice + orderShipping;
-      const orderCog = cogByOrderId.get(o.id) || 0;
-      revenue += orderRevenue;
-      shipping += orderShipping;
-      const parts = dhakaParts(o.created_at);
-      const bucket = seriesByKey.get(singleDaySeries ? `${parts.ymd}-${parts.hour}` : parts.ymd);
-      if (bucket) {
-        bucket.revenue += orderRevenue;
-        bucket.shipping += orderShipping;
-        bucket.totalCog += orderCog;
-      }
-    }
+      const orders = rawOrders || [];
 
-    // Fetch Meta/Facebook ad spend. Prefer OAuth-connected Meta ad accounts,
-    // but keep legacy manual Facebook Ads settings as fallback.
-    let adSpend = null;
-    let fbError = null;
-    const cfg = await getOrgSettings(orgId, ["facebook_access_token", "facebook_ad_account_id", "usd_to_bdt_rate"]);
-    let fbToken = cfg["facebook_access_token"];
-    let fbAccountId = cfg["facebook_ad_account_id"];
-    let fbAccountCurrency = null;
-    if (!fbToken || !fbAccountId) {
-      try {
-        const { data: connection } = await supabase
-          .from("meta_connections")
-          .select("encrypted_user_access_token")
-          .eq("org_id", orgId)
-          .maybeSingle();
-        const { data: adAccount } = await supabase
-          .from("meta_ad_accounts")
-          .select("ad_account_id, currency")
-          .eq("org_id", orgId)
-          .limit(1)
-          .maybeSingle();
-        if (connection?.encrypted_user_access_token && adAccount?.ad_account_id) {
-          fbToken = decryptToken(connection.encrypted_user_access_token);
-          fbAccountId = adAccount.ad_account_id;
-          fbAccountCurrency = adAccount.currency;
+      console.log(`[Analytics] date filter: since=${since} until=${until}, matched ${orders.length} orders`);
+
+      const addDaysYmd = (ymd, days) => {
+        const date = new Date(`${ymd}T00:00:00Z`);
+        date.setUTCDate(date.getUTCDate() + days);
+        return date.toISOString().slice(0, 10);
+      };
+      const compareYmd = (a, b) => a.localeCompare(b);
+      const orderDays = orders
+        .map((order) => dhakaParts(order.created_at).ymd)
+        .sort();
+      const seriesStart = since || orderDays[0] || todayDhaka();
+      const seriesEnd = until || orderDays[orderDays.length - 1] || seriesStart;
+      const singleDaySeries = seriesStart === seriesEnd;
+      const seriesBuckets = [];
+
+      if (singleDaySeries) {
+        for (let hour = 0; hour < 24; hour++) {
+          const hh = String(hour).padStart(2, "0");
+          seriesBuckets.push({
+            key: `${seriesStart}-${hh}`,
+            label: `${hour}:00`,
+            revenue: 0,
+            shipping: 0,
+            adSpend: 0,
+            totalCog: 0,
+            profit: null,
+          });
         }
-      } catch (err) {
-        console.warn("[Meta Analytics] OAuth ad account fallback unavailable:", errorMessage(err));
-      }
-    }
-    if (fbAccountId && !fbAccountCurrency) {
-      try {
-        const storedAccountIds = [
-          fbAccountId,
-          fbAccountId.startsWith("act_") ? fbAccountId.slice(4) : `act_${fbAccountId}`,
-        ];
-        const { data: adAccount } = await supabase
-          .from("meta_ad_accounts")
-          .select("currency")
-          .eq("org_id", orgId)
-          .in("ad_account_id", storedAccountIds)
-          .limit(1)
-          .maybeSingle();
-        fbAccountCurrency = adAccount?.currency || null;
-      } catch (err) {
-        console.warn("[Meta Analytics] Ad account currency unavailable:", errorMessage(err));
-      }
-    }
-    const usdToBdt = parseFloat(cfg["usd_to_bdt_rate"] || "0") || 110; // default 110
-
-    if (fbToken && fbAccountId) {
-      const accountId = fbAccountId.startsWith("act_") ? fbAccountId : `act_${fbAccountId}`;
-      try {
-        // Use time_range when a date filter is applied, otherwise use date_preset=maximum
-        let dateParam;
-        if (since && until) {
-          dateParam = `time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`;
-        } else if (since) {
-          const todayStr = new Date().toISOString().slice(0, 10);
-          dateParam = `time_range=${encodeURIComponent(JSON.stringify({ since, until: todayStr }))}`;
-        } else {
-          dateParam = "date_preset=maximum";
+      } else {
+        for (let ymd = seriesStart; compareYmd(ymd, seriesEnd) <= 0; ymd = addDaysYmd(ymd, 1)) {
+          seriesBuckets.push({
+            key: ymd,
+            label: ymd,
+            revenue: 0,
+            shipping: 0,
+            adSpend: 0,
+            totalCog: 0,
+            profit: null,
+          });
         }
+      }
+      const seriesByKey = new Map(seriesBuckets.map((bucket) => [bucket.key, bucket]));
 
-        let totalSpendUsd = 0;
-        const spendByDayUsd = new Map();
-        let nextUrl = `https://graph.facebook.com/${metaGraphVersion()}/${accountId}/insights?fields=spend,date_start&level=account&${dateParam}&time_increment=1&access_token=${encodeURIComponent(fbToken)}`;
-        let pages = 0;
-        const MAX_PAGES = 10;
+      // Compute COG per order by matching each line item in the order's
+      // `product` string against the org's products catalog. Line items with
+      // no catalog match or with cog=0 contribute 0 (not an estimate).
+      // coverage.set counts priced line items; coverage.total counts all parsed
+      // line items.
+      let totalCog = 0;
+      let cogCoverage = { set: 0, total: 0 };
+      const cogByOrderId = new Map();
+      try {
+        const { data: prods, error: productsError } = await supabase
+          .from("products")
+          .select("id, name, selling_price, cog")
+          .eq("org_id", orgId);
+        if (productsError) degraded = true;
+        const result = computeOrderCogs(orders, prods || []);
+        totalCog = result.totalCog;
+        cogCoverage = result.coverage;
+        for (const [orderId, orderCog] of result.cogByOrderId) {
+          cogByOrderId.set(orderId, orderCog);
+        }
+      } catch {
+        degraded = true;
+      }
 
-        while (nextUrl && pages < MAX_PAGES) {
-          const fbRes = await fetch(nextUrl);
-          const fbData = await fbRes.json();
-          console.log(`[FB Analytics] page ${pages + 1}:`, JSON.stringify(fbData).slice(0, 500));
+      // price = total_price from Shopify (subtotal + shipping − discounts) = what the customer pays.
+      // delivery_rate = shipping component (kept separately for the Shipping card display).
+      // Revenue = total sales (price + delivery_rate per order)
+      let revenue = 0;
+      let shipping = 0;
+      for (const o of orders || []) {
+        const orderPrice = parseFloat(o.price || 0);
+        const orderShipping = parseFloat(o.delivery_rate || 0);
+        const orderRevenue = orderPrice + orderShipping;
+        const orderCog = cogByOrderId.get(o.id) || 0;
+        revenue += orderRevenue;
+        shipping += orderShipping;
+        const parts = dhakaParts(o.created_at);
+        const bucket = seriesByKey.get(singleDaySeries ? `${parts.ymd}-${parts.hour}` : parts.ymd);
+        if (bucket) {
+          bucket.revenue += orderRevenue;
+          bucket.shipping += orderShipping;
+          bucket.totalCog += orderCog;
+        }
+      }
 
-          if (fbData.error) {
-            fbError = fbData.error.message || "Facebook API error";
-            break;
+      // Fetch Meta/Facebook ad spend. Prefer OAuth-connected Meta ad accounts,
+      // but keep legacy manual Facebook Ads settings as fallback.
+      let adSpend = null;
+      let fbError = null;
+      const cfg = await getOrgSettings(orgId, ["facebook_access_token", "facebook_ad_account_id", "usd_to_bdt_rate"]);
+      let fbToken = cfg["facebook_access_token"];
+      let fbAccountId = cfg["facebook_ad_account_id"];
+      let fbAccountCurrency = null;
+      if (!fbToken || !fbAccountId) {
+        try {
+          const { data: connection, error: connectionError } = await supabase
+            .from("meta_connections")
+            .select("encrypted_user_access_token")
+            .eq("org_id", orgId)
+            .maybeSingle();
+          const { data: adAccount, error: adAccountError } = await supabase
+            .from("meta_ad_accounts")
+            .select("ad_account_id, currency")
+            .eq("org_id", orgId)
+            .limit(1)
+            .maybeSingle();
+          if (connectionError || adAccountError) degraded = true;
+          if (connection?.encrypted_user_access_token && adAccount?.ad_account_id) {
+            fbToken = decryptToken(connection.encrypted_user_access_token);
+            fbAccountId = adAccount.ad_account_id;
+            fbAccountCurrency = adAccount.currency;
+          }
+        } catch (err) {
+          degraded = true;
+          console.warn("[Meta Analytics] OAuth ad account fallback unavailable:", errorMessage(err));
+        }
+      }
+      if (fbAccountId && !fbAccountCurrency) {
+        try {
+          const storedAccountIds = [
+            fbAccountId,
+            fbAccountId.startsWith("act_") ? fbAccountId.slice(4) : `act_${fbAccountId}`,
+          ];
+          const { data: adAccount, error: currencyError } = await supabase
+            .from("meta_ad_accounts")
+            .select("currency")
+            .eq("org_id", orgId)
+            .in("ad_account_id", storedAccountIds)
+            .limit(1)
+            .maybeSingle();
+          if (currencyError) degraded = true;
+          fbAccountCurrency = adAccount?.currency || null;
+        } catch (err) {
+          degraded = true;
+          console.warn("[Meta Analytics] Ad account currency unavailable:", errorMessage(err));
+        }
+      }
+      const usdToBdt = parseFloat(cfg["usd_to_bdt_rate"] || "0") || 110; // default 110
+
+      if (fbToken && fbAccountId) {
+        const accountId = fbAccountId.startsWith("act_") ? fbAccountId : `act_${fbAccountId}`;
+        try {
+          // Use time_range when a date filter is applied, otherwise use date_preset=maximum
+          let dateParam;
+          if (since && until) {
+            dateParam = `time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`;
+          } else if (since) {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            dateParam = `time_range=${encodeURIComponent(JSON.stringify({ since, until: todayStr }))}`;
+          } else {
+            dateParam = "date_preset=maximum";
           }
 
-          if (fbData.data && fbData.data.length > 0) {
-            for (const row of fbData.data) {
-              const spendUsd = parseFloat(row.spend || 0);
-              totalSpendUsd += spendUsd;
-              if (row.date_start) {
-                spendByDayUsd.set(row.date_start, (spendByDayUsd.get(row.date_start) || 0) + spendUsd);
+          let totalSpendUsd = 0;
+          const spendByDayUsd = new Map();
+          let nextUrl = `https://graph.facebook.com/${metaGraphVersion()}/${accountId}/insights?fields=spend,date_start&level=account&${dateParam}&time_increment=1&access_token=${encodeURIComponent(fbToken)}`;
+          let pages = 0;
+          const MAX_PAGES = 10;
+
+          while (nextUrl && pages < MAX_PAGES) {
+            const fbRes = await fetch(nextUrl);
+            const fbData = await fbRes.json();
+            console.log(`[FB Analytics] page ${pages + 1}:`, JSON.stringify(fbData).slice(0, 500));
+
+            if (fbData.error) {
+              fbError = fbData.error.message || "Facebook API error";
+              break;
+            }
+
+            if (fbData.data && fbData.data.length > 0) {
+              for (const row of fbData.data) {
+                const spendUsd = parseFloat(row.spend || 0);
+                totalSpendUsd += spendUsd;
+                if (row.date_start) {
+                  spendByDayUsd.set(row.date_start, (spendByDayUsd.get(row.date_start) || 0) + spendUsd);
+                }
               }
             }
+
+            nextUrl = fbData.paging?.next || null;
+            pages++;
           }
 
-          nextUrl = fbData.paging?.next || null;
-          pages++;
-        }
-
-        adSpend = convertMetaSpendToBdt(totalSpendUsd, fbAccountCurrency, usdToBdt);
-        if (adSpend === null) {
-          fbError = `Unsupported or missing Meta ad account currency: ${fbAccountCurrency || "unknown"}`;
-        }
-        if (singleDaySeries) {
-          const dailySpend = convertMetaSpendToBdt(
-            spendByDayUsd.get(seriesStart) || totalSpendUsd,
-            fbAccountCurrency,
-            usdToBdt,
-          );
-          if (dailySpend !== null) {
-            // Meta reports spend daily, not hourly. Spread it evenly across
-            // the 24 hourly buckets so the ad-spend sparkline reads as a flat
-            // line (honest — no intraday breakdown) instead of 24 bars each
-            // pinned to the full daily total. Keeps sum(buckets) == dailySpend
-            // and makes per-bucket profit (revenue_hr − cog_hr − adSpend_hr −
-            // shipping_hr) meaningful instead of deeply negative.
-            const hourlySpend = dailySpend / seriesBuckets.length;
-            for (const bucket of seriesBuckets) bucket.adSpend = hourlySpend;
+          adSpend = convertMetaSpendToBdt(totalSpendUsd, fbAccountCurrency, usdToBdt);
+          if (adSpend === null) {
+            fbError = `Unsupported or missing Meta ad account currency: ${fbAccountCurrency || "unknown"}`;
           }
-        } else {
-          for (const bucket of seriesBuckets) {
+          if (singleDaySeries) {
             const dailySpend = convertMetaSpendToBdt(
-              spendByDayUsd.get(bucket.key) || 0,
+              spendByDayUsd.get(seriesStart) || totalSpendUsd,
               fbAccountCurrency,
               usdToBdt,
             );
-            if (dailySpend !== null) bucket.adSpend = dailySpend;
+            if (dailySpend !== null) {
+              // Meta reports spend daily, not hourly. Spread it evenly across
+              // the 24 hourly buckets so the ad-spend sparkline reads as a flat
+              // line (honest — no intraday breakdown) instead of 24 bars each
+              // pinned to the full daily total. Keeps sum(buckets) == dailySpend
+              // and makes per-bucket profit (revenue_hr − cog_hr − adSpend_hr −
+              // shipping_hr) meaningful instead of deeply negative.
+              const hourlySpend = dailySpend / seriesBuckets.length;
+              for (const bucket of seriesBuckets) bucket.adSpend = hourlySpend;
+            }
+          } else {
+            for (const bucket of seriesBuckets) {
+              const dailySpend = convertMetaSpendToBdt(
+                spendByDayUsd.get(bucket.key) || 0,
+                fbAccountCurrency,
+                usdToBdt,
+              );
+              if (dailySpend !== null) bucket.adSpend = dailySpend;
+            }
           }
+          console.log(`[FB Analytics] total ${fbAccountCurrency || "unknown"} spend: ${totalSpendUsd}, rate: ${usdToBdt}, BDT: ${adSpend}`);
+        } catch (e) {
+          fbError = e.message || "Failed to reach Facebook API";
         }
-        console.log(`[FB Analytics] total ${fbAccountCurrency || "unknown"} spend: ${totalSpendUsd}, rate: ${usdToBdt}, BDT: ${adSpend}`);
-      } catch (e) {
-        fbError = e.message || "Failed to reach Facebook API";
       }
-    }
 
-    // Net Profit = Revenue − Ad Spend − Shipping − COG
-    // When ads aren't connected adSpend is null; treat it as 0 so Net Profit
-    // still reflects revenue − shipping − COG rather than collapsing to "—".
-    const shippingCost = parseFloat(shipping.toFixed(2));
-    const adSpendForCalc = adSpend ?? 0;
-    const profit = parseFloat(
-      (revenue - adSpendForCalc - shippingCost - totalCog).toFixed(2),
-    );
-    for (const bucket of seriesBuckets) {
-      bucket.revenue = parseFloat(bucket.revenue.toFixed(2));
-      bucket.shipping = parseFloat(bucket.shipping.toFixed(2));
-      bucket.profit = parseFloat(
-        (bucket.revenue - bucket.totalCog - (bucket.adSpend ?? 0) - bucket.shipping).toFixed(2),
+      // Net Profit = Revenue − Ad Spend − Shipping − COG
+      // When ads aren't connected adSpend is null; treat it as 0 so Net Profit
+      // still reflects revenue − shipping − COG rather than collapsing to "—".
+      const shippingCost = parseFloat(shipping.toFixed(2));
+      const adSpendForCalc = adSpend ?? 0;
+      const profit = parseFloat(
+        (revenue - adSpendForCalc - shippingCost - totalCog).toFixed(2),
       );
-    }
+      for (const bucket of seriesBuckets) {
+        bucket.revenue = parseFloat(bucket.revenue.toFixed(2));
+        bucket.shipping = parseFloat(bucket.shipping.toFixed(2));
+        bucket.profit = parseFloat(
+          (bucket.revenue - bucket.totalCog - (bucket.adSpend ?? 0) - bucket.shipping).toFixed(2),
+        );
+      }
 
-    return res.json({
-      revenue: parseFloat(revenue.toFixed(2)),
-      shipping: shippingCost,
-      adSpend,
-      totalCog: parseFloat(totalCog.toFixed(2)),
-      cogCoverage,
-      profit: parseFloat(profit.toFixed(2)),
-      fbConfigured: !!(fbToken && fbAccountId),
-      usdToBdt,
-      fbError,
-      series: {
-        buckets: seriesBuckets,
-        revenue: seriesBuckets.map((bucket) => bucket.revenue),
-        shipping: seriesBuckets.map((bucket) => bucket.shipping),
-        adSpend: seriesBuckets.map((bucket) => bucket.adSpend),
-        totalCog: seriesBuckets.map((bucket) => bucket.totalCog),
-        profit: seriesBuckets.map((bucket) => bucket.profit ?? 0),
-      },
-    });
+      const response = {
+        revenue: parseFloat(revenue.toFixed(2)),
+        shipping: shippingCost,
+        adSpend,
+        totalCog: parseFloat(totalCog.toFixed(2)),
+        cogCoverage,
+        profit: parseFloat(profit.toFixed(2)),
+        fbConfigured: !!(fbToken && fbAccountId),
+        usdToBdt,
+        fbError,
+        series: {
+          buckets: seriesBuckets,
+          revenue: seriesBuckets.map((bucket) => bucket.revenue),
+          shipping: seriesBuckets.map((bucket) => bucket.shipping),
+          adSpend: seriesBuckets.map((bucket) => bucket.adSpend),
+          totalCog: seriesBuckets.map((bucket) => bucket.totalCog),
+          profit: seriesBuckets.map((bucket) => bucket.profit ?? 0),
+        },
+      };
+      return { value: response, cacheable: !fbError && !degraded };
+    }, { fresh });
+    return res.json(payload);
   } catch (err) {
     return sendError(res, err);
   }
@@ -6562,10 +6611,135 @@ app.get("/api/orders", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     console.log(`[Orders] user=${user.id}`);
 
+    // Optional delta cursor: when present, only orders (or their items)
+    // changed after it are returned, so the dashboard poll stays small.
+    const changedSinceParam = typeof req.query.changed_since === "string"
+      ? req.query.changed_since.trim()
+      : "";
+    if (req.query.changed_since !== undefined && (!changedSinceParam || Number.isNaN(Date.parse(changedSinceParam)))) {
+      return res.status(400).json({ error: "Invalid changed_since timestamp" });
+    }
+
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);    const warehouseFilter = typeof req.query.warehouse_id === "string"
       ? req.query.warehouse_id.trim()
       : "";
+
+    // The sync cursor comes from Postgres updated_at values (never this
+    // server's clock). Returns the latest parseable timestamp as ISO, or null.
+    const maxUpdatedAt = (values) => {
+      let max = null;
+      for (const value of values) {
+        const time = value ? Date.parse(value) : NaN;
+        if (!Number.isNaN(time) && (max === null || time > max)) max = time;
+      }
+      return max === null ? null : new Date(max).toISOString();
+    };
+
+    // Returns orders with items attached and the latest item updated_at seen.
+    const attachOrderItems = async (allOrders) => {
+      const orderIds = allOrders.map((order) => order.id).filter(Boolean);
+      const itemRows = [];
+      const itemUpdatedAts = [];
+      for (const idBatch of chunkIds(orderIds)) {
+        const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity, updated_at").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+        if (itemsError) throw itemsError;
+        // updated_at only feeds the cursor; keep the item payload unchanged.
+        for (const { updated_at: itemUpdatedAt, ...item } of batchItems || []) {
+          itemUpdatedAts.push(itemUpdatedAt);
+          itemRows.push(item);
+        }
+      }
+      const itemsMaxUpdatedAt = maxUpdatedAt(itemUpdatedAts);
+      const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
+      const itemsByOrder = new Map();
+      for (const item of enrichedItems) {
+        const list = itemsByOrder.get(item.order_id) || [];
+        list.push(item);
+        itemsByOrder.set(item.order_id, list);
+      }
+      const ordersWithItems = allOrders.map((order) => {
+        const storedItems = itemsByOrder.get(order.id);
+        if (storedItems?.length) return { ...order, items: storedItems };
+
+        const legacyItems = parseLegacyProductLines(order.product, order.quantity).map((line) => ({
+          product_name: line.productName,
+          variant_name: null,
+          quantity: line.quantity,
+        }));
+        return { ...order, items: legacyItems };
+      });
+      return { ordersWithItems, itemsMaxUpdatedAt };
+    };
+
+    if (changedSinceParam) {
+      const changedSince = new Date(Date.parse(changedSinceParam)).toISOString();
+      // Re-read a 120s window before the cursor so rows from long-running
+      // transactions (updated_at = transaction start) are not missed. Repeats
+      // are harmless: the client merges by id.
+      const overlapSince = new Date(Date.parse(changedSince) - 120 * 1000).toISOString();
+
+      let changedOrdersQuery = supabase
+        .from("orders")
+        .select("id, updated_at")
+        .eq("org_id", orgId)
+        .gt("updated_at", overlapSince);
+      if (warehouseFilter) {
+        changedOrdersQuery = changedOrdersQuery.eq("warehouse_id", warehouseFilter);
+      }
+      const { data: changedOrderRows, error: changedOrdersError } = await changedOrdersQuery;
+      if (changedOrdersError) throw changedOrdersError;
+
+      // order_items.updated_at defaults to now() on insert and is bumped by a
+      // BEFORE UPDATE trigger, so it covers both new and edited items.
+      const { data: changedItemRows, error: changedItemsError } = await supabase
+        .from("order_items")
+        .select("order_id, updated_at")
+        .eq("org_id", orgId)
+        .gt("updated_at", overlapSince);
+      if (changedItemsError) throw changedItemsError;
+
+      const changedIds = [...new Set([
+        ...(changedOrderRows || []).map((row) => row.id),
+        ...(changedItemRows || []).map((row) => row.order_id),
+      ].filter(Boolean))];
+
+      const changedRows = [];
+      for (const idBatch of chunkIds(changedIds)) {
+        let changedBatchQuery = supabase
+          .from("orders")
+          .select("*")
+          .in("id", idBatch)
+          .eq("org_id", orgId);
+        if (warehouseFilter) {
+          changedBatchQuery = changedBatchQuery.eq("warehouse_id", warehouseFilter);
+        }
+        const { data: batchOrders, error: batchError } = await changedBatchQuery;
+        if (batchError) throw batchError;
+        changedRows.push(...(batchOrders || []));
+      }
+
+      let countQuery = supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId);
+      if (warehouseFilter) {
+        countQuery = countQuery.eq("warehouse_id", warehouseFilter);
+      }
+      const { count: deltaCount, error: countError } = await countQuery;
+      if (countError) throw countError;
+
+      const { ordersWithItems: changedOrders } = await attachOrderItems(changedRows);
+      // Max updated_at over the rows looked at; never behind the incoming cursor.
+      const deltaSyncedAt = maxUpdatedAt([
+        changedSince,
+        ...(changedOrderRows || []).map((row) => row.updated_at),
+        ...(changedItemRows || []).map((row) => row.updated_at),
+      ]);
+      console.log(`[Orders] delta=${changedOrders.length}`);
+      return res.json({ orders: changedOrders, totalCount: deltaCount ?? 0, syncedAt: deltaSyncedAt, delta: true });
+    }
+
     let ordersQuery = supabase
       .from("orders")
       .select("*", { count: "exact" })
@@ -6578,34 +6752,15 @@ app.get("/api/orders", async (req, res) => {
     if (error) throw error;
 
     const allOrders = allData || [];
-    const orderIds = allOrders.map((order) => order.id).filter(Boolean);
-    const itemRows = [];
-    for (const idBatch of chunkIds(orderIds)) {
-      const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
-      if (itemsError) throw itemsError;
-      itemRows.push(...(batchItems || []));
-    }
-    const enrichedItems = await enrichOrderItems(supabase, orgId, itemRows);
-    const itemsByOrder = new Map();
-    for (const item of enrichedItems) {
-      const list = itemsByOrder.get(item.order_id) || [];
-      list.push(item);
-      itemsByOrder.set(item.order_id, list);
-    }
-    const orders = allOrders.map((order) => {
-      const storedItems = itemsByOrder.get(order.id);
-      if (storedItems?.length) return { ...order, items: storedItems };
-
-      const legacyItems = parseLegacyProductLines(order.product, order.quantity).map((line) => ({
-        product_name: line.productName,
-        variant_name: null,
-        quantity: line.quantity,
-      }));
-      return { ...order, items: legacyItems };
-    });
+    const { ordersWithItems: orders, itemsMaxUpdatedAt } = await attachOrderItems(allOrders);
+    // null for an empty workspace: the client then does a full sync next time.
+    const syncedAt = maxUpdatedAt([
+      ...allOrders.map((order) => order.updated_at),
+      itemsMaxUpdatedAt,
+    ]);
 
     console.log(`[Orders] total=${allOrders.length}`);
-    return res.json({ orders, totalCount: count ?? allOrders.length });
+    return res.json({ orders, totalCount: count ?? allOrders.length, syncedAt });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
