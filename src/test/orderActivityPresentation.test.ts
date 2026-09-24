@@ -87,6 +87,77 @@ describe("order activity presentation", () => {
     expect(distinct.listFields).toHaveLength(1);
   });
 
+  it("hides the order discount when added or removed items' own discounts explain it", () => {
+    // ML-151314: honey added at ৳1,600 with ৳600 off; order discount 300 → 900 is just that line discount.
+    const itemOnly = layoutActivityChanges([
+      { type: "field_changed", field: "discount", label: "Order discount", before: 300, after: 900 },
+      { type: "field_changed", field: "price", label: "Order total", before: 950, after: 1950 },
+      { type: "item_added", label: "Honey · 1KG", before: 0, after: 1, amount_delta: 1000, quantity_delta: 1 },
+    ]);
+    expect(itemOnly.fields).toEqual([]);
+    expect(itemOnly.listFields).toEqual([]);
+    expect(itemOnly.items).toHaveLength(1);
+    expect(itemOnly.total?.after).toBe(1950);
+
+    // Staff also changed the whole-order discount: total no longer equals the item delta, so keep it.
+    const alsoOrderDiscount = layoutActivityChanges([
+      { type: "field_changed", field: "discount", label: "Order discount", before: 300, after: 1100 },
+      { type: "field_changed", field: "price", label: "Order total", before: 950, after: 1750 },
+      { type: "item_added", label: "Honey · 1KG", before: 0, after: 1, amount_delta: 1000, quantity_delta: 1 },
+    ]);
+    expect(alsoOrderDiscount.listFields.map((field) => field.field)).toEqual(["discount"]);
+
+    // Other field edits in the same event stay visible.
+    const withDelivery = layoutActivityChanges([
+      { type: "field_changed", field: "discount", label: "Order discount", before: 300, after: 900 },
+      { type: "field_changed", field: "delivery_rate", label: "Delivery", before: 100, after: 120 },
+      { type: "field_changed", field: "price", label: "Order total", before: 950, after: 1950 },
+      { type: "item_added", label: "Honey · 1KG", before: 0, after: 1, amount_delta: 1000, quantity_delta: 1 },
+    ]);
+    expect(withDelivery.listFields.map((field) => field.field)).toEqual(["delivery_rate"]);
+  });
+
+  it("hides a subtotal that only repeats the item changes", () => {
+    const layout = layoutActivityChanges([
+      { type: "field_changed", field: "delivery_rate", label: "Delivery fee", before: 100, after: 0 },
+      { type: "field_changed", field: "subtotal", label: "Subtotal", before: 400, after: 700 },
+      { type: "field_changed", field: "total", label: "Order total", before: 500, after: 700 },
+      { type: "item_added", item_key: "Bori:১ কেজি", label: "Bori · ১ কেজি", before: 0, after: 1, amount_delta: 700 },
+      { type: "item_removed", item_key: "Bori:৫০০ গ্রাম", label: "Bori · ৫০০ গ্রাম", before: 1, after: 0, amount_delta: -400 },
+    ]);
+    expect(layout.listFields.map((field) => field.field)).toEqual(["delivery_rate"]);
+
+    const unexplained = layoutActivityChanges([
+      { type: "field_changed", field: "subtotal", label: "Subtotal", before: 400, after: 900 },
+      { type: "item_added", item_key: "Bori:১ কেজি", label: "Bori · ১ কেজি", before: 0, after: 1, amount_delta: 700 },
+    ]);
+    expect(unexplained.listFields.map((field) => field.field)).toEqual(["subtotal"]);
+  });
+
+  it("merges a same-product size swap into one size change row", () => {
+    const layout = layoutActivityChanges([
+      { type: "field_changed", field: "price", label: "Order total", before: 700, after: 400 },
+      { type: "item_added", item_key: "p1:v500", label: "Pumpkin Bori · ৫০০ গ্রাম", before: 0, after: 1, amount_delta: 400, quantity_delta: 1 },
+      { type: "item_removed", item_key: "p1:v1kg", label: 'Pumpkin Bori · {"size":"১ কেজি"}', before: 1, after: 0, amount_delta: -700, quantity_delta: -1 },
+    ]);
+    expect(layout.items).toHaveLength(1);
+    expect(layout.items[0]).toMatchObject({ type: "item_variant_changed", label: "Pumpkin Bori", before: "১ কেজি", after: "৫০০ গ্রাম", amount_delta: -300, quantity: 1 });
+    expect(itemChangeKind(layout.items[0])).toBe("variant");
+    expect(summarizeItemChanges(layout.items)).toBe("1 changed");
+
+    const differentProducts = layoutActivityChanges([
+      { type: "item_added", item_key: "p2:v1", label: "Honey · ১ কেজি", before: 0, after: 1, amount_delta: 700 },
+      { type: "item_removed", item_key: "p1:v1kg", label: "Pumpkin Bori · ১ কেজি", before: 1, after: 0, amount_delta: -700 },
+    ]);
+    expect(differentProducts.items.map((item) => item.type)).toEqual(["item_added", "item_removed"]);
+
+    const differentQuantity = layoutActivityChanges([
+      { type: "item_added", item_key: "p1:v500", label: "Pumpkin Bori · ৫০০ গ্রাম", before: 0, after: 2, amount_delta: 800 },
+      { type: "item_removed", item_key: "p1:v1kg", label: "Pumpkin Bori · ১ কেজি", before: 1, after: 0, amount_delta: -700 },
+    ]);
+    expect(differentQuantity.items).toHaveLength(2);
+  });
+
   it("summarizes item changes and formats taka values", () => {
     expect(summarizeItemChanges([
       { type: "item_added", before: 0, after: 1 },

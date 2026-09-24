@@ -163,20 +163,18 @@ describe("OrderActivityTimeline", () => {
 
     const row = await screen.findByTestId("activity-event");
     const summary = within(row).getByTestId("activity-items-summary");
-    expect(summary).toHaveTextContent("1 added · 1 removed");
+    expect(summary).toHaveTextContent("1 changed");
     expect(summary).toHaveTextContent("Total ৳700 → ৳400");
     expect(summary).toHaveTextContent("−৳300");
 
     const items = within(row).getAllByTestId("activity-item-change");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("+ Added");
-    expect(items[0]).toHaveTextContent("Pumpkin Bori · ৫০০ গ্রাম");
+    // Same product, same quantity, different size: one "Size changed" row.
+    expect(items).toHaveLength(1);
+    expect(items[0]).toHaveTextContent("↔ Size changed");
+    expect(items[0]).toHaveTextContent("Pumpkin Bori · ১ কেজি → ৫০০ গ্রাম");
     expect(items[0]).toHaveTextContent("×1");
     expect(items[0]).toHaveTextContent("Upsell");
-    expect(items[0]).toHaveTextContent("+৳200");
-    expect(items[1]).toHaveTextContent("− Removed");
-    expect(items[1]).toHaveTextContent("Pumpkin Bori · ১ কেজি");
-    expect(items[1]).toHaveTextContent("−৳500");
+    expect(items[0]).toHaveTextContent("−৳300");
     expect(row).not.toHaveTextContent('{"size"');
 
     const field = within(row).getByTestId("activity-field-change");

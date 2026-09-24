@@ -176,7 +176,7 @@ export function AppSidebar() {
     return (
         <Sidebar collapsible="icon" className="border-r-0 bg-[#dedede]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
             {/* ── Brand header: logo tile + shop name ─────── */}
-            <SidebarHeader className={cn("px-2", isCollapsed ? "items-center py-2" : "py-2.5")}>
+            <SidebarHeader className={cn("h-[44px] justify-center px-2 py-0", isCollapsed && "items-center")}>
                 <div data-testid="sidebar-brand" className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-2 px-1")}>
                     {isCollapsed ? (
                         <button
@@ -186,15 +186,15 @@ export function AppSidebar() {
                             title="Expand sidebar"
                             className="rounded-[6px] outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-black/20"
                         >
-                            <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 items-center justify-center rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
-                                <Logo className="h-[16px] w-auto" />
+                            <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+                                <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
                             </span>
                         </button>
                     ) : (
                         <>
                             <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-[6px] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/20">
-                                <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
-                                    <Logo className="h-[16px] w-auto" />
+                                <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+                                    <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
                                 </span>
                                 <span className="min-w-0">
                                     {orgLoading ? (
