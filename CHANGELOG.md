@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.35] - 2026-09-24
+
+### Fixed
+
+- Keep the Packing Summary print document available while the browser preview or PDF save is open; clear the prior document when a new print job starts.
+
 ## [0.1.0.34] - 2026-09-23
 
 ### Added

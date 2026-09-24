@@ -210,7 +210,10 @@ export function buildPackingSummaryHtml(
     </html>`;
 }
 
+let previousPackingSummaryFrame: HTMLIFrameElement | null = null;
+
 export function printPackingSummary(orders: PackingSummaryOrder[], businessName?: string) {
+  previousPackingSummaryFrame?.remove();
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -220,11 +223,13 @@ export function printPackingSummary(orders: PackingSummaryOrder[], businessName?
   iframe.style.border = "none";
   iframe.setAttribute("title", "Packing summary print frame");
   document.body.appendChild(iframe);
+  previousPackingSummaryFrame = iframe;
 
   const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
   const iframeWindow = iframe.contentWindow;
   const removeIframe = () => {
     if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    if (previousPackingSummaryFrame === iframe) previousPackingSummaryFrame = null;
   };
 
   if (!iframeDoc || !iframeWindow || typeof iframeWindow.print !== "function") {
@@ -242,8 +247,12 @@ export function printPackingSummary(orders: PackingSummaryOrder[], businessName?
   }
 
   window.setTimeout(() => {
-    iframeWindow.focus();
-    iframeWindow.print();
-    window.setTimeout(removeIframe, 5000);
+    try {
+      iframeWindow.focus();
+      iframeWindow.print();
+    } catch (error) {
+      removeIframe();
+      console.error("Packing summary printing failed:", error);
+    }
   }, 150);
 }
