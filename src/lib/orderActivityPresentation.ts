@@ -4,12 +4,14 @@ import { normalizeBusinessStatus } from "@/lib/orderTransitions";
 
 export type ActivityChipColor = "lime" | "rose" | "yellow" | "cyan" | "blue" | "purple" | "neutral";
 
-export type ItemChangeKind = "added" | "removed" | "increased" | "decreased" | "discount" | "other";
+export type ItemChangeKind = "added" | "removed" | "increased" | "decreased" | "discount" | "variant" | "other";
 
 export type ActivityChangeInput = OrderActivityChange & {
   item_key?: string;
   quantity_delta?: number;
   amount_delta?: number;
+  /** Set on merged size-change rows: units swapped from one variant to another. */
+  quantity?: number;
 };
 
 export type GroupedActivityChanges = {
@@ -99,6 +101,7 @@ export function itemChangeKind(change: ActivityChangeInput): ItemChangeKind {
     case "item_quantity_increased": return "increased";
     case "item_quantity_decreased": return "decreased";
     case "item_discount_changed": return "discount";
+    case "item_variant_changed": return "variant";
   }
   const before = Number(change.before);
   const after = Number(change.after);
@@ -169,12 +172,94 @@ function discountIsReflectedInTotal(
     && totalDelta === -discountDelta;
 }
 
+// The stored order discount is the sum of every line's discount, so adding a
+// discounted item moves it even though nobody touched the whole-order
+// discount. When the total moved by exactly the items' net amounts, the
+// discount change is already inside those item rows and only confuses.
+function discountIsExplainedByItems(total: ActivityChangeInput | undefined, items: ActivityChangeInput[]): boolean {
+  if (!total || items.length === 0) return false;
+  const totalDelta = changeDeltaInCents(total);
+  if (totalDelta === null) return false;
+  return itemDeltaInCents(items) === totalDelta;
+}
+
+function itemDeltaInCents(items: ActivityChangeInput[]): number | null {
+  let sum = 0;
+  for (const item of items) {
+    const amount = Number(item.amount_delta);
+    if (item.amount_delta === undefined || item.amount_delta === null || !Number.isFinite(amount)) return null;
+    sum += Math.round(amount * 100);
+  }
+  return sum;
+}
+
+// An abandoned-checkout subtotal is just the item lines added up.
+function subtotalIsExplainedByItems(fields: ActivityChangeInput[], items: ActivityChangeInput[]): boolean {
+  const subtotal = fields.find((field) => field.field === "subtotal");
+  if (!subtotal || items.length === 0) return false;
+  const delta = changeDeltaInCents(subtotal);
+  return delta !== null && delta === itemDeltaInCents(items);
+}
+
+// Item keys are "<product>:<variant>"; the product part identifies a size swap.
+function productPart(key: string | undefined): string | null {
+  if (!key) return null;
+  const split = key.lastIndexOf(":");
+  return split > 0 ? key.slice(0, split) : null;
+}
+
+function splitItemLabel(label: string | undefined): { base: string; variant: string } {
+  const clean = cleanActivityItemLabel(label);
+  const split = clean.lastIndexOf(" · ");
+  return split > 0 ? { base: clean.slice(0, split), variant: clean.slice(split + 3) } : { base: clean, variant: "" };
+}
+
+// Staff change a size by removing one variant and adding another of the same
+// product in the same quantity; show that as one "size changed" row.
+function mergeVariantSwaps(items: ActivityChangeInput[]): ActivityChangeInput[] {
+  const used = new Set<number>();
+  const merged: ActivityChangeInput[] = [];
+  items.forEach((removed, removedIndex) => {
+    if (used.has(removedIndex) || itemChangeKind(removed) !== "removed") return;
+    const product = productPart(removed.item_key);
+    if (!product) return;
+    const addedIndex = items.findIndex((added, index) => !used.has(index)
+      && index !== removedIndex
+      && itemChangeKind(added) === "added"
+      && productPart(added.item_key) === product
+      && added.item_key !== removed.item_key
+      && Number(added.after) === Number(removed.before));
+    if (addedIndex === -1) return;
+    const added = items[addedIndex];
+    const from = splitItemLabel(removed.label);
+    const to = splitItemLabel(added.label);
+    if (!from.variant || !to.variant) return;
+    used.add(removedIndex);
+    used.add(addedIndex);
+    merged.push({
+      type: "item_variant_changed",
+      item_key: added.item_key,
+      label: to.base || from.base,
+      before: from.variant,
+      after: to.variant,
+      quantity: Number(added.after),
+      amount_delta: (Number(added.amount_delta) || 0) + (Number(removed.amount_delta) || 0),
+      addition_reason: added.addition_reason,
+    });
+  });
+  return [...merged, ...items.filter((_, index) => !used.has(index))];
+}
+
 // Field edits sit inline on their own; alongside a status or item summary they move to the list below.
 export function layoutActivityChanges(changes: ActivityChangeInput[] = []): ActivityChangeLayout {
   const grouped = groupActivityChanges(changes);
-  const fields = discountIsReflectedInTotal(grouped.total, grouped.items, grouped.fields)
+  let fields = discountIsReflectedInTotal(grouped.total, grouped.items, grouped.fields)
     ? []
-    : grouped.fields;
+    : discountIsExplainedByItems(grouped.total, grouped.items)
+      ? grouped.fields.filter((field) => field.field !== "discount")
+      : grouped.fields;
+  if (subtotalIsExplainedByItems(fields, grouped.items)) fields = fields.filter((field) => field.field !== "subtotal");
+  grouped.items = mergeVariantSwaps(grouped.items);
   const hasHeadline = Boolean(grouped.status || grouped.total || grouped.items.length);
   return {
     ...grouped,

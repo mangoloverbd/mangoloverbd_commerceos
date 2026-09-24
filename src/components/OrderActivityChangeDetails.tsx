@@ -23,6 +23,7 @@ const ITEM_CHIP_COLOR: Record<ItemChangeKind, ActivityChipColor> = {
   increased: "yellow",
   decreased: "yellow",
   discount: "purple",
+  variant: "cyan",
   other: "neutral",
 };
 
@@ -33,6 +34,7 @@ function itemChipText(change: ActivityChangeInput, kind: ItemChangeKind): string
     case "increased": return `↑ Qty ${change.before} → ${change.after}`;
     case "decreased": return `↓ Qty ${change.before} → ${change.after}`;
     case "discount": return `Discount ${formatTaka(Number(change.before))} → ${formatTaka(Number(change.after))}`;
+    case "variant": return "↔ Size changed";
     default: return "Changed";
   }
 }
@@ -40,6 +42,7 @@ function itemChipText(change: ActivityChangeInput, kind: ItemChangeKind): string
 function itemQuantity(change: ActivityChangeInput, kind: ItemChangeKind): number | null {
   if (kind === "added") return Number(change.after) || null;
   if (kind === "removed") return Number(change.before) || null;
+  if (kind === "variant") return Number(change.quantity) || null;
   return null;
 }
 
@@ -146,7 +149,9 @@ export function OrderActivityChangeList({ layout }: { layout: ActivityChangeLayo
                     kind === "removed" ? "text-black/50 line-through decoration-black/25" : "text-black/85",
                   )}
                 >
-                  {cleanActivityItemLabel(change.label)}
+                  {kind === "variant"
+                    ? `${change.label} · ${String(change.before)} → ${String(change.after)}`
+                    : cleanActivityItemLabel(change.label)}
                 </span>
                 {quantity !== null && <span className="shrink-0 tabular-nums text-black/50">×{quantity}</span>}
                 {change.addition_reason && (
