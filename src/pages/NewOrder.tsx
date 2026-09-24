@@ -28,7 +28,7 @@ import { CartDiscountEditor } from "@/components/order-editor/CartDiscountEditor
 import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
 import { useFraudCheckMutation } from "@/hooks/useFraudCheck";
-import { normalizeBdPhone } from "@/lib/bdPhone";
+import { normalizeBdMobileInput } from "@/lib/bdPhone";
 import { StaffSelect } from "@/components/order-editor/StaffSelect";
 import { useAuth } from "@/hooks/useAuth";
 import type { OrderSource } from "@/lib/orderSource";
@@ -175,7 +175,7 @@ export default function NewOrder() {
     setMatchedCustomerPhone(null);
   }
 
-  const normalizedPhone = normalizeBdPhone(phone);
+  const normalizedPhone = normalizeBdMobileInput(phone);
   const customerLookup = useQuery<CustomerLookupResponse>({
     queryKey: ["/api/customers/lookup", normalizedPhone],
     enabled: Boolean(normalizedPhone),
@@ -239,6 +239,10 @@ export default function NewOrder() {
       toast.error("Phone number is required");
       return;
     }
+    if (!normalizedPhone) {
+      toast.error("Enter a mobile number in English digits, like 01712345678 or +8801712345678");
+      return;
+    }
     if (!customerName.trim()) {
       toast.error("Add a customer name");
       return;
@@ -268,7 +272,7 @@ export default function NewOrder() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_name: customerName.trim(),
-          phone: phone.trim(),
+          phone: normalizedPhone,
           address: address.trim(),
           product: lines.map((line) => line.product_name || "Product").join(", "),
           quantity: totals.quantity,

@@ -44,13 +44,13 @@ describe("useLiveVisitors", () => {
     expect(result.current.details).toEqual({ activeCarts: 0, checkingOut: 0, purchased: 0 });
   });
 
-  it("polls every 5 seconds and clears the interval on unmount", () => {
+  it("polls every 30 seconds and clears the interval on unmount", () => {
     mockApiFetch.mockResolvedValue(jsonResponse({ count: 0, details: {} }));
     const intervalSpy = vi.spyOn(window, "setInterval");
     const clearSpy = vi.spyOn(window, "clearInterval");
 
     const { unmount } = renderHook(() => useLiveVisitors());
-    expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
+    expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 30000);
 
     unmount();
     expect(clearSpy).toHaveBeenCalled();

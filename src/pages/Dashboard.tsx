@@ -2,10 +2,12 @@ import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { OrdersSyncError, syncOrders } from "@/lib/ordersSync";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useLiveVisitors } from "@/hooks/useLiveVisitors";
+import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
@@ -206,6 +208,28 @@ function cachedSnapshotFor(range?: DateRange | null, userId?: string) {
   return analyticsSnapshot?.userId === userId && analyticsSnapshot.rangeKey === key
     ? analyticsSnapshot
     : null;
+}
+
+const COURIER_REFRESH_MIN_INTERVAL_MS = 10 * 60 * 1000;
+
+// Courier status refreshes are expensive upstream calls; run them at most
+// once per 10 minutes per tab session. Storage failures fall back to running.
+function courierRefreshRanRecently(storageKey: string): boolean {
+  try {
+    const lastRun = Number(sessionStorage.getItem(storageKey));
+    return Boolean(lastRun) && Date.now() - lastRun < COURIER_REFRESH_MIN_INTERVAL_MS;
+  } catch {
+    // sessionStorage unavailable (private mode / blocked) — refresh anyway.
+    return false;
+  }
+}
+
+function markCourierRefreshRan(storageKey: string): void {
+  try {
+    sessionStorage.setItem(storageKey, String(Date.now()));
+  } catch {
+    // sessionStorage unavailable — next mount simply refreshes again.
+  }
 }
 
 
@@ -533,7 +557,9 @@ export default function Dashboard() {
   const liveVisitors = useLiveVisitors();
   const isMobile = useIsMobile();
 
-  const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false) => {
+  // `fresh` bypasses the server's short analytics cache for the selected range
+  // (user-triggered refreshes); the previous-period call stays cached.
+  const fetchAnalytics = useCallback(async (range?: DateRange | null, silent = false, fresh = false) => {
     if (!silent) setAnalyticsLoading(true);
     try {
       const buildParams = (r?: DateRange | null) => {
@@ -542,9 +568,11 @@ export default function Dashboard() {
         if (r?.to)   p.set("until", toYMD(r.to));
         return p;
       };
+      const mainParams = buildParams(range);
+      if (fresh) mainParams.set("fresh", "1");
       const prev = prevRangeOf(range);
       const [res, prevRes] = await Promise.all([
-        apiFetch(`/api/analytics?${buildParams(range)}`, { cache: "no-store" }),
+        apiFetch(`/api/analytics?${mainParams}`, { cache: "no-store" }),
         prev ? apiFetch(`/api/analytics?${buildParams(prev)}`, { cache: "no-store" }) : Promise.resolve(null),
       ]);
       const data = await res.json();
@@ -581,25 +609,12 @@ export default function Dashboard() {
   }, [user?.id]);
 
   // Hoisted to useCallback so effects can reference it without stale closures
-  const fetchOrders = useCallback(async () => {
+  // Polls sync by delta; pass { full: true } after actions that change many orders.
+  const fetchOrders = useCallback(async (opts: { full?: boolean } = {}) => {
     try {
-      const res = await apiFetch("/api/orders");
-      // A 401 here means the token was invalid (apiFetch already retried a
-      // refresh once). Revalidate /api/me so role/org recover, and skip the
-      // error toast — the next poll/refetch will load normally.
-      if (res.status === 401) {
-        void queryClient.invalidateQueries({ queryKey: ["/api/me"] });
-        setLoading(false);
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to load orders");
-      const data = await res.json();
-      const nextOrders = (data.orders as Order[]) || [];
-      const nextTotalOrdersCount = typeof data.totalCount === "number" && Number.isFinite(data.totalCount)
-        ? data.totalCount
-        : nextOrders.length;
-      queryClient.setQueryData(["/api/orders"], nextOrders);
-      queryClient.setQueryData(["/api/orders/count"], nextTotalOrdersCount);
+      // syncOrders writes ["/api/orders"] and ["/api/orders/count"].
+      const nextOrders = await syncOrders<Order>(queryClient, opts);
+      const nextTotalOrdersCount = queryClient.getQueryData<number>(["/api/orders/count"]) ?? nextOrders.length;
       setOrders(nextOrders);
       setTotalOrdersCount(nextTotalOrdersCount);
       // Warm the product catalog cache in the background so the order
@@ -614,7 +629,14 @@ export default function Dashboard() {
           return productsJson;
         },
       });
-    } catch {
+    } catch (err) {
+      // A 401 here means the token was invalid (apiFetch already retried a
+      // refresh once). Revalidate /api/me so role/org recover, and skip the
+      // error toast — the next poll/refetch will load normally.
+      if (err instanceof OrdersSyncError && err.status === 401) {
+        void queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+        return;
+      }
       toast.custom(() => (
         <DarkToast className="flex items-center gap-3">
           <div className="flex h-9 w-9 rounded-lg bg-red-500/15 items-center justify-center shrink-0">
@@ -691,7 +713,7 @@ export default function Dashboard() {
     void fetchAnalytics(dateRange, Boolean(cached));
   }, [dateRange, fetchAnalytics, roleLoading, user?.id]);
 
-  // Auto-sync on mount, then poll orders every 30 s.
+  // Auto-sync on mount, then poll orders every 60 s (paused while hidden).
   // The Shopify sync is throttled to once per session per user via sessionStorage
   // so HMR hot-reloads and navigation back to the dashboard don't re-trigger it.
   useEffect(() => {
@@ -704,13 +726,25 @@ export default function Dashboard() {
       // Load orders from DB immediately — don't wait for Shopify sync
       fetchOrders();
 
-      // Refresh Pathao and Steadfast courier statuses in background
-      apiFetch("/api/pathao/refresh-status", { method: "POST" })
-        .then(() => fetchOrders())
-        .catch(() => {});
-      apiFetch("/api/steadfast/refresh-status", { method: "POST" })
-        .then(() => fetchOrders())
-        .catch(() => {});
+      // Refresh Pathao and Steadfast courier statuses in background, at most
+      // once per 10 minutes per browser tab session. The timestamp is only
+      // recorded when both refreshes succeed, so failures retry on next mount.
+      const courierRefreshKey = `courier_refresh_at_${user.id}`;
+      if (!courierRefreshRanRecently(courierRefreshKey)) {
+        const refreshCourier = (path: string) =>
+          apiFetch(path, { method: "POST" })
+            .then((res) => {
+              fetchOrders({ full: true });
+              return res.ok;
+            })
+            .catch(() => false);
+        void Promise.all([
+          refreshCourier("/api/pathao/refresh-status"),
+          refreshCourier("/api/steadfast/refresh-status"),
+        ]).then((results) => {
+          if (results.every(Boolean)) markCourierRefreshRan(courierRefreshKey);
+        });
+      }
 
       // Sync Shopify in the background without blocking the UI
       if (!alreadySynced) {
@@ -719,8 +753,8 @@ export default function Dashboard() {
           await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
           sessionStorage.setItem(syncKey, "1");
           // Refresh orders after sync completes
-          fetchOrders();
-          fetchAnalytics(todayRange, true);
+          fetchOrders({ full: true });
+          fetchAnalytics(todayRange, true, true);
         } catch { /* ignore */ }
         finally {
           setAutoSyncing(false);
@@ -728,25 +762,22 @@ export default function Dashboard() {
       }
     };
     runAutoSync();
-    const intervalId = setInterval(() => fetchOrders(), 30000);
-    return () => clearInterval(intervalId);
   }, [user?.id, roleLoading, fetchOrders, fetchAnalytics, todayRange]);
+
+  useVisibleInterval(() => fetchOrders(), 60000, Boolean(user?.id) && !roleLoading);
 
   // Checkout drafts are intentionally fetched and cached independently from
   // real orders so recovery work never changes fulfillment counts or P&L.
   useEffect(() => {
     if (!user?.id || roleLoading) return;
     void fetchAbandonedCheckouts();
-    const intervalId = setInterval(() => void fetchAbandonedCheckouts(true), 30000);
-    return () => clearInterval(intervalId);
   }, [fetchAbandonedCheckouts, roleLoading, user?.id]);
+
+  useVisibleInterval(() => void fetchAbandonedCheckouts(true), 60000, Boolean(user?.id) && !roleLoading);
 
   // Silent analytics tick keeps the selected range's metric values and mini
   // bars current without flashing the skeleton loader.
-  useEffect(() => {
-    const id = setInterval(() => fetchAnalytics(dateRange, true), 30000);
-    return () => clearInterval(id);
-  }, [dateRange, fetchAnalytics]);
+  useVisibleInterval(() => fetchAnalytics(dateRange, true), 60000);
 
   const applyBulkStatus = async (target: string, targetLabel: string) => {
     if (bulkUpdating) return;
@@ -806,7 +837,7 @@ export default function Dashboard() {
         oldOrder.quantity !== updatedOrder.quantity
       );
       if (needsAnalyticsRefresh) {
-        fetchAnalytics(dateRange);
+        fetchAnalytics(dateRange, false, true);
       }
       const next = prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o));
       queryClient.setQueryData(["/api/orders"], next);

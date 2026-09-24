@@ -278,7 +278,7 @@ describe("OrderActivityTimeline", () => {
     expect(within(row).queryByTestId("activity-status-change")).not.toBeInTheDocument();
   });
 
-  it("polls for new activity every two seconds in the full variant", async () => {
+  it("polls for new activity every ten seconds in the full variant", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       renderTimeline([detailedEvent], "full");
@@ -286,7 +286,9 @@ describe("OrderActivityTimeline", () => {
       const callsAfterLoad = apiFetch.mock.calls.length;
 
       await vi.advanceTimersByTimeAsync(2_100);
+      expect(apiFetch.mock.calls.length).toBe(callsAfterLoad);
 
+      await vi.advanceTimersByTimeAsync(8_000);
       expect(apiFetch.mock.calls.length).toBeGreaterThan(callsAfterLoad);
     } finally {
       vi.useRealTimers();

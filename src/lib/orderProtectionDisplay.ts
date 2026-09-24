@@ -43,6 +43,24 @@ export function formatProtectionItem(item: ProtectionItemLike) {
   return normalized.unitPrice === null ? label : `${label} · ${formatTaka(normalized.unitPrice)}`;
 }
 
+export function formatProtectionItemLabel(item: ProtectionItemLike) {
+  const normalized = normalizeProtectionItem(item);
+  return `${normalized.productName}${normalized.variantName ? ` — ${normalized.variantName}` : ""} × ${normalized.quantity}`;
+}
+
+export function formatProtectionLinePrice(item: ProtectionItemLike) {
+  const normalized = normalizeProtectionItem(item);
+  return normalized.unitPrice === null ? null : formatTaka(normalized.unitPrice * normalized.quantity);
+}
+
+// Known signal codes arrive with labels from the server; older codes are tidied.
+export function protectionReasonLabel(code: string, labels?: Record<string, string>) {
+  const label = labels?.[code];
+  if (label) return label;
+  const words = code.replace(/_/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : code;
+}
+
 export function calculateProtectionTotal(items: ProtectionItemLike[]) {
   const normalizedItems = items.map(normalizeProtectionItem);
   if (normalizedItems.length === 0 || normalizedItems.some((item) => item.unitPrice === null)) return null;

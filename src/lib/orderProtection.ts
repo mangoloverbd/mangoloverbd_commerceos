@@ -13,6 +13,7 @@ export type ProtectionReview = {
   notes?: string | null;
   score: number;
   reason_codes: string[];
+  reason_labels?: Record<string, string>;
   created_at: string;
   updated_at?: string;
   expires_at: string;

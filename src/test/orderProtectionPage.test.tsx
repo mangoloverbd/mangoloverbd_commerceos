@@ -20,7 +20,8 @@ describe("order protection dashboard", () => {
       id: "review-1",
       status: "on_hold",
       score: 65,
-      reason_codes: ["phone_velocity_15m", "phone_network_change"],
+      reason_codes: ["address_incomplete", "phone_network_change"],
+      reason_labels: { address_incomplete: "Incomplete address" },
       customer_name: "Rahim Uddin",
       phone: "01712345678",
       address: "House 1, Dhanmondi, Dhaka",
@@ -41,14 +42,28 @@ describe("order protection dashboard", () => {
     expect(screen.getByText("On hold")).toBeInTheDocument();
     expect(screen.getByText("Storefront checkout")).toBeInTheDocument();
     expect(screen.getByText("65")).toBeInTheDocument();
-    expect(screen.getByText("Katimon Mango — 6KG × 2 · ৳1,180")).toBeInTheDocument();
-    expect(screen.getByText("Honey × 1 · ৳800")).toBeInTheDocument();
-    expect(screen.getByTestId("protection-product-review-1-0")).toHaveClass("bg-background-secondary-default", "max-w-full");
-    expect(screen.getByText("phone_velocity_15m")).toBeInTheDocument();
-    expect(screen.getByText("phone_network_change")).toBeInTheDocument();
+    // Each order is its own card: header total, one line per product with its
+    // line price, and plain-language reasons.
+    const card = screen.getByTestId("checkbox-protection-review-1").closest("article");
+    expect(card).toHaveClass("bg-white");
+    expect(screen.getByTestId("protection-total-review-1")).toHaveTextContent("৳3,160");
+    expect(screen.getByTestId("protection-product-review-1-0")).toHaveTextContent("Katimon Mango — 6KG × 2");
+    expect(screen.getByTestId("protection-product-review-1-0")).toHaveTextContent("৳2,360");
+    expect(screen.getByTestId("protection-product-review-1-1")).toHaveTextContent("Honey × 1");
+    expect(screen.getByTestId("protection-product-review-1-1")).toHaveTextContent("৳800");
+    expect(screen.getByText("Why held")).toBeInTheDocument();
+    expect(screen.getByText("Incomplete address")).toBeInTheDocument();
+    expect(screen.getByText("Phone network change")).toBeInTheDocument();
+    expect(screen.queryByText("address_incomplete")).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Select all reviews" })).toBeInTheDocument();
     expect(screen.getByTestId("checkbox-protection-all").parentElement).toHaveClass("px-2", "sm:px-3");
-    expect(screen.getByTestId("checkbox-protection-review-1").closest("article")).toHaveClass("gap-2", "px-2", "sm:px-3", "bg-[#f5f5f5]");
+    // Contact tools and decisions live in a footer, with Accept last.
+    const contact = screen.getByTestId("protection-contact-actions-review-1");
+    const decisions = screen.getByTestId("protection-decision-actions-review-1");
+    expect(contact).toContainElement(screen.getByRole("link", { name: /call 01712345678/i }));
+    expect(contact).toContainElement(screen.getByRole("button", { name: /contact status: awaiting contact/i }));
+    expect(decisions.lastElementChild).toHaveAccessibleName(/approve order for rahim uddin/i);
+    expect(screen.getByRole("button", { name: /copy review summary/i })).toHaveTextContent("Copy summary");
     expect(screen.getByTestId("risk-reasons-review-1")).toHaveClass("flex-wrap");
     expect(screen.getByTestId("risk-reasons-review-1")).not.toHaveClass("flex-nowrap", "overflow-x-auto");
     expect(screen.getByRole("link", { name: /call 01712345678/i })).toBeInTheDocument();
