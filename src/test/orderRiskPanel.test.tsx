@@ -89,6 +89,13 @@ describe("OrderRiskPanel", () => {
     expect(await screen.findByText("103.12.44.x · full IP not saved")).toBeInTheDocument();
   });
 
+  it("explains why an order made from an abandoned checkout has no risk check", async () => {
+    fetchOrderRisk.mockResolvedValue({ attempt: null, no_check_reason: "abandoned_checkout" });
+    renderPanel();
+    expect(await screen.findByText("No risk check for this order")).toBeInTheDocument();
+    expect(screen.getByText(/created by staff from an abandoned checkout/)).toBeInTheDocument();
+  });
+
   it("explains when no assessment was recorded", async () => {
     fetchOrderRisk.mockResolvedValue({ attempt: null });
     renderPanel();

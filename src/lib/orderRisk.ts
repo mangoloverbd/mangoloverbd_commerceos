@@ -57,7 +57,7 @@ export async function fetchRiskAttempt(id: string) {
   return read<{ attempt: RiskAttempt; related: RiskAttempt[]; review: unknown; order: { id: string; order_number: string } | null }>(await apiFetch(`/api/order-protection/attempts/${encodeURIComponent(id)}`));
 }
 export async function fetchOrderRisk(id: string) {
-  return read<{ attempt: RiskAttempt | null }>(await apiFetch(`/api/orders/${encodeURIComponent(id)}/risk`));
+  return read<{ attempt: RiskAttempt | null; no_check_reason?: "abandoned_checkout" | null }>(await apiFetch(`/api/orders/${encodeURIComponent(id)}/risk`));
 }
 export async function fetchRiskLists(list: "block" | "allow") {
   return read<{ entries: RiskListEntry[] }>(await apiFetch(`/api/order-protection/lists?list=${list}`));
