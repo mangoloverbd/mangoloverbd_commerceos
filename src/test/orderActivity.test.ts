@@ -16,6 +16,14 @@ describe("detailed order activity", () => {
     expect(() => validateCancellationReason({ code: "invented", note: "x" })).toThrow("Invalid cancellation reason");
   });
 
+  it("accepts Zone change as a cancellation reason on both client and server", async () => {
+    const { CANCELLATION_REASON_OPTIONS } = await import("@/lib/orderActivity");
+    const { CANCELLATION_REASON_CODES } = await import("../../server/orderActivity.js");
+    expect(CANCELLATION_REASON_OPTIONS).toContainEqual({ value: "zone_change", label: "Zone change" });
+    expect(CANCELLATION_REASON_OPTIONS.map((option) => option.value)).toEqual([...CANCELLATION_REASON_CODES]);
+    expect(validateCancellationReason({ code: "zone_change", note: "" })).toEqual({ code: "zone_change", note: null });
+  });
+
   it("uses stable thirty-minute UTC buckets for meaningful views", () => {
     expect(meaningfulViewBucket("2026-09-22T10:01:00.000Z")).toBe("2026-09-22T10:00:00.000Z");
     expect(meaningfulViewBucket("2026-09-22T10:29:59.999Z")).toBe("2026-09-22T10:00:00.000Z");

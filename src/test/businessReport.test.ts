@@ -382,3 +382,10 @@ describe("buildBusinessReport", () => {
     expect(report.series.buckets.at(-1)?.key).toBe("2026-09-18");
   });
 });
+
+describe("business report upsell source", () => {
+  it("keeps Upsell orders as their own source", async () => {
+    const { normalizeBusinessReportSource } = await import("../../server/businessReport.js");
+    expect(normalizeBusinessReportSource("upsell")).toBe("upsell");
+  });
+});
