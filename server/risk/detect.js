@@ -40,7 +40,7 @@ export function detectSignals(ctx, facts, config = {}) {
     if (courier.totalParcels === 0) add("courier_no_history", "No courier parcel history was found");
     if (courier.totalParcels >= THRESHOLDS.courierStrongMinParcels && courier.successRate >= THRESHOLDS.courierStrongRate) add("courier_strong_history", `Courier delivery success is ${courier.successRate}% across ${courier.totalParcels} parcels`);
   }
-  if (!location.hasPlaceMarker || !location.hasArea) add("address_incomplete", "The address needs a clearer place marker or area");
+  if (!location.hasLocality && (!location.hasPlaceMarker || !location.hasArea)) add("address_incomplete", "The address needs a clearer place marker or area");
   if (districts.includes(location.districtId)) add("hater_region_address", `The address names ${location.districtName} district`);
   // Mobile-carrier IP geolocation in Bangladesh is unreliable (carrier NAT), so
   // only fixed broadband locations count as network location evidence.
