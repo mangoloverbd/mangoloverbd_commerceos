@@ -274,7 +274,7 @@ export function DateChipInput({
         if (event.key === "Escape") setText(formatted);
       }}
       aria-label={label}
-      className="w-[88px] rounded-lg border border-border-button-default bg-background-primary-default px-2 py-1.5 text-caption-1-medium text-text-primary shadow-xs outline-none transition-colors duration-100 ease-out focus-visible:border-border-button-active"
+      className="w-[100px] rounded-lg border border-border-button-default bg-background-primary-default px-2 py-1.5 text-center text-caption-1-medium tabular-nums text-text-primary shadow-xs outline-none transition-colors duration-100 ease-out focus-visible:border-border-button-active"
     />
   );
 }

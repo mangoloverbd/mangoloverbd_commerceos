@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { OrdersSyncError, syncOrders } from "@/lib/ordersSync";
 import { useAuth } from "@/hooks/useAuth";
@@ -63,6 +63,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { DATE_FILTER_TABS, filterOrdersByDateRange, orderDateRangeBounds } from "@/lib/orderDateFilter";
 import PixelRipple from "@/components/ui/pixel-ripple";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
@@ -480,6 +481,11 @@ const FinanceMetric = memo(function FinanceMetric({
   );
 });
 
+// Module-level so useQueries keeps the combined array stable between renders.
+function rangeOrdersDataOf(results: UseQueryResult<Order[]>[]) {
+  return results.map((result) => result.data);
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -614,6 +620,7 @@ export default function Dashboard() {
     try {
       // syncOrders writes ["/api/orders"] and ["/api/orders/count"].
       const nextOrders = await syncOrders<Order>(queryClient, opts);
+      if (opts.full) void queryClient.invalidateQueries({ queryKey: ["/api/orders?created-range"] });
       const nextTotalOrdersCount = queryClient.getQueryData<number>(["/api/orders/count"]) ?? nextOrders.length;
       setOrders(nextOrders);
       setTotalOrdersCount(nextTotalOrdersCount);
@@ -819,7 +826,13 @@ export default function Dashboard() {
     }
   };
 
+  // Older orders may live only in a date-range list, so edits patch those caches too.
+  const patchRangeOrders = (patch: (order: Order) => Order) => {
+    queryClient.setQueriesData<Order[]>({ queryKey: ["/api/orders?created-range"] }, (prev) => prev?.map(patch));
+  };
+
   const handleStatusUpdate = (orderId: string, newStatus: string) => {
+    patchRangeOrders((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
     setOrders((prev) => {
       const next = prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
       queryClient.setQueryData(["/api/orders"], next);
@@ -828,6 +841,7 @@ export default function Dashboard() {
   };
 
   const handleOrderUpdate = (updatedOrder: Order) => {
+    patchRangeOrders((o) => (o.id === updatedOrder.id ? updatedOrder : o));
     setOrders((prev) => {
       const oldOrder = prev.find((o) => o.id === updatedOrder.id);
       // Only refresh analytics if fields that affect revenue/costs changed
@@ -1047,21 +1061,63 @@ export default function Dashboard() {
   const isAbandonedQueue = fulfillmentTab === "abandoned";
   const activeOrderStatusFilter: OrderStatusFilter = isAbandonedQueue ? "all" : fulfillmentTab;
   const [districtFilter, setDistrictFilter] = useState("all");
+  // Each of the Processing and Delivered tabs keeps its own order-date range; both clear when leaving them.
+  const [ordersDateRanges, setOrdersDateRanges] = useState<Partial<Record<OrderStatusFilter, DateRange | null>>>({});
+  const showOrdersDateFilter = DATE_FILTER_TABS.includes(activeOrderStatusFilter);
+  const ordersDateRange = showOrdersDateFilter ? ordersDateRanges[activeOrderStatusFilter] ?? null : null;
+  // The dashboard list is capped server-side, so each picked range is loaded on its own.
+  const rangeOrdersData = useQueries({
+    queries: DATE_FILTER_TABS.map((tab) => orderDateRangeBounds(ordersDateRanges[tab])).map((bounds) => ({
+      queryKey: ["/api/orders?created-range", bounds?.from, bounds?.to],
+      enabled: Boolean(bounds),
+      staleTime: 30_000,
+      queryFn: async () => {
+        const res = await apiFetch(`/api/orders?created_from=${encodeURIComponent(bounds!.from)}&created_to=${encodeURIComponent(bounds!.to)}`);
+        if (!res.ok) throw new Error("Failed to load orders for the selected dates");
+        return ((await res.json()).orders || []) as Order[];
+      },
+    })),
+    combine: rangeOrdersDataOf,
+  });
   const warehouseOrders = useMemo(
     () => orders.filter((order) => warehouseFilter === "all" || order.warehouse_id === warehouseFilter),
     [orders, warehouseFilter],
   );
+  // Per date tab: the orders in its picked range (preferring live-edited copies), or null with no range.
+  // Until the server range arrives, the already loaded orders are filtered locally.
+  const rangeOrdersByTab = useMemo(() => {
+    const liveById = new Map(orders.map((order) => [order.id, order]));
+    const byTab: Partial<Record<OrderStatusFilter, Order[] | null>> = {};
+    DATE_FILTER_TABS.forEach((tab, index) => {
+      const range = ordersDateRanges[tab];
+      const loaded = rangeOrdersData[index];
+      byTab[tab] = !range?.from
+        ? null
+        : loaded
+          ? loaded
+            .map((order) => liveById.get(order.id) ?? order)
+            .filter((order) => warehouseFilter === "all" || order.warehouse_id === warehouseFilter)
+          : filterOrdersByDateRange(warehouseOrders, range);
+    });
+    return byTab;
+  }, [orders, ordersDateRanges, rangeOrdersData, warehouseFilter, warehouseOrders]);
+  const listOrders = (showOrdersDateFilter && rangeOrdersByTab[activeOrderStatusFilter]) || warehouseOrders;
 
   const orderStatusCounts = useMemo(
     () => countOrdersByStatus(warehouseOrders),
     [warehouseOrders],
   );
-  const displayedOrderStatusCounts = useMemo(
-    () => warehouseFilter === "all" && totalOrdersCount !== null
+  const displayedOrderStatusCounts = useMemo(() => {
+    const counts = warehouseFilter === "all" && totalOrdersCount !== null
       ? { ...orderStatusCounts, all: totalOrdersCount }
-      : orderStatusCounts,
-    [orderStatusCounts, totalOrdersCount, warehouseFilter],
-  );
+      : { ...orderStatusCounts };
+    // A date tab with a picked range counts only orders placed in that range.
+    for (const tab of DATE_FILTER_TABS) {
+      const rangeOrders = rangeOrdersByTab[tab];
+      if (rangeOrders) counts[tab] = countOrdersByStatus(rangeOrders)[tab];
+    }
+    return counts;
+  }, [orderStatusCounts, rangeOrdersByTab, totalOrdersCount, warehouseFilter]);
 
   // Full pending + print queues (ignores search text and table pagination) so the
   // order editor can offer Previous/Next navigation through the whole tab.
@@ -1080,10 +1136,10 @@ export default function Dashboard() {
   }, [fulfillmentTab, pendingOrderIds, printOrderIds]);
 
   const filteredOrders = useMemo(() => {
-    return filterOrdersByStatus(warehouseOrders, activeOrderStatusFilter).filter((order) =>
+    return filterOrdersByStatus(listOrders, activeOrderStatusFilter).filter((order) =>
       matchesOrderSearch(order, debouncedSearch),
     );
-  }, [activeOrderStatusFilter, debouncedSearch, warehouseOrders]);
+  }, [activeOrderStatusFilter, debouncedSearch, listOrders]);
 
   const districtOf = (order: Order) => detectDistrict(order.address);
 
@@ -1101,13 +1157,18 @@ export default function Dashboard() {
     return { ranked, unknown };
   }, [filteredOrders]);
 
+  const dateFilteredOrders = useMemo(
+    () => (showOrdersDateFilter ? filterOrdersByDateRange(filteredOrders, ordersDateRange) : filteredOrders),
+    [filteredOrders, ordersDateRange, showOrdersDateFilter],
+  );
+
   const districtFilteredOrders = useMemo(() => {
-    if (activeOrderStatusFilter !== "approved" || districtFilter === "all") return filteredOrders;
-    return filteredOrders.filter((order) => {
+    if (activeOrderStatusFilter !== "approved" || districtFilter === "all") return dateFilteredOrders;
+    return dateFilteredOrders.filter((order) => {
       const district = districtOf(order);
       return districtFilter === DISTRICT_UNKNOWN_SENTINEL ? !district : district === districtFilter;
     });
-  }, [filteredOrders, districtFilter, activeOrderStatusFilter]);
+  }, [dateFilteredOrders, districtFilter, activeOrderStatusFilter]);
 
   const filteredAbandonedCheckouts = useMemo(
     () => abandonedCheckouts.filter((checkout) => matchesAbandonedCheckoutSearch(checkout, debouncedSearch)),
@@ -1455,7 +1516,7 @@ export default function Dashboard() {
       >
         {/* Toolbar */}
         <div data-testid="dashboard-order-toolbar" className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 max-md:px-3 lg:flex-row lg:items-center lg:justify-between">
-           <div className="flex flex-wrap items-center gap-2.5 max-md:w-full max-md:justify-between">
+           <div className="flex shrink-0 flex-wrap items-center gap-2.5 whitespace-nowrap max-md:w-full max-md:justify-between">
             <TextEffect
               as="span"
               per="word"
@@ -1487,7 +1548,7 @@ export default function Dashboard() {
               <span className="text-[13px] text-muted-foreground tabular-nums">—</span>
             ) : (
               <TextEffect
-                key={`${isAbandonedQueue ? "abandoned" : "orders"}-${isAbandonedQueue ? filteredAbandonedCheckouts.length : filteredOrders.length}`}
+                key={`${isAbandonedQueue ? "abandoned" : "orders"}-${isAbandonedQueue ? filteredAbandonedCheckouts.length : dateFilteredOrders.length}`}
                 as="span"
                 per="char"
                 delay={0.45}
@@ -1511,7 +1572,7 @@ export default function Dashboard() {
                 }}
                 className="text-[13px] text-muted-foreground tabular-nums"
               >
-                {`${isAbandonedQueue ? filteredAbandonedCheckouts.length : filteredOrders.length} ${isAbandonedQueue ? "checkouts" : "orders"}`}
+                {`${isAbandonedQueue ? filteredAbandonedCheckouts.length : dateFilteredOrders.length} ${isAbandonedQueue ? "checkouts" : "orders"}`}
               </TextEffect>
              )}
               {!isAbandonedQueue && isMobile && (
@@ -1526,7 +1587,7 @@ export default function Dashboard() {
              )}
            </div>
 
-          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
+          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center justify-end gap-2 max-md:flex-col max-md:items-stretch">
             <div className="relative max-md:w-full">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -1562,6 +1623,20 @@ export default function Dashboard() {
               {warehouses.map((warehouse) => <SelectItem key={warehouse.id} id={warehouse.id}>{warehouse.name}</SelectItem>)}
             </Select>
 
+            {!isAbandonedQueue && showOrdersDateFilter && (
+              <div data-testid="orders-date-filter" className="flex items-center">
+                <DateRangePicker
+                  value={ordersDateRange}
+                  onChange={(range) => {
+                    setOrdersDateRanges((prev) => ({ ...prev, [activeOrderStatusFilter]: range }));
+                    setOrderPage(0);
+                  }}
+                  placement="bottom start"
+                  variant="toolbar"
+                />
+              </div>
+            )}
+
             {!isAbandonedQueue && activeOrderStatusFilter === "approved" && (
               <Select
                 aria-label="Filter approved orders by district"
@@ -1580,8 +1655,9 @@ export default function Dashboard() {
               </Select>
             )}
 
-            <div className="w-px h-4 bg-black/10" />
+            <div className="w-px h-4 bg-black/10 max-md:hidden" />
 
+            <div className="flex items-center gap-2 max-md:w-full max-md:flex-col max-md:items-stretch">
             {!isAbandonedQueue && activeOrderStatusFilter === "print" && (
               <PopButton
                 color="sky"
@@ -1644,9 +1720,11 @@ export default function Dashboard() {
                 </div>
               </PopoverContent>
               </Popover>
+            </div>
               </>
             )}
             {isAbandonedQueue && (
+              <div className="max-md:w-full">
               <Popover open={abandonedBulkMenuOpen} onOpenChange={setAbandonedBulkMenuOpen}>
                 <PopoverTrigger asChild>
                   <PopButton
@@ -1682,6 +1760,7 @@ export default function Dashboard() {
                   </div>
                 </PopoverContent>
               </Popover>
+              </div>
             )}
           </div>
         </div>
@@ -1696,6 +1775,7 @@ export default function Dashboard() {
             setFulfillmentTab(nextTab);
             setOrderPage(0);
             setDistrictFilter("all");
+            if (nextTab === "abandoned" || !DATE_FILTER_TABS.includes(nextTab)) setOrdersDateRanges({});
             setSelectedAbandonedIds(new Set());
             if (nextTab === "abandoned") setSelectedOrderIds(new Set());
           }}

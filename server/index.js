@@ -6751,6 +6751,41 @@ app.get("/api/orders", async (req, res) => {
       return res.json({ orders: changedOrders, totalCount: deltaCount ?? 0, syncedAt: deltaSyncedAt, delta: true });
     }
 
+    // Optional placed-date window [created_from, created_to) for the dashboard
+    // date filter. Paged so a window is never cut off at PostgREST's 1000-row cap.
+    const createdFromParam = typeof req.query.created_from === "string" ? req.query.created_from.trim() : "";
+    const createdToParam = typeof req.query.created_to === "string" ? req.query.created_to.trim() : "";
+    if (createdFromParam || createdToParam) {
+      if (Number.isNaN(Date.parse(createdFromParam)) || Number.isNaN(Date.parse(createdToParam))) {
+        return res.status(400).json({ error: "Invalid created_from / created_to timestamp" });
+      }
+      const createdFrom = new Date(Date.parse(createdFromParam)).toISOString();
+      const createdTo = new Date(Date.parse(createdToParam)).toISOString();
+      const pageSize = 1000;
+      const rangeRows = [];
+      for (let offset = 0; ; offset += pageSize) {
+        let pageQuery = supabase
+          .from("orders")
+          .select("*")
+          .eq("org_id", orgId)
+          .gte("created_at", createdFrom)
+          .lt("created_at", createdTo)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (warehouseFilter) {
+          pageQuery = pageQuery.eq("warehouse_id", warehouseFilter);
+        }
+        const { data: pageRows, error: pageError } = await pageQuery;
+        if (pageError) throw pageError;
+        rangeRows.push(...(pageRows || []));
+        if (!pageRows || pageRows.length < pageSize) break;
+      }
+      const { ordersWithItems: rangeOrders } = await attachOrderItems(rangeRows);
+      console.log(`[Orders] range=${rangeOrders.length}`);
+      return res.json({ orders: rangeOrders, totalCount: rangeOrders.length });
+    }
+
     let ordersQuery = supabase
       .from("orders")
       .select("*", { count: "exact" })
