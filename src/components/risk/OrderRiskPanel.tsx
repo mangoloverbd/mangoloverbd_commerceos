@@ -220,6 +220,14 @@ export function OrderRiskPanel({ orderId }: { orderId: string }) {
   const { data, isPending, error } = useQuery({ queryKey: ["order-risk", orderId], queryFn: () => fetchOrderRisk(orderId), staleTime: 30_000 });
   if (isPending) return <div role="status" className="flex min-h-40 items-center justify-center gap-2 text-[13px] text-black/60"><Spinner size="sm" /> Loading risk assessment…</div>;
   if (error) return <p role="alert" className="m-4 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">Could not load risk assessment.</p>;
+  if (!data?.attempt && data?.no_check_reason === "abandoned_checkout") {
+    return (
+      <div className="m-4 rounded-2xl bg-black/[0.03] px-4 py-10 text-center">
+        <p className="text-[13px] font-medium text-black">No risk check for this order</p>
+        <p className="mx-auto mt-1 max-w-md text-[12px] text-black/55">It was created by staff from an abandoned checkout. The customer never completed checkout on the website, so the risk check never ran.</p>
+      </div>
+    );
+  }
   if (!data?.attempt) return <p className="m-4 rounded-2xl bg-black/[0.03] px-4 py-10 text-center text-[13px] text-black/55">No risk assessment was recorded for this order.</p>;
   return <RiskAssessment attempt={data.attempt} />;
 }

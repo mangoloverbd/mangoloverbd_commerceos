@@ -7174,6 +7174,12 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       occurredAt: conversionAt,
     }));
 
+    try {
+      await closeHeldReviewForConvertedCheckout(supabase, orgId, draft.id, order.id);
+    } catch {
+      console.warn("[AbandonedCheckout] held review close after convert deferred");
+    }
+
     await sendBulkSms(orgId, "confirmation", order);
     return res.status(201).json({ order });
   } catch {
@@ -7680,6 +7686,34 @@ async function linkHeldReviewToAbandonedCheckout(supabase, orgId, reviewId, draf
     .eq("id", reviewId)
     .eq("org_id", orgId);
   if (linkError) throw linkError;
+}
+
+// Staff can turn a held shopper's abandoned checkout into an order from the
+// Abandoned tab. Link that order to the hold's risk check and resolve a still
+// pending review, so accepting it later in Order Protection cannot create a
+// second order. The approval claim guard skips a review mid-approval.
+async function closeHeldReviewForConvertedCheckout(supabase, orgId, checkoutId, orderId) {
+  if (!checkoutId || !orderId) return;
+  const { data: review, error } = await supabase
+    .from("order_protection_reviews")
+    .select("id, status, attempt_id")
+    .eq("org_id", orgId)
+    .eq("abandoned_checkout_id", checkoutId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!review) return;
+  await finalizeOrderRisk({ supabase, orgId, attemptId: review.attempt_id, orderId });
+  if (review.status !== "on_hold") return;
+  const { error: closeError } = await supabase
+    .from("order_protection_reviews")
+    .update({ status: "approved", updated_at: new Date().toISOString() })
+    .eq("id", review.id)
+    .eq("org_id", orgId)
+    .eq("status", "on_hold")
+    .is("approval_claimed_at", null);
+  if (closeError) throw closeError;
 }
 
 async function dismissHeldAbandonedCheckout(supabase, orgId, checkoutId, now = new Date()) {
@@ -13530,11 +13564,14 @@ app.get("/api/orders/:id/risk", async (req, res) => {
   try {
     const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const { data: order, error } = await supabase.from("orders").select("id, risk_attempt_id").eq("org_id", orgId).eq("id", req.params.id).maybeSingle();
+    const { data: order, error } = await supabase.from("orders").select("id, risk_attempt_id, origin_source").eq("org_id", orgId).eq("id", req.params.id).maybeSingle();
     if (error) throw error;
     if (!order) return res.status(404).json({ error: "Order not found" });
     const attempt = order.risk_attempt_id ? await getRiskAttempt(supabase, { orgId, attemptId: order.risk_attempt_id }) : null;
-    return res.json({ attempt: attempt ? toAttemptDetail(attempt) : null });
+    return res.json({
+      attempt: attempt ? toAttemptDetail(attempt) : null,
+      no_check_reason: !attempt && order.origin_source === "abandoned_checkout" ? "abandoned_checkout" : null,
+    });
   } catch (error) { return sendError(res, error); }
 });
 

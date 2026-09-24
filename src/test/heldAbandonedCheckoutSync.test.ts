@@ -57,3 +57,20 @@ describe("held orders keep the abandoned checkout in sync", () => {
     expect(store).not.toContain("draft_key");
   });
 });
+
+describe("converting an abandoned checkout that was held", () => {
+  it("links the new order to the hold's risk check and closes the pending review", () => {
+    const convert = between('app.post("/api/abandoned-checkouts/:id/convert"', 'app.get("/api/orders/recent-notifications"');
+    expect(convert).toContain("closeHeldReviewForConvertedCheckout(supabase, orgId, draft.id, order.id)");
+    const helper = between("async function closeHeldReviewForConvertedCheckout", "\n}\n");
+    expect(helper).toMatch(/from\("order_protection_reviews"\)[\s\S]*?\.eq\("org_id", orgId\)[\s\S]*?\.eq\("abandoned_checkout_id", checkoutId\)/);
+    expect(helper).toContain("finalizeOrderRisk({ supabase, orgId, attemptId: review.attempt_id, orderId })");
+    expect(helper).toMatch(/update\(\{ status: "approved"[\s\S]*?\.eq\("status", "on_hold"\)[\s\S]*?\.is\("approval_claimed_at", null\)/);
+  });
+
+  it("tells the risk tab when an order came from an abandoned checkout", () => {
+    const risk = between('app.get("/api/orders/:id/risk"', "\napp.");
+    expect(risk).toContain("origin_source");
+    expect(risk).toContain('no_check_reason: !attempt && order.origin_source === "abandoned_checkout" ? "abandoned_checkout" : null');
+  });
+});
