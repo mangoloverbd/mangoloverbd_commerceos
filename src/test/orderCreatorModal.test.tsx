@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -266,6 +266,87 @@ describe("NewOrder", () => {
     await user.click(await within(catalog).findByRole("button", { name: "Add Sundarbans Honey to cart" }));
     expect(within(screen.getByRole("region", { name: "Order cart" })).getByText("Sundarbans Honey")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /add a product/i })).not.toBeInTheDocument();
+  });
+
+  it("lets staff edit a cart item's unit price and submits the edited price", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/products") {
+        return { ok: true, json: async () => ({ products: [{ id: "honey", name: "Sundarbans Honey", selling_price: 850, variants: [], images: [] }] }) };
+      }
+      if (url === "/api/orders" && init?.method === "POST") {
+        return { ok: true, json: async () => ({ order: { id: "order-1" } }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/orders/new"]}>
+          <NewOrder />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Add Sundarbans Honey to cart" }));
+    const cart = screen.getByRole("region", { name: "Order cart" });
+    const price = within(cart).getByRole("spinbutton", { name: "Unit price for Sundarbans Honey" });
+    expect(price).toHaveValue(850);
+    expect(within(cart).getByText("Tap to edit price")).toBeInTheDocument();
+
+    await user.clear(price);
+    await user.type(price, "780");
+    expect(within(cart).getByText("Catalog ৳850")).toBeInTheDocument();
+    expect(within(cart).getByText("Line total ৳780")).toBeInTheDocument();
+
+    await user.click(within(cart).getByRole("button", { name: "Reset Sundarbans Honey to catalog price" }));
+    expect(price).toHaveValue(850);
+    expect(within(cart).queryByText("Catalog ৳850")).not.toBeInTheDocument();
+    await user.clear(price);
+    await user.type(price, "780");
+
+    await user.type(screen.getByRole("textbox", { name: "Customer name" }), "Rahim Uddin");
+    await user.type(screen.getByRole("textbox", { name: "Phone" }), "01712345678");
+    await user.type(screen.getByRole("textbox", { name: "Delivery address" }), "Dhanmondi, Dhaka");
+    await user.click(screen.getByRole("button", { name: /create order/i }));
+
+    await waitFor(() => {
+      const call = apiFetch.mock.calls.find(([requestUrl, requestInit]) => requestUrl === "/api/orders" && requestInit?.method === "POST");
+      expect(call).toBeDefined();
+      const body = JSON.parse(String(call?.[1]?.body));
+      expect(body.items[0]).toMatchObject({ product_id: "honey", unit_price: 780 });
+      expect(body.price).toBe(780);
+    });
+  });
+
+  it("does not let trackpad scrolling change cart numbers", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/products") {
+        return { ok: true, json: async () => ({ products: [{ id: "honey", name: "Sundarbans Honey", selling_price: 850, stock_quantity: 6, variants: [], images: [] }] }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/orders/new"]}>
+          <NewOrder />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Add Sundarbans Honey to cart" }));
+    const cart = screen.getByRole("region", { name: "Order cart" });
+    for (const input of [
+      within(cart).getByRole("spinbutton", { name: "Unit price for Sundarbans Honey" }),
+      within(cart).getByRole("spinbutton", { name: "Quantity for Sundarbans Honey" }),
+    ]) {
+      input.focus();
+      expect(input).toHaveFocus();
+      fireEvent.wheel(input, { deltaY: 40 });
+      expect(input).not.toHaveFocus();
+    }
   });
 
   it("classifies a created manual order into the approved filter", async () => {
