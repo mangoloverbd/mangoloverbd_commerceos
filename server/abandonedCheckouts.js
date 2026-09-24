@@ -274,6 +274,16 @@ export function buildRecoveredPatch(now = new Date()) {
   };
 }
 
+// A held order staff rejected in Order Protection: the shopper's checkout is
+// resolved, not something to chase from the Abandoned tab.
+export function buildProtectionRejectedPatch(now = new Date()) {
+  return {
+    status: "dismissed",
+    resolved_at: now.toISOString(),
+    resolution: "rejected_in_order_protection",
+  };
+}
+
 const STAFF_EDIT_KEYS = new Set(["customerName", "phone", "address", "items", "deliveryRate"]);
 
 export function parseAbandonedCheckoutStaffEdit(body) {

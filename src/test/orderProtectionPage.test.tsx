@@ -41,6 +41,29 @@ describe("order protection dashboard", () => {
     updateProtectionReview.mockResolvedValue({ orderRef: "ML-1001" });
   });
 
+  test("shows one labelled total and no repeated line price for a single-product order", async () => {
+    fetchProtectionReviews.mockResolvedValue({ reviews: [{
+      id: "review-2",
+      status: "on_hold",
+      score: 20,
+      reason_codes: ["address_incomplete"],
+      reason_labels: { address_incomplete: "Incomplete address" },
+      customer_name: "Misbah Fakir",
+      phone: "01924198607",
+      address: "Kulaura, Moulvibazar",
+      items: [{ productName: "Pumpkin Bori", variantName: "1 kg", quantity: 1, unitPrice: 700 }],
+      source_route: "public_v1",
+      created_at: "2026-09-24T07:43:00.000Z",
+    }] });
+    renderPage();
+
+    const total = await screen.findByTestId("protection-total-review-2");
+    expect(total).toHaveTextContent("Total ৳700");
+    const product = screen.getByTestId("protection-product-review-2-0");
+    expect(product).toHaveTextContent("Pumpkin Bori — 1 kg × 1");
+    expect(product).not.toHaveTextContent("৳");
+  });
+
   test("shows the abandoned-style held order row with protection details", async () => {
     renderPage();
 
@@ -52,7 +75,7 @@ describe("order protection dashboard", () => {
     // line price, and plain-language reasons.
     const card = screen.getByTestId("checkbox-protection-review-1").closest("article");
     expect(card).toHaveClass("bg-white");
-    expect(screen.getByTestId("protection-total-review-1")).toHaveTextContent("৳3,160");
+    expect(screen.getByTestId("protection-total-review-1")).toHaveTextContent("Total ৳3,160");
     expect(screen.getByTestId("protection-product-review-1-0")).toHaveTextContent("Katimon Mango — 6KG × 2");
     expect(screen.getByTestId("protection-product-review-1-0")).toHaveTextContent("৳2,360");
     expect(screen.getByTestId("protection-product-review-1-1")).toHaveTextContent("Honey × 1");
