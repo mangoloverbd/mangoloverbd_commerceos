@@ -13,6 +13,7 @@ import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 import { format } from "date-fns";
 import { TextEffect } from "@/components/ui/text-effect";
+import { refreshNavCounts } from "@/hooks/useNavCounts";
 
 interface ReturnOrder {
   id: string;
@@ -176,6 +177,7 @@ export default function Returns() {
       const d = await res.json();
       toast.success(`Synced ${d.synced || 0} return statuses`);
       queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
+      void refreshNavCounts(queryClient);
     } catch {
       toast.error("Sync failed");
     } finally {
@@ -190,6 +192,7 @@ export default function Returns() {
       const d = await res.json();
       toast.success(`Updated ${d.updated || 0} orders with courier fees`);
       queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
+      void refreshNavCounts(queryClient);
     } catch {
       toast.error("Backfill failed");
     } finally {
@@ -208,6 +211,7 @@ export default function Returns() {
         await apiFetch("/api/returns/backfill-fees", { method: "POST" });
         await apiFetch("/api/returns/sync");
         queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
+      void refreshNavCounts(queryClient);
       } catch {
         // silent — user can see data load regardless
       } finally {
@@ -229,6 +233,7 @@ export default function Returns() {
       toast.success("Return requested successfully");
       setReason("");
       queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
+      void refreshNavCounts(queryClient);
     } catch (err: unknown) {
       toast.error(err?.message || "Return request failed");
     } finally {

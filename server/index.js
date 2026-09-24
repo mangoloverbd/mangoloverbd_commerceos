@@ -9384,6 +9384,44 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
 
 // ── Returns ──────────────────────────────────────────────────────────────────
 
+// Sidebar badge counts. Head-only count queries so polling stays cheap;
+// "pending" mirrors the Returns page filter (return_status = pending on
+// dispatched orders), "held" mirrors the Order Protection review queue.
+app.get("/api/nav/counts", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const [held, pendingOrders, pendingInbox] = await Promise.all([
+      supabase.from("order_protection_reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .eq("status", "on_hold"),
+      supabase.from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .eq("sent_to_courier", true)
+        .eq("return_status", "pending"),
+      supabase.from("social_inbox_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .eq("sent_to_courier", true)
+        .eq("return_status", "pending"),
+    ]);
+    for (const result of [held, pendingOrders, pendingInbox]) if (result.error) throw result.error;
+
+    return res.json({
+      order_protection_held: held.count || 0,
+      returns_pending: (pendingOrders.count || 0) + (pendingInbox.count || 0),
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 app.get("/api/returns", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
