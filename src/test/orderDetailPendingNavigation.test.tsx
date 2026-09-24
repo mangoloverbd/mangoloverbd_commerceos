@@ -188,6 +188,30 @@ describe("pending order prev/next navigation", () => {
     localStorage.clear();
   });
 
+  it("keeps pending nav after Next in a new tab", async () => {
+    localStorage.clear();
+    localStorage.setItem(
+      "ml:pending-order-queue",
+      JSON.stringify({ ids: ["order-1", "order-2"], savedAt: Date.now() }),
+    );
+    apiFetch.mockImplementation((url: string) => {
+      if (url === "/api/orders/order-1") return Promise.resolve(response({ order: orderOne, items: [], canEditItems: true }));
+      if (url === "/api/orders/order-2") return Promise.resolve(response({ order: orderTwo, items: [], canEditItems: true }));
+      if (url === "/api/products") return Promise.resolve(response({ products: [] }));
+      if (url === "/api/orders") return Promise.resolve(response({ orders: [orderOne, orderTwo] }));
+      return Promise.resolve(response({}));
+    });
+
+    renderNewTabOrderDetail("/orders/order-1?fulfillmentTab=pending");
+
+    await screen.findByTestId("order-editor-pending-nav");
+    await userEvent.click(screen.getByRole("button", { name: "Next pending order" }));
+
+    await waitFor(() => expect(screen.getByTestId("customer-name")).toHaveTextContent("Karim Hossain"));
+    expect(screen.getByTestId("order-editor-pending-nav")).toHaveTextContent("2 of 2 pending");
+    localStorage.clear();
+  });
+
   it("hides pending nav in a new tab without pending context", async () => {
     localStorage.clear();
     localStorage.setItem(
