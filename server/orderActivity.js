@@ -70,6 +70,7 @@ export const CANCELLATION_REASON_CODES = Object.freeze([
   "invalid_contact_information",
   "service_area_unavailable",
   "test_or_fake_order",
+  "zone_change",
   "other",
 ]);
 

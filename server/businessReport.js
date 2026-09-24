@@ -7,6 +7,7 @@ const SOURCE_OPTIONS = [
   ["whatsapp", "WhatsApp"],
   ["phone", "Phone"],
   ["telesales", "Telesales"],
+  ["upsell", "Upsell"],
   ["manual_other", "Manual / Other"],
 ];
 

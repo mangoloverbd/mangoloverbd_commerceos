@@ -12,7 +12,7 @@ describe("order source route wiring", () => {
     const patchEnd = serverSource.indexOf('app.post("/api/orders/:id/send-sms"', patchStart);
     const createRoute = serverSource.slice(createStart, patchStart);
     const patchRoute = serverSource.slice(patchStart, patchEnd);
-    expect(serverSource).toContain('new Set(["website", "facebook", "instagram", "whatsapp", "phone", "telesales", "manual_other"])');
+    expect(serverSource).toContain('new Set(["website", "facebook", "instagram", "whatsapp", "phone", "telesales", "upsell", "manual_other"])');
     expect(createRoute).toContain('isCanonicalOrderSource(req.body.source)');
     expect(createRoute).toContain('return res.status(400).json({ error: "Invalid order source" });');
     expect(createRoute).toContain('row.source = "manual_other"');

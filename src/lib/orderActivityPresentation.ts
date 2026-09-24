@@ -60,6 +60,7 @@ const ACTIVITY_REASONS: Record<string, string> = {
   invalid_contact_information: "Invalid contact information",
   service_area_unavailable: "Service area unavailable",
   test_or_fake_order: "Test or fake order",
+  zone_change: "Zone change",
   upsell: "Upsell",
   customer_request: "Customer request",
   correction: "Correction",

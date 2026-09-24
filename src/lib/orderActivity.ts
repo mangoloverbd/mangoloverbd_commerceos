@@ -10,7 +10,7 @@ export const CANCELLATION_REASON_OPTIONS = [
   { value: "pricing_issue", label: "Pricing issue" }, { value: "delivery_charge_objection", label: "Delivery-charge objection" },
   { value: "delivery_delay", label: "Delivery delay" }, { value: "out_of_stock", label: "Out of stock" },
   { value: "fraud_or_suspicious", label: "Fraud or suspicious order" }, { value: "invalid_contact_information", label: "Invalid contact information" },
-  { value: "service_area_unavailable", label: "Service area unavailable" }, { value: "test_or_fake_order", label: "Test or fake order" }, { value: "other", label: "Other" },
+  { value: "service_area_unavailable", label: "Service area unavailable" }, { value: "test_or_fake_order", label: "Test or fake order" }, { value: "zone_change", label: "Zone change" }, { value: "other", label: "Other" },
 ] as const;
 export type AdditionReason = (typeof ADDITION_REASON_OPTIONS)[number]["value"];
 export type CancellationReason = (typeof CANCELLATION_REASON_OPTIONS)[number]["value"];
