@@ -1396,8 +1396,8 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       )}
                     </div>
                     <div className="inline-flex flex-col items-center">
-                      <span className="whitespace-nowrap text-[10px] text-black font-medium uppercase tracking-wider">{format(new Date(order.created_at), "MMM dd, yyyy")}</span>
-                      <span className="whitespace-nowrap text-[10px] text-black/50 font-medium uppercase tracking-wider">{format(new Date(order.created_at), "h:mm a")}</span>
+                      <span className="whitespace-nowrap text-[10px] text-black font-semibold uppercase tracking-wider">{format(new Date(order.created_at), "MMM dd, yyyy")}</span>
+                      <span className="whitespace-nowrap text-[10px] text-black font-semibold uppercase tracking-wider">{format(new Date(order.created_at), "h:mm a")}</span>
                     </div>
                   </TableCell>
                   <TableCell className="max-w-[150px] py-3">

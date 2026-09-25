@@ -17,7 +17,7 @@ vi.mock("@/hooks/useWarehouses", () => ({
   useWarehouses: () => ({ warehouses: [{ id: "main", name: "Main Warehouse" }] }),
 }));
 vi.mock("@/components/ui/cobe-globe-analytics", () => ({ GlobeAnalytics: () => null }));
-vi.mock("@/components/ui/pixel-ripple", () => ({ default: () => null }));
+vi.mock("@/components/ui/glyph-matrix", () => ({ default: () => null }));
 vi.mock("recharts", () => ({
   BarChart: () => null,
   Bar: () => null,
