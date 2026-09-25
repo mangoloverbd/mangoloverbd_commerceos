@@ -64,7 +64,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DATE_FILTER_TABS, filterOrdersByDateRange, orderDateRangeBounds } from "@/lib/orderDateFilter";
-import PixelRipple from "@/components/ui/pixel-ripple";
+import GlyphMatrix from "@/components/ui/glyph-matrix";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
   countOrdersByStatus,
@@ -1445,16 +1445,29 @@ export default function Dashboard() {
 
         {/* ── Greeting band — inside the hero, above the globe ───────── */}
         <div className="relative z-10 grid items-center md:grid-cols-[1fr_auto_1fr] pb-10 pt-8">
-          {/* Pixel background — left side only (globe stays on the right) */}
+          {/* Glyph background — left side (globe stays on the right). Runs down
+              into the gap above the Fulfillment Queue card; two intersected
+              masks dissolve it on every edge so it blends into the panel. */}
           <div
             aria-hidden
-            className="pointer-events-none absolute left-0 top-0 z-0 hidden h-full w-1/2 md:block"
+            className="pointer-events-none absolute -bottom-6 left-0 top-0 z-0 hidden w-[60%] md:block"
+            style={{
+              maskImage:
+                "linear-gradient(to right, black 0%, black 25%, transparent 90%), linear-gradient(to bottom, transparent 0%, black 22%, black 62%, transparent 100%)",
+              WebkitMaskImage:
+                "linear-gradient(to right, black 0%, black 25%, transparent 90%), linear-gradient(to bottom, transparent 0%, black 22%, black 62%, transparent 100%)",
+              maskComposite: "intersect",
+              WebkitMaskComposite: "source-in",
+            }}
           >
-            <PixelRipple
-              gap={5}
-              dotSize={2.5}
-              maxOpacity={0.85}
-              className="absolute inset-0 h-full w-full"
+            <GlyphMatrix
+              glyphs="01.+*/<>="
+              cellSize={14}
+              mutationRate={0.04}
+              interval={90}
+              fadeBottom={0}
+              color="rgba(0, 0, 0, 0.65)"
+              className="absolute inset-0"
             />
           </div>
 
