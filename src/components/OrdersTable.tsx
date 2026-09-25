@@ -1272,7 +1272,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
 
   return (
     <div className="overflow-hidden">
-      <Table>
+      <Table className="[&_td]:px-2.5 [&_th]:px-2.5 [&_td:first-child]:pl-4 [&_th:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:last-child]:pr-4">
         <TableHeader>
           <TableRow className="border-b border-black/[0.03] hover:bg-transparent">
             <TableHead className="w-10 py-3 pl-4 h-auto">
@@ -1371,7 +1371,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                     </div>
                   </TableCell>
                   <TableCell className="py-3">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
                       {enableOrderIdLinks ? (
                         <OrderIdLink
                           orderId={order.id}
@@ -1395,7 +1395,10 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                         <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[8px] font-bold uppercase tracking-wider">Cancelled</span>
                       )}
                     </div>
-                    <span className="text-[10px] text-black font-medium uppercase tracking-wider">{format(new Date(order.created_at), "MMM dd, yyyy")}</span>
+                    <div className="inline-flex flex-col items-center">
+                      <span className="whitespace-nowrap text-[10px] text-black font-medium uppercase tracking-wider">{format(new Date(order.created_at), "MMM dd, yyyy")}</span>
+                      <span className="whitespace-nowrap text-[10px] text-black/50 font-medium uppercase tracking-wider">{format(new Date(order.created_at), "h:mm a")}</span>
+                    </div>
                   </TableCell>
                   <TableCell className="max-w-[150px] py-3">
                     <div className="flex flex-col gap-0.5">
