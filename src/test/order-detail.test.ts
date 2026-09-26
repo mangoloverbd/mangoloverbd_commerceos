@@ -216,15 +216,19 @@ describe("OrderDetail", () => {
 
     const customerSection = await screen.findByRole("region", { name: "Customer and order" });
     const attribution = within(customerSection).getByTestId("landing-page-attribution");
-    const landingPage = within(attribution).getByRole("link", { name: "Katimon Mango" });
+    const landingPage = within(customerSection).getByRole("link", { name: "Landing page: Katimon Mango" });
 
+    expect(landingPage).toBe(attribution);
     expect(within(attribution).getByText("Landing page")).toBeInTheDocument();
     expect(landingPage).toHaveAttribute("href", "/step/katimon-mango");
     expect(landingPage).toHaveAttribute("title", "/step/katimon-mango");
   });
 
-  it("keeps the landing page label visible when attribution is unavailable", async () => {
-    const detailWithoutLandingPage = { ...detail, order: { ...order, landing_page_path: null } };
+  it.each([
+    ["missing", null],
+    ["not a landing page", "/products/katimon-mango"],
+  ])("hides landing page attribution when the path is %s", async (_case, landingPagePath) => {
+    const detailWithoutLandingPage = { ...detail, order: { ...order, landing_page_path: landingPagePath } };
     apiFetch.mockImplementation(async (url: string) => {
       if (url === "/api/orders/order-1") return response(detailWithoutLandingPage);
       if (url === "/api/products") return response(products);
@@ -233,9 +237,9 @@ describe("OrderDetail", () => {
     renderPage();
 
     const customerSection = await screen.findByRole("region", { name: "Customer and order" });
-    const attribution = within(customerSection).getByTestId("landing-page-attribution");
-    expect(attribution).toHaveTextContent("Landing page");
-    expect(attribution).toHaveTextContent("—");
+    expect(within(customerSection).getByTestId("order-source-control")).toBeInTheDocument();
+    expect(within(customerSection).queryByTestId("landing-page-attribution")).not.toBeInTheDocument();
+    expect(customerSection).not.toHaveTextContent("Landing page");
   });
 
   it("keeps landing page attribution visible while customer details are edited", async () => {
@@ -246,7 +250,7 @@ describe("OrderDetail", () => {
     await user.click(within(customerSection).getByRole("button", { name: "Edit customer" }));
 
     const attribution = within(customerSection).getByTestId("landing-page-attribution");
-    expect(within(attribution).getByRole("link", { name: "Katimon Mango" })).toBeInTheDocument();
+    expect(within(customerSection).getByRole("link", { name: "Landing page: Katimon Mango" })).toBe(attribution);
   });
 
   it("keeps the saved order source read-only and excludes it from order updates", async () => {

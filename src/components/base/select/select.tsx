@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useRef, useState } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import {
   Button as AriaButton,
@@ -99,6 +99,23 @@ export function Select<T extends object>({
   useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
   // Pressing the trigger while open closes the popover instead of reopening
   const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
+  // Non-modal also means React Aria closes the popover when the page scrolls.
+  // On open it scrolls the selected row into view, and if that row starts
+  // below the list's visible area it re-centres the whole list in the
+  // viewport, scrolling the page and instantly closing the menu. Revealing
+  // the selected row ourselves first means its scroll finds nothing to move.
+  const listBoxRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const list = listBoxRef.current;
+    if (!isOpen || !list) return;
+    const selected = list.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!selected) return;
+    const listTop = list.getBoundingClientRect().top;
+    const { top, bottom } = selected.getBoundingClientRect();
+    const overflowBelow = bottom - (listTop + list.clientHeight);
+    if (overflowBelow > 0) list.scrollTop += overflowBelow;
+    else if (top < listTop) list.scrollTop -= listTop - top;
+  }, [isOpen]);
 
   return (
     <AriaSelect
@@ -157,6 +174,7 @@ export function Select<T extends object>({
             )}
           >
             <AriaListBox
+              ref={listBoxRef}
               items={items}
               className={cx(MENU_ITEMS_CONTAINER, "max-h-[240px] overflow-auto")}
             >
