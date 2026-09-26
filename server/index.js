@@ -6809,18 +6809,32 @@ app.get("/api/orders", async (req, res) => {
       return res.json({ orders: rangeOrders, totalCount: rangeOrders.length });
     }
 
-    let ordersQuery = supabase
-      .from("orders")
-      .select("*", { count: "exact" })
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: false });
-    if (warehouseFilter) {
-      ordersQuery = ordersQuery.eq("warehouse_id", warehouseFilter);
+    // Full list: PostgREST returns at most 1000 rows per request, so page
+    // until a short page. A capped list never matches the exact count, which
+    // made every delta poll fall back to a full reload.
+    const pageSize = 1000;
+    const byId = new Map();
+    let count = null;
+    for (let offset = 0; ; offset += pageSize) {
+      let pageQuery = supabase
+        .from("orders")
+        .select("*", offset === 0 ? { count: "exact" } : undefined)
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (warehouseFilter) {
+        pageQuery = pageQuery.eq("warehouse_id", warehouseFilter);
+      }
+      const { data: pageRows, count: pageCount, error } = await pageQuery;
+      if (error) throw error;
+      if (offset === 0) count = pageCount;
+      // An insert between pages shifts rows down; keep the first copy.
+      for (const row of pageRows || []) if (!byId.has(row.id)) byId.set(row.id, row);
+      if (!pageRows || pageRows.length < pageSize) break;
     }
-    const { data: allData, count, error } = await ordersQuery;
-    if (error) throw error;
 
-    const allOrders = allData || [];
+    const allOrders = [...byId.values()];
     const { ordersWithItems: orders, itemsMaxUpdatedAt } = await attachOrderItems(allOrders);
     // null for an empty workspace: the client then does a full sync next time.
     const syncedAt = maxUpdatedAt([

@@ -1,5 +1,21 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Check, Copy, PencilSimple, X } from "@phosphor-icons/react";
+import {
+  ArrowUpRight,
+  Check,
+  Copy,
+  DotsThreeCircle,
+  FacebookLogo,
+  Globe,
+  Headset,
+  InstagramLogo,
+  LinkSimple,
+  PencilSimple,
+  Phone,
+  TrendUp,
+  WhatsappLogo as WhatsappGlyph,
+  X,
+  type Icon,
+} from "@phosphor-icons/react";
 import { normalizeBusinessStatus } from "@/lib/orderTransitions";
 import { formatTaka } from "@/lib/orderEditor";
 import { Chip } from "@/components/base/badges/chip";
@@ -8,7 +24,7 @@ import WhatsappLogo from "@/components/WhatsappLogo";
 import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
-import { orderSourceLabel, type OrderSource } from "@/lib/orderSource";
+import { normalizeOrderSource, orderSourceLabel, type OrderSource } from "@/lib/orderSource";
 
 export type CustomerDraft = {
   customerName: string;
@@ -92,6 +108,20 @@ function landingPageHref(value: string | null | undefined): string | undefined {
   const path = value?.trim();
   return path && LANDING_PAGE_PATH_RE.test(path) ? path : undefined;
 }
+
+const ORDER_SOURCE_ICONS: Record<OrderSource, Icon> = {
+  website: Globe,
+  facebook: FacebookLogo,
+  instagram: InstagramLogo,
+  whatsapp: WhatsappGlyph,
+  phone: Phone,
+  telesales: Headset,
+  upsell: TrendUp,
+  manual_other: DotsThreeCircle,
+};
+
+const metaChipClass = "inline-flex h-8 min-w-0 items-center gap-2 rounded-full bg-black/[0.04] px-3 text-[12px] text-black";
+const metaChipLabelClass = "shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black";
 
 function dateTime(value: string | null | undefined) {
   return value ? new Date(value).toLocaleString("en-BD") : null;
@@ -211,6 +241,8 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
   }
 
   const whatsappHref = bdWhatsAppHref(customer.phone);
+  const landingHref = landingPageHref(order.landing_page_path);
+  const SourceIcon = ORDER_SOURCE_ICONS[normalizeOrderSource(source)];
   const messagingAvailable = Boolean(order.id && whatsappHref && !disabled && !editing);
 
   return (
@@ -220,33 +252,33 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
           <p className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Customer and order</p>
           <h2 className="truncate text-[15px] font-medium text-black">{customer.customerName || "Customer details"}</h2>
           {!editing && (
-            <button type="button" aria-label="Edit customer" onClick={beginEditing} disabled={disabled} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] text-black transition hover:bg-black/[0.05] disabled:opacity-40">
+            <button type="button" aria-label="Edit customer" onClick={beginEditing} disabled={disabled} className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] text-black ring-1 ring-inset ring-black/10 transition hover:bg-black/[0.05] disabled:opacity-40">
               <PencilSimple weight="light" size={15} /> Edit
             </button>
           )}
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
-          <div data-testid="landing-page-attribution" className="flex min-w-0 items-center gap-2">
-            <p className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Landing page</p>
-            {landingPageHref(order.landing_page_path) ? (
-              <a
-                href={landingPageHref(order.landing_page_path)}
-                target="_blank"
-                rel="noreferrer"
-                title={order.landing_page_path?.trim()}
-                className="inline-flex min-w-0 items-center gap-1 truncate text-[12px] text-black underline decoration-black/20 underline-offset-2 transition hover:text-black hover:decoration-black"
-              >
-                <span className="truncate">{formatLandingPageLabel(order.landing_page_path)}</span>
-                <ArrowUpRight weight="light" size={14} aria-hidden="true" />
-              </a>
-            ) : (
-              <span className="text-[12px] text-black">{formatLandingPageLabel(order.landing_page_path)}</span>
-            )}
-          </div>
+          {landingHref && (
+            <a
+              data-testid="landing-page-attribution"
+              href={landingHref}
+              target="_blank"
+              rel="noreferrer"
+              title={landingHref}
+              aria-label={`Landing page: ${formatLandingPageLabel(landingHref)}`}
+              className={`group ${metaChipClass} transition hover:bg-black/[0.07]`}
+            >
+              <LinkSimple weight="light" size={14} aria-hidden="true" className="shrink-0" />
+              <span className={metaChipLabelClass}>Landing page</span>
+              <span className="truncate">{formatLandingPageLabel(landingHref)}</span>
+              <ArrowUpRight weight="light" size={13} aria-hidden="true" className="shrink-0 transition-transform group-hover:-translate-y-px group-hover:translate-x-px" />
+            </a>
+          )}
           {source && (
-            <div data-testid="order-source-control" className="flex min-w-0 items-center gap-3">
-              <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Order source</p>
-              <span className="min-w-0 truncate text-[12px] font-medium text-black" title={orderSourceLabel(source)}>{orderSourceLabel(source)}</span>
+            <div data-testid="order-source-control" className={`flex ${metaChipClass}`}>
+              <SourceIcon weight="light" size={14} aria-hidden="true" className="shrink-0" />
+              <p className={metaChipLabelClass}>Order source</p>
+              <span className="min-w-0 truncate font-medium" title={orderSourceLabel(source)}>{orderSourceLabel(source)}</span>
             </div>
           )}
         </div>
