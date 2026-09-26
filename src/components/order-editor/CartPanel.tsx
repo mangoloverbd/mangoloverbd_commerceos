@@ -9,8 +9,9 @@ import { DiscountEditor } from "./DiscountEditor";
 import { calculateUnitDiscount, formatTaka, roundTaka, type CartTotals, type DiscountType, type OrderEditorItem } from "@/lib/orderEditor";
 import { displayStatusLabel, isOnHoldStatus, statusOptionsFor } from "@/lib/orderTransitions";
 import { ChangeReasonSelect } from "./ChangeReasonSelect";
-import { CANCELLATION_REASON_OPTIONS, orderItemActivityKey, type AdditionReason, type CancellationReason } from "@/lib/orderActivity";
+import { CANCELLATION_DIALOG_REASON_OPTIONS, orderItemActivityKey, type AdditionReason, type CancellationReason } from "@/lib/orderActivity";
 import { blurOnWheel } from "@/lib/numberInput";
+import { OrderHoldFields, type OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
 
 type CartPanelProps = {
   items: OrderEditorItem[];
@@ -27,8 +28,8 @@ type CartPanelProps = {
   onAdvanceChange: (value: number) => void;
   status: string | null | undefined;
   onStatusChange: (status: string) => void;
-  notes: string;
-  onNotesChange: (notes: string) => void;
+  holdDetails?: OrderHoldMetadata;
+  onHoldDetailsChange?: (details: OrderHoldMetadata) => void;
   onToggleDelivery: (enabled: boolean) => void;
   onOverallDiscount: (discountType: DiscountType, discountValue: number) => void;
   onRemoveOverallDiscount: () => void;
@@ -48,7 +49,7 @@ type CartPanelProps = {
   onCancellationReasonNoteChange?: (note: string) => void;
 };
 
-export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, advance, onAdvanceChange, status, onStatusChange, notes, onNotesChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false, requiredAdditionReasonKeys = [], additionReasons = {}, onAdditionReasonChange, cancellationRequired = false, cancellationReasonCode = "", cancellationReasonNote = "", onCancellationReasonChange, onCancellationReasonNoteChange }: CartPanelProps) {
+export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, advance, onAdvanceChange, status, onStatusChange, holdDetails, onHoldDetailsChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false, requiredAdditionReasonKeys = [], additionReasons = {}, onAdditionReasonChange, cancellationRequired = false, cancellationReasonCode = "", cancellationReasonNote = "", onCancellationReasonChange, onCancellationReasonNoteChange }: CartPanelProps) {
   const overallBase = roundTaka(totals.grossSubtotal - totals.itemDiscount);
   return (
     <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
@@ -100,22 +101,10 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
           )}
           <button type="button" onClick={onSave} disabled={saving || saveDisabled} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-black px-4 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-35">{saving && <Spinner size="sm" />}{saving ? "Saving…" : "Save changes"}</button>
           <BuiButton variant="ghost" size="medium" onClick={onCancel} disabled={saving}>Cancel</BuiButton>
-           {!hideOrderSections && isOnHoldStatus(status) && (
-            <label className="col-span-3 mt-1 block" htmlFor="hold-note">
-              <span className="sr-only">Hold note</span>
-              <textarea
-                id="hold-note"
-                aria-label="Hold note"
-                value={notes}
-                onChange={(event) => onNotesChange(event.target.value)}
-                disabled={saving || saveDisabled}
-                rows={2}
-                placeholder="Why is this order on hold?"
-                className="h-16 w-full resize-none rounded-lg bg-black/[0.04] px-3 py-2 text-[12px] leading-snug text-black outline-none ring-1 ring-inset ring-black/[0.06] transition focus:bg-white focus:ring-black/20 disabled:opacity-50"
-              />
-            </label>
+           {!hideOrderSections && isOnHoldStatus(status) && holdDetails && (
+             <OrderHoldFields value={holdDetails} onChange={(details) => onHoldDetailsChange?.(details)} disabled={saving || saveDisabled} />
            )}
-           {!hideOrderSections && cancellationRequired && <div className="col-span-3 mt-1 grid gap-2 rounded-lg bg-red-50/70 p-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Cancellation reason</span><select aria-label="Cancellation reason" value={cancellationReasonCode} onChange={(event) => onCancellationReasonChange?.(event.target.value as CancellationReason)} className="h-9 w-full rounded-lg bg-white px-3 text-[12px]"><option value="">Choose a reason</option>{CANCELLATION_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Optional note</span><input aria-label="Cancellation note" value={cancellationReasonNote} onChange={(event) => onCancellationReasonNoteChange?.(event.target.value)} placeholder={cancellationReasonCode === "other" ? "Required for Other" : "Add context"} className="h-9 w-full rounded-lg bg-white px-3 text-[12px]" /></label></div>}
+            {!hideOrderSections && cancellationRequired && <div className="col-span-3 mt-1 grid gap-2 rounded-lg bg-red-50/70 p-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Cancellation reason</span><BuiSelect aria-label="Cancellation reason" placeholder="কারণ নির্বাচন করুন" selectedKey={cancellationReasonCode || null} onSelectionChange={(key) => { if (key != null) onCancellationReasonChange?.(String(key) as CancellationReason); }} className="w-full" triggerClassName="h-9 w-full rounded-lg bg-white px-3 text-[12px]" popoverClassName="w-[var(--trigger-width)]" popoverPlacement="top" popoverShouldFlip={false}>{CANCELLATION_DIALOG_REASON_OPTIONS.map((option) => <BuiSelectItem key={option.value} id={option.value} textValue={option.label}>{option.label}</BuiSelectItem>)}</BuiSelect></label><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Optional note</span><input aria-label="Cancellation note" value={cancellationReasonNote} onChange={(event) => onCancellationReasonNoteChange?.(event.target.value)} placeholder={cancellationReasonCode === "other" ? "Required for Other" : "Add context"} className="h-9 w-full rounded-lg bg-white px-3 text-[12px]" /></label></div>}
         </div>
       </div>
     </section>

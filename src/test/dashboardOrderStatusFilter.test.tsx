@@ -459,6 +459,7 @@ describe("dashboard order status filter", () => {
         id: "bulk-draft-2",
         customer_name: "Bulk Customer Two",
         phone: "01798765432",
+        address: "",
       },
     ];
     try {
@@ -548,8 +549,11 @@ describe("dashboard order status filter", () => {
             }
             return {
               ok: false,
-              status: 500,
-              json: async () => ({ error: "Could not convert checkout" }),
+              status: 400,
+              json: async () => ({
+                error: "Add the delivery address before approving this order.",
+                code: "approval_customer_details_required",
+              }),
             };
           }
         }
@@ -577,11 +581,11 @@ describe("dashboard order status filter", () => {
       await user.click(screen.getByTestId("checkbox-abandoned-bulk-draft-2"));
       await user.click(screen.getByTestId("button-bulk-abandoned-status"));
       const menu = await screen.findByTestId("bulk-abandoned-status-menu");
-      await user.click(within(menu).getByRole("button", { name: "Pending" }));
+      await user.click(within(menu).getByRole("button", { name: "Approved" }));
 
       await waitFor(() => {
-        expect(successSpy).toHaveBeenCalledWith("1 order moved to Pending");
-        expect(errorSpy).toHaveBeenCalledWith("1 failed — kept selected");
+        expect(successSpy).toHaveBeenCalledWith("1 order moved to Approved");
+        expect(errorSpy).toHaveBeenCalledWith("1 failed — kept selected. Add the delivery address before approving this order.");
       });
       await waitFor(() => {
         expect(screen.queryByText("Bulk Customer One")).not.toBeInTheDocument();
@@ -592,6 +596,52 @@ describe("dashboard order status filter", () => {
       successSpy.mockRestore();
       errorSpy.mockRestore();
     }
+  });
+
+  it("requires hold details before converting abandoned checkouts to On Hold", async () => {
+    const user = userEvent.setup();
+    const draft = { ...abandonedCheckouts[0], id: "bulk-hold-draft-1" };
+    const convertCalls: Array<{ url: string; body: unknown }> = [];
+    apiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (url === "/api/orders") return jsonResponse({ orders });
+      if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [draft], activeCount: 1 });
+      if (url === `/api/abandoned-checkouts/${draft.id}/convert` && options?.method === "POST") {
+        convertCalls.push({ url, body: JSON.parse(String(options.body)) });
+        return jsonResponse({ order: { id: "held-order-1", order_number: "#110" } });
+      }
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url.startsWith("/api/analytics")) {
+        return jsonResponse({ revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 }, profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null });
+      }
+      return jsonResponse({ updated: 0 });
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><Dashboard /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("radio", { name: /^Abandoned:/ }));
+    await user.click(await screen.findByTestId(`checkbox-abandoned-${draft.id}`));
+    await user.click(screen.getByTestId("button-bulk-abandoned-status"));
+    await user.click(within(await screen.findByTestId("bulk-abandoned-status-menu")).getByRole("button", { name: "On Hold" }));
+
+    expect(await screen.findByRole("heading", { name: "অর্ডার হোল্ড করুন" })).toBeInTheDocument();
+    expect(convertCalls).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: /Hold reason/ }));
+    await user.click(await screen.findByRole("option", { name: "গ্রাহক পরে যোগাযোগ করতে বলেছেন" }));
+    await user.click(screen.getByRole("button", { name: "Hold checkouts" }));
+
+    await waitFor(() => expect(convertCalls).toHaveLength(1));
+    expect(convertCalls[0]?.body).toMatchObject({
+      status: "on_hold",
+      hold_reason_code: "contact_later",
+      hold_reason_detail: null,
+      hold_until_date: null,
+    });
   });
 
   it("bulk Mark contacted skips already-contacted drafts and reports the skip", async () => {

@@ -146,6 +146,42 @@ describe("OrderActivityTimeline", () => {
     expect(row).not.toHaveTextContent("pending");
   });
 
+  it("shows the Bengali hold reason in the same activity entry as the On Hold transition", async () => {
+    renderTimeline([{
+      id: "hold-1",
+      occurred_at: "2026-09-23T05:43:57.000Z",
+      event_type: "order.status_changed",
+      actor_display_name: "Jannat",
+      summary: "Status changed to on_hold",
+      reason_code: "advance_payment_pending",
+      changes: [{ type: "field_changed", field: "status", label: "Status", before: "pending", after: "on_hold" }],
+    }], "full");
+
+    const row = await screen.findByTestId("activity-event");
+    const inline = within(row).getByTestId("activity-event-inline");
+    expect(within(inline).getByTestId("activity-status-change")).toHaveTextContent("On Hold");
+    expect(inline).toHaveTextContent("অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে");
+  });
+
+  it("shows a scheduled hold's Bengali reason and return date beside its status change", async () => {
+    renderTimeline([{
+      id: "dated-hold-1",
+      occurred_at: "2026-09-23T05:43:57.000Z",
+      event_type: "order.status_changed",
+      actor_display_name: "Jannat",
+      summary: "Status changed to on_hold",
+      reason_code: "customer_requested_after_date",
+      metadata: { hold_until_date: "2026-10-02" },
+      changes: [{ type: "field_changed", field: "status", label: "Status", before: "pending", after: "on_hold" }],
+    }], "full");
+
+    const row = await screen.findByTestId("activity-event");
+    const inline = within(row).getByTestId("activity-event-inline");
+    expect(inline).toHaveTextContent("গ্রাহক নির্দিষ্ট তারিখের পরে পার্সেল নিতে চান");
+    expect(inline).toHaveTextContent("থাকবে: 2026-10-02");
+    expect(within(inline).getByTestId("activity-status-change")).toHaveTextContent("On Hold");
+  });
+
   it("explains edited order items with action chips, a summary, and taka impact", async () => {
     renderTimeline([{
       id: "items-1",

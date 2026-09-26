@@ -14,6 +14,26 @@ export const CANCELLATION_REASON_OPTIONS = [
 ] as const;
 export type AdditionReason = (typeof ADDITION_REASON_OPTIONS)[number]["value"];
 export type CancellationReason = (typeof CANCELLATION_REASON_OPTIONS)[number]["value"];
+const CANCELLATION_REASON_BENGALI_LABELS: Record<CancellationReason, string> = {
+  customer_changed_mind: "গ্রাহক মত পরিবর্তন করেছেন",
+  customer_unreachable: "গ্রাহকের সাথে যোগাযোগ করা যায়নি",
+  duplicate_order: "ডুপ্লিকেট অর্ডার",
+  wrong_product_or_quantity: "ভুল পণ্য বা পরিমাণ",
+  pricing_issue: "মূল্যসংক্রান্ত সমস্যা",
+  delivery_charge_objection: "ডেলিভারি চার্জ নিয়ে আপত্তি",
+  delivery_delay: "ডেলিভারিতে দেরি",
+  out_of_stock: "পণ্য স্টকে নেই",
+  fraud_or_suspicious: "জালিয়াতি বা সন্দেহজনক অর্ডার",
+  invalid_contact_information: "ভুল যোগাযোগের তথ্য",
+  service_area_unavailable: "ডেলিভারি এলাকা সেবার বাইরে",
+  test_or_fake_order: "পরীক্ষামূলক বা ভুয়া অর্ডার",
+  zone_change: "এলাকা পরিবর্তন",
+  other: "অন্যান্য",
+};
+export const CANCELLATION_DIALOG_REASON_OPTIONS = CANCELLATION_REASON_OPTIONS.map((option) => ({
+  ...option,
+  label: CANCELLATION_REASON_BENGALI_LABELS[option.value],
+}));
 export const orderItemActivityKey = (item: Pick<OrderEditorItem, "product_id" | "variant_id">) => `${item.product_id || ""}:${item.variant_id || ""}`;
 export const createActivityGroupId = () => crypto.randomUUID();
 export function orderViewSurface(state: unknown) {

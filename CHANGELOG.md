@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.36] - 2026-09-27
+
+### Added
+
+- On Hold orders now require a reason, keep hold details separate from customer notes, and can return to Pending the day after a customer-requested date. Activity history records the hold and automatic release.
+- Orders now require a customer name, phone number, and delivery address before approval, whether created manually, edited, or converted from an abandoned checkout.
+
+### Changed
+
+- Order source is read-only after creation. Cancellation-reason options and the empty prompt now appear in Bengali, with the reason menu opening above its trigger.
+
 ## [0.1.0.35] - 2026-09-24
 
 ### Fixed
