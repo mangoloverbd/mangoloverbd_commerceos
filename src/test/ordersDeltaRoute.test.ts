@@ -70,16 +70,26 @@ describe("GET /api/orders delta sync", () => {
     expect((route.match(/enrichOrderItems\(/g) || []).length).toBe(1);
   });
 
-  it("pages the full list past PostgREST's 1000-row cap", () => {
+  it("pages the full list past PostgREST's 1000-row cap, fetching known pages together", () => {
     const route = ordersListHandler();
     const full = route.slice(route.indexOf("// Full list:"));
-    expect(full).toContain("for (let offset = 0; ; offset += pageSize)");
+    // One page builder with a stable order so rows don't shift between pages.
     expect(full).toContain(".range(offset, offset + pageSize - 1)");
-    // Stable order so rows don't shift between pages.
     expect(full).toMatch(/\.order\("created_at", \{ ascending: false \}\)\s*\.order\("id", \{ ascending: true \}\)/);
-    expect(full).toContain("if (!pageRows || pageRows.length < pageSize) break;");
-    // Exact count is requested once, on the first page only.
-    expect(full).toContain('.select("*", offset === 0 ? { count: "exact" } : undefined)');
     expect(full).toContain('.eq("org_id", orgId)');
+    // Exact count on the first page decides which pages to fetch in parallel.
+    expect(full).toContain('.select("*", withCount ? { count: "exact" } : undefined)');
+    expect(full).toContain("const first = await orderPage(0, true);");
+    expect(full).toContain("await Promise.all(offsets.map((pageOffset) => orderPage(pageOffset, false)))");
+    // Rows pushed past the counted pages by new orders are still read.
+    expect(full).toContain("while (lastLength === pageSize)");
+  });
+
+  it("fetches order item batches a few at a time instead of one after another", () => {
+    const route = ordersListHandler();
+    const attach = route.slice(route.indexOf("const attachOrderItems"), route.indexOf("const enrichedItems"));
+    expect(attach).toContain("ITEM_BATCH_CONCURRENCY");
+    expect(attach).toMatch(/await Promise\.all\(\s*batches\.slice\(i, i \+ ITEM_BATCH_CONCURRENCY\)/);
+    expect(attach).not.toMatch(/for \(const idBatch of chunkIds\(orderIds\)\) \{\s*const \{ data: batchItems/);
   });
 });

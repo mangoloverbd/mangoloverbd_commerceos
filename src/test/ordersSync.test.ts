@@ -167,6 +167,21 @@ describe("syncOrders", () => {
     expect(apiFetch).toHaveBeenLastCalledWith("/api/orders");
   });
 
+  it("runs a delta after the in-flight sync when { fresh: true } overlaps it", async () => {
+    let resolveFirst: (value: Response) => void = () => {};
+    apiFetch.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveFirst = resolve; }));
+    const first = syncOrders<TestOrder>(queryClient);
+    apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [{ ...a, status: "confirmed" }], totalCount: 1, syncedAt: "2026-09-24T00:01:00.000Z", delta: true }));
+    const fresh = syncOrders<TestOrder>(queryClient, { fresh: true });
+    expect(fresh).not.toBe(first);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+
+    resolveFirst(jsonResponse({ orders: [a], totalCount: 1, syncedAt: "2026-09-24T00:00:00.000Z" }));
+    await expect(fresh).resolves.toEqual([{ ...a, status: "confirmed" }]);
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+    expect(apiFetch).toHaveBeenLastCalledWith(`/api/orders?changed_since=${encodeURIComponent("2026-09-24T00:00:00.000Z")}`);
+  });
+
   it("clears the in-flight slot after a failure so the next sync makes a new request", async () => {
     apiFetch.mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500));
     await expect(syncOrders(queryClient)).rejects.toBeInstanceOf(OrdersSyncError);
