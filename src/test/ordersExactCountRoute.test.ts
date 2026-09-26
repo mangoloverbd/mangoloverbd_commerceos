@@ -14,7 +14,8 @@ describe("orders exact-count response", () => {
 
     expect(route).toContain("getUserOrg(supabase, user.id)");
     expect(route).toContain('.eq("org_id", orgId)');
-    expect(route).toMatch(/\.select\("\*",\s*\{\s*count:\s*"exact"\s*\}\)/);
+    // Exact count on the first page of the paged full list.
+    expect(route).toMatch(/\.select\("\*",\s*offset === 0 \? \{\s*count:\s*"exact"\s*\} : undefined\)/);
     expect(route).toContain("totalCount: count ?? allOrders.length");
   });
 });

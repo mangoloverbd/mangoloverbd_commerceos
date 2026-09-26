@@ -69,4 +69,17 @@ describe("GET /api/orders delta sync", () => {
     expect(helperCalls.length).toBe(3);
     expect((route.match(/enrichOrderItems\(/g) || []).length).toBe(1);
   });
+
+  it("pages the full list past PostgREST's 1000-row cap", () => {
+    const route = ordersListHandler();
+    const full = route.slice(route.indexOf("// Full list:"));
+    expect(full).toContain("for (let offset = 0; ; offset += pageSize)");
+    expect(full).toContain(".range(offset, offset + pageSize - 1)");
+    // Stable order so rows don't shift between pages.
+    expect(full).toMatch(/\.order\("created_at", \{ ascending: false \}\)\s*\.order\("id", \{ ascending: true \}\)/);
+    expect(full).toContain("if (!pageRows || pageRows.length < pageSize) break;");
+    // Exact count is requested once, on the first page only.
+    expect(full).toContain('.select("*", offset === 0 ? { count: "exact" } : undefined)');
+    expect(full).toContain('.eq("org_id", orgId)');
+  });
 });
