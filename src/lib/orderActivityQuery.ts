@@ -19,6 +19,7 @@ export type OrderActivityEvent = {
   summary?: string;
   reason_code?: string | null;
   reason_note?: string | null;
+  metadata?: { hold_until_date?: string | null; [key: string]: unknown } | null;
   changes?: OrderActivityChange[];
 };
 

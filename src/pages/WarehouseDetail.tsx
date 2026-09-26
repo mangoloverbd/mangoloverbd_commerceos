@@ -25,6 +25,8 @@ import { OrderStatusSegmentedControl } from "@/components/orders/OrderStatusSegm
 import { WarehouseDialog } from "@/components/WarehouseDialog";
 import { WarehouseMetric } from "@/components/warehouse/WarehouseMetric";
 import { AddProductsDialog } from "@/components/warehouse/AddProductsDialog";
+import { OrderHoldDialog } from "@/components/orders/OrderHoldDialog";
+import type { OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
 import { Chip } from "@/components/base/badges/chip";
 import { RichButton } from "@/components/ui/rich-button";
 import { PopButton } from "@/components/ui/pop-button";
@@ -85,6 +87,8 @@ export default function WarehouseDetail() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const [holdDialogOpen, setHoldDialogOpen] = useState(false);
+  const [pendingHoldSelection, setPendingHoldSelection] = useState<{ validIds: string[]; skipped: number } | null>(null);
 
   const detail = useQuery<Detail>({
     queryKey: ["warehouse", id],
@@ -107,13 +111,23 @@ export default function WarehouseDetail() {
     },
   });
 
-  async function applyBulkStatus(target: string, targetLabel: string) {
-    if (bulkUpdating) return;
+  async function applyBulkStatus(
+    target: string,
+    targetLabel: string,
+    holdDetails?: OrderHoldMetadata,
+    selectionOverride?: { validIds: string[]; skipped: number },
+  ): Promise<boolean> {
+    if (bulkUpdating) return false;
     setBulkMenuOpen(false);
-    const { validIds, skipped } = planBulkStatusChange(warehouseOrders, selectedOrderIds, target);
+    const { validIds, skipped } = selectionOverride || planBulkStatusChange(warehouseOrders, selectedOrderIds, target);
     if (validIds.length === 0) {
       toast.error(skipped > 0 ? `Selected orders can't move to ${targetLabel}` : "Select orders first");
-      return;
+      return false;
+    }
+    if (target === "on_hold" && !holdDetails) {
+      setPendingHoldSelection({ validIds, skipped });
+      setHoldDialogOpen(true);
+      return false;
     }
     setBulkUpdating(true);
     let moved = 0;
@@ -124,7 +138,7 @@ export default function WarehouseDetail() {
           const response = await apiFetch(`/api/orders/${orderId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: target }),
+            body: JSON.stringify({ status: target, ...(holdDetails || {}) }),
           });
           if (!response.ok) throw await responseError(response, "Failed to update status");
           await response.json().catch(() => ({}));
@@ -141,6 +155,7 @@ export default function WarehouseDetail() {
       } else {
         toast.error(`No orders moved to ${targetLabel}`);
       }
+      return moved > 0;
     } finally {
       setBulkUpdating(false);
     }
@@ -404,6 +419,18 @@ export default function WarehouseDetail() {
         onAssigned={async () => {
           await Promise.all([detail.refetch(), queryClient.invalidateQueries({ queryKey: [WAREHOUSES_QUERY_KEY] })]);
         }}
+      />
+      <OrderHoldDialog
+        open={holdDialogOpen}
+        onOpenChange={(open) => {
+          setHoldDialogOpen(open);
+          if (!open) setPendingHoldSelection(null);
+        }}
+        title="অর্ডার হোল্ড করুন"
+        submitLabel="Hold orders"
+        onSubmit={(metadata) => pendingHoldSelection
+          ? applyBulkStatus("on_hold", "On Hold", metadata, pendingHoldSelection)
+          : false}
       />
     </div>
   );

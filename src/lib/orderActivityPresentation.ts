@@ -1,6 +1,7 @@
 import { formatTaka } from "@/lib/orderEditor";
 import type { OrderActivityChange } from "@/lib/orderActivityQuery";
 import { normalizeBusinessStatus } from "@/lib/orderTransitions";
+import { ORDER_HOLD_REASONS } from "../../shared/orderHold.js";
 
 export type ActivityChipColor = "lime" | "rose" | "yellow" | "cyan" | "blue" | "purple" | "neutral";
 
@@ -68,6 +69,7 @@ const ACTIVITY_REASONS: Record<string, string> = {
   correction: "Correction",
   replacement: "Replacement",
   other: "Other",
+  ...Object.fromEntries(ORDER_HOLD_REASONS.map(({ code, label }) => [code, label])),
 };
 
 const humanize = (value: string) =>

@@ -7,9 +7,8 @@ import { bdWhatsAppHref } from "@/lib/bdPhone";
 import WhatsappLogo from "@/components/WhatsappLogo";
 import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
-import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
-import type { OrderSource } from "@/lib/orderSource";
+import { orderSourceLabel, type OrderSource } from "@/lib/orderSource";
 
 export type CustomerDraft = {
   customerName: string;
@@ -54,8 +53,6 @@ type CustomerPanelProps = {
   onOpenOrder?: (orderId: string) => void;
   onApply: (customer: CustomerDraft) => void;
   source?: OrderSource;
-  onSourceChange?: (source: OrderSource) => void;
-  sourceDisabled?: boolean;
 };
 
 function DetailField({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -175,7 +172,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
   }
 }
 
-export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source, onSourceChange, sourceDisabled = false }: CustomerPanelProps) {
+export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source }: CustomerPanelProps) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
   const [copied, setCopied] = useState(false);
@@ -246,12 +243,10 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
               <span className="text-[12px] text-black">{formatLandingPageLabel(order.landing_page_path)}</span>
             )}
           </div>
-          {source && onSourceChange && (
+          {source && (
             <div data-testid="order-source-control" className="flex min-w-0 items-center gap-3">
               <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Order source</p>
-              <div className="w-36 min-w-0">
-                <OrderSourceSelect value={source} onChange={onSourceChange} disabled={sourceDisabled} compact />
-              </div>
+              <span className="min-w-0 truncate text-[12px] font-medium text-black" title={orderSourceLabel(source)}>{orderSourceLabel(source)}</span>
             </div>
           )}
         </div>

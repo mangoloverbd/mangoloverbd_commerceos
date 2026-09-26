@@ -12,6 +12,7 @@ import {
 } from "react-aria-components";
 import type {
   ListBoxItemProps as AriaListBoxItemProps,
+  PopoverProps as AriaPopoverProps,
   SelectProps as AriaSelectProps,
   SelectValueRenderProps as AriaSelectValueRenderProps,
 } from "react-aria-components";
@@ -54,6 +55,12 @@ export interface SelectProps<T extends object>
   triggerClassName?: string;
   /** Classes for the open popover (e.g. constrain its width). */
   popoverClassName?: string;
+  /** Preferred menu placement. React Aria flips it when there is not enough room. */
+  popoverPlacement?: AriaPopoverProps["placement"];
+  /** Whether React Aria may flip the preferred placement when space is constrained. */
+  popoverShouldFlip?: AriaPopoverProps["shouldFlip"];
+  /** Optional portal target for menus rendered inside another modal layer. */
+  popoverPortalContainer?: AriaPopoverProps["UNSTABLE_portalContainer"];
   /** `md` (default) or `sm` for compact/dense contexts (e.g. compact tables). */
   size?: SelectSize;
   children: ReactNode;
@@ -68,6 +75,9 @@ export function Select<T extends object>({
   className,
   triggerClassName,
   popoverClassName,
+  popoverPlacement,
+  popoverShouldFlip,
+  popoverPortalContainer,
   size = "md",
   children,
   items,
@@ -137,6 +147,9 @@ export function Select<T extends object>({
             ref={popoverRef}
             isNonModal
             offset={4}
+            placement={popoverPlacement}
+            shouldFlip={popoverShouldFlip}
+            UNSTABLE_portalContainer={popoverPortalContainer}
             className={cx(
               MENU_POPOVER_WIDTH,
               MENU_POPOVER_SURFACE,
