@@ -77,15 +77,16 @@ async function fullSync<T extends SyncableOrder>(queryClient: QueryClient): Prom
  * Refresh the cached orders list. Uses a delta request when a cached list and
  * a recent cursor exist; otherwise (or with `full`) reloads the whole list.
  * Writes ["/api/orders"] and ["/api/orders/count"] and returns the list.
- * An overlapping non-full call shares the in-flight sync; an overlapping full
- * call waits for it and then runs.
+ * An overlapping plain call shares the in-flight sync; an overlapping full
+ * call waits for it and then runs. `fresh` also waits and then runs, but as a
+ * delta, for changes made after the in-flight request may have read the data.
  */
 export function syncOrders<T extends SyncableOrder>(
   queryClient: QueryClient,
-  opts: { full?: boolean } = {},
+  opts: { full?: boolean; fresh?: boolean } = {},
 ): Promise<T[]> {
   const previous = inFlight.get(queryClient);
-  if (previous && !opts.full) return previous as Promise<T[]>;
+  if (previous && !opts.full && !opts.fresh) return previous as Promise<T[]>;
 
   const run = previous
     ? previous.catch(() => undefined).then(() => runSync<T>(queryClient, opts))

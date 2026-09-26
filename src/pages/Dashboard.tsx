@@ -625,12 +625,13 @@ export default function Dashboard() {
   }, [user?.id]);
 
   // Hoisted to useCallback so effects can reference it without stale closures
-  // Polls sync by delta; pass { full: true } after actions that change many orders.
-  const fetchOrders = useCallback(async (opts: { full?: boolean } = {}) => {
+  // Polls sync by delta; pass { full: true } after actions that change many
+  // orders, or { fresh: true } to pick up a known change without a full reload.
+  const fetchOrders = useCallback(async (opts: { full?: boolean; fresh?: boolean } = {}) => {
     try {
       // syncOrders writes ["/api/orders"] and ["/api/orders/count"].
       const nextOrders = await syncOrders<Order>(queryClient, opts);
-      if (opts.full) void queryClient.invalidateQueries({ queryKey: ["/api/orders?created-range"] });
+      if (opts.full || opts.fresh) void queryClient.invalidateQueries({ queryKey: ["/api/orders?created-range"] });
       const nextTotalOrdersCount = queryClient.getQueryData<number>(["/api/orders/count"]) ?? nextOrders.length;
       setOrders(nextOrders);
       setTotalOrdersCount(nextTotalOrdersCount);
@@ -750,15 +751,14 @@ export default function Dashboard() {
       if (!courierRefreshRanRecently(courierRefreshKey)) {
         const refreshCourier = (path: string) =>
           apiFetch(path, { method: "POST" })
-            .then((res) => {
-              fetchOrders({ full: true });
-              return res.ok;
-            })
+            .then((res) => res.ok)
             .catch(() => false);
         void Promise.all([
           refreshCourier("/api/pathao/refresh-status"),
           refreshCourier("/api/steadfast/refresh-status"),
         ]).then((results) => {
+          // One delta after both finish picks up every status they changed.
+          fetchOrders({ fresh: true });
           if (results.every(Boolean)) markCourierRefreshRan(courierRefreshKey);
         });
       }
@@ -769,8 +769,8 @@ export default function Dashboard() {
         try {
           await apiFetch("/api/fetch-shopify-orders", { method: "POST", headers: { "Content-Type": "application/json" } });
           sessionStorage.setItem(syncKey, "1");
-          // Refresh orders after sync completes
-          fetchOrders({ full: true });
+          // Pick up the synced orders without reloading the whole list
+          fetchOrders({ fresh: true });
           fetchAnalytics(todayRange, true, true);
         } catch { /* ignore */ }
         finally {

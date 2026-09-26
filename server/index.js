@@ -6632,6 +6632,8 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
 // with hundreds of UUIDs blows past URL length limits and the request dies
 // with "fetch failed". Chunk all unbounded id-list fetches (batch size 100
 // keeps URLs at ~4KB).
+const ITEM_BATCH_CONCURRENCY = 4;
+
 function chunkIds(ids, size = 100) {
   const chunks = [];
   for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
@@ -6675,11 +6677,23 @@ app.get("/api/orders", async (req, res) => {
       const orderIds = allOrders.map((order) => order.id).filter(Boolean);
       const itemRows = [];
       const itemUpdatedAts = [];
-      for (const idBatch of chunkIds(orderIds)) {
-        const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity, updated_at").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
-        if (itemsError) throw itemsError;
+      // A few batches at a time: one after another made a full load wait on
+      // every round trip. Batch order is kept, so each order's items stay in order.
+      const batches = chunkIds(orderIds);
+      const batchResults = [];
+      for (let i = 0; i < batches.length; i += ITEM_BATCH_CONCURRENCY) {
+        const group = await Promise.all(
+          batches.slice(i, i + ITEM_BATCH_CONCURRENCY).map(async (idBatch) => {
+            const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity, updated_at").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+            if (itemsError) throw itemsError;
+            return batchItems || [];
+          }),
+        );
+        batchResults.push(...group);
+      }
+      for (const batchItems of batchResults) {
         // updated_at only feeds the cursor; keep the item payload unchanged.
-        for (const { updated_at: itemUpdatedAt, ...item } of batchItems || []) {
+        for (const { updated_at: itemUpdatedAt, ...item } of batchItems) {
           itemUpdatedAts.push(itemUpdatedAt);
           itemRows.push(item);
         }
@@ -6814,11 +6828,10 @@ app.get("/api/orders", async (req, res) => {
     // made every delta poll fall back to a full reload.
     const pageSize = 1000;
     const byId = new Map();
-    let count = null;
-    for (let offset = 0; ; offset += pageSize) {
+    const orderPage = async (offset, withCount) => {
       let pageQuery = supabase
         .from("orders")
-        .select("*", offset === 0 ? { count: "exact" } : undefined)
+        .select("*", withCount ? { count: "exact" } : undefined)
         .eq("org_id", orgId)
         .order("created_at", { ascending: false })
         .order("id", { ascending: true })
@@ -6826,12 +6839,28 @@ app.get("/api/orders", async (req, res) => {
       if (warehouseFilter) {
         pageQuery = pageQuery.eq("warehouse_id", warehouseFilter);
       }
-      const { data: pageRows, count: pageCount, error } = await pageQuery;
+      const { data, count: pageCount, error } = await pageQuery;
       if (error) throw error;
-      if (offset === 0) count = pageCount;
       // An insert between pages shifts rows down; keep the first copy.
-      for (const row of pageRows || []) if (!byId.has(row.id)) byId.set(row.id, row);
-      if (!pageRows || pageRows.length < pageSize) break;
+      for (const row of data || []) if (!byId.has(row.id)) byId.set(row.id, row);
+      return { length: data?.length ?? 0, count: pageCount };
+    };
+    const first = await orderPage(0, true);
+    const count = first.count;
+    let lastLength = first.length;
+    let offset = pageSize;
+    if (lastLength === pageSize) {
+      // The exact count says which pages exist, so fetch them together.
+      const offsets = [];
+      for (let pageOffset = pageSize; pageOffset < (count ?? 0); pageOffset += pageSize) offsets.push(pageOffset);
+      const pages = await Promise.all(offsets.map((pageOffset) => orderPage(pageOffset, false)));
+      if (pages.length) lastLength = pages[pages.length - 1].length;
+      offset += offsets.length * pageSize;
+    }
+    // Orders added after the count can push rows past the counted pages.
+    while (lastLength === pageSize) {
+      lastLength = (await orderPage(offset, false)).length;
+      offset += pageSize;
     }
 
     const allOrders = [...byId.values()];
