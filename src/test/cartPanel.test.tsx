@@ -15,11 +15,12 @@ const totals = {
   finalTotal: 80,
 };
 
-function renderCart(status: string, notes = "") {
+function renderCart(status: string, options: { cancellationRequired?: boolean } = {}) {
   const onStatusChange = vi.fn();
-  const onNotesChange = vi.fn();
+  const onHoldDetailsChange = vi.fn();
+  const onCancellationReasonChange = vi.fn();
   function Harness() {
-    const [draftNotes, setDraftNotes] = useState(notes);
+    const [holdDetails, setHoldDetails] = useState({ hold_reason_code: null, hold_reason_detail: null, hold_until_date: null });
     return (
       <CartPanel
         items={[]}
@@ -29,8 +30,11 @@ function renderCart(status: string, notes = "") {
         saving={false}
         status={status}
         onStatusChange={onStatusChange}
-        notes={draftNotes}
-        onNotesChange={(next) => { onNotesChange(next); setDraftNotes(next); }}
+        holdDetails={holdDetails}
+        onHoldDetailsChange={(next) => { onHoldDetailsChange(next); setHoldDetails(next); }}
+        cancellationRequired={options.cancellationRequired}
+        cancellationReasonCode=""
+        onCancellationReasonChange={onCancellationReasonChange}
         overallDiscountType={null}
         overallDiscountValue={0}
         deliveryOn
@@ -48,7 +52,7 @@ function renderCart(status: string, notes = "") {
     );
   }
   render(<Harness />);
-  return { onStatusChange, onNotesChange };
+  return { onStatusChange, onHoldDetailsChange, onCancellationReasonChange };
 }
 
 describe("CartPanel order status", () => {
@@ -90,16 +94,33 @@ describe("CartPanel order status", () => {
     expect(onStatusChange).toHaveBeenCalledWith("confirmed");
   });
 
-  it("shows a compact hold note below the status control", async () => {
+  it("shows Bengali hold reasons instead of reusing the general Notes field", async () => {
     const user = userEvent.setup();
-    const { onNotesChange } = renderCart("on_hold", "Existing note");
+    const { onHoldDetailsChange } = renderCart("on_hold");
 
-    const note = screen.getByRole("textbox", { name: "Hold note" });
-    expect(note).toHaveValue("Existing note");
-    await user.clear(note);
-    await user.type(note, "Waiting for stock");
+    const reason = screen.getByRole("button", { name: /Hold reason/ });
+    await user.click(reason);
+    expect(await screen.findByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" }));
 
-    expect(onNotesChange).toHaveBeenLastCalledWith("Waiting for stock");
+    expect(onHoldDetailsChange).toHaveBeenLastCalledWith({
+      hold_reason_code: "advance_payment_pending",
+      hold_reason_detail: null,
+      hold_until_date: null,
+    });
+  });
+
+  it("opens the cancellation reason menu upward with Bengali choices in the order editor", async () => {
+    const user = userEvent.setup();
+    const { onCancellationReasonChange } = renderCart("confirmed", { cancellationRequired: true });
+
+    await user.click(screen.getByRole("button", { name: /Cancellation reason/ }));
+
+    const listbox = await screen.findByRole("listbox");
+    expect(listbox.closest("[data-placement]")).toHaveAttribute("data-placement", "top");
+    expect(screen.getByRole("button", { name: /কারণ নির্বাচন করুন/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "এলাকা পরিবর্তন" }));
+    expect(onCancellationReasonChange).toHaveBeenCalledWith("zone_change");
   });
 });
 
@@ -114,8 +135,6 @@ describe("CartPanel draft mode", () => {
         saving={false}
         status={null}
         onStatusChange={vi.fn()}
-        notes=""
-        onNotesChange={vi.fn()}
         overallDiscountType={null}
         overallDiscountValue={0}
         deliveryOn
@@ -134,7 +153,7 @@ describe("CartPanel draft mode", () => {
     );
 
     expect(screen.queryByRole("button", { name: /order status/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Hold note" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Hold reason/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cart discount/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
   });
@@ -149,8 +168,6 @@ describe("CartPanel draft mode", () => {
         saving={false}
         status="on_hold"
         onStatusChange={vi.fn()}
-        notes="Existing note"
-        onNotesChange={vi.fn()}
         overallDiscountType={null}
         overallDiscountValue={0}
         deliveryOn
@@ -169,7 +186,7 @@ describe("CartPanel draft mode", () => {
     );
 
     expect(screen.queryByRole("button", { name: /order status/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Hold note" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Hold reason/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /discount to langra mango/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cart discount/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
@@ -178,5 +195,6 @@ describe("CartPanel draft mode", () => {
   it("keeps status and notes visible by default", () => {
     renderCart("confirmed");
     expect(screen.getByRole("button", { name: /order status/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Hold reason/ })).not.toBeInTheDocument();
   });
 });

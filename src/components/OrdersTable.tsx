@@ -37,9 +37,9 @@ import { cn } from "@/lib/utils";
 import { classifyOrderStatus, canShowConsignmentCopy } from "@/lib/orderStatusFilters";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
-import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isPrintStatus } from "@/lib/orderTransitions";
+import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isOnHoldStatus, isPrintStatus } from "@/lib/orderTransitions";
 import { useOrgName } from "@/hooks/useOrgName";
-import { CANCELLATION_REASON_OPTIONS, createActivityGroupId, type CancellationReason } from "@/lib/orderActivity";
+import { CANCELLATION_DIALOG_REASON_OPTIONS, createActivityGroupId, type CancellationReason } from "@/lib/orderActivity";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,6 +58,8 @@ import { downloadOrderExcel } from "@/lib/orderExcelExport";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileOrderCards } from "@/components/MobileOrderCards";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
+import { OrderHoldDialog } from "@/components/orders/OrderHoldDialog";
+import type { OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
 import { CopyButton } from "@/components/ui/copy-button";
 
 function copyTextValue(value: string) {
@@ -263,6 +265,9 @@ export interface Order {
   tracking_code?: string | null;
   courier_message?: string | null;
   notes?: string | null;
+  hold_reason_code?: string | null;
+  hold_reason_detail?: string | null;
+  hold_until_date?: string | null;
   fulfillment_status?: string | null;
   landing_page_path?: string | null;
   items?: OrderItemSummary[];
@@ -667,8 +672,10 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
   const [isBulkSendingSteadfast, setIsBulkSendingSteadfast] = useState(false);
   const [isDeletingOrders, setIsDeletingOrders] = useState(false);
   const [cancellationTarget, setCancellationTarget] = useState<Order | null>(null);
+  const [cancellationDialogContainer, setCancellationDialogContainer] = useState<HTMLDivElement | null>(null);
   const [cancellationReasonCode, setCancellationReasonCode] = useState<CancellationReason | "">("");
   const [cancellationReasonNote, setCancellationReasonNote] = useState("");
+  const [holdTarget, setHoldTarget] = useState<Order | null>(null);
   const warehouseNames = Object.fromEntries(warehouses.map((warehouse) => [warehouse.id, warehouse.name]));
 
   const handleWarehouseChange = async (order: Order, warehouseId: string) => {
@@ -692,13 +699,18 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
     order: Order,
     newStatus: string,
     cancellation?: { code: CancellationReason; note: string },
-  ) => {
-    if (order.status === newStatus) return;
+    holdDetails?: OrderHoldMetadata,
+  ): Promise<boolean> => {
+    if (order.status === newStatus) return true;
+    if (isOnHoldStatus(newStatus) && !holdDetails) {
+      setHoldTarget(order);
+      return false;
+    }
     if (newStatus === "cancelled" && !cancellation) {
       setCancellationTarget(order);
       setCancellationReasonCode("");
       setCancellationReasonNote("");
-      return;
+      return false;
     }
 
     // Optimistic update - update UI immediately
@@ -715,6 +727,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
             cancellation_reason_code: cancellation.code,
             cancellation_reason_note: cancellation.note.trim() || null,
           } : {}),
+          ...(holdDetails || {}),
         }),
       });
       const data = await res.json();
@@ -729,6 +742,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         onOrderUpdate(data.order);
       }
       if (newStatus === "cancelled") setCancellationTarget(null);
+      return true;
     } catch (error) {
       console.error("Error updating order status:", error);
       console.error("Error updating order status:", error);
@@ -744,6 +758,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
           </div>
         </DarkToast>
       ), { fit: true });
+      return false;
     }
   };
 
@@ -1748,7 +1763,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         )}
       </AnimatePresence>
       <AlertDialog open={Boolean(cancellationTarget)} onOpenChange={(open) => { if (!open) setCancellationTarget(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent ref={setCancellationDialogContainer}>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel order?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1758,15 +1773,19 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
           <div className="space-y-3">
             <label className="block">
               <span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.3em] text-black">Cancellation reason</span>
-              <select
+              <BuiSelect
                 aria-label="Cancellation reason"
-                value={cancellationReasonCode}
-                onChange={(event) => setCancellationReasonCode(event.target.value as CancellationReason | "")}
-                className="h-10 w-full rounded-lg bg-black/[0.04] px-3 text-sm"
+                placeholder="কারণ নির্বাচন করুন"
+                selectedKey={cancellationReasonCode || null}
+                onSelectionChange={(key) => setCancellationReasonCode(key ? String(key) as CancellationReason : "")}
+                className="w-full"
+                triggerClassName="h-10 w-full rounded-lg bg-black/[0.04] px-3 text-sm"
+                popoverPlacement="top"
+                popoverShouldFlip={false}
+                popoverPortalContainer={cancellationDialogContainer ?? undefined}
               >
-                <option value="">Choose a reason</option>
-                {CANCELLATION_REASON_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+                {CANCELLATION_DIALOG_REASON_OPTIONS.map((option) => <BuiSelectItem key={option.value} id={option.value} textValue={option.label}>{option.label}</BuiSelectItem>)}
+              </BuiSelect>
             </label>
             <label className="block">
               <span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.3em] text-black">Note</span>
@@ -1794,6 +1813,13 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <OrderHoldDialog
+        open={Boolean(holdTarget)}
+        onOpenChange={(open) => { if (!open) setHoldTarget(null); }}
+        title="অর্ডার হোল্ড করুন"
+        submitLabel="অর্ডার হোল্ডে রাখুন"
+        onSubmit={(metadata) => holdTarget ? handleStatusChange(holdTarget, "on_hold", undefined, metadata) : false}
+      />
     </div>
   );
 }

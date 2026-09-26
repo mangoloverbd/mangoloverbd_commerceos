@@ -2,7 +2,7 @@
 
 ## Goal
 
-Give staff a consistent Order Source field when creating and editing orders. New orders require a selected source, while existing orders show an automatically detected/normalized source that staff can correct at any time.
+Give staff a consistent Order Source field when creating orders. Staff can choose a source before saving; once an order exists, its source is read-only and cannot be changed.
 
 ## Scope
 
@@ -35,7 +35,7 @@ The API validates source values against this allowlist. Older clients that omit 
 - Missing or unknown existing values display as Manual / Other.
 - Shopify-specific behavior is out of scope because this merchant does not use Shopify.
 
-Automatic detection only supplies the initial/canonical source. Once staff manually edits the source, that stored value is authoritative. Courier webhooks, courier status updates, and other order sync paths must not overwrite it.
+Automatic detection supplies the initial/canonical source. Once an order is created, that stored value is authoritative. Courier webhooks, courier status updates, order edits, and other sync paths must not overwrite it.
 
 ## Create Order behavior
 
@@ -50,31 +50,30 @@ The server also applies the safe default for backward compatibility, so every ne
 
 ## Order Editor behavior
 
-Add the same selector to the order metadata area. It will:
+Show the stored source in the order metadata area as a read-only value. It will:
 
 - initialize from the stored source after legacy normalization;
 - always show a valid source label;
-- remain editable even after courier dispatch locks cart editing;
-- mark the page dirty when changed;
-- support saving the source by itself without requiring unrelated order edits.
+- not be interactive, regardless of courier or cart state;
+- not mark the page dirty or be included in order update requests.
 
-The source update is independent from status, courier, customer, cart, discount, delivery, and note updates.
+Status, courier, customer, cart, discount, delivery, and note fields remain editable under their existing rules.
 
 ## API and data flow
 
 1. The Create Order page sends the selected source to `POST /api/orders`.
 2. The authenticated server validates and stores the canonical source with the order.
 3. Public storefront checkout stores `website` at its existing order insertion boundary.
-4. The Order Editor reads the source returned by `GET /api/orders/:id`, normalizes legacy values, and sends changes through the authenticated `PATCH /api/orders/:id` route.
-5. The patch route permits source edits with the existing workspace guard and does not couple source changes to courier or cart state.
+4. The Order Editor reads the source returned by `GET /api/orders/:id` and displays its normalized label without sending it in update requests.
+5. The authenticated `PATCH /api/orders/:id` route rejects attempts to change a saved source with a `409` response and continues to allow unrelated order edits under the existing workspace guard.
 
 All order reads and writes continue to use the resolved Mango Lover BD `org_id`. No public client receives direct database write access.
 
 ## Error handling
 
 - Invalid source values return a clear `400` response.
+- Attempts to change a saved source return `409` with code `order_source_locked`.
 - Missing source falls back to Manual / Other for compatibility.
-- Failed source saves use the existing Order Editor error state and leave the draft available for retry.
 - Courier and sync failures do not affect the saved source.
 
 ## Testing
@@ -85,8 +84,9 @@ Add regression coverage for:
 - the selected source in the Create Order request;
 - Website and social-channel detection/normalization;
 - missing and legacy source fallback;
-- editing a source on a dispatched order;
-- source-only saves on Order Editor;
+- displaying the saved source as read-only on normal and dispatched orders;
+- excluding the source from unrelated Order Editor saves;
+- rejecting attempts to change a saved source through the API;
 - API rejection of unsupported source values;
 - public storefront orders storing Website;
 - courier update paths leaving source unchanged.

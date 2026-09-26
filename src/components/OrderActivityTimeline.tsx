@@ -84,12 +84,15 @@ function ActivityLogIcon() {
 }
 
 function ReasonLine({ event }: { event: Event }) {
-  if (!event.reason_code && !event.reason_note) return null;
+  const holdUntilDate = event.metadata?.hold_until_date;
+  if (!event.reason_code && !event.reason_note && !holdUntilDate) return null;
   return (
     <p className="text-[11px] text-black/65">
       {event.reason_code && <span>{activityReasonLabel(event.reason_code)}</span>}
       {event.reason_code && event.reason_note ? " · " : null}
       {event.reason_note && <span>{event.reason_note}</span>}
+      {((event.reason_code || event.reason_note) && holdUntilDate) ? " · " : null}
+      {holdUntilDate && <span>থাকবে: {holdUntilDate}</span>}
     </p>
   );
 }

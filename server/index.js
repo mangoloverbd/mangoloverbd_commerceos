@@ -76,6 +76,7 @@ import {
   parseAbandonedCheckoutCapture,
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
+import { getOrderApprovalDetailsError } from "./orderApprovalDetails.js";
 import {
   hashProtectionSignal,
   getProtectionReview,
@@ -134,6 +135,8 @@ import {
   validateAdditionReasons,
   validateCancellationReason,
 } from "./orderActivity.js";
+import { getBangladeshDateKey, validateOrderHoldDetails } from "../shared/orderHold.js";
+import { releaseDueOrderHolds } from "./orderHoldMaintenance.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
 //     OpenAI-compatible gateway like GMI Cloud) ─────────────────────────────
@@ -3019,12 +3022,32 @@ app.get("/api/internal/abandoned-checkouts-maintenance", async (req, res) => {
 
   try {
     const result = await runAbandonedCheckoutMaintenance();
+    const supabase = getServiceSupabase();
+    const { data: workspaceRows, error: workspaceError } = await supabase
+      .from("user_roles")
+      .select("org_id")
+      .is("deleted_at", null)
+      .not("org_id", "is", null);
+    if (workspaceError) throw workspaceError;
+    const workspaceIds = [...new Set((workspaceRows || []).map((row) => row.org_id).filter(Boolean))];
+    if (workspaceIds.length > 1) throw new Error("Daily maintenance expected one Mango Lover BD workspace");
+    const now = new Date();
+    const releasedHolds = workspaceIds[0]
+      ? await releaseDueOrderHolds({
+        supabase,
+        orgId: workspaceIds[0],
+        todayInDhaka: getBangladeshDateKey(now),
+        now,
+        recordStatusEvent,
+        recordOrderActivity,
+      })
+      : 0;
     try {
       await scrubExpiredRiskAttempts(getServiceSupabase());
     } catch {
       console.warn("[OrderRisk] maintenance failed");
     }
-    return res.json({ ok: true, ...result });
+    return res.json({ ok: true, ...result, releasedHolds });
   } catch {
     console.warn("[AbandonedCheckout] maintenance failed");
     return res.status(500).json({ error: "Could not maintain abandoned checkouts" });
@@ -7049,6 +7072,26 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
     const customerName = convertOverrides.customerName ?? draft.customer_name;
     const address = convertOverrides.address ?? draft.address;
     const phone = normalizeBdPhone(draft.phone);
+    let conversionHoldDetails = null;
+    if (status === "on_hold") {
+      const holdValidation = validateOrderHoldDetails({
+        reasonCode: req.body?.hold_reason_code,
+        reasonDetail: req.body?.hold_reason_detail ?? "",
+        holdUntilDate: req.body?.hold_until_date,
+        currentDate: getBangladeshDateKey(now),
+      });
+      if (holdValidation) return res.status(400).json(holdValidation);
+      const normalizedHoldUntilDate = typeof req.body.hold_until_date === "string" ? req.body.hold_until_date.trim() || null : null;
+      conversionHoldDetails = {
+        hold_reason_code: req.body.hold_reason_code,
+        hold_reason_detail: req.body.hold_reason_detail?.trim() || null,
+        hold_until_date: normalizedHoldUntilDate,
+      };
+    }
+    if (status === "approved") {
+      const approvalError = getOrderApprovalDetailsError({ customer_name: customerName, phone: draft.phone, address });
+      if (approvalError) return res.status(400).json(approvalError);
+    }
     if (!phone) return res.status(409).json({ error: "Checkout phone is no longer valid" });
 
     const catalogIds = await resolveAbandonedCatalogIds(supabase, orgId, draft.cart);
@@ -7087,6 +7130,9 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         price: subtotal,
         delivery_rate: draft.delivery_rate,
         status,
+        hold_reason_code: conversionHoldDetails?.hold_reason_code ?? null,
+        hold_reason_detail: conversionHoldDetails?.hold_reason_detail ?? null,
+        hold_until_date: conversionHoldDetails?.hold_until_date ?? null,
         fraud_checked: false,
         fulfillment_status: "unfulfilled",
         warehouse_id: routing.warehouseId,
@@ -7162,7 +7208,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       occurredAt: conversionAt,
     });
     await recordStatusEvent(supabase, convertedStatusEvent);
-    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "abandoned_queue", summary: "Order created from abandoned checkout", metadata: { origin_source: "abandoned_checkout", ...(convertedStatusEvent?.id ? { legacy_status_event_id: convertedStatusEvent.id } : {}) }, occurredAt: conversionAt }));
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "abandoned_queue", summary: "Order created from abandoned checkout", reasonCode: conversionHoldDetails?.hold_reason_code, reasonNote: conversionHoldDetails?.hold_reason_detail, changes: conversionHoldDetails ? [{ type: "field_changed", field: "status", label: "Status", before: null, after: status }] : [], metadata: { origin_source: "abandoned_checkout", ...(convertedStatusEvent?.id ? { legacy_status_event_id: convertedStatusEvent.id } : {}), ...(conversionHoldDetails?.hold_until_date ? { hold_until_date: conversionHoldDetails.hold_until_date } : {}) }, occurredAt: conversionAt }));
     await recordStatusEvent(supabase, buildStatusEvent({
       orgId,
       orderId: draft.id,
@@ -8465,7 +8511,8 @@ app.post("/api/orders", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const staffPhone = normalizeBdMobileInput(req.body?.phone);
-    if (!staffPhone) return res.status(400).json({ error: "Enter a mobile number in English digits, like 01712345678 or +8801712345678" });
+    const requestedApproval = isApprovedStatus(req.body?.status);
+    if (!staffPhone && !requestedApproval) return res.status(400).json({ error: "Enter a mobile number in English digits, like 01712345678 or +8801712345678" });
     const requestedItems = req.body?.items;
     const orderItems = Array.isArray(requestedItems)
       ? requestedItems.map((item) => {
@@ -8516,6 +8563,9 @@ app.post("/api/orders", async (req, res) => {
       "discount",
       "advanced_payment",
       "source",
+      "hold_reason_code",
+      "hold_reason_detail",
+      "hold_until_date",
     ];
     const row = { org_id: orgId };
     for (const key of allowed) {
@@ -8530,8 +8580,45 @@ app.post("/api/orders", async (req, res) => {
     if (!row.shopify_order_id) {
       row.shopify_order_id = -(Math.floor(Math.random() * 9_000_000_000_000) + 1_000_000_000_000);
     }
-    row.order_number = await getNextManualOrderNumber(orgId);
     if (!row.status) row.status = "pending";
+    const startsOnHold = ["on_hold", "hold"].includes(normalizeBusinessStatus(row.status));
+    const holdMetadataTouched = ["hold_reason_code", "hold_reason_detail", "hold_until_date"]
+      .some((field) => req.body?.[field] !== undefined);
+    if (holdMetadataTouched && !startsOnHold) {
+      return res.status(400).json({ error: "Hold details can only be set when creating an On Hold order", code: "hold_metadata_requires_hold" });
+    }
+    let creationHoldActivity = null;
+    if (startsOnHold) {
+      const holdReasonCode = row.hold_reason_code;
+      const holdReasonDetail = row.hold_reason_detail ?? "";
+      const holdUntilDate = row.hold_until_date;
+      const holdValidation = validateOrderHoldDetails({
+        reasonCode: holdReasonCode,
+        reasonDetail: holdReasonDetail,
+        holdUntilDate,
+        currentDate: getBangladeshDateKey(),
+      });
+      if (holdValidation) return res.status(400).json({ error: holdValidation.error, code: holdValidation.code });
+
+      const normalizedHoldUntilDate = typeof holdUntilDate === "string" ? holdUntilDate.trim() || null : null;
+      row.hold_reason_code = holdReasonCode;
+      row.hold_reason_detail = holdReasonDetail.trim() || null;
+      row.hold_until_date = normalizedHoldUntilDate;
+      creationHoldActivity = {
+        reasonCode: holdReasonCode,
+        reasonNote: holdReasonDetail.trim() || null,
+        holdUntilDate: normalizedHoldUntilDate,
+      };
+    }
+    if (isApprovedStatus(row.status)) {
+      const approvalError = getOrderApprovalDetailsError({
+        ...row,
+        phone: typeof req.body?.phone === "string" ? req.body.phone : "",
+      });
+      if (approvalError) return res.status(400).json(approvalError);
+    }
+    if (!staffPhone) return res.status(400).json({ error: "Enter a mobile number in English digits, like 01712345678 or +8801712345678" });
+    row.order_number = await getNextManualOrderNumber(orgId);
     row.created_by = user.id;
 
     if (orderItems.length > 0) {
@@ -8643,7 +8730,7 @@ app.post("/api/orders", async (req, res) => {
       occurredAt: transitionAt,
     });
     await recordStatusEvent(supabase, createStatusEvent);
-    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: data.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: `Order created through ${data.origin_source || data.source || "manual_other"}`, metadata: { origin_source: data.origin_source || data.source || "manual_other", ...(createStatusEvent?.id ? { legacy_status_event_id: createStatusEvent.id } : {}) }, occurredAt: transitionAt }));
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: data.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "order_editor", summary: `Order created through ${data.origin_source || data.source || "manual_other"}`, reasonCode: creationHoldActivity?.reasonCode, reasonNote: creationHoldActivity?.reasonNote, changes: creationHoldActivity ? [{ type: "field_changed", field: "status", label: "Status", before: null, after: data.status }] : [], metadata: { origin_source: data.origin_source || data.source || "manual_other", ...(createStatusEvent?.id ? { legacy_status_event_id: createStatusEvent.id } : {}), ...(creationHoldActivity?.holdUntilDate ? { hold_until_date: creationHoldActivity.holdUntilDate } : {}) }, occurredAt: transitionAt }));
     await sendBulkSms(orgId, "confirmation", data);
     return res.status(201).json({ success: true, order: data });
   } catch (e) {
@@ -8658,14 +8745,14 @@ app.patch("/api/orders/:id", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source", "advanced_payment", "payment_method"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source", "advanced_payment", "payment_method", "hold_reason_code", "hold_reason_detail", "hold_until_date"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
     if (update.source !== undefined && !isCanonicalOrderSource(update.source)) {
       return res.status(400).json({ error: "Invalid order source" });
     }
     if (update.source !== undefined) update.source = update.source.trim().toLowerCase();
-    if (update.customer_name !== undefined && (typeof update.customer_name !== "string" || !update.customer_name.trim())) {
+    if (update.customer_name !== undefined && typeof update.customer_name !== "string") {
       return res.status(400).json({ error: "Customer name is required" });
     }
     if (update.phone !== undefined && typeof update.phone !== "string") {
@@ -8687,15 +8774,71 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
+    if (update.source !== undefined && update.source !== orderCheck.source) {
+      return res.status(409).json({ error: "Order source cannot be changed after creation", code: "order_source_locked" });
+    }
+    const isApprovalTransition = update.status !== undefined
+      && isApprovedStatus(update.status)
+      && !isApprovedStatus(orderCheck.status);
+    if (update.customer_name !== undefined && !update.customer_name.trim() && !isApprovalTransition) {
+      return res.status(400).json({ error: "Customer name is required" });
+    }
     // Older orders may hold numbers saved before the strict rule; only a
     // changed phone is checked, so other edits to those orders still save.
     if (update.phone !== undefined && update.phone !== orderCheck.phone) {
       const phone = normalizeBdMobileInput(update.phone);
-      if (!phone) return res.status(400).json({ error: "Enter a mobile number in English digits, like 01712345678 or +8801712345678" });
-      update.phone = phone;
+      if (!phone) {
+        if (!isApprovalTransition || String(update.phone).trim()) {
+          return res.status(400).json({ error: "Enter a mobile number in English digits, like 01712345678 or +8801712345678" });
+        }
+      } else {
+        update.phone = phone;
+      }
     }
     const fromBusinessStatus = normalizeBusinessStatus(orderCheck.status);
     const toBusinessStatus = update.status === undefined ? fromBusinessStatus : normalizeBusinessStatus(update.status);
+    const fromOnHold = fromBusinessStatus === "on_hold" || fromBusinessStatus === "hold";
+    const toOnHold = toBusinessStatus === "on_hold" || toBusinessStatus === "hold";
+    const holdMetadataTouched = ["hold_reason_code", "hold_reason_detail", "hold_until_date"]
+      .some((field) => req.body?.[field] !== undefined);
+    let holdActivity = null;
+    if (holdMetadataTouched && !toOnHold) {
+      return res.status(400).json({ error: "Hold details can only be changed while an order is On Hold", code: "hold_metadata_requires_hold" });
+    }
+    if (toOnHold && (!fromOnHold || holdMetadataTouched)) {
+      const holdReasonCode = update.hold_reason_code !== undefined ? update.hold_reason_code : orderCheck.hold_reason_code;
+      const holdReasonDetail = update.hold_reason_detail !== undefined
+        ? update.hold_reason_detail ?? ""
+        : orderCheck.hold_reason_detail ?? "";
+      const holdUntilDate = update.hold_until_date !== undefined ? update.hold_until_date : orderCheck.hold_until_date;
+      const holdValidation = validateOrderHoldDetails({
+        reasonCode: holdReasonCode,
+        reasonDetail: holdReasonDetail,
+        holdUntilDate,
+        currentDate: getBangladeshDateKey(),
+      });
+      if (holdValidation) return res.status(400).json({ error: holdValidation.error, code: holdValidation.code });
+
+      const normalizedHoldUntilDate = typeof holdUntilDate === "string" ? holdUntilDate.trim() || null : null;
+      update.hold_reason_code = holdReasonCode;
+      update.hold_reason_detail = holdReasonDetail.trim() || null;
+      update.hold_until_date = normalizedHoldUntilDate;
+      holdActivity = {
+        reasonCode: holdReasonCode,
+        reasonNote: holdReasonDetail.trim() || null,
+        holdUntilDate: normalizedHoldUntilDate,
+      };
+    } else if (toOnHold && update.status !== undefined) {
+      holdActivity = {
+        reasonCode: orderCheck.hold_reason_code,
+        reasonNote: orderCheck.hold_reason_detail,
+        holdUntilDate: orderCheck.hold_until_date,
+      };
+    }
+    if (isApprovalTransition) {
+      const approvalError = getOrderApprovalDetailsError({ ...orderCheck, ...update });
+      if (approvalError) return res.status(400).json(approvalError);
+    }
     const isStaffCancellation = toBusinessStatus === "cancelled" && fromBusinessStatus !== "cancelled";
     const isReopening = fromBusinessStatus === "cancelled" && toBusinessStatus !== "cancelled";
     let cancellationReason = null;
@@ -8807,12 +8950,16 @@ app.patch("/api/orders/:id", async (req, res) => {
 
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     const changes = buildOrderChanges({ beforeOrder: orderCheck, afterOrder: data });
-    if (changes.length || update.status !== undefined) {
+    if (changes.length || update.status !== undefined || holdMetadataTouched) {
       let eventType = update.status !== undefined ? "order.status_changed" : "order.edited";
       if (isStaffCancellation) eventType = "order.cancelled";
       if (isReopening) eventType = "order.reopened";
       const requestId = buildOperationRequestId(activityGroupId, req.params.id, "patch");
-      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: req.params.id, orderTable: "orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "order_editor", summary: isStaffCancellation ? "Cancelled order" : isReopening ? "Reopened order" : update.status !== undefined ? `Status changed to ${update.status}` : "Edited order", reasonCode: cancellationReason?.code, reasonNote: cancellationReason?.note, changes, metadata: update.status !== undefined ? { from_status: orderCheck.status, to_status: update.status, legacy_status_event_id: statusEvent?.id } : {}, occurredAt: transitionAt || undefined }));
+      const activityMetadata = update.status !== undefined
+        ? { from_status: orderCheck.status, to_status: update.status, legacy_status_event_id: statusEvent?.id }
+        : {};
+      if (holdActivity?.holdUntilDate) activityMetadata.hold_until_date = holdActivity.holdUntilDate;
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: req.params.id, orderTable: "orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "order_editor", summary: isStaffCancellation ? "Cancelled order" : isReopening ? "Reopened order" : update.status !== undefined ? `Status changed to ${update.status}` : "Edited order", reasonCode: cancellationReason?.code || holdActivity?.reasonCode, reasonNote: cancellationReason?.note || holdActivity?.reasonNote, changes, metadata: activityMetadata, occurredAt: transitionAt || undefined }));
     }
     await labelOrderRiskAttempt(supabase, orgId, data);
     return res.json({ success: true, order: data });

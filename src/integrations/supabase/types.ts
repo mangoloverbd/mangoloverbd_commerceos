@@ -465,6 +465,9 @@ export type Database = {
           fraud_checked: boolean | null
           fraud_data: Json | null
           fulfillment_status: string | null
+          hold_reason_code: string | null
+          hold_reason_detail: string | null
+          hold_until_date: string | null
           id: string
           landing_page_path: string | null
           notes: string | null
@@ -500,6 +503,9 @@ export type Database = {
           fraud_checked?: boolean | null
           fraud_data?: Json | null
           fulfillment_status?: string | null
+          hold_reason_code?: string | null
+          hold_reason_detail?: string | null
+          hold_until_date?: string | null
           id?: string
           landing_page_path?: string | null
           notes?: string | null
@@ -535,6 +541,9 @@ export type Database = {
           fraud_checked?: boolean | null
           fraud_data?: Json | null
           fulfillment_status?: string | null
+          hold_reason_code?: string | null
+          hold_reason_detail?: string | null
+          hold_until_date?: string | null
           id?: string
           landing_page_path?: string | null
           notes?: string | null

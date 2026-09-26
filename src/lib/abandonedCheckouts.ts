@@ -35,8 +35,11 @@ export type AbandonedCheckoutResponse = {
 export type AbandonedCheckoutConvertStatus = "pending" | "on_hold" | "approved";
 
 export type AbandonedCheckoutConvertOverrides = {
-  customer_name: string;
-  address: string;
+  customer_name?: string;
+  address?: string;
+  hold_reason_code?: string | null;
+  hold_reason_detail?: string | null;
+  hold_until_date?: string | null;
 };
 
 const SOURCE_LABELS: Record<string, string> = {

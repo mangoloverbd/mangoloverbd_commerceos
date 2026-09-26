@@ -193,7 +193,7 @@ describe("OrderDetail", () => {
     expect(screen.getAllByText("Approved order").length).toBeGreaterThan(0);
   });
 
-  it("places the order source selector in the customer section header", async () => {
+  it("places the read-only order source in the customer section header", async () => {
     renderPage();
 
     const customerSection = await screen.findByRole("region", { name: "Customer and order" });
@@ -204,7 +204,8 @@ describe("OrderDetail", () => {
     expect(within(identity).getByRole("button", { name: "Edit customer" })).toBeInTheDocument();
     expect(sourceControl).toHaveClass("flex", "items-center");
     expect(within(sourceControl).getByText("Order source")).toBeInTheDocument();
-    expect(within(sourceControl).getByRole("button", { name: /Order source/ })).toHaveClass("h-8");
+    expect(within(sourceControl).getByText("Website")).toBeInTheDocument();
+    expect(within(sourceControl).queryByRole("button", { name: /Order source/ })).not.toBeInTheDocument();
     expect(within(customerSection).getByText("Last orders")).toBeInTheDocument();
     expect(header).not.toHaveTextContent("Last orders");
     expect(within(customerSection).getByText("Last orders").parentElement?.querySelectorAll('[aria-hidden="true"]')).toHaveLength(0);
@@ -248,11 +249,11 @@ describe("OrderDetail", () => {
     expect(within(attribution).getByRole("link", { name: "Katimon Mango" })).toBeInTheDocument();
   });
 
-  it("shows and saves an order source independently", async () => {
+  it("keeps the saved order source read-only and excludes it from order updates", async () => {
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders/order-1" && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body));
-        return response({ success: true, order: { ...order, source: body.source } });
+        return response({ success: true, order: { ...order, status: body.status } });
       }
       if (url === "/api/orders/order-1") return response(detail);
       if (url === "/api/products") return response(products);
@@ -261,44 +262,33 @@ describe("OrderDetail", () => {
     renderPage();
     const user = userEvent.setup();
 
-    const source = await screen.findByLabelText("Order source");
-    expect(source).toHaveTextContent("Website");
-    await user.click(source);
-    await user.click(await screen.findByRole("option", { name: "Phone" }));
+    const sourceControl = await screen.findByTestId("order-source-control");
+    expect(sourceControl).toHaveTextContent("Website");
+    expect(within(sourceControl).queryByRole("button")).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole("region", { name: "Order cart" })).getByRole("button", { name: /order status/i }));
+    await user.click(await screen.findByRole("option", { name: "print" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ source: "phone" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ status: "print" });
+      expect(JSON.parse(String(patch?.[1]?.body))).not.toHaveProperty("source");
     });
   });
 
-  it("keeps the order source editable after courier dispatch", async () => {
+  it("keeps the order source read-only after courier dispatch", async () => {
     const dispatchedDetail = { ...detail, canEditItems: false, order: { ...order, sent_to_courier: true, source: "website" } };
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/orders/order-1" && init?.method === "PATCH") {
-        const body = JSON.parse(String(init.body));
-        return response({ ...dispatchedDetail, order: { ...dispatchedDetail.order, source: body.source } });
-      }
       if (url === "/api/orders/order-1") return response(dispatchedDetail);
       if (url === "/api/products") return response(products);
       throw new Error(`Unexpected API request: ${url}`);
     });
     renderPage();
 
-    const user = userEvent.setup();
-    const source = await screen.findByLabelText("Order source");
-    expect(source).not.toBeDisabled();
-    await user.click(source);
-    await user.click(await screen.findByRole("option", { name: "Phone" }));
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() => {
-      const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
-      expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ source: "phone" });
-    });
+    const sourceControl = await screen.findByTestId("order-source-control");
+    expect(sourceControl).toHaveTextContent("Website");
+    expect(within(sourceControl).queryByRole("button")).not.toBeInTheDocument();
     expect(apiFetch.mock.calls.some(([url]) => String(url).includes("/items"))).toBe(false);
   });
 
@@ -343,13 +333,20 @@ describe("OrderDetail", () => {
     expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
   });
 
-  it("saves an on-hold status and its compact note together", async () => {
+  it("saves structured hold metadata without changing the separate order note", async () => {
+    const orderWithNote = {
+      ...order,
+      notes: "Keep this delivery note",
+      hold_reason_code: null,
+      hold_reason_detail: null,
+      hold_until_date: null,
+    };
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders/order-1" && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body));
-        return response({ success: true, order: { ...order, ...body } });
+        return response({ success: true, order: { ...orderWithNote, ...body } });
       }
-      if (url === "/api/orders/order-1") return response(detail);
+      if (url === "/api/orders/order-1") return response({ ...detail, order: orderWithNote });
       if (url === "/api/products") return response(products);
       throw new Error(`Unexpected API request: ${url}`);
     });
@@ -357,45 +354,40 @@ describe("OrderDetail", () => {
     const user = userEvent.setup();
 
     const cart = await screen.findByRole("region", { name: "Order cart" });
+    await waitFor(() => expect(within(cart).getByRole("button", { name: /order status/i })).toBeEnabled());
     await user.click(within(cart).getByRole("button", { name: /order status/i }));
     await user.click(await screen.findByRole("option", { name: "On Hold" }));
-    await user.type(within(cart).getByRole("textbox", { name: "Hold note" }), "Waiting for stock");
+    await user.click(within(cart).getByRole("button", { name: /Hold reason/ }));
+    await user.click(await screen.findByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" }));
     await user.click(within(cart).getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ status: "on_hold", notes: "Waiting for stock" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({
+        status: "on_hold",
+        hold_reason_code: "advance_payment_pending",
+        hold_reason_detail: null,
+        hold_until_date: null,
+      });
+      expect(JSON.parse(String(patch?.[1]?.body))).not.toHaveProperty("notes");
     });
-    expect(queryClient.getQueryData<Order[]>(["/api/orders"])?.[0]).toMatchObject({ status: "on_hold", notes: "Waiting for stock" });
+    expect(queryClient.getQueryData<Order[]>(["/api/orders"])?.[0]).toMatchObject({ status: "on_hold", notes: "Keep this delivery note" });
   });
 
-  it("saves an edited hold note with the main changes button", async () => {
-    const holdDetail = { ...detail, order: { ...order, status: "on_hold", notes: "Waiting for stock" } };
-    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/orders/order-1" && init?.method === "PATCH") {
-        const body = JSON.parse(String(init.body));
-        return response({ success: true, order: { ...holdDetail.order, notes: body.notes } });
-      }
-      if (url === "/api/orders/order-1") return response(holdDetail);
-      if (url === "/api/products") return response(products);
-      throw new Error(`Unexpected API request: ${url}`);
-    });
+  it("blocks a date-based hold until a return date is selected", async () => {
     renderPage();
     const user = userEvent.setup();
+    const cart = await screen.findByRole("region", { name: "Order cart" });
+    await waitFor(() => expect(within(cart).getByRole("button", { name: /order status/i })).toBeEnabled());
+    await user.click(within(cart).getByRole("button", { name: /order status/i }));
+    await user.click(await screen.findByRole("option", { name: "On Hold" }));
+    await user.click(within(cart).getByRole("button", { name: /Hold reason/ }));
+    await user.click(await screen.findByRole("option", { name: "গ্রাহক নির্দিষ্ট তারিখের পরে পার্সেল নিতে চান" }));
+    await user.click(within(cart).getByRole("button", { name: "Save changes" }));
 
-    const box = await screen.findByRole("textbox", { name: /hold note/i });
-    expect(box).toHaveValue("Waiting for stock");
-    await user.clear(box);
-    await user.type(box, "Waiting for stock, call Friday");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() => {
-      const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH");
-      expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ notes: "Waiting for stock, call Friday" });
-    });
-    expect(await screen.findByText("Orders dashboard")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a return date");
+    expect(apiFetch.mock.calls.some(([url, init]) => url === "/api/orders/order-1" && init?.method === "PATCH")).toBe(false);
   });
 
   it("keeps customer details read-only until Edit and supports Apply and Cancel", async () => {

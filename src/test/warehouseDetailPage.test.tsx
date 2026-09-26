@@ -222,6 +222,42 @@ describe("warehouse detail", () => {
     expect(screen.getByRole("button", { name: "Update Status" })).toBeDisabled();
   });
 
+  it("requires hold metadata before applying a bulk hold to warehouse orders", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/warehouses/main") return { ok: true, json: async () => detail };
+      if (url === "/api/orders?warehouse_id=main") return { ok: true, json: async () => ({ orders: warehouseOrders }) };
+      if (url === "/api/orders/o1" && init?.method === "PATCH") {
+        return { ok: true, json: async () => ({ success: true, order: { ...warehouseOrders[0], status: "on_hold" } }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    renderDetail();
+
+    const trigger = await screen.findByRole("button", { name: "Update Status" });
+    await user.click(screen.getByTestId("checkbox-order-o1"));
+    await user.click(trigger);
+    await user.click(within(screen.getByTestId("bulk-status-menu")).getByRole("button", { name: "On Hold" }));
+
+    expect(await screen.findByRole("heading", { name: "অর্ডার হোল্ড করুন" })).toBeInTheDocument();
+    expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: /Hold reason/ }));
+    await user.click(await screen.findByRole("option", { name: "অন্যান্য" }));
+    await user.type(screen.getByRole("textbox", { name: "Other hold details" }), "গ্রাহককে পরে কল করুন");
+    await user.click(screen.getByRole("button", { name: "Hold orders" }));
+
+    await waitFor(() => {
+      const patch = apiFetch.mock.calls.find(([url, init]) => url === "/api/orders/o1" && init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({
+        status: "on_hold",
+        hold_reason_code: "other",
+        hold_reason_detail: "গ্রাহককে পরে কল করুন",
+        hold_until_date: null,
+      });
+    });
+  });
+
   it("opens the add-products picker and assigns the selection", async () => {
     const user = userEvent.setup();
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {

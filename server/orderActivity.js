@@ -99,6 +99,7 @@ const SAFE_METADATA_KEYS = new Set([
   "document_type",
   "legacy_status_event_id",
   "provider_status",
+  "hold_until_date",
 ]);
 
 const TRACKED_ORDER_FIELDS = Object.freeze([

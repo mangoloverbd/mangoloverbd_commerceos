@@ -145,6 +145,22 @@ describe("abandoned checkout route wiring", () => {
     expect(convert).toContain("* 100) / 100");
   });
 
+  it("requires and persists structured hold details when a draft is converted On Hold", () => {
+    const convert = routeSection(
+      'app.post("/api/abandoned-checkouts/:id/convert"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(convert).toContain("validateOrderHoldDetails");
+    expect(convert.indexOf("validateOrderHoldDetails")).toBeLessThan(convert.indexOf('.from("orders")'));
+    expect(convert).toContain("hold_reason_code: conversionHoldDetails?.hold_reason_code");
+    expect(convert).toContain("hold_reason_detail: conversionHoldDetails?.hold_reason_detail");
+    expect(convert).toContain("hold_until_date: conversionHoldDetails?.hold_until_date");
+    expect(convert).toContain('typeof req.body.hold_until_date === "string" ? req.body.hold_until_date.trim() || null : null');
+    expect(convert).toContain("reasonCode: conversionHoldDetails?.hold_reason_code");
+    expect(convert).toContain("hold_until_date: conversionHoldDetails?.hold_until_date");
+  });
+
   it("reads the staff action defensively before validating the body shape", () => {
     const queuePatch = routeSection(
       'app.patch("/api/abandoned-checkouts/:id"',

@@ -177,6 +177,41 @@ describe("dashboard bulk status button", () => {
     expect(toastSuccess).toHaveBeenCalledWith("1 order moved to Processing");
   });
 
+  it("requires one valid hold reason before sending bulk On Hold updates", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+
+    await user.click(await screen.findByRole("button", { name: "Update Status" }));
+    await user.click(screen.getByTestId("checkbox-order-pending-1"));
+    await user.click(screen.getByTestId("checkbox-order-approved-1"));
+    await user.click(screen.getByRole("button", { name: "Update Status" }));
+    await user.click(within(screen.getByTestId("bulk-status-menu")).getByRole("button", { name: "On Hold" }));
+
+    expect(await screen.findByRole("heading", { name: "অর্ডার হোল্ড করুন" })).toBeInTheDocument();
+    expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "Hold orders" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a hold reason");
+    expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: /Hold reason/ }));
+    await user.click(await screen.findByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" }));
+    await user.click(screen.getByRole("button", { name: "Hold orders" }));
+
+    await waitFor(() => {
+      const patches = apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH");
+      expect(patches).toHaveLength(2);
+      for (const [, init] of patches) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          status: "on_hold",
+          hold_reason_code: "advance_payment_pending",
+          hold_reason_detail: null,
+          hold_until_date: null,
+        });
+      }
+    });
+  });
+
   it("shows a dropdown chevron that rotates open", async () => {
     const user = userEvent.setup();
     renderDashboard();

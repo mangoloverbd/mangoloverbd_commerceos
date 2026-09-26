@@ -25,6 +25,8 @@ import {
   type FulfillmentQueueTab,
 } from "@/components/orders/OrderStatusSegmentedControl";
 import { AbandonedCheckoutQueue } from "@/components/orders/AbandonedCheckoutQueue";
+import { OrderHoldDialog } from "@/components/orders/OrderHoldDialog";
+import type { OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
 import {
   type AbandonedCheckoutConvertOverrides,
   type AbandonedCheckoutConvertStatus,
@@ -160,6 +162,9 @@ interface Order {
   fraud_data: FraudData | null;
   delivery_rate: number | null;
   notes: string | null;
+  hold_reason_code?: string | null;
+  hold_reason_detail?: string | null;
+  hold_until_date?: string | null;
   fulfillment_status: string | null;
   sent_to_courier?: boolean | null;
   courier_status?: string | null;
@@ -181,9 +186,11 @@ function fmtBDT(n: number) {
 
 class AbandonedCheckoutActionError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -512,6 +519,9 @@ export default function Dashboard() {
   const [bulkDismissCount, setBulkDismissCount] = useState(0);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const [holdDialogOpen, setHoldDialogOpen] = useState(false);
+  const [abandonedHoldDialogOpen, setAbandonedHoldDialogOpen] = useState(false);
+  const [pendingHoldSelection, setPendingHoldSelection] = useState<{ validIds: string[]; skipped: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("all");
   const hasInitializedSearch = useRef(false);
@@ -786,13 +796,23 @@ export default function Dashboard() {
   // bars current without flashing the skeleton loader.
   useVisibleInterval(() => fetchAnalytics(dateRange, true), 60000);
 
-  const applyBulkStatus = async (target: string, targetLabel: string) => {
-    if (bulkUpdating) return;
+  const applyBulkStatus = async (
+    target: string,
+    targetLabel: string,
+    holdDetails?: OrderHoldMetadata,
+    selectionOverride?: { validIds: string[]; skipped: number },
+  ): Promise<boolean> => {
+    if (bulkUpdating) return false;
     setBulkMenuOpen(false);
-    const { validIds, skipped } = planBulkStatusChange(orders, selectedOrderIds, target);
+    const { validIds, skipped } = selectionOverride || planBulkStatusChange(orders, selectedOrderIds, target);
     if (validIds.length === 0) {
       toast.error(skipped > 0 ? `Selected orders can't move to ${targetLabel}` : "Select orders first");
-      return;
+      return false;
+    }
+    if (target === "on_hold" && !holdDetails) {
+      setPendingHoldSelection({ validIds, skipped });
+      setHoldDialogOpen(true);
+      return false;
     }
     setBulkUpdating(true);
     let moved = 0;
@@ -803,7 +823,7 @@ export default function Dashboard() {
           const res = await apiFetch(`/api/orders/${orderId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: target }),
+            body: JSON.stringify({ status: target, ...(holdDetails || {}) }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || "Failed to update status");
@@ -821,6 +841,7 @@ export default function Dashboard() {
       } else {
         toast.error(`No orders moved to ${targetLabel}`);
       }
+      return moved > 0;
     } finally {
       setBulkUpdating(false);
     }
@@ -943,11 +964,21 @@ export default function Dashboard() {
         status,
         customer_name: overrides.customer_name,
         address: overrides.address,
+        hold_reason_code: overrides.hold_reason_code,
+        hold_reason_detail: overrides.hold_reason_detail,
+        hold_until_date: overrides.hold_until_date,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.order) {
-      throw new AbandonedCheckoutActionError("Could not convert checkout", res.status);
+      const message = data.code === "approval_customer_details_required" && typeof data.error === "string"
+        ? data.error
+        : "Could not convert checkout";
+      throw new AbandonedCheckoutActionError(
+        message,
+        res.status,
+        typeof data.code === "string" ? data.code : undefined,
+      );
     }
 
     const cached = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"])
@@ -964,11 +995,16 @@ export default function Dashboard() {
     return data.order as { order_number: string };
   };
 
-  const applyBulkAbandoned = async (target: string) => {
+  const applyBulkAbandoned = async (target: string, holdDetails?: OrderHoldMetadata) => {
     if (bulkAbandonedRunning || selectedAbandonedIds.size === 0) return;
     if (target === "dismiss") {
       setAbandonedBulkMenuOpen(false);
       setBulkDismissCount(selectedAbandonedIds.size);
+      return;
+    }
+    if (target === "on_hold" && !holdDetails) {
+      setAbandonedBulkMenuOpen(false);
+      setAbandonedHoldDialogOpen(true);
       return;
     }
     setAbandonedBulkMenuOpen(false);
@@ -983,13 +1019,14 @@ export default function Dashboard() {
     const ids = openDrafts.map((checkout) => checkout.id);
     let succeeded = 0;
     const failed: string[] = [];
+    const failedReasons: string[] = [];
     try {
       for (const checkoutId of ids) {
         try {
           if (target === "contacted") {
             await runAbandonedActiveStatus(checkoutId, "contacted");
           } else {
-            await runAbandonedConvert(checkoutId, target as "pending" | "on_hold" | "approved", {});
+            await runAbandonedConvert(checkoutId, target as "pending" | "on_hold" | "approved", holdDetails || {});
           }
           succeeded += 1;
         } catch (err) {
@@ -999,6 +1036,10 @@ export default function Dashboard() {
             continue;
           }
           failed.push(checkoutId);
+          if (err instanceof AbandonedCheckoutActionError
+            && err.code === "approval_customer_details_required") {
+            failedReasons.push(err.message);
+          }
         }
       }
       if (target === "contacted") {
@@ -1015,7 +1056,10 @@ export default function Dashboard() {
         const statusLabel = target === "on_hold" ? "On Hold" : target === "approved" ? "Approved" : "Pending";
         toast.success(succeeded === 1 ? `1 order moved to ${statusLabel}` : `${succeeded} orders moved to ${statusLabel}`);
       }
-      if (failed.length > 0) toast.error(`${failed.length} failed — kept selected`);
+      if (failed.length > 0) {
+        const reason = [...new Set(failedReasons)].join(" ");
+        toast.error(`${failed.length} failed — kept selected${reason ? `. ${reason}` : ""}`);
+      }
       setSelectedAbandonedIds(new Set(failed));
       void fetchAbandonedCheckouts(true);
       if (target !== "contacted") void fetchOrders();
@@ -1872,6 +1916,28 @@ export default function Dashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <OrderHoldDialog
+        open={holdDialogOpen}
+        onOpenChange={(open) => {
+          setHoldDialogOpen(open);
+          if (!open) setPendingHoldSelection(null);
+        }}
+        title="অর্ডার হোল্ড করুন"
+        submitLabel="Hold orders"
+        onSubmit={(metadata) => pendingHoldSelection
+          ? applyBulkStatus("on_hold", "On Hold", metadata, pendingHoldSelection)
+          : false}
+      />
+      <OrderHoldDialog
+        open={abandonedHoldDialogOpen}
+        onOpenChange={setAbandonedHoldDialogOpen}
+        title="অর্ডার হোল্ড করুন"
+        submitLabel="Hold checkouts"
+        onSubmit={async (metadata) => {
+          await applyBulkAbandoned("on_hold", metadata);
+          return true;
+        }}
+      />
       </div>
   );
 }
