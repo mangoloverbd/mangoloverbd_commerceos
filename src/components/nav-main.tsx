@@ -44,6 +44,17 @@ export interface NavSection {
     collapsible?: boolean;
 }
 
+// One layout for both sidebar states: icons stay put in the collapsed rail and
+// text fades as the sidebar widens, so expanding animates instead of snapping.
+const railFade = "transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0";
+const railGroup = "px-1 py-0.5 group-data-[collapsible=icon]:px-1";
+// 5.5px left padding centres the 17px icon in the 28px row the rail leaves.
+const railRowPad =
+    "!pl-[5.5px] !pr-2 group-data-[collapsible=icon]:!py-0 group-data-[collapsible=icon]:!pl-[5.5px] group-data-[collapsible=icon]:!pr-2 group-data-[collapsible=icon]:!justify-start";
+const railIndentedRowPad =
+    "!pl-8 !pr-2 group-data-[collapsible=icon]:!py-0 group-data-[collapsible=icon]:!pl-[5.5px] group-data-[collapsible=icon]:!pr-2 group-data-[collapsible=icon]:!justify-start";
+const railActiveRow = "group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:!justify-start";
+
 const activeNavLabelClass = "font-medium text-black";
 const inactiveNavLabelClass =
     "font-normal text-black/75 group-hover/nav-link:text-black/90 group-hover/nav-button:text-black/90";
@@ -51,7 +62,7 @@ const inactiveNavLabelClass =
 function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
     return (
         <span className={cn(
-            "relative block truncate font-sans text-[13px] normal-case tracking-normal min-w-0 transition-colors duration-200 ease-out",
+            "relative block truncate font-sans text-[13px] normal-case tracking-normal min-w-0 transition-[color,opacity] duration-200 ease-out group-data-[collapsible=icon]:opacity-0",
             active ? activeNavLabelClass : inactiveNavLabelClass
         )}>
             {text}
@@ -76,7 +87,7 @@ function NavBadge({ count }: { count?: number }) {
     return (
         <span
             data-testid="nav-badge"
-            className="ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-status-yellow-background px-1.5 font-sans text-[10.5px] font-semibold tabular-nums leading-none text-status-yellow-text"
+            className={cn(railFade, "ml-auto inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-status-yellow-background px-1.5 font-sans text-[10.5px] font-semibold tabular-nums leading-none text-status-yellow-text")}
         >
             {count > 99 ? "99+" : count}
         </span>
@@ -84,15 +95,16 @@ function NavBadge({ count }: { count?: number }) {
 }
 
 function NavBadgeDot({ count }: { count?: number }) {
+    const { state } = useSidebar();
     if (!count || count <= 0) return null;
     return (
         <>
             <span
                 data-testid="nav-badge-dot"
                 aria-hidden="true"
-                className="pointer-events-none absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-400 ring-2 ring-[#dedede]"
+                className="pointer-events-none absolute left-[16px] top-[4px] h-2 w-2 rounded-full bg-amber-400 opacity-0 ring-2 ring-[#dedede] transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-100"
             />
-            <span className="sr-only">{count} pending</span>
+            {state === "collapsed" && <span className="sr-only">{count} pending</span>}
         </>
     );
 }
@@ -272,17 +284,17 @@ function CollapsibleSection({ section }: { section: NavSection }) {
     };
 
     return (
-        <SidebarGroup className="px-1.5 py-0.5">
+        <SidebarGroup className={railGroup}>
             <button
                 type="button"
                 onClick={toggle}
                 aria-expanded={open}
                 className="group/section mb-0 flex h-6 w-full items-center gap-1 rounded-[6px] px-2 font-sans text-[11px] font-medium normal-case tracking-normal text-black transition-colors hover:bg-black/5"
             >
-                <span className="truncate">{section.label}</span>
+                <span className={cn("truncate", railFade)}>{section.label}</span>
                 <ChevronRight
                     aria-hidden="true"
-                    className={cn("ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-hover/section:opacity-70", open && "rotate-90")}
+                    className={cn("ml-auto h-3 w-3 opacity-40 transition-[transform,opacity] duration-200 group-hover/section:opacity-70 group-data-[collapsible=icon]:opacity-0", open && "rotate-90")}
                 />
             </button>
 
@@ -297,7 +309,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
             >
             <SidebarGroupContent>
                 <div ref={containerRef} className="relative flex flex-col gap-0.5 list-none">
-                    <TreeSvgLines offsets={offsets} />
+                    <TreeSvgLines offsets={offsets} className={railFade} />
                     {routes.map((route, i) => {
                         const isActive = location.pathname === route.link;
 
@@ -305,14 +317,14 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                             return (
                                 <SidebarMenuItem key={route.id}>
                                     <div
-                                        className="flex h-7 w-full items-center gap-2 rounded-lg px-2 pl-8 text-[#bbb] cursor-not-allowed select-none opacity-50"
+                                        className="flex h-7 w-full items-center gap-2 rounded-lg pl-8 pr-2 text-[#bbb] cursor-not-allowed select-none opacity-50 transition-[padding] duration-200 ease-out group-data-[collapsible=icon]:pl-[5.5px]"
                                         title="Admin only"
                                     >
                                         <span className={cn(navIconFrame)}>{route.icon}</span>
-                                        <span className="flex-1 truncate font-sans text-[13px] font-medium normal-case tracking-normal">
+                                        <span className={cn("flex-1 truncate font-sans text-[13px] font-medium normal-case tracking-normal", railFade)}>
                                             {route.title}
                                         </span>
-                                        <Lock size={11} className="shrink-0 ml-auto opacity-60" />
+                                        <Lock size={11} className="shrink-0 ml-auto opacity-60 transition-opacity duration-200 group-data-[collapsible=icon]:opacity-0" />
                                     </div>
                                 </SidebarMenuItem>
                             );
@@ -324,10 +336,9 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                     <div className="glass-button-wrap w-full">
                                         <SidebarMenuButton
                                             asChild
-                                            tooltip={route.title}
                                             className={cn(
                                                 "gap-2 font-sans text-[13px] tracking-normal transition-all w-full",
-                                                cn(activeNavItemClass, "h-[28px] !p-0 !justify-start")
+                                                cn(activeNavItemClass, "h-[28px] !p-0 !justify-start", railActiveRow)
                                             )}
                                         >
                                             <Link
@@ -338,13 +349,13 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                                 <ActiveBar />
                                                 <button className="glass-button flex items-center gap-2 !h-[28px] w-full !p-0 !justify-start">
                                                     <ActivePill />
-                                                    <div className="flex items-center gap-2 w-full px-2 pl-8">
+                                                    <div className="flex items-center gap-2 w-full pl-8 pr-2 transition-[padding] duration-200 ease-out group-data-[collapsible=icon]:pl-[5.5px]">
                                                         <span className={cn(
                                                             navIconFrame,
                                                         )} style={activeIconStyle}>
                                                             {route.icon}
                                                         </span>
-                                                        <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
+                                                        <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass, railFade)}>
                                                             {route.title}
                                                         </span>
                                                         <NavBadge count={route.badge} />
@@ -357,9 +368,9 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                 ) : (
                                     <SidebarMenuButton
                                         asChild
-                                        tooltip={route.title}
                                         className={cn(
-                                            "h-7 rounded-[6px] px-2 pl-8 gap-2 font-sans text-[13px] tracking-normal transition-colors",
+                                            "h-7 rounded-[6px] gap-2 font-sans text-[13px] tracking-normal transition-[padding,color] duration-200 ease-out",
+                                            railIndentedRowPad,
                                             "text-black hover:bg-transparent hover:text-black"
                                         )}
                                     >
@@ -395,8 +406,6 @@ function CollapsibleSection({ section }: { section: NavSection }) {
 }
 
 export default function DashboardNavigation({ sections }: { sections: NavSection[] }) {
-    const { state } = useSidebar();
-    const isCollapsed = state === "collapsed";
     const location = useLocation();
     const [hovered, setHovered] = useState<string | null>(null);
     // This component owns the hover state, so it cannot read it from context.
@@ -412,7 +421,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                     ? "mt-2 border-t border-black/[0.08] pt-2"
                     : undefined;
 
-                if (section.collapsible && !isCollapsed) {
+                if (section.collapsible) {
                     return (
                         <div key={sectionKey} className={sectionBoundaryClass}>
                             <CollapsibleSection section={section} />
@@ -422,10 +431,10 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
 
                 return (
                 <div key={sectionKey} className={sectionBoundaryClass}>
-                 <SidebarGroup className="px-1.5 py-0.5">
+                 <SidebarGroup className={railGroup}>
                     {/* Section label */}
-                    {!isCollapsed && section.label && (
-                        <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 font-sans text-[11px] font-medium normal-case tracking-normal text-black">
+                    {section.label && (
+                        <SidebarGroupLabel className="mb-0 h-auto px-2 py-0.5 group-data-[collapsible=icon]:mt-0 font-sans text-[11px] font-medium normal-case tracking-normal text-black">
                             {section.label}
                         </SidebarGroupLabel>
                     )}
@@ -436,64 +445,21 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                 const isActive = location.pathname === route.link;
                                 const hasSubs = route.subs && route.subs.length > 0;
 
-                                // ── Collapsed view ───────────────────────
-                                if (isCollapsed) {
-                                    if (route.disabled) {
-                                        return (
-                                            <SidebarMenuItem key={route.id}>
-                                                <SidebarMenuButton
-                                                    tooltip={`${route.title} (Admin only)`}
-                                                    className="mx-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all text-[#bbb] cursor-not-allowed opacity-50 pointer-events-none"
-                                                    disabled
-                                                >
-                                                    <span className={cn(navIconFrame)}>
-                                                        {route.icon}
-                                                    </span>
-                                                </SidebarMenuButton>
-                                            </SidebarMenuItem>
-                                        );
-                                    }
-                                    return (
-                                        <SidebarMenuItem key={route.id}>
-                                            <SidebarMenuButton
-                                                asChild
-                                                tooltip={route.title}
-                                                className={cn(
-                                                    "mx-auto flex h-8 w-8 items-center justify-center rounded-[6px] transition-all",
-                                                    isActive ? cn(activeNavItemClass, "hover:bg-transparent") : "text-black hover:bg-black/5 hover:text-black"
-                                                )}
-                                            >
-                                                <Link to={route.link} aria-label={route.title} className="group/nav-link relative flex h-full w-full items-center justify-center">
-                                                    {isActive && <ActivePill />}
-                                                    <span className={cn(
-                                                        navIconFrame,
-                                                        "relative",
-                                                        "transform-gpu will-change-transform transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover/nav-link:-translate-y-px group-hover/nav-link:scale-110 group-hover/nav-link:text-black"
-                                                    )} style={isActive ? activeIconStyle : inactiveIconStyle}>
-                                                        {route.icon}
-                                                    </span>
-                                                    <NavBadgeDot count={route.badge} />
-                                                </Link>
-                                            </SidebarMenuButton>
-                                        </SidebarMenuItem>
-                                    );
-                                }
-
-                                // ── Expanded view ────────────────────────
+                                // ── Row (same layout collapsed and expanded) ──
                                 if (route.disabled) {
                                     return (
                                         <SidebarMenuItem key={route.id}>
                                             <div
-                                                className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[#bbb] cursor-not-allowed select-none opacity-50"
+                                                className="flex h-7 w-full items-center gap-2 rounded-lg pl-[5.5px] pr-2 text-[#bbb] cursor-not-allowed select-none opacity-50"
                                                 title="Admin only"
                                             >
                                                 <span className={cn(navIconFrame)}>
                                                     {route.icon}
                                                 </span>
-                                                <span className="flex-1 truncate font-sans text-[13px] font-medium normal-case tracking-normal">
+                                                <span className={cn("flex-1 truncate font-sans text-[13px] font-medium normal-case tracking-normal", railFade)}>
                                                     {route.title}
                                                 </span>
-                                                <Lock size={11} className="shrink-0 ml-auto opacity-60" />
+                                                <Lock size={11} className="shrink-0 ml-auto opacity-60 transition-opacity duration-200 group-data-[collapsible=icon]:opacity-0" />
                                             </div>
                                         </SidebarMenuItem>
                                     );
@@ -514,27 +480,26 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                         {isActive ? (
                                                             <div className="glass-button-wrap w-full">
                                                                 <SidebarMenuButton
-                                                                    tooltip={route.title}
                                                                     {...hoverFor(route.id, true)}
-                                                                    className="glass-button h-7 gap-2 font-sans text-[13px] tracking-normal w-full !p-0 !justify-start"
+                                                                    className={cn("glass-button h-7 gap-2 font-sans text-[13px] tracking-normal w-full !p-0 !justify-start", railActiveRow)}
                                                                 >
                                                                     <ActivePill />
                                                                     <span className={cn(navIconFrame)} style={activeIconStyle}>
                                                                         {route.icon}
                                                                     </span>
-                                                                    <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
+                                                                    <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass, railFade)}>
                                                                         {route.title}
                                                                     </span>
-                                                                    <ChevronRight className="ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                                                    <ChevronRight className="ml-auto h-3 w-3 opacity-40 group-data-[collapsible=icon]:opacity-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                                                 </SidebarMenuButton>
                                                                 <div className="glass-button-shadow"></div>
                                                             </div>
                                                         ) : (
                                                             <SidebarMenuButton
-                                                                tooltip={route.title}
                                                                 {...hoverFor(route.id)}
                                                                 className={cn(
-                                                                     "group/nav-button relative h-7 rounded-[6px] px-2 gap-2 font-sans text-[13px] tracking-normal transition-colors",
+                                                                     "group/nav-button relative h-7 rounded-[6px] gap-2 font-sans text-[13px] tracking-normal transition-[padding,color] duration-200 ease-out",
+                                                                    railRowPad,
                                                                     "text-black hover:bg-transparent hover:text-black"
                                                                 )}
                                                             >
@@ -547,7 +512,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                     {route.icon}
                                                                 </span>
                                                                 <SidebarLabel text={route.title} active={false} />
-                                                                <ChevronRight className="relative ml-auto h-3 w-3 opacity-40 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                                                <ChevronRight className="relative ml-auto h-3 w-3 opacity-40 group-data-[collapsible=icon]:opacity-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                                                             </SidebarMenuButton>
                                                         )}
                                                     </CollapsibleTrigger>
@@ -613,12 +578,11 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                             ) : (
                                                 <SidebarMenuButton
                                                     asChild
-                                                    tooltip={route.title}
                                                     className={cn(
                                                          "gap-2 font-sans text-[13px] tracking-normal transition-all",
                                                         isActive
-                                                            ? cn(activeNavItemClass, "h-[28px] w-full !p-0 !justify-start")
-                                                            : "h-7 rounded-[6px] px-2 text-black hover:bg-transparent hover:text-black"
+                                                            ? cn(activeNavItemClass, "h-[28px] w-full !p-0 !justify-start", railActiveRow)
+                                                            : cn("h-7 rounded-[6px] text-black hover:bg-transparent hover:text-black", railRowPad)
                                                     )}
                                                 >
                                                     <MotionLink
@@ -633,14 +597,15 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                 <div className="glass-button-wrap w-full">
                                                                     <button className="glass-button flex items-center gap-2 !h-[28px] w-full !p-0 !justify-start">
                                                                         <ActivePill />
-                                                                        <div className="flex items-center gap-2 w-full px-2">
+                                                                        <div className="relative flex items-center gap-2 w-full pl-[5.5px] pr-2">
                                                                             <span className={cn(navIconFrame)} style={activeIconStyle}>
                                                                                 {route.icon}
                                                                             </span>
-                                                                              <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass)}>
+                                                                              <span className={cn("truncate font-sans text-[13px]", activeNavLabelClass, railFade)}>
                                                                                 {route.title}
                                                                             </span>
                                                                             <NavBadge count={route.badge} />
+                                                                            <NavBadgeDot count={route.badge} />
                                                                         </div>
                                                                     </button>
                                                                     <div className="glass-button-shadow"></div>
@@ -658,6 +623,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                 </span>
                                                                 <SidebarLabel text={route.title} active={false} />
                                                                 <NavBadge count={route.badge} />
+                                                                <NavBadgeDot count={route.badge} />
                                                             </>
                                                         )}
                                                     </MotionLink>

@@ -13,11 +13,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = "192px";
 const SIDEBAR_WIDTH_MOBILE = "192px";
 const SIDEBAR_WIDTH_ICON = "2.75rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+const SIDEBAR_PEEK_OPEN_DELAY_MS = 120;
+const SIDEBAR_PEEK_CLOSE_DELAY_MS = 180;
+
+// The last pinned state (written by setOpen), so a collapsed sidebar stays collapsed across reloads.
+function readSidebarOpenPreference(fallback: boolean) {
+  if (typeof document === "undefined") return fallback;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${SIDEBAR_COOKIE_NAME}=(true|false)`));
+  return match ? match[1] === "true" : fallback;
+}
 
 type SidebarContext = {
   state: "expanded" | "collapsed";
@@ -27,6 +36,10 @@ type SidebarContext = {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
+  // True while a collapsed icon sidebar is temporarily shown in full on hover.
+  // `state` reports "expanded" during a peek; `open` keeps the pinned value.
+  peeking: boolean;
+  requestPeek: (peek: boolean) => void;
 };
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
@@ -88,9 +101,34 @@ const SidebarProvider = React.forwardRef<
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [toggleSidebar]);
 
+  const [peekHover, setPeekHover] = React.useState(false);
+  const peekTimer = React.useRef<number>();
+  const canPeek = !open && !isMobile;
+  const peeking = canPeek && peekHover;
+
+  React.useEffect(() => {
+    if (!canPeek) {
+      window.clearTimeout(peekTimer.current);
+      setPeekHover(false);
+    }
+  }, [canPeek]);
+  React.useEffect(() => () => window.clearTimeout(peekTimer.current), []);
+
+  const requestPeek = React.useCallback(
+    (peek: boolean) => {
+      window.clearTimeout(peekTimer.current);
+      if (peek && !canPeek) return;
+      peekTimer.current = window.setTimeout(
+        () => setPeekHover(peek),
+        peek ? SIDEBAR_PEEK_OPEN_DELAY_MS : SIDEBAR_PEEK_CLOSE_DELAY_MS,
+      );
+    },
+    [canPeek],
+  );
+
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
-  const state = open ? "expanded" : "collapsed";
+  const state = open || peeking ? "expanded" : "collapsed";
 
   const contextValue = React.useMemo<SidebarContext>(
     () => ({
@@ -101,8 +139,10 @@ const SidebarProvider = React.forwardRef<
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      peeking,
+      requestPeek,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar],
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, peeking, requestPeek],
   );
 
   return (
@@ -128,6 +168,14 @@ const SidebarProvider = React.forwardRef<
 });
 SidebarProvider.displayName = "SidebarProvider";
 
+function isFocusVisible(element: EventTarget) {
+  try {
+    return element instanceof Element && element.matches(":focus-visible");
+  } catch {
+    return false;
+  }
+}
+
 const Sidebar = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
@@ -136,7 +184,8 @@ const Sidebar = React.forwardRef<
     collapsible?: "offcanvas" | "icon" | "none";
   }
 >(({ side = "left", variant = "sidebar", collapsible = "offcanvas", className, children, ...props }, ref) => {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile, peeking, requestPeek } = useSidebar();
+  const isPeeking = collapsible === "icon" && peeking;
 
   if (collapsible === "none") {
     return (
@@ -176,13 +225,14 @@ const Sidebar = React.forwardRef<
       className="group peer hidden text-sidebar-foreground md:block"
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
+      data-peeking={isPeeking ? "true" : undefined}
       data-variant={variant}
       data-side={side}
     >
       {/* This is what handles the sidebar gap on desktop */}
       <div
         className={cn(
-          "relative h-svh w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+          "relative h-svh w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-out motion-reduce:transition-none",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -192,7 +242,7 @@ const Sidebar = React.forwardRef<
       />
       <div
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-out motion-reduce:transition-none md:flex",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -202,6 +252,14 @@ const Sidebar = React.forwardRef<
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className,
         )}
+        data-sidebar-panel=""
+        onMouseEnter={collapsible === "icon" ? () => requestPeek(true) : undefined}
+        onMouseLeave={collapsible === "icon" ? () => requestPeek(false) : undefined}
+        // Keyboard focus inside the rail expands it too, so every item stays reachable.
+        onFocus={collapsible === "icon" ? (event) => { if (isFocusVisible(event.target)) requestPeek(true); } : undefined}
+        onBlur={collapsible === "icon" ? (event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) requestPeek(false);
+        } : undefined}
         {...props}
       >
           <div
@@ -612,6 +670,7 @@ const SidebarMenuSubButton = React.forwardRef<
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton";
 
 export {
+  readSidebarOpenPreference,
   Sidebar,
   SidebarContent,
   SidebarFooter,
