@@ -10,6 +10,9 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { Button } from "@/components/base/buttons/button";
 import { RiDownloadLine } from "@remixicon/react";
 import { CustomerDataTable } from "@/components/CustomerDataTable";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import { customerOrderedInRange } from "@/lib/customerDateFilter";
+import type { DateRange } from "react-day-picker";
 
 type Source = "shopify" | "custom_website" | "manual" | "facebook" | "instagram" | "whatsapp" | "social_inbox";
 
@@ -247,6 +250,7 @@ export default function Customers() {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<Source | "all">("all");
   const [campaignFilter, setCampaignFilter] = useState<(typeof campaignOptions)[number]>("all");
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [selected, setSelected] = useState<Customer | null>(null);
   const [insight, setInsight] = useState<AiInsight | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -286,9 +290,9 @@ export default function Customers() {
         ...customer.segments,
         ...customer.campaignSegments,
       ].join(" ").toLowerCase().includes(q);
-      return matchesSource && matchesCampaign && matchesQuery;
+      return matchesSource && matchesCampaign && matchesQuery && customerOrderedInRange(customer, dateRange);
     });
-  }, [campaignFilter, customers, query, source]);
+  }, [campaignFilter, customers, dateRange, query, source]);
 
   const winBackCount = useMemo(() => customers.filter((customer) => customer.campaignSegments.includes("win_back")).length, [customers]);
 
@@ -375,6 +379,8 @@ export default function Customers() {
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <DateRangePicker value={dateRange} onChange={setDateRange} placement="bottom end" variant="toolbar" />
+
             <Select
               aria-label="Filter by source"
               selectedKey={source}
