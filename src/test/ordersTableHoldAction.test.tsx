@@ -62,17 +62,17 @@ describe("OrdersTable individual hold action", () => {
     await user.click(within(row).getByRole("button", { name: /pending/i }));
     await user.click(await screen.findByRole("button", { name: /On Hold/ }));
 
-    expect(await screen.findByRole("heading", { name: "অর্ডার হোল্ড করুন" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hold order" })).toBeInTheDocument();
     expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
     expect(onStatusUpdate).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "অর্ডার হোল্ডে রাখুন" }));
+    await user.click(screen.getByRole("button", { name: "Put on hold" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Choose a hold reason");
     expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" }));
-    await user.click(screen.getByRole("button", { name: "অর্ডার হোল্ডে রাখুন" }));
+    await user.click(await screen.findByRole("option", { name: "Awaiting advance payment" }));
+    await user.click(screen.getByRole("button", { name: "Put on hold" }));
 
     await waitFor(() => {
       const patches = apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH");

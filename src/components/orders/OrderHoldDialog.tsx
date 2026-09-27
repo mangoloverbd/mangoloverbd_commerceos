@@ -63,7 +63,7 @@ export function OrderHoldDialog({ open, onOpenChange, title, submitLabel, onSubm
       <DialogContent ref={setDialogContainer} className="max-w-md rounded-xl border-black/10 bg-[#FAFAF8] p-5">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>একটি কারণ নির্বাচন করুন। সাধারণ নোট পরিবর্তন হবে না।</DialogDescription>
+          <DialogDescription>একটি Select a reason। সাধারণ নোট পরিবর্তন হবে না।</DialogDescription>
         </DialogHeader>
         <form onSubmit={(event) => void submit(event)}>
           <OrderHoldFields
@@ -80,7 +80,7 @@ export function OrderHoldDialog({ open, onOpenChange, title, submitLabel, onSubm
               disabled={submitting}
               className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm text-black/70 hover:bg-black/[0.05] disabled:opacity-50"
             >
-              বাতিল
+              Cancel
             </button>
             <button
               type="submit"

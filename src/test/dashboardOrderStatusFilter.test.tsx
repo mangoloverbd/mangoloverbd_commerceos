@@ -628,11 +628,11 @@ describe("dashboard order status filter", () => {
     await user.click(screen.getByTestId("button-bulk-abandoned-status"));
     await user.click(within(await screen.findByTestId("bulk-abandoned-status-menu")).getByRole("button", { name: "On Hold" }));
 
-    expect(await screen.findByRole("heading", { name: "অর্ডার হোল্ড করুন" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hold order" })).toBeInTheDocument();
     expect(convertCalls).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "গ্রাহক পরে যোগাযোগ করতে বলেছেন" }));
+    await user.click(await screen.findByRole("option", { name: "Customer asked to be contacted later" }));
     await user.click(screen.getByRole("button", { name: "Hold checkouts" }));
 
     await waitFor(() => expect(convertCalls).toHaveLength(1));

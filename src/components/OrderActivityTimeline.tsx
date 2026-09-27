@@ -92,7 +92,7 @@ function ReasonLine({ event }: { event: Event }) {
       {event.reason_code && event.reason_note ? " · " : null}
       {event.reason_note && <span>{event.reason_note}</span>}
       {((event.reason_code || event.reason_note) && holdUntilDate) ? " · " : null}
-      {holdUntilDate && <span>থাকবে: {holdUntilDate}</span>}
+      {holdUntilDate && <span>Until: {holdUntilDate}</span>}
     </p>
   );
 }

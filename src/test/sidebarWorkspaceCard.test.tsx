@@ -51,13 +51,16 @@ describe("sidebar brand header", () => {
     expect(within(brand).queryByText("merchant-suite")).not.toBeInTheDocument();
   });
 
-  it("collapses with the arrow and expands from the logo tile", async () => {
+  it("collapses and expands with the arrow, keeping one layout in both states", async () => {
     const user = userEvent.setup();
-    renderSidebar();
+    const { container } = renderSidebar();
+    const root = () => container.querySelector("[data-collapsible]");
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
-    expect(screen.queryByRole("button", { name: "Collapse sidebar" })).not.toBeInTheDocument();
-    expect(within(screen.getByTestId("sidebar-brand")).queryByText("Mango Lover BD")).not.toBeInTheDocument();
+    expect(root()).toHaveAttribute("data-state", "collapsed");
+    // The shop name stays in place and fades with the rail instead of unmounting.
+    expect(within(screen.getByTestId("sidebar-brand")).getByText("Mango Lover BD")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
+    expect(root()).toHaveAttribute("data-state", "expanded");
     expect(screen.getByRole("button", { name: "Collapse sidebar" })).toBeInTheDocument();
   });
 });

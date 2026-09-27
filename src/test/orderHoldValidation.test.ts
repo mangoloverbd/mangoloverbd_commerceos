@@ -9,16 +9,16 @@ import {
 describe("order hold reasons and dates", () => {
   it("exposes all approved reasons with the agreed Bengali labels", () => {
     expect(ORDER_HOLD_REASONS).toEqual([
-      { code: "customer_requested_after_date", label: "গ্রাহক নির্দিষ্ট তারিখের পরে পার্সেল নিতে চান", requiresReturnDate: true },
-      { code: "contact_later", label: "গ্রাহক পরে যোগাযোগ করতে বলেছেন", requiresReturnDate: false },
-      { code: "awaiting_customer_confirmation", label: "গ্রাহকের নিশ্চিতকরণের অপেক্ষায়", requiresReturnDate: false },
-      { code: "contact_details_change", label: "ঠিকানা বা ফোন নম্বর সংশোধনের অপেক্ষায়", requiresReturnDate: false },
-      { code: "order_change_requested", label: "অর্ডার পরিবর্তনের অনুরোধ", requiresReturnDate: false },
-      { code: "payment_confirmation_pending", label: "পেমেন্ট নিশ্চিতকরণের অপেক্ষায়", requiresReturnDate: false },
-      { code: "advance_payment_pending", label: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে", requiresReturnDate: false },
-      { code: "temporarily_out_of_stock", label: "পণ্য সাময়িকভাবে স্টকে নেই", requiresReturnDate: false },
-      { code: "courier_delivery_issue", label: "কুরিয়ার/ডেলিভারি সমস্যা", requiresReturnDate: false },
-      { code: "other", label: "অন্যান্য", requiresReturnDate: false },
+      { code: "customer_requested_after_date", label: "Customer wants delivery after a specific date", requiresReturnDate: true },
+      { code: "contact_later", label: "Customer asked to be contacted later", requiresReturnDate: false },
+      { code: "awaiting_customer_confirmation", label: "Awaiting customer confirmation", requiresReturnDate: false },
+      { code: "contact_details_change", label: "Awaiting address or phone correction", requiresReturnDate: false },
+      { code: "order_change_requested", label: "Order change requested", requiresReturnDate: false },
+      { code: "payment_confirmation_pending", label: "Awaiting payment confirmation", requiresReturnDate: false },
+      { code: "advance_payment_pending", label: "Awaiting advance payment", requiresReturnDate: false },
+      { code: "temporarily_out_of_stock", label: "Temporarily out of stock", requiresReturnDate: false },
+      { code: "courier_delivery_issue", label: "Courier or delivery issue", requiresReturnDate: false },
+      { code: "other", label: "Other", requiresReturnDate: false },
     ]);
   });
 

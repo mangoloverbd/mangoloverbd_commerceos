@@ -426,7 +426,7 @@ export default function WarehouseDetail() {
           setHoldDialogOpen(open);
           if (!open) setPendingHoldSelection(null);
         }}
-        title="অর্ডার হোল্ড করুন"
+        title="Hold order"
         submitLabel="Hold orders"
         onSubmit={(metadata) => pendingHoldSelection
           ? applyBulkStatus("on_hold", "On Hold", metadata, pendingHoldSelection)

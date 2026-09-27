@@ -36,7 +36,7 @@ export function OrderHoldFields({ value, onChange, disabled = false, popoverPort
   return (
     <div className="col-span-3 mt-1 grid gap-2 rounded-lg bg-black/[0.025] p-3 sm:grid-cols-2">
       <div className="sm:col-span-2">
-        <span className="mb-1.5 block text-[11px] font-medium text-black">হোল্ডের কারণ</span>
+        <span className="mb-1.5 block text-[11px] font-medium text-black">Hold reason</span>
         <BuiSelect
           aria-label="Hold reason"
           selectedKey={value.hold_reason_code || null}
@@ -62,14 +62,14 @@ export function OrderHoldFields({ value, onChange, disabled = false, popoverPort
 
       {isOtherReason && (
         <label className="sm:col-span-2">
-          <span className="mb-1.5 block text-[11px] font-medium text-black">বিস্তারিত (ঐচ্ছিক)</span>
+          <span className="mb-1.5 block text-[11px] font-medium text-black">Details (optional)</span>
           <input
             aria-label="Other hold details"
             value={value.hold_reason_detail || ""}
             onChange={(event) => onChange({ ...value, hold_reason_detail: event.target.value || null })}
             maxLength={250}
             disabled={disabled}
-            placeholder="সংক্ষেপে জানান"
+            placeholder="Add a short note"
             className="h-9 w-full rounded-lg bg-white px-3 text-[12px] text-black ring-1 ring-inset ring-black/[0.08] placeholder:text-black/35 disabled:opacity-50"
           />
         </label>
@@ -77,7 +77,7 @@ export function OrderHoldFields({ value, onChange, disabled = false, popoverPort
 
       {isDateReason && (
         <div className="sm:col-span-2">
-          <span className="mb-1.5 block text-[11px] font-medium text-black">কোন তারিখ পর্যন্ত হোল্ড থাকবে?</span>
+          <span className="mb-1.5 block text-[11px] font-medium text-black">Hold until</span>
           <Popover>
             <PopoverTrigger asChild>
               <button
@@ -87,7 +87,7 @@ export function OrderHoldFields({ value, onChange, disabled = false, popoverPort
                 disabled={disabled}
                 className="inline-flex h-9 w-full items-center justify-between rounded-lg bg-white px-3 text-left text-[12px] text-black ring-1 ring-inset ring-black/[0.08] disabled:opacity-50"
               >
-                <span>{value.hold_until_date ? format(dateFromDateKey(value.hold_until_date), "PPP") : "তারিখ নির্বাচন করুন"}</span>
+                <span>{value.hold_until_date ? format(dateFromDateKey(value.hold_until_date), "PPP") : "Select a date"}</span>
                 <CalendarBlank aria-hidden weight="light" size={16} className="text-black/55" />
               </button>
             </PopoverTrigger>
@@ -103,7 +103,7 @@ export function OrderHoldFields({ value, onChange, disabled = false, popoverPort
               />
             </PopoverContent>
           </Popover>
-          <span className="mt-1 block text-[10px] text-black/55">নির্বাচিত দিনটি হোল্ডে থাকার শেষ দিন।</span>
+          <span className="mt-1 block text-[10px] text-black/55">The order stays on hold through this date.</span>
         </div>
       )}
     </div>

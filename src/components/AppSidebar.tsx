@@ -19,8 +19,7 @@ import { Link } from "react-router-dom";
 import { CaretUpDown } from "@phosphor-icons/react";
 
 export function AppSidebar() {
-    const { state, toggleSidebar } = useSidebar();
-    const isCollapsed = state === "collapsed";
+    const { open, toggleSidebar } = useSidebar();
     const { isAdmin, role } = useUserRole();
     const { data: navCounts } = useNavCounts();
     const returnsPending = navCounts?.returns_pending ?? 0;
@@ -28,6 +27,8 @@ export function AppSidebar() {
     const { orgName, isLoading: orgLoading } = useOrgName();
 
     const iconCls = "shrink-0 transition-colors";
+    // Header and footer keep one layout; their text fades with the collapsed rail.
+    const railFade = "transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0";
 
     const navSections = useMemo((): NavSection[] => {
         const product: NavSection = {
@@ -176,46 +177,34 @@ export function AppSidebar() {
     return (
         <Sidebar collapsible="icon" className="border-r-0 bg-[#dedede]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
             {/* ── Brand header: logo tile + shop name ─────── */}
-            <SidebarHeader className={cn("h-[44px] justify-center px-2 py-0", isCollapsed && "items-center")}>
-                <div data-testid="sidebar-brand" className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-2 px-1")}>
-                    {isCollapsed ? (
-                        <button
-                            type="button"
-                            onClick={toggleSidebar}
-                            aria-label="Expand sidebar"
-                            title="Expand sidebar"
-                            className="rounded-[6px] outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-black/20"
-                        >
-                            <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
-                                <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
-                            </span>
-                        </button>
-                    ) : (
-                        <>
-                            <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-[6px] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/20">
-                                <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
-                                    <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
-                                </span>
-                                <span className="min-w-0">
-                                    {orgLoading ? (
-                                        <span className="block h-3 w-24 animate-pulse rounded bg-black/10" />
-                                    ) : (
-                                        <span className="block truncate font-sans text-[13.5px] font-semibold leading-tight tracking-tight text-black">{orgName || "Mango Lover BD"}</span>
-                                    )}
-                                    <span className="mt-0.5 block truncate font-sans text-[10.5px] leading-tight text-black/45">Merchant Suite</span>
-                                </span>
-                            </Link>
-                            <button
-                                type="button"
-                                onClick={toggleSidebar}
-                                aria-label="Collapse sidebar"
-                                title="Collapse sidebar"
-                                className="-mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-black/40 transition-colors hover:bg-black/5 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
-                            >
-                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none"><path opacity="0.5" d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22Z" fill="currentColor"/><path d="M12.9697 8.46967C13.2626 8.17678 13.7374 8.17678 14.0303 8.46967C14.3232 8.76256 14.3232 9.23744 14.0303 9.53033L11.5607 12L14.0303 14.4697C14.3232 14.7626 14.3232 15.2374 14.0303 15.5303C13.7374 15.8232 13.2626 15.8232 12.9697 15.5303L9.96967 12.5303C9.67678 12.2374 9.67678 11.7626 9.96967 11.4697L12.9697 8.46967Z" fill="currentColor"/></svg>
-                            </button>
-                        </>
-                    )}
+            <SidebarHeader className="h-[44px] justify-center overflow-hidden px-1.5 py-0">
+                <div data-testid="sidebar-brand" className="flex items-center gap-2">
+                    <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-[6px] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/20">
+                        <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+                            <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
+                        </span>
+                        <span className={cn("min-w-0", railFade)}>
+                            {orgLoading ? (
+                                <span className="block h-3 w-24 animate-pulse rounded bg-black/10" />
+                            ) : (
+                                <span className="block truncate whitespace-nowrap font-sans text-[13.5px] font-semibold leading-tight tracking-tight text-black">{orgName || "Mango Lover BD"}</span>
+                            )}
+                            <span className="mt-0.5 block truncate whitespace-nowrap font-sans text-[10.5px] leading-tight text-black/45">Merchant Suite</span>
+                        </span>
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={toggleSidebar}
+                        aria-label={open ? "Collapse sidebar" : "Expand sidebar"}
+                        title={open ? "Collapse sidebar" : "Expand sidebar"}
+                        className={cn(
+                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-black/40 transition-[color,background-color,opacity,transform] duration-200 hover:bg-black/5 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20",
+                            railFade,
+                            !open && "rotate-180",
+                        )}
+                    >
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none"><path opacity="0.5" d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22Z" fill="currentColor"/><path d="M12.9697 8.46967C13.2626 8.17678 13.7374 8.17678 14.0303 8.46967C14.3232 8.76256 14.3232 9.23744 14.0303 9.53033L11.5607 12L14.0303 14.4697C14.3232 14.7626 14.3232 15.2374 14.0303 15.5303C13.7374 15.8232 13.2626 15.8232 12.9697 15.5303L9.96967 12.5303C9.67678 12.2374 9.67678 11.7626 9.96967 11.4697L12.9697 8.46967Z" fill="currentColor"/></svg>
+                    </button>
                 </div>
             </SidebarHeader>
 
@@ -225,15 +214,12 @@ export function AppSidebar() {
             </SidebarContent>
 
             {/* ── Footer: workspace card (opens settings) ─── */}
-            <SidebarFooter className="p-2">
+            <SidebarFooter className="overflow-hidden p-1.5">
                 <Link
                     to="/settings"
                     data-testid="sidebar-workspace-card"
                     title="System Settings"
-                    className={cn(
-                        "group/workspace flex items-center rounded-[6px] border border-black/[0.06] bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.06)] transition-colors hover:bg-white/60",
-                        isCollapsed ? "justify-center p-1" : "gap-2 px-1.5 py-1"
-                    )}
+                    className="group/workspace flex items-center gap-2 rounded-[6px] border border-black/[0.06] bg-white/40 p-px pr-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] transition-colors hover:bg-white/60"
                 >
                     <span
                         data-testid="sidebar-workspace-logo"
@@ -241,21 +227,17 @@ export function AppSidebar() {
                     >
                         <Logo className="h-[15px] w-auto" />
                     </span>
-                    {!isCollapsed && (
-                        <>
-                            <div className="min-w-0 flex-1">
-                                <p className="truncate font-sans text-[10.5px] leading-tight text-black/45">
-                                    {role === "admin" ? "Admin" : role === "team_member" ? "Staff" : "Workspace"}
-                                </p>
-                                {orgLoading ? (
-                                    <div className="mt-0.5 h-2.5 w-24 animate-pulse rounded bg-black/10" />
-                                ) : (
-                                    <p className="truncate font-sans text-[12.5px] font-medium leading-tight text-black">{orgName || "My workspace"}</p>
-                                )}
-                            </div>
-                            <CaretUpDown aria-hidden="true" weight="bold" size={12} className="shrink-0 text-black/30 transition-colors group-hover/workspace:text-black/55" />
-                        </>
-                    )}
+                    <div className={cn("min-w-0 flex-1 whitespace-nowrap", railFade)}>
+                        <p className="truncate font-sans text-[10.5px] leading-tight text-black/45">
+                            {role === "admin" ? "Admin" : role === "team_member" ? "Staff" : "Workspace"}
+                        </p>
+                        {orgLoading ? (
+                            <div className="mt-0.5 h-2.5 w-24 animate-pulse rounded bg-black/10" />
+                        ) : (
+                            <p className="truncate font-sans text-[12.5px] font-medium leading-tight text-black">{orgName || "My workspace"}</p>
+                        )}
+                    </div>
+                    <CaretUpDown aria-hidden="true" weight="bold" size={12} className={cn("shrink-0 text-black/30 transition-colors group-hover/workspace:text-black/55", railFade)} />
                 </Link>
             </SidebarFooter>
         </Sidebar>

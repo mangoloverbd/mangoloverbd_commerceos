@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { HeaderAlerts } from "./HeaderAlerts";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, readSidebarOpenPreference } from "@/components/ui/sidebar";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useMe } from "@/hooks/useMe";
 import { useAuth } from "@/hooks/useAuth";
@@ -107,7 +107,7 @@ export function DashboardLayout() {
     }
 
     return (
-        <SidebarProvider defaultOpen={true}>
+        <SidebarProvider defaultOpen={readSidebarOpenPreference(true)}>
             <div className="flex min-h-screen w-full bg-[#dedede] text-[#202020]">
                 <AppSidebar />
                 <SidebarInset className="flex min-w-0 flex-col bg-transparent">

@@ -100,8 +100,8 @@ describe("CartPanel order status", () => {
 
     const reason = screen.getByRole("button", { name: /Hold reason/ });
     await user.click(reason);
-    expect(await screen.findByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" })).toBeInTheDocument();
-    await user.click(screen.getByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" }));
+    expect(await screen.findByRole("option", { name: "Awaiting advance payment" })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "Awaiting advance payment" }));
 
     expect(onHoldDetailsChange).toHaveBeenLastCalledWith({
       hold_reason_code: "advance_payment_pending",
@@ -118,8 +118,8 @@ describe("CartPanel order status", () => {
 
     const listbox = await screen.findByRole("listbox");
     expect(listbox.closest("[data-placement]")).toHaveAttribute("data-placement", "top");
-    expect(screen.getByRole("button", { name: /কারণ নির্বাচন করুন/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("option", { name: "এলাকা পরিবর্তন" }));
+    expect(screen.getByRole("button", { name: /Select a reason/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "Zone change" }));
     expect(onCancellationReasonChange).toHaveBeenCalledWith("zone_change");
   });
 });

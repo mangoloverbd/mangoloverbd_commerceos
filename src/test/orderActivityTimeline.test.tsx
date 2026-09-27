@@ -160,7 +160,7 @@ describe("OrderActivityTimeline", () => {
     const row = await screen.findByTestId("activity-event");
     const inline = within(row).getByTestId("activity-event-inline");
     expect(within(inline).getByTestId("activity-status-change")).toHaveTextContent("On Hold");
-    expect(inline).toHaveTextContent("অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে");
+    expect(inline).toHaveTextContent("Awaiting advance payment");
   });
 
   it("shows a scheduled hold's Bengali reason and return date beside its status change", async () => {
@@ -177,8 +177,8 @@ describe("OrderActivityTimeline", () => {
 
     const row = await screen.findByTestId("activity-event");
     const inline = within(row).getByTestId("activity-event-inline");
-    expect(inline).toHaveTextContent("গ্রাহক নির্দিষ্ট তারিখের পরে পার্সেল নিতে চান");
-    expect(inline).toHaveTextContent("থাকবে: 2026-10-02");
+    expect(inline).toHaveTextContent("Customer wants delivery after a specific date");
+    expect(inline).toHaveTextContent("Until: 2026-10-02");
     expect(within(inline).getByTestId("activity-status-change")).toHaveTextContent("On Hold");
   });
 

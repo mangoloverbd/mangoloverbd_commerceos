@@ -199,6 +199,17 @@ describe("resolveStaffReportRequest", () => {
     expect(result.selectedUserIds).toEqual([TEAM_MEMBER_ID]);
   });
 
+  it("gives a team member the whole team, and their filter, on a team-wide report", () => {
+    const staff = [
+      { user_id: ADMIN_ID, display_name: "Admin" },
+      { user_id: TEAM_MEMBER_ID, display_name: "Rafi" },
+    ];
+    const base = { from: "2026-09-18", to: "2026-09-18", role: "team_member", userId: TEAM_MEMBER_ID, staff, teamWide: true };
+
+    expect(resolveStaffReportRequest(base).selectedUserIds).toEqual([ADMIN_ID, TEAM_MEMBER_ID]);
+    expect(resolveStaffReportRequest({ ...base, users: ADMIN_ID }).selectedUserIds).toEqual([ADMIN_ID]);
+  });
+
   it("selects every roster member for an unfiltered admin report", () => {
     const result = resolveStaffReportRequest({
       from: "2026-09-18",
