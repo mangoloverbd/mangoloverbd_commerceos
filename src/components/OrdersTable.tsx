@@ -55,6 +55,7 @@ import { PopButton } from "@/components/ui/pop-button";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { downloadOrderExcel } from "@/lib/orderExcelExport";
+import { orderSourceLabel } from "@/lib/orderSource";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileOrderCards } from "@/components/MobileOrderCards";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
@@ -270,6 +271,7 @@ export interface Order {
   hold_until_date?: string | null;
   fulfillment_status?: string | null;
   landing_page_path?: string | null;
+  source?: string | null;
   items?: OrderItemSummary[];
 }
 
@@ -1447,6 +1449,11 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                           />
                         )}
                       </div>
+                      {order.source && (
+                        <Chip data-testid="order-source-chip" variant="caption" color="yellow" className="mt-1 self-start rounded-[4px] py-0.5">
+                          {orderSourceLabel(order.source)}
+                        </Chip>
+                      )}
                     </div>
                   </TableCell>
                   {showRiskColumn && (
