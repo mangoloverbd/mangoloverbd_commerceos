@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
@@ -55,7 +55,7 @@ import { PopButton } from "@/components/ui/pop-button";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { downloadOrderExcel } from "@/lib/orderExcelExport";
-import { orderSourceLabel } from "@/lib/orderSource";
+import { normalizeOrderSource, orderSourceLabel, type OrderSource } from "@/lib/orderSource";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileOrderCards } from "@/components/MobileOrderCards";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
@@ -238,6 +238,14 @@ interface FraudData {
     total_cancelled_parcels: number;
   }>;
 }
+
+const ORDER_SOURCE_CHIP_COLORS: Partial<Record<OrderSource, ComponentProps<typeof Chip>["color"]>> = {
+  facebook: "blue",
+  telesales: "green",
+  website: "yellow",
+  whatsapp: "green",
+  upsell: "purple",
+};
 
 export interface Order {
   id: string;
@@ -1450,7 +1458,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                         )}
                       </div>
                       {order.source && (
-                        <Chip data-testid="order-source-chip" variant="caption" color="yellow" className="mt-1 self-start rounded-[4px] py-0.5">
+                        <Chip data-testid="order-source-chip" variant="caption" color={ORDER_SOURCE_CHIP_COLORS[normalizeOrderSource(order.source)] ?? "yellow"} className="mt-1 self-start rounded-[4px] py-0.5">
                           {orderSourceLabel(order.source)}
                         </Chip>
                       )}

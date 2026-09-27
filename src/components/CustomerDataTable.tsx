@@ -27,6 +27,16 @@ const sourceLabels: Record<Source, string> = {
   social_inbox: "Social Inbox",
 };
 
+const sourceColor: Record<Source, "blue" | "green" | "yellow" | "rose" | "cyan" | "purple" | "neutral"> = {
+  facebook: "blue",
+  whatsapp: "green",
+  custom_website: "yellow",
+  instagram: "rose",
+  shopify: "cyan",
+  social_inbox: "purple",
+  manual: "neutral",
+};
+
 const lifecycleLabels: Record<Customer["lifecycleStage"], string> = {
   new: "New",
   repeat: "Repeat",
@@ -35,19 +45,22 @@ const lifecycleLabels: Record<Customer["lifecycleStage"], string> = {
   risky: "Risky",
 };
 
-const lifecycleColor: Record<Customer["lifecycleStage"], "blue" | "cyan" | "purple" | "neutral" | "rose"> = {
+const lifecycleColor: Record<Customer["lifecycleStage"], "blue" | "green" | "purple" | "neutral" | "rose"> = {
   new: "blue",
-  repeat: "cyan",
+  repeat: "green",
   vip: "purple",
   dormant: "neutral",
   risky: "rose",
 };
 
-const riskColor: Record<Customer["riskLevel"], "lime" | "yellow" | "rose"> = {
-  low: "lime",
+const riskColor: Record<Customer["riskLevel"], "green" | "yellow" | "rose"> = {
+  low: "green",
   medium: "yellow",
   high: "rose",
 };
+
+/** One fixed chip size across the Source, Lifecycle and Risk columns. */
+const COLUMN_CHIP_CLASS = "w-[128px] justify-center";
 
 function initialsOf(name: string) {
   return (
@@ -152,7 +165,7 @@ export function CustomerDataTable({
         const customer = sorted.find((item) => item.id === key);
         if (customer) onSelect(customer);
       }}
-      className="min-w-[940px]"
+      className="min-w-[990px]"
     >
       <TableHeader>
         <TableColumn id="name" className="w-[300px]">
@@ -161,7 +174,7 @@ export function CustomerDataTable({
         <TableColumn id="source" className="w-[150px]">
           Source
         </TableColumn>
-        <TableColumn id="lifecycle" className="w-[130px]">
+        <TableColumn id="lifecycle" className="w-[150px]">
           Lifecycle
         </TableColumn>
         <TableColumn id="orders" className="w-[100px]">
@@ -170,7 +183,7 @@ export function CustomerDataTable({
         <TableColumn id="spent" className="w-[140px]">
           <SortHeader label="Spent" column="spent" sortDescriptor={sortDescriptor} onSort={toggleSort} />
         </TableColumn>
-        <TableColumn id="risk" className="w-[120px]">
+        <TableColumn id="risk" className="w-[150px]">
           Risk
         </TableColumn>
       </TableHeader>
@@ -203,12 +216,12 @@ export function CustomerDataTable({
                   </div>
                 </TableCell>
                 <TableCell className="w-[150px]">
-                  <Chip variant="subtle" color="soft">
+                  <Chip variant="subtle" color={sourceColor[customer.primarySource]} className={COLUMN_CHIP_CLASS}>
                     {sourceLabels[customer.primarySource]}
                   </Chip>
                 </TableCell>
-                <TableCell className="w-[130px]">
-                  <Chip variant="subtle" color={lifecycleColor[customer.lifecycleStage]}>
+                <TableCell className="w-[150px]">
+                  <Chip variant="subtle" color={lifecycleColor[customer.lifecycleStage]} className={COLUMN_CHIP_CLASS}>
                     {lifecycleLabels[customer.lifecycleStage]}
                   </Chip>
                 </TableCell>
@@ -218,8 +231,8 @@ export function CustomerDataTable({
                 <TableCell className="w-[140px]">
                   <span className="tabular-nums text-body-medium text-text-primary">{money(customer.totalSpent)}</span>
                 </TableCell>
-                <TableCell className="w-[120px]">
-                  <Chip variant="subtle" color={riskColor[customer.riskLevel]} className="capitalize">
+                <TableCell className="w-[150px]">
+                  <Chip variant="subtle" color={riskColor[customer.riskLevel]} className={cx(COLUMN_CHIP_CLASS, "capitalize")}>
                     {customer.riskLevel}
                   </Chip>
                 </TableCell>

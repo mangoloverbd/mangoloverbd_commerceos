@@ -15,6 +15,7 @@ import { cx, sortCx } from "@/utils/cx";
  *
  * Status pairs are semantic so the same component follows both Figma modes:
  *   lime    light 200/800 · dark 950 @ 60% / 500
+ *   green   light 200/800 · dark 950 @ 60% / 400 (order source chips)
  *   rose    light 200/800 · dark 950 @ 60% / 500
  *   yellow  light 200/800 · dark 950 @ 60% / 500
  *   cyan    light 200/800 · dark 950 @ 60% / 400
@@ -27,7 +28,7 @@ import { cx, sortCx } from "@/utils/cx";
  */
 
 type ChipVariant = "bold" | "subtle" | "caption";
-type ChipColor = "lime" | "rose" | "yellow" | "cyan" | "blue" | "purple" | "neutral" | "gray" | "soft";
+type ChipColor = "lime" | "green" | "rose" | "yellow" | "cyan" | "blue" | "purple" | "neutral" | "gray" | "soft";
 
 export interface ChipProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: ChipVariant;
@@ -44,6 +45,7 @@ const styles = sortCx({
   },
   color: {
     lime: "bg-status-lime-background text-status-lime-text",
+    green: "bg-status-green-background text-status-green-text",
     rose: "bg-status-rose-background text-status-rose-text",
     yellow: "bg-status-yellow-background text-status-yellow-text",
     cyan: "bg-status-cyan-background text-status-cyan-text",

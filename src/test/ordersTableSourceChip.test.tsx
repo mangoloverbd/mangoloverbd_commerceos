@@ -48,11 +48,22 @@ function renderRow(row: Order) {
 }
 
 describe("OrdersTable order source chip", () => {
-  it("shows the order source as a yellow chip under the customer's phone", () => {
+  it("shows the order source as a chip under the customer's phone", () => {
     const row = renderRow({ ...order, source: "facebook" });
     const chip = within(row).getByTestId("order-source-chip");
     expect(chip).toHaveTextContent("Facebook");
-    expect(chip).toHaveClass("bg-status-yellow-background", "rounded-[4px]");
+    expect(chip).toHaveClass("rounded-[4px]");
+  });
+
+  it.each([
+    ["facebook", "bg-status-blue-background"],
+    ["telesales", "bg-status-green-background"],
+    ["storefront", "bg-status-yellow-background"],
+    ["whatsapp", "bg-status-green-background"],
+    ["upsell", "bg-status-purple-background"],
+  ])("colors the %s source chip", (source, bgClass) => {
+    const row = renderRow({ ...order, source });
+    expect(within(row).getByTestId("order-source-chip")).toHaveClass(bgClass);
   });
 
   it("labels storefront orders as Website", () => {

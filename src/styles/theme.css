@@ -269,6 +269,8 @@
    * in Figma (4139:7202, 4139:7240, 4139:7278, 4139:7315). */
   --color-status-lime-background:   var(--color-lime-200);
   --color-status-lime-text:         var(--color-lime-800);
+  --color-status-green-background:  var(--color-green-200);
+  --color-status-green-text:        var(--color-green-800);
   --color-status-yellow-background: var(--color-yellow-200);
   --color-status-yellow-text:       var(--color-yellow-800);
   --color-status-rose-background:   var(--color-rose-200);
@@ -479,6 +481,8 @@
   /* Figma's dark table status pairs. */
   --color-status-lime-background:   color-mix(in srgb, var(--color-lime-950) 60%, transparent);
   --color-status-lime-text:         var(--color-lime-500);
+  --color-status-green-background:  color-mix(in srgb, var(--color-green-950) 60%, transparent);
+  --color-status-green-text:        var(--color-green-400);
   --color-status-yellow-background: color-mix(in srgb, var(--color-yellow-950) 60%, transparent);
   --color-status-yellow-text:       var(--color-yellow-500);
   --color-status-rose-background:   color-mix(in srgb, var(--color-rose-950) 60%, transparent);
@@ -649,6 +653,8 @@
   --color-notification-center-background:      var(--color-notification-center-background);
   --color-status-lime-background:   var(--color-status-lime-background);
   --color-status-lime-text:         var(--color-status-lime-text);
+  --color-status-green-background:  var(--color-status-green-background);
+  --color-status-green-text:        var(--color-status-green-text);
   --color-status-yellow-background: var(--color-status-yellow-background);
   --color-status-yellow-text:       var(--color-status-yellow-text);
   --color-status-rose-background:   var(--color-status-rose-background);
