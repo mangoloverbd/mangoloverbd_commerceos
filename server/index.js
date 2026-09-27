@@ -4204,10 +4204,11 @@ app.get("/api/reports/staff", async (req, res) => {
       role,
       userId: user.id,
       staff,
+      teamWide: true,
     });
     const selectedStaff = staff.filter((member) => request.selectedUserIds.includes(member.user_id));
-    const visibleStaff = role === "team_member" ? selectedStaff : staff;
-    const availableStaff = visibleStaff.map((member) => ({
+    // Every member sees the whole team here; the page blurs the team totals for non-admins.
+    const availableStaff = staff.map((member) => ({
       user_id: member.user_id,
       display_name: member.display_name,
       is_active: !member.deleted_at,

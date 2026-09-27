@@ -34,7 +34,9 @@ export function toDhakaInterval(from, to) {
   };
 }
 
-export function resolveStaffReportRequest({ from, to, users, role, userId, staff }) {
+// Team members are limited to their own rows unless the report opts into a
+// team-wide view (Staff Performance shows every member to everyone).
+export function resolveStaffReportRequest({ from, to, users, role, userId, staff, teamWide = false }) {
   const hasFrom = from !== undefined && from !== null;
   const hasTo = to !== undefined && to !== null;
   if (hasFrom !== hasTo) {
@@ -45,21 +47,22 @@ export function resolveStaffReportRequest({ from, to, users, role, userId, staff
   if (interval && interval.from > interval.to) {
     throw invalidReportRequest("Report start date must not be after the end date");
   }
+  const selfOnly = role === "team_member" && !teamWide;
   const rosterIds = (staff || []).map((member) => member.user_id).filter(Boolean);
-  if (role !== "team_member" && users !== undefined && users !== null && typeof users !== "string") {
+  if (!selfOnly && users !== undefined && users !== null && typeof users !== "string") {
     throw invalidReportRequest("Invalid users filter");
   }
-  const requestedUserIds = [...new Set((role === "team_member" ? "" : users || "")
+  const requestedUserIds = [...new Set((selfOnly ? "" : users || "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean))];
-  if (role !== "team_member" && requestedUserIds.some((id) => !UUID_RE.test(id))) {
+  if (!selfOnly && requestedUserIds.some((id) => !UUID_RE.test(id))) {
     throw invalidReportRequest("Invalid users filter");
   }
-  if (role !== "team_member" && requestedUserIds.some((id) => !rosterIds.includes(id))) {
+  if (!selfOnly && requestedUserIds.some((id) => !rosterIds.includes(id))) {
     throw invalidReportRequest("Selected staff member is not in this workspace");
   }
-  const selectedUserIds = role === "team_member"
+  const selectedUserIds = selfOnly
     ? [userId]
     : requestedUserIds.length > 0 ? requestedUserIds : rosterIds;
 

@@ -17,6 +17,7 @@ import { Spinner } from "@/components/ui/ios-spinner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { apiFetch } from "@/lib/api";
+import { useUserRole } from "@/hooks/useUserRole";
 import {
   buildStaffPerformanceSnapshot,
   sortStaffPerformanceRows,
@@ -366,6 +367,7 @@ function StaffPerformanceCard({
 
 export default function StaffPerformance() {
   const reduceMotion = useReducedMotion();
+  const { isAdmin } = useUserRole();
   const defaultRange = useMemo<DateRange>(() => {
     const today = dhakaToday();
     return { from: startOfMonth(today), to: today };
@@ -464,7 +466,16 @@ export default function StaffPerformance() {
           </div>
         </header>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Team totals are admin-only, blurred for staff like the dashboard P&L. */}
+        <div className="relative">
+        {!isAdmin && (
+          <div data-testid="staff-performance-summary-locked" className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" className="text-black/20">
+              <path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z"/>
+            </svg>
+          </div>
+        )}
+        <div aria-hidden={!isAdmin || undefined} className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", !isAdmin && "blur-[8px] pointer-events-none select-none")}>
           <SnapshotCard
             label="Confirmed value"
             value={formatTaka(snapshot.confirmedValue)}
@@ -497,6 +508,7 @@ export default function StaffPerformance() {
             delay={0.14}
             reduceMotion={reduceMotion}
           />
+        </div>
         </div>
       </motion.div>
 

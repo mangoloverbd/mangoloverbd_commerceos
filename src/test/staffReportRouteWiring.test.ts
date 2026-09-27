@@ -41,12 +41,13 @@ describe("GET /api/reports/staff", () => {
     expect(section).toContain("users: req.query.users");
   });
 
-  it("retains former names for admins but does not disclose a full roster to team members", () => {
+  it("shows the whole roster, with former names, to every member", () => {
     const section = route();
 
     expect(section).toContain("deleted_at");
     expect(section).toContain("is_active");
-    expect(section).toContain('role === "team_member"');
+    expect(section).toContain("teamWide: true");
+    expect(section).toContain("const availableStaff = staff.map(");
     expect(section).toContain("available_staff");
   });
 

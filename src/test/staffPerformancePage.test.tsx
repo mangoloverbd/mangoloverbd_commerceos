@@ -6,6 +6,8 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }));
+const roleState = vi.hoisted(() => ({ isAdmin: true }));
+vi.mock("@/hooks/useUserRole", () => ({ useUserRole: () => ({ isAdmin: roleState.isAdmin, role: roleState.isAdmin ? "admin" : "team_member" }) }));
 vi.mock("@/components/DateRangePicker", () => ({
   DateRangePicker: ({ onChange }: { onChange: (range: { from: Date; to: Date } | null) => void }) => (
     <button type="button" onClick={() => onChange(null)}>All time</button>
@@ -123,6 +125,30 @@ function renderPage(ui: ReactElement = <StaffPerformance />) {
 describe("StaffPerformance", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
+    roleState.isAdmin = true;
+  });
+
+  it("blurs the team totals for staff but still shows every staff card", async () => {
+    roleState.isAdmin = false;
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [reportRow(), reportRow({ user_id: NadiaId, display_name: "Nadia" })],
+    })));
+
+    renderPage();
+
+    expect(await screen.findByTestId("staff-performance-summary-locked")).toBeInTheDocument();
+    expect(screen.getByTestId("staff-performance-summary-confirmed-value").parentElement).toHaveClass("blur-[8px]");
+    expect(screen.getByText("Nadia")).toBeInTheDocument();
+  });
+
+  it("shows the team totals unblurred to admins", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    expect(await screen.findByTestId("staff-performance-summary-confirmed-value")).toBeInTheDocument();
+    expect(screen.queryByTestId("staff-performance-summary-locked")).not.toBeInTheDocument();
+    expect(screen.getByTestId("staff-performance-summary-confirmed-value").parentElement).not.toHaveClass("blur-[8px]");
   });
 
   it("shows a loading state before the report arrives", () => {
