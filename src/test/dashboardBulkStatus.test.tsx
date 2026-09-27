@@ -187,7 +187,7 @@ describe("dashboard bulk status button", () => {
     await user.click(screen.getByRole("button", { name: "Update Status" }));
     await user.click(within(screen.getByTestId("bulk-status-menu")).getByRole("button", { name: "On Hold" }));
 
-    expect(await screen.findByRole("heading", { name: "অর্ডার হোল্ড করুন" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hold order" })).toBeInTheDocument();
     expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "Hold orders" }));
@@ -195,7 +195,7 @@ describe("dashboard bulk status button", () => {
     expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" }));
+    await user.click(await screen.findByRole("option", { name: "Awaiting advance payment" }));
     await user.click(screen.getByRole("button", { name: "Hold orders" }));
 
     await waitFor(() => {

@@ -21,8 +21,8 @@ describe("OrderHoldFields", () => {
     await user.click(screen.getByRole("button", { name: /Hold reason/ }));
     const listbox = await screen.findByRole("listbox");
     expect(listbox.closest("[data-placement]")).toHaveAttribute("data-placement", "top");
-    expect(screen.getByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "অন্যান্য" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Awaiting advance payment" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Other" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hold return date" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Other hold details" })).not.toBeInTheDocument();
   });
@@ -31,7 +31,7 @@ describe("OrderHoldFields", () => {
     const user = userEvent.setup();
     const { onChange } = renderFields();
     await user.click(screen.getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "গ্রাহক নির্দিষ্ট তারিখের পরে পার্সেল নিতে চান" }));
+    await user.click(await screen.findByRole("option", { name: "Customer wants delivery after a specific date" }));
 
     const date = screen.getByRole("button", { name: "Hold return date" });
     expect(date).toHaveAttribute("aria-required", "true");
@@ -56,7 +56,7 @@ describe("OrderHoldFields", () => {
       hold_until_date: "2026-10-02",
     });
     await user.click(screen.getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "অন্যান্য" }));
+    await user.click(await screen.findByRole("option", { name: "Other" }));
 
     expect(screen.getByRole("textbox", { name: "Other hold details" })).not.toBeRequired();
     expect(screen.queryByLabelText("Hold return date")).not.toBeInTheDocument();

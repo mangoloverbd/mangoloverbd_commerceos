@@ -362,7 +362,7 @@ describe("OrderDetail", () => {
     await user.click(within(cart).getByRole("button", { name: /order status/i }));
     await user.click(await screen.findByRole("option", { name: "On Hold" }));
     await user.click(within(cart).getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "অগ্রিম পেমেন্টের জন্য অর্ডার হোল্ডে রাখা হয়েছে" }));
+    await user.click(await screen.findByRole("option", { name: "Awaiting advance payment" }));
     await user.click(within(cart).getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
@@ -387,7 +387,7 @@ describe("OrderDetail", () => {
     await user.click(within(cart).getByRole("button", { name: /order status/i }));
     await user.click(await screen.findByRole("option", { name: "On Hold" }));
     await user.click(within(cart).getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "গ্রাহক নির্দিষ্ট তারিখের পরে পার্সেল নিতে চান" }));
+    await user.click(await screen.findByRole("option", { name: "Customer wants delivery after a specific date" }));
     await user.click(within(cart).getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Choose a return date");

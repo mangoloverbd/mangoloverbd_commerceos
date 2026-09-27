@@ -239,10 +239,10 @@ describe("warehouse detail", () => {
     await user.click(trigger);
     await user.click(within(screen.getByTestId("bulk-status-menu")).getByRole("button", { name: "On Hold" }));
 
-    expect(await screen.findByRole("heading", { name: "অর্ডার হোল্ড করুন" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Hold order" })).toBeInTheDocument();
     expect(apiFetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: /Hold reason/ }));
-    await user.click(await screen.findByRole("option", { name: "অন্যান্য" }));
+    await user.click(await screen.findByRole("option", { name: "Other" }));
     await user.type(screen.getByRole("textbox", { name: "Other hold details" }), "গ্রাহককে পরে কল করুন");
     await user.click(screen.getByRole("button", { name: "Hold orders" }));
 

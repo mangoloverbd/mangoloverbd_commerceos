@@ -19,7 +19,7 @@ describe("OrdersTable cancellation audit", () => {
     expect(source).toContain('popoverPlacement="top"');
     expect(source).toContain("popoverShouldFlip={false}");
     expect(source).toContain("popoverPortalContainer={cancellationDialogContainer");
-    expect(CANCELLATION_DIALOG_REASON_OPTIONS).toContainEqual({ value: "zone_change", label: "এলাকা পরিবর্তন" });
-    expect(CANCELLATION_DIALOG_REASON_OPTIONS).toContainEqual({ value: "other", label: "অন্যান্য" });
+    expect(CANCELLATION_DIALOG_REASON_OPTIONS).toContainEqual({ value: "zone_change", label: "Zone change" });
+    expect(CANCELLATION_DIALOG_REASON_OPTIONS).toContainEqual({ value: "other", label: "Other" });
   });
 });

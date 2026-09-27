@@ -1775,7 +1775,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
               <span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.3em] text-black">Cancellation reason</span>
               <BuiSelect
                 aria-label="Cancellation reason"
-                placeholder="কারণ নির্বাচন করুন"
+                placeholder="Select a reason"
                 selectedKey={cancellationReasonCode || null}
                 onSelectionChange={(key) => setCancellationReasonCode(key ? String(key) as CancellationReason : "")}
                 className="w-full"
@@ -1816,8 +1816,8 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
       <OrderHoldDialog
         open={Boolean(holdTarget)}
         onOpenChange={(open) => { if (!open) setHoldTarget(null); }}
-        title="অর্ডার হোল্ড করুন"
-        submitLabel="অর্ডার হোল্ডে রাখুন"
+        title="Hold order"
+        submitLabel="Put on hold"
         onSubmit={(metadata) => holdTarget ? handleStatusChange(holdTarget, "on_hold", undefined, metadata) : false}
       />
     </div>
