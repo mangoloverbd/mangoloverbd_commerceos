@@ -304,9 +304,14 @@ describe("BusinessReport", () => {
     const overall = await screen.findByRole("region", { name: "Product weight" });
     expect(within(overall).getAllByText("Himsagar")).toHaveLength(2); // ring label + list row
     expect(within(within(overall).getByRole("list")).getByText("Himsagar")).toBeInTheDocument();
-    expect(within(overall).getByText("25 kg")).toBeInTheDocument();
-    expect(within(overall).getByText("20 kg approved · 4 packs")).toBeInTheDocument();
-    expect(within(overall).getByText("25 kg · 1 product")).toBeInTheDocument();
+    expect(within(overall).getByText("20 kg approved of 25 kg ordered · 1 product")).toBeInTheDocument();
+    const row = within(within(overall).getByRole("list", { name: "Weight by product" })).getByRole("listitem");
+    expect(within(row).getByTestId("product-weight-approved")).toHaveTextContent(/^20 kg3 packs$/);
+    const [orderedCell] = within(row).getAllByTestId(/^product-weight-(ordered|approved)$/);
+    expect(orderedCell).toHaveAttribute("data-testid", "product-weight-ordered"); // Ordered sits left of Approved
+    expect(within(row).getByTestId("product-weight-ordered")).toHaveTextContent(/^25 kg4 packs$/);
+    expect(within(row).getByRole("img", { name: "Approved 80%, Pending 0%, Cancelled 20%, RTO 0%" })).toBeInTheDocument();
+    expect(within(overall).getByText("Approved = confirmed, processing, shipped or delivered. Ordered = every order placed in this range, including pending, cancelled and returned.")).toBeInTheDocument();
     expect(screen.getByText(/1 product is missing a catalog weight: Langra/)).toBeInTheDocument();
   });
 
