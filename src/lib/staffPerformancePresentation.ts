@@ -11,6 +11,7 @@ export type StaffMetrics = {
   confirmed_assigned_count: number;
   confirmed_assigned_delivered_count: number;
   confirmed_assigned_returned_count: number;
+  confirmed_assigned_cancelled_count: number;
   confirmed_value: number;
   confirmed_kg: number;
   confirmation_rate: number | null;

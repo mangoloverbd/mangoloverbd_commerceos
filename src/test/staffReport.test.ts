@@ -965,6 +965,29 @@ describe("buildStaffReport assigned outcomes and series", () => {
     });
   });
 
+  it("counts an assigned order confirmed then cancelled by the same member as an overlap", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [{
+        id: "flip",
+        assigned_to: TEAM_MEMBER_ID,
+        created_at: "2026-09-18T01:00:00.000Z",
+        confirmed_by: TEAM_MEMBER_ID,
+        confirmed_at: "2026-09-18T02:00:00.000Z",
+        cancelled_by: TEAM_MEMBER_ID,
+        cancelled_at: "2026-09-18T03:00:00.000Z",
+        price: 800,
+      }],
+      [], [], [], staff, interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      confirmed_assigned_count: 1,
+      cancelled_assigned_count: 1,
+      confirmed_assigned_cancelled_count: 1,
+    });
+  });
+
   it("buckets team confirmations by Dhaka hour for a single-day range", () => {
     const interval = toDhakaInterval("2026-09-18", "2026-09-18");
     const report = buildStaffReport(

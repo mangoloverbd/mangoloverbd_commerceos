@@ -100,6 +100,7 @@ function emptyMetrics() {
     confirmed_assigned_count: 0,
     confirmed_assigned_delivered_count: 0,
     confirmed_assigned_returned_count: 0,
+    confirmed_assigned_cancelled_count: 0,
     confirmed_value: 0,
     confirmed_kg: 0,
     confirmation_rate: null,
@@ -604,6 +605,13 @@ export function buildStaffReport(
       variantsById,
       { orderWeightKg: order.weight_kg, variantsByProductId },
     );
+  }
+
+  for (const assignedKey of cancelledAssignedOrderKeys) {
+    if (!confirmedAssignedOrderKeys.has(assignedKey)) continue;
+    const actorId = assignedKey.slice(0, assignedKey.indexOf(":"));
+    const overlapRow = rowsByUserId.get(actorId);
+    if (overlapRow) overlapRow.orders.confirmed_assigned_cancelled_count += 1;
   }
 
   for (const activity of selectActivities(socialActivities, inboxOrders, "cancelled")) {

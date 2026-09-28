@@ -41,12 +41,13 @@ function staffYield(row: StaffRow): StaffYield {
   const m = row.orders;
   const delivered = m.confirmed_assigned_delivered_count || 0;
   const returned = m.confirmed_assigned_returned_count || 0;
+  const overlap = m.confirmed_assigned_cancelled_count || 0;
   return {
     delivered,
-    inTransit: Math.max(0, m.confirmed_assigned_count - delivered - returned),
+    inTransit: Math.max(0, m.confirmed_assigned_count - overlap - delivered - returned),
     returned,
     cancelled: m.cancelled_assigned_count,
-    notConfirmed: Math.max(0, m.assigned_count - m.confirmed_assigned_count - m.cancelled_assigned_count),
+    notConfirmed: Math.max(0, m.assigned_count - (m.confirmed_assigned_count - overlap) - m.cancelled_assigned_count),
   };
 }
 
@@ -131,7 +132,7 @@ export function buildTeamFunnel(rows: StaffRow[]): TeamFunnel {
     const segments = staffYield(row);
     return {
       assigned: sum.assigned + row.orders.assigned_count,
-      confirmed: sum.confirmed + row.orders.confirmed_assigned_count,
+      confirmed: sum.confirmed + row.orders.confirmed_assigned_count - (row.orders.confirmed_assigned_cancelled_count || 0),
       delivered: sum.delivered + segments.delivered,
       returned: sum.returned + segments.returned,
       inTransit: sum.inTransit + segments.inTransit,

@@ -11,7 +11,7 @@ import {
 function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   return {
     assigned_count: 0, confirmed_count: 0, confirmed_assigned_count: 0, confirmed_assigned_delivered_count: 0,
-    confirmed_assigned_returned_count: 0, confirmed_value: 0, confirmed_kg: 0, confirmation_rate: null,
+    confirmed_assigned_returned_count: 0, confirmed_assigned_cancelled_count: 0, confirmed_value: 0, confirmed_kg: 0, confirmation_rate: null,
     average_order_value: null, cancelled_count: 0, cancelled_assigned_count: 0, cancelled_value: 0,
     cancellation_rate: null, delivered_count: 0, delivered_value: 0, delivered_rate: null, returned_count: 0,
     returned_value: 0, telesales_confirmed_count: 0, telesales_confirmed_value: 0, telesales_confirmed_kg: 0,
@@ -50,6 +50,17 @@ describe("buildStaffTableRows", () => {
     expect(r.flags).toEqual({ confRate: "worse", cancelRate: "worse", delRate: "worse" }); // 52/70 = 74.3 < 83.5 - 5
     expect(i).toMatchObject({ assigned: 0, confRate: null, cancelRate: null, delRate: null, deliveredShare: null, isActive: false });
     expect(i.flags).toEqual({ confRate: null, cancelRate: null, delRate: null });
+  });
+
+  it("does not double count an assigned order that was confirmed and then cancelled", () => {
+    const flip = row("f", "Flip", {
+      assigned_count: 10, confirmed_assigned_count: 6, cancelled_assigned_count: 3, confirmed_assigned_cancelled_count: 1,
+      confirmed_assigned_delivered_count: 3, confirmed_assigned_returned_count: 1,
+    });
+    const [f] = buildStaffTableRows([flip]);
+    expect(f.yield).toEqual({ delivered: 3, inTransit: 1, returned: 1, cancelled: 3, notConfirmed: 2 });
+    expect(Object.values(f.yield).reduce((sum, value) => sum + value, 0)).toBe(10);
+    expect(buildTeamFunnel([flip]).confirmed).toBe(5);
   });
 
   it("never marks anyone best when fewer than two members have assigned orders", () => {
