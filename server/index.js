@@ -112,7 +112,7 @@ import {
   isCancelledStatus,
 } from "./orderAttribution.js";
 import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
-import { buildBusinessReport, resolveBusinessReportRequest } from "./businessReport.js";
+import { buildBusinessReport, resolveBusinessReportRequest, resolvePreviousBusinessReportRequest } from "./businessReport.js";
 import {
   ACTIVITY_LOG_PAGE_SIZE,
   activityFetchLimit,
@@ -4713,6 +4713,8 @@ app.get("/api/reports/business", async (req, res) => {
       from: req.query.from,
       to: req.query.to,
     });
+    const previousRequest = resolvePreviousBusinessReportRequest(request);
+    const windowStart = previousRequest?.since ?? request.since;
     const fields = "id, created_at, source, landing_page_path, status, fulfillment_status, price, weight_kg, delivery_rate, courier_fee, courier_status, return_status, order_items(product_id, variant_id, product_name, quantity)";
     const [orders, products, variants] = await Promise.all([
       fetchReportPages(() => {
@@ -4720,7 +4722,7 @@ app.get("/api/reports/business", async (req, res) => {
           .from("orders")
           .select(fields)
           .eq("org_id", orgId);
-        if (request.since) query = query.gte("created_at", request.since);
+        if (windowStart) query = query.gte("created_at", windowStart);
         if (request.until) query = query.lt("created_at", request.until);
         return query;
       }),
@@ -4734,7 +4736,7 @@ app.get("/api/reports/business", async (req, res) => {
         .eq("org_id", orgId)),
     ]);
 
-    return res.json(buildBusinessReport(orders, request, { products, variants }));
+    return res.json(buildBusinessReport(orders, request, { products, variants, previousRequest }));
   } catch (err) {
     return sendError(res, err);
   }

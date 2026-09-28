@@ -5,6 +5,7 @@ import {
   normalizeBusinessReportLandingPage,
   normalizeBusinessReportSource,
   resolveBusinessReportRequest,
+  resolvePreviousBusinessReportRequest,
 } from "../../server/businessReport.js";
 
 function order(overrides: Record<string, unknown> = {}) {
@@ -415,5 +416,41 @@ describe("business report upsell source", () => {
   it("keeps Upsell orders as their own source", async () => {
     const { normalizeBusinessReportSource } = await import("../../server/businessReport.js");
     expect(normalizeBusinessReportSource("upsell")).toBe("upsell");
+  });
+});
+
+describe("business report previous period", () => {
+  it("resolves the same-length window immediately before a bounded range", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-20" });
+    expect(resolvePreviousBusinessReportRequest(request)).toEqual({
+      range: { from: "2026-09-15", to: "2026-09-17" },
+      since: "2026-09-14T18:00:00.000Z",
+      until: "2026-09-17T18:00:00.000Z",
+    });
+  });
+
+  it("has no previous period for All Time", () => {
+    expect(resolvePreviousBusinessReportRequest(resolveBusinessReportRequest({}))).toBeNull();
+  });
+
+  it("summarises previous-period orders separately and keeps them out of current totals", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-18" });
+    const previousRequest = resolvePreviousBusinessReportRequest(request);
+    const report = buildBusinessReport([
+      order({ id: "current", created_at: "2026-09-18T03:00:00.000Z", price: 1000 }),
+      order({ id: "previous", created_at: "2026-09-17T03:00:00.000Z", status: "cancelled", price: 700 }),
+      order({ id: "too-old", created_at: "2026-09-16T03:00:00.000Z", price: 900 }),
+    ], request, { previousRequest });
+
+    expect(report.summary).toMatchObject({ intake_count: 1, order_value: 1000 });
+    expect(report.previous).toMatchObject({
+      range: { from: "2026-09-17", to: "2026-09-17" },
+      summary: { intake_count: 1, order_value: 700, cancelled_count: 1 },
+    });
+  });
+
+  it("returns previous: null when no previous request is given", () => {
+    const report = buildBusinessReport([order({ price: 100 })], dayRequest());
+    expect(report.previous).toBeNull();
   });
 });

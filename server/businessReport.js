@@ -383,6 +383,20 @@ export function resolveBusinessReportRequest({ from, to } = {}) {
   };
 }
 
+export function resolvePreviousBusinessReportRequest(request) {
+  if (!request?.range?.from || !request?.range?.to) return null;
+  const days = inclusiveDayCount(request.range.from, request.range.to);
+  const interval = toDhakaInterval(
+    dayAtOffset(request.range.from, -days),
+    dayAtOffset(request.range.from, -1),
+  );
+  return {
+    range: { from: interval.from, to: interval.to },
+    since: interval.since,
+    until: interval.until,
+  };
+}
+
 export function normalizeBusinessReportSource(value) {
   const source = String(value ?? "").trim().toLowerCase();
   if (WEBSITE_ALIASES.has(source)) return "website";
@@ -420,8 +434,9 @@ export function classifyBusinessReportOutcome(order) {
     : "pending";
 }
 
-export function buildBusinessReport(orders, request, { products = [], variants = [] } = {}) {
+export function buildBusinessReport(orders, request, { products = [], variants = [], previousRequest = null } = {}) {
   const summary = createMetrics();
+  const previousSummary = createMetrics();
   const sourceGroups = new Map();
   const seriesRows = [];
   const { productsById, productsByName, variantsById, variantsByProductId } = createProductLookups(products, variants);
@@ -430,7 +445,12 @@ export function buildBusinessReport(orders, request, { products = [], variants =
 
   for (const order of orders || []) {
     const dhakaParts = toDhakaParts(order?.created_at);
-    if (!dhakaParts || !isWithinRequest(dhakaParts.timestamp, request)) continue;
+    if (!dhakaParts) continue;
+    if (previousRequest && isWithinRequest(dhakaParts.timestamp, previousRequest)) {
+      addOrderMetrics(previousSummary, order, classifyBusinessReportOutcome(order), toNumber(order.price));
+      continue;
+    }
+    if (!isWithinRequest(dhakaParts.timestamp, request)) continue;
 
     const source = normalizeBusinessReportSource(order.source);
     const sourceLabel = SOURCE_LABELS.get(source);
@@ -488,6 +508,9 @@ export function buildBusinessReport(orders, request, { products = [], variants =
   return {
     range: request.range,
     summary: finalizeMetrics(summary),
+    previous: previousRequest
+      ? { range: previousRequest.range, summary: finalizeMetrics(previousSummary) }
+      : null,
     series: buildSeries(seriesRows, request),
     hourly_profile: buildHourlyProfile(seriesRows),
     sources,

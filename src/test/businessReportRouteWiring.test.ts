@@ -52,7 +52,8 @@ describe("GET /api/reports/business", () => {
     expect(section).toContain("resolveBusinessReportRequest");
     expect(section).toContain("from: req.query.from");
     expect(section).toContain("to: req.query.to");
-    expect(section).toContain("buildBusinessReport(orders, request, { products, variants })");
+    expect(section).toContain("resolvePreviousBusinessReportRequest(request)");
+    expect(section).toContain("buildBusinessReport(orders, request, { products, variants, previousRequest })");
   });
 });
 
