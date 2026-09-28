@@ -9,6 +9,8 @@ export type StaffMetrics = {
   assigned_count: number;
   confirmed_count: number;
   confirmed_assigned_count: number;
+  confirmed_assigned_delivered_count: number;
+  confirmed_assigned_returned_count: number;
   confirmed_value: number;
   confirmed_kg: number;
   confirmation_rate: number | null;
@@ -99,3 +101,15 @@ export function sortStaffPerformanceRows(rows: StaffRow[]): StaffRow[] {
     || left.display_name.localeCompare(right.display_name)
   ));
 }
+
+export type StaffSeriesBucket = {
+  key: string;
+  label: string;
+  confirmed_count: number;
+  confirmed_value: number;
+};
+
+export type StaffSeries = {
+  granularity: "hour" | "day";
+  buckets: StaffSeriesBucket[];
+};

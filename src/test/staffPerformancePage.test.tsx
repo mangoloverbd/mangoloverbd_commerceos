@@ -34,6 +34,8 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
     assigned_count: 2,
     confirmed_count: 1,
     confirmed_assigned_count: 1,
+    confirmed_assigned_delivered_count: 0,
+    confirmed_assigned_returned_count: 0,
     confirmed_value: 1200,
     confirmed_kg: 2,
     confirmation_rate: 0.5,
