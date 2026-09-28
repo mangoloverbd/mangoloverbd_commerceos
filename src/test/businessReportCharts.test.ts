@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { BusinessReportSource, Metrics, SeriesBucket } from "@/components/business-report/types";
+import type { BusinessReportSource, Metrics, ProductWeight, SeriesBucket } from "@/components/business-report/types";
 import {
   GRID_ROWS,
   approvalBand,
   bestDayOption,
   intakeGridOption,
   outcomeSankeyOption,
+  productRingsOption,
   sourceMixOption,
 } from "@/lib/businessReportCharts";
 
@@ -35,6 +36,12 @@ describe("intakeGridOption", () => {
     expect(ordersPerCell).toBe(10); // ceil(130 / 14)
     expect(ordersPerCell * GRID_ROWS).toBeGreaterThanOrEqual(130);
     expect(seriesOf(option)).toHaveLength(2);
+  });
+
+  it("repeats exactly GRID_ROWS cells per column regardless of chart height", () => {
+    const { option } = intakeGridOption(Array.from({ length: 24 }, (_, hour) => bucket(hour, hour)));
+    const series = seriesOf(option) as Array<SeriesLike & { symbolRepeat?: unknown }>;
+    expect(series.map((entry) => entry.symbolRepeat)).toEqual([GRID_ROWS, GRID_ROWS]);
   });
 
   it("uses one order per cell when there is no intake", () => {
@@ -89,5 +96,20 @@ describe("approvalBand", () => {
     expect(approvalBand(70).label).toBe("Watch");
     expect(approvalBand(79.5).label).toBe("Healthy");
     expect(approvalBand(93).label).toBe("Excellent");
+  });
+});
+
+describe("productRingsOption", () => {
+  it("escapes product names in the tooltip", () => {
+    const option = productRingsOption([
+      {
+        product_id: null, product_name: "<img src=x onerror=alert(1)>", packs: 1, kg: 5, approved_packs: 1, approved_kg: 5,
+        cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0, order_count: 1,
+      } satisfies ProductWeight,
+    ]);
+    const { formatter } = (option as { tooltip: { formatter: (params: { name: string; value: number }) => string } }).tooltip;
+    const html = formatter({ name: "<img src=x onerror=alert(1)>", value: 5 });
+    expect(html).toContain("&lt;img");
+    expect(html).not.toContain("<img");
   });
 });

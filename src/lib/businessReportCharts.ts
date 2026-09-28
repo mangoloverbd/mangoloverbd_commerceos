@@ -8,6 +8,9 @@ export const GRID_ROWS = 14;
 
 const taka = (value: number) => `৳${Math.round(value).toLocaleString("en-BD")}`;
 
+const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+
 function tooltip(extra: Record<string, unknown> = {}) {
   return {
     backgroundColor: CHART.bg,
@@ -59,7 +62,7 @@ export function intakeGridOption(profile: SeriesBucket[]): { option: EChartsCore
       tooltip: tooltip({
         trigger: "axis",
         axisPointer: { type: "none" },
-        formatter: (params: Array<{ dataIndex: number; name: string }>) => `${params[0].name}<br><b>${counts[params[0].dataIndex]}</b> orders`,
+        formatter: (params: Array<{ dataIndex: number; name: string }>) => `${escapeHtml(params[0].name)}<br><b>${counts[params[0].dataIndex]}</b> orders`,
       }),
       xAxis: {
         type: "category",
@@ -70,11 +73,11 @@ export function intakeGridOption(profile: SeriesBucket[]): { option: EChartsCore
       },
       yAxis: { type: "value", max: bound, show: false },
       series: [
-        { type: "pictorialBar", ...cell, symbolRepeat: "fixed", z: 1, silent: true, itemStyle: { color: CHART.track }, data: counts.map(() => bound) },
+        { type: "pictorialBar", ...cell, symbolRepeat: GRID_ROWS, z: 1, silent: true, itemStyle: { color: CHART.track }, data: counts.map(() => bound) },
         {
           type: "pictorialBar",
           ...cell,
-          symbolRepeat: true,
+          symbolRepeat: GRID_ROWS,
           symbolClip: true,
           z: 2,
           data: counts.map((value, index) => ({ value, itemStyle: { color: index === peakIndex ? CHART.ink : CHART.greys[2] } })),
@@ -106,8 +109,8 @@ export function outcomeSankeyOption(sources: BusinessReportSource[]): EChartsCor
     tooltip: tooltip({
       formatter: (params: { dataType: string; name: string; value: number; data: { source?: string; target?: string } }) => (
         params.dataType === "edge"
-          ? `${params.data.source} → ${params.data.target}<br><b>${taka(params.value)}</b>`
-          : `${params.name}<br><b>${taka(params.value)}</b> · ${total ? ((params.value / total) * 100).toFixed(1) : "0"}%`
+          ? `${escapeHtml(params.data.source ?? "")} → ${escapeHtml(params.data.target ?? "")}<br><b>${taka(params.value)}</b>`
+          : `${escapeHtml(params.name)}<br><b>${taka(params.value)}</b> · ${total ? ((params.value / total) * 100).toFixed(1) : "0"}%`
       ),
     }),
     series: [{
@@ -144,7 +147,7 @@ export function outcomeSankeyOption(sources: BusinessReportSource[]): EChartsCor
 
 export function sourceMixOption(slices: MixSlice[]): EChartsCoreOption {
   return {
-    tooltip: tooltip({ formatter: (params: { name: string; value: number; percent: number }) => `${params.name}<br><b>${taka(params.value)}</b> · ${params.percent}%` }),
+    tooltip: tooltip({ formatter: (params: { name: string; value: number; percent: number }) => `${escapeHtml(params.name)}<br><b>${taka(params.value)}</b> · ${params.percent}%` }),
     series: [{
       type: "pie",
       radius: ["54%", "92%"],
@@ -227,7 +230,7 @@ export function bestDayOption(buckets: SeriesBucket[], bestIndex: number): EChar
       axisPointer: { type: "none" },
       formatter: (params: Array<{ dataIndex: number; name: string }>) => {
         const bucket = buckets[params[0].dataIndex];
-        return `${bucket.label} · <b>${taka(bucket.order_value)}</b><br>Social &amp; manual ${taka(bucket.order_value - bucket.website_value)}<br>Website ${taka(bucket.website_value)}`;
+        return `${escapeHtml(bucket.label)} · <b>${taka(bucket.order_value)}</b><br>Social &amp; manual ${taka(bucket.order_value - bucket.website_value)}<br>Website ${taka(bucket.website_value)}`;
       },
     }),
     xAxis: {
@@ -271,7 +274,7 @@ export function productRingsOption(products: ProductWeight[]): EChartsCoreOption
   const width = 100 / Math.max(top.length, 1);
   return {
     tooltip: tooltip({
-      formatter: (params: { name: string; value: number }) => (params.name === "rest" ? "" : `${params.name}<br><b>${params.value.toLocaleString("en-BD")} kg</b>`),
+      formatter: (params: { name: string; value: number }) => (params.name === "rest" ? "" : `${escapeHtml(params.name)}<br><b>${params.value.toLocaleString("en-BD")} kg</b>`),
     }),
     series: top.map((product, index) => ({
       type: "pie",
