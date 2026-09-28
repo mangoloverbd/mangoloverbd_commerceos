@@ -98,6 +98,8 @@ function emptyMetrics() {
     assigned_count: 0,
     confirmed_count: 0,
     confirmed_assigned_count: 0,
+    confirmed_assigned_delivered_count: 0,
+    confirmed_assigned_returned_count: 0,
     confirmed_value: 0,
     confirmed_kg: 0,
     confirmation_rate: null,
@@ -413,13 +415,72 @@ export function createProductLookups(products, variants) {
   return { productsById, productsByName, variantsById, variantsByProductId };
 }
 
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const dayLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+function dhakaDayHour(value) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  const shifted = new Date(timestamp + DHAKA_OFFSET_MS);
+  return { day: shifted.toISOString().slice(0, 10), hour: shifted.getUTCHours() };
+}
+
+function hourLabel(hour) {
+  return `${hour % 12 || 12}${hour < 12 ? "a" : "p"}`;
+}
+
+function dayLabel(day) {
+  return dayLabelFormatter.format(new Date(`${day}T00:00:00Z`));
+}
+
+function createSeriesBucket(key, label) {
+  return { key, label, confirmed_count: 0, confirmed_value: 0 };
+}
+
+function buildConfirmationSeries(points, range) {
+  const byDay = new Map();
+  const byDayHour = new Map();
+  for (const point of points) {
+    const day = byDay.get(point.day) || createSeriesBucket(point.day, dayLabel(point.day));
+    day.confirmed_count += 1;
+    day.confirmed_value += point.value;
+    byDay.set(point.day, day);
+    const key = `${point.day}-${point.hour}`;
+    const hour = byDayHour.get(key) || createSeriesBucket(key, hourLabel(point.hour));
+    hour.confirmed_count += 1;
+    hour.confirmed_value += point.value;
+    byDayHour.set(key, hour);
+  }
+  if (range?.from && range?.to && range.from === range.to) {
+    return {
+      granularity: "hour",
+      buckets: Array.from({ length: 24 }, (_, hour) => byDayHour.get(`${range.from}-${hour}`) || createSeriesBucket(`${range.from}-${hour}`, hourLabel(hour))),
+    };
+  }
+  if (range?.from && range?.to) {
+    const start = new Date(`${range.from}T00:00:00Z`).getTime();
+    const end = new Date(`${range.to}T00:00:00Z`).getTime();
+    const buckets = [];
+    for (let time = start; time <= end; time += MS_PER_DAY) {
+      const day = new Date(time).toISOString().slice(0, 10);
+      buckets.push(byDay.get(day) || createSeriesBucket(day, dayLabel(day)));
+    }
+    return { granularity: "day", buckets };
+  }
+  return {
+    granularity: "day",
+    buckets: [...byDay.keys()].sort().slice(-30).map((day) => byDay.get(day)),
+  };
+}
+
 export function buildStaffReport(
   orders,
   inboxOrders,
   orderItems,
   products,
   staff,
-  { since = null, until = null, regularActivities, socialActivities, abandonedActivities, upsellActivities, variants = null } = {},
+  { since = null, until = null, range = null, regularActivities, socialActivities, abandonedActivities, upsellActivities, variants = null } = {},
   variantsArg = null,
 ) {
   const variantsList = Array.isArray(variantsArg) ? variantsArg : (Array.isArray(variants) ? variants : []);
@@ -456,6 +517,7 @@ export function buildStaffReport(
   const productRowsByMetrics = new Map();
   const confirmedAssignedOrderKeys = new Set();
   const cancelledAssignedOrderKeys = new Set();
+  const seriesPoints = [];
 
   const productsForMetrics = (metrics) => {
     if (!productRowsByMetrics.has(metrics)) productRowsByMetrics.set(metrics, new Map());
@@ -504,8 +566,11 @@ export function buildStaffReport(
     metrics.confirmed_count += 1;
     metrics.confirmed_value += value;
     metrics.confirmed_kg += weightKg;
+    const confirmedParts = dhakaDayHour(occurredAt);
+    if (confirmedParts) seriesPoints.push({ ...confirmedParts, value });
     const orderId = activityOrderId(activity, order);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
+    const outcome = classifyCourierOutcome(order);
     if (
       order.assigned_to === actorId &&
       isInInterval(order.created_at, since, until) &&
@@ -513,8 +578,9 @@ export function buildStaffReport(
     ) {
       confirmedAssignedOrderKeys.add(assignedKey);
       metrics.confirmed_assigned_count += 1;
+      if (outcome === "delivered") metrics.confirmed_assigned_delivered_count += 1;
+      if (outcome === "returned") metrics.confirmed_assigned_returned_count += 1;
     }
-    const outcome = classifyCourierOutcome(order);
     if (outcome === "delivered") {
       metrics.delivered_count += 1;
       metrics.delivered_value += value;
@@ -609,6 +675,7 @@ export function buildStaffReport(
 
   return {
     rows,
+    series: buildConfirmationSeries(seriesPoints, range),
     missing_weight_products: [...missingWeightProducts.values()].sort((a, b) => a.name.localeCompare(b.name)),
   };
 }

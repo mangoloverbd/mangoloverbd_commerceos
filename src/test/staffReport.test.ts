@@ -933,3 +933,84 @@ describe("classifyCourierOutcome", () => {
     expect(classifyCourierOutcome(order)).toBe(expected);
   });
 });
+
+describe("buildStaffReport assigned outcomes and series", () => {
+  const staff = [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }];
+  // The route passes resolveStaffReportRequest's output, which carries `range`;
+  // toDhakaInterval alone does not, so mirror the route's shape here.
+  const withRange = (interval: ReturnType<typeof toDhakaInterval>) => ({
+    ...interval,
+    range: { from: interval.from, to: interval.to },
+  });
+
+  it("counts delivered and returned outcomes among the member's own assigned confirmations", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [
+        { id: "a1", assigned_to: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T02:00:00.000Z", price: 1000, courier_status: "delivered" },
+        { id: "a2", assigned_to: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:00:00.000Z", price: 500, courier_status: "returned" },
+        { id: "a3", assigned_to: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T04:00:00.000Z", price: 700, courier_status: "in_review" },
+        { id: "other", assigned_to: ADMIN_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T05:00:00.000Z", price: 900, courier_status: "delivered" },
+      ],
+      [], [], [], staff, interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      assigned_count: 3,
+      confirmed_count: 4,
+      confirmed_assigned_count: 3,
+      delivered_count: 2,
+      confirmed_assigned_delivered_count: 1,
+      confirmed_assigned_returned_count: 1,
+    });
+  });
+
+  it("buckets team confirmations by Dhaka hour for a single-day range", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [
+        { id: "c1", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:10:00.000Z", price: 1000 }, // 09:10 Dhaka
+        { id: "c2", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:50:00.000Z", price: 500 },  // 09:50 Dhaka
+        { id: "c3", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T15:00:00.000Z", price: 700 },  // 21:00 Dhaka
+      ],
+      [], [], [], staff, withRange(interval),
+    );
+
+    expect(report.series.granularity).toBe("hour");
+    expect(report.series.buckets).toHaveLength(24);
+    expect(report.series.buckets[9]).toEqual({ key: "2026-09-18-9", label: "9a", confirmed_count: 2, confirmed_value: 1500 });
+    expect(report.series.buckets[21]).toMatchObject({ label: "9p", confirmed_count: 1, confirmed_value: 700 });
+    expect(report.series.buckets[0]).toMatchObject({ label: "12a", confirmed_count: 0 });
+  });
+
+  it("fills every day of a bounded multi-day range", () => {
+    const interval = toDhakaInterval("2026-09-17", "2026-09-19");
+    const report = buildStaffReport(
+      [{ id: "c1", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-19T03:00:00.000Z", price: 800 }],
+      [], [], [], staff, withRange(interval),
+    );
+
+    expect(report.series.granularity).toBe("day");
+    expect(report.series.buckets.map((bucket) => [bucket.key, bucket.confirmed_count, bucket.confirmed_value])).toEqual([
+      ["2026-09-17", 0, 0],
+      ["2026-09-18", 0, 0],
+      ["2026-09-19", 1, 800],
+    ]);
+    expect(report.series.buckets[0].label).toBe("Sep 17");
+  });
+
+  it("keeps the 30 most recent active days for All time", () => {
+    const orders = Array.from({ length: 32 }, (_, index) => ({
+      id: `c${index}`,
+      confirmed_by: TEAM_MEMBER_ID,
+      confirmed_at: new Date(Date.UTC(2026, 7, 1 + index, 3)).toISOString(),
+      price: 100,
+    }));
+    const report = buildStaffReport(orders, [], [], [], staff, { since: null, until: null, range: { from: null, to: null } });
+
+    expect(report.series.granularity).toBe("day");
+    expect(report.series.buckets).toHaveLength(30);
+    expect(report.series.buckets[0].key).toBe("2026-08-03");
+    expect(report.series.buckets[29].key).toBe("2026-09-01");
+  });
+});
