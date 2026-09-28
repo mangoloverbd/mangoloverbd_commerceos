@@ -341,7 +341,7 @@ export default function StaffPerformance() {
         <LeaderboardPanel rows={rankedRows} reduceMotion={reduceMotion} />
         <OrderYieldPanel rows={rankedRows} reduceMotion={reduceMotion} />
       </section>
-      <section className="grid gap-3 lg:grid-cols-3">
+      <section className="grid gap-3 lg:h-[520px] lg:grid-cols-3">
         <TeamFunnelPanel rows={rankedRows} reduceMotion={reduceMotion} />
         <TeamContributionPanel rows={rankedRows} reduceMotion={reduceMotion} />
         <ExtraRevenuePanel rows={rankedRows} reduceMotion={reduceMotion} />

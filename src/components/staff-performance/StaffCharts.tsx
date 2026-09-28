@@ -15,7 +15,7 @@ const formatPct = (value: number) => `${value.toLocaleString("en-BD", { maximumF
 function Panel({ eyebrow, title, aside, children }: { eyebrow: string; title: string; aside?: ReactNode; children: ReactNode }) {
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className="flex min-w-0 flex-col gap-3 rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5">
+    <section aria-labelledby={headingId} className="flex min-h-0 min-w-0 flex-col gap-3 rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5 lg:h-full">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{eyebrow}</p>
@@ -104,7 +104,9 @@ export function TeamFunnelPanel({ rows }: PanelProps) {
         ))}
       </div>
       {byConfirmation.length > 0 && (
-        <ul aria-label="Confirmation rate by staff" className="mt-auto grid gap-1.5 border-t border-black/[0.08] pt-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 border-t border-black/[0.08] pt-3">
+          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Confirmation rate by staff</p>
+          <ul aria-label="Confirmation rate by staff" className="-mr-2 grid max-h-[260px] min-h-0 flex-1 content-start gap-1.5 overflow-y-auto overscroll-contain pb-3 pr-2 [mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)] lg:max-h-none">
           {byConfirmation.map((item) => (
             <li key={item.key} className="grid gap-1 text-[11px]">
               <span className="flex justify-between"><span className="text-black/60">{item.name}</span><span className={`tabular-nums ${item.flags.confRate === "worse" ? "font-medium text-[#B4473A]" : ""}`}>{formatPct(item.confRate ?? 0)}</span></span>
@@ -113,7 +115,8 @@ export function TeamFunnelPanel({ rows }: PanelProps) {
               </span>
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
       )}
     </Panel>
   );
@@ -147,14 +150,14 @@ export function ExtraRevenuePanel({ rows, reduceMotion }: PanelProps) {
   return (
     <Panel eyebrow="Extra revenue" title="Telesales, upsells and saved carts">
       {hasAny
-        ? <EChart option={option} ariaLabel="Telesales, retained upsell and converted cart value per staff member" className="h-[220px] w-full" animate={!reduceMotion} />
+        ? <EChart option={option} ariaLabel="Telesales, retained upsell and converted cart value per staff member" className="min-h-[220px] w-full flex-1" animate={!reduceMotion} />
         : <p className="py-10 text-center text-[12px] text-black/55">No telesales, upsells or saved carts in this range.</p>}
       <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-black/60">
         <span className="inline-flex items-center gap-1.5"><Swatch color={CHART.greys[0]} />Telesales</span>
         <span className="inline-flex items-center gap-1.5"><Swatch color={CHART.greys[2]} />Upsell kept</span>
         <span className="inline-flex items-center gap-1.5"><Swatch color={CHART.greys[3]} />Carts converted</span>
       </div>
-      <p className="mt-auto text-[10px] text-black/45">Telesales orders are also counted in confirmed value.</p>
+      <p className="text-[10px] text-black/45">Telesales orders are also counted in confirmed value.</p>
     </Panel>
   );
 }

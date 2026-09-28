@@ -195,6 +195,20 @@ describe("StaffPerformance", () => {
     expect(screen.getByRole("region", { name: "Telesales, upsells and saved carts" })).toBeInTheDocument();
   });
 
+  it("keeps the three middle cards the same height and scrolls the long confirmation list inside its card", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    const funnel = await screen.findByRole("region", { name: "From assigned to delivered" });
+    const row = funnel.parentElement as HTMLElement;
+    expect(row).toHaveClass("lg:h-[520px]");
+    expect(within(row).getByRole("region", { name: "Team contribution" })).toHaveClass("lg:h-full");
+    expect(within(row).getByRole("region", { name: "Telesales, upsells and saved carts" })).toHaveClass("lg:h-full");
+    expect(funnel).toHaveClass("lg:h-full");
+    expect(within(funnel).getByRole("list", { name: "Confirmation rate by staff" })).toHaveClass("overflow-y-auto");
+  });
+
   it("keeps the charts visible to team members while the tiles stay blurred", async () => {
     roleState.isAdmin = false;
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
