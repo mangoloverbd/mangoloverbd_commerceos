@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CaretRight } from "@phosphor-icons/react";
 import { OUTCOME_COLORS, OUTCOME_KEYS, OUTCOME_LABELS, type OutcomeKey } from "@/components/business-report/chartTheme";
 import type { BusinessReportResponse, BusinessReportSource } from "@/components/business-report/types";
@@ -150,6 +151,8 @@ export function SourcePerformanceTable({ report }: { report: BusinessReportRespo
   const rows = useMemo(() => buildSourceRows(report.sources, report.summary), [report.sources, report.summary]);
   const [sort, setSort] = useState<{ key: SourceSortKey; dir: SortDir }>({ key: "value", dir: -1 });
   const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const reduceMotion = useReducedMotion();
+  const detailTransition = { duration: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] as const };
   const sorted = useMemo(() => sortSourceRows(rows, sort.key, sort.dir), [rows, sort]);
   const allOpen = rows.length > 0 && rows.every((row) => open.has(row.key));
   const { summary } = report;
@@ -169,7 +172,7 @@ export function SourcePerformanceTable({ report }: { report: BusinessReportRespo
         <h2 id="source-performance-heading" className="font-sf-display text-[15px] font-semibold text-black">Source performance</h2>
         <div className="h-3.5 w-px bg-black/10" />
         <span className="text-[13px] tabular-nums text-black/60">{formatNumber(rows.length)} sources</span>
-        <span className="ml-auto hidden text-[11px] text-black/45 sm:inline">Click a column to sort · open a row for its product breakdown</span>
+        <span className="ml-auto hidden text-[11px] text-black/45 sm:inline">Click a column to sort · click a row for its product breakdown</span>
         <button
           type="button"
           onClick={() => setOpen(allOpen ? new Set() : new Set(rows.map((row) => row.key)))}
@@ -204,14 +207,17 @@ export function SourcePerformanceTable({ report }: { report: BusinessReportRespo
               const detailId = `business-report-source-detail-${row.key}`;
               return (
                 <Fragment key={row.key}>
-                  <tr data-testid={`business-report-source-${row.key}`} className="border-b border-black/[0.09] transition-colors hover:bg-black/[0.03]">
+                  <tr
+                    data-testid={`business-report-source-${row.key}`}
+                    onClick={() => toggle(row.key)}
+                    className={`cursor-pointer border-b border-black/[0.09] transition-colors hover:bg-black/[0.03] ${isOpen ? "bg-black/[0.03]" : ""}`}
+                  >
                     <td className="px-2.5 py-3">
                       <button
                         type="button"
                         aria-expanded={isOpen}
                         aria-controls={detailId}
                         aria-label={`${isOpen ? "Hide" : "Show"} products for ${row.label}`}
-                        onClick={() => toggle(row.key)}
                         className="flex items-center gap-2 text-[13px] font-semibold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25"
                       >
                         <CaretRight weight="light" size={14} className={`transition-transform motion-reduce:transition-none ${isOpen ? "rotate-90" : ""}`} />
@@ -233,11 +239,23 @@ export function SourcePerformanceTable({ report }: { report: BusinessReportRespo
                     <td className="px-2.5 py-3 text-right">{formatKg(row.kg)}</td>
                     <td className={`px-2.5 py-3 text-right ${Math.round(row.netPerOrder) < 0 ? "text-[#B4473A]" : ""}`}>{signedTaka(row.netPerOrder)}</td>
                   </tr>
-                  {isOpen && (
-                    <tr id={detailId} className="bg-black/[0.03]">
-                      <td colSpan={COLUMNS.length} className="p-0"><SourceDetail row={row} /></td>
-                    </tr>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <tr key="detail" id={detailId} className="bg-black/[0.03]">
+                        <td colSpan={COLUMNS.length} className="p-0">
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={detailTransition}
+                            className="overflow-hidden"
+                          >
+                            <SourceDetail row={row} />
+                          </motion.div>
+                        </td>
+                      </tr>
+                    )}
+                  </AnimatePresence>
                 </Fragment>
               );
             })}

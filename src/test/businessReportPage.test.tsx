@@ -485,6 +485,34 @@ describe("BusinessReport", () => {
     expect(products.querySelector("[data-flag]")).toBeNull();
   });
 
+  it("expands and collapses a source when any part of its row is clicked", async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    const website = within(table).getByTestId("business-report-source-website");
+
+    await user.click(within(website).getByText("৳1,400"));
+    expect(within(table).getByRole("button", { name: "Hide products for Website" })).toHaveAttribute("aria-expanded", "true");
+    expect(within(table).getByText("/step/katimon-mango")).toBeInTheDocument();
+
+    await user.click(within(website).getByText("৳1,400"));
+    expect(within(table).getByRole("button", { name: "Show products for Website" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("toggles a source once when its name button is clicked", async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    await user.click(within(table).getByRole("button", { name: "Show products for Website" }));
+    expect(within(table).getByRole("button", { name: "Hide products for Website" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("expands and collapses every source at once", async () => {
     const user = userEvent.setup();
     apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
