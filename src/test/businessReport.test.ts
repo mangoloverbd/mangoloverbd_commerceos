@@ -341,6 +341,34 @@ describe("buildBusinessReport", () => {
       ]);
   });
 
+  it("adds website value, weight and outcome counts to each series bucket", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-19" });
+    const report = buildBusinessReport([
+      order({ id: "web-approved", created_at: "2026-09-18T03:00:00.000Z", source: "website", status: "confirmed", price: 1000, weight_kg: 5 }),
+      order({ id: "fb-cancelled", created_at: "2026-09-18T04:00:00.000Z", source: "facebook", status: "cancelled", price: 600, weight_kg: 2.5 }),
+      order({ id: "fb-pending", created_at: "2026-09-19T05:00:00.000Z", source: "facebook", price: 400 }),
+    ], request);
+
+    expect(report.series.buckets).toEqual([
+      { key: "2026-09-18", label: expect.any(String), intake_count: 2, order_value: 1600, website_value: 1000, order_kg: 7.5, approved_count: 1, cancelled_count: 1 },
+      { key: "2026-09-19", label: expect.any(String), intake_count: 1, order_value: 400, website_value: 0, order_kg: 0, approved_count: 0, cancelled_count: 0 },
+    ]);
+  });
+
+  it("returns a 24-hour intake profile summed across every day in the range", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-20" });
+    const report = buildBusinessReport([
+      order({ id: "d1-9am", created_at: "2026-09-18T03:00:00.000Z", price: 100 }), // 09:00 Dhaka
+      order({ id: "d3-9am", created_at: "2026-09-20T03:30:00.000Z", price: 200 }), // 09:30 Dhaka
+      order({ id: "d2-9pm", created_at: "2026-09-19T15:00:00.000Z", price: 300 }), // 21:00 Dhaka
+    ], request);
+
+    expect(report.hourly_profile).toHaveLength(24);
+    expect(report.hourly_profile[9]).toMatchObject({ key: "hour-9", label: "9a", intake_count: 2, order_value: 300 });
+    expect(report.hourly_profile[21]).toMatchObject({ key: "hour-21", label: "9p", intake_count: 1, order_value: 300 });
+    expect(report.hourly_profile[0]).toMatchObject({ key: "hour-0", label: "12a", intake_count: 0 });
+  });
+
   it("stops at the requested final day near the calendar maximum", () => {
     const originalToISOString = Date.prototype.toISOString;
     let toISOStringCalls = 0;
