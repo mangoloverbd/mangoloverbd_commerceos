@@ -1,6 +1,6 @@
 import { useId, useMemo, type ReactNode } from "react";
 import { EChart } from "@/components/business-report/EChart";
-import { CHART, OUTCOME_COLORS, OUTCOME_KEYS, OUTCOME_LABELS } from "@/components/business-report/chartTheme";
+import { CHART, OUTCOME_COLORS, OUTCOME_KEYS, OUTCOME_LABELS, categoricalColor } from "@/components/business-report/chartTheme";
 import type { BusinessReportResponse } from "@/components/business-report/types";
 import {
   approvalBand,
@@ -111,7 +111,7 @@ export function SourceMixPanel({ report, reduceMotion }: PanelProps) {
       <ul className="grid gap-1.5">
         {slices.map((slice, index) => (
           <li key={slice.label} className="grid grid-cols-[10px_1fr_auto_auto] items-center gap-2 text-[12px]">
-            <span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.greys[Math.min(index, CHART.greys.length - 1)] }} />
+            <span className="h-2 w-2 rounded-[2px]" style={{ background: categoricalColor(index) }} />
             <span>{slice.label}</span>
             <span className="tabular-nums">{formatTaka(slice.value)}</span>
             <span className="min-w-[36px] text-right tabular-nums text-black/45">{Math.round(rate(slice.value, total))}%</span>
@@ -159,7 +159,7 @@ function CoverageBar({ label, covered, total }: { label: string; covered: number
     <div className="grid gap-1.5">
       <p className="text-[10px] tabular-nums text-black/55">{label}</p>
       <div className="h-1 overflow-hidden rounded-full bg-black/[0.08]" aria-hidden="true">
-        <div className="h-full rounded-full" style={{ width: `${share}%`, background: share >= 80 ? CHART.ink : OUTCOME_COLORS.pending }} />
+        <div className="h-full rounded-full" style={{ width: `${share}%`, background: share >= 80 ? OUTCOME_COLORS.approved : OUTCOME_COLORS.pending }} />
       </div>
     </div>
   );
@@ -169,8 +169,8 @@ export function DeliveryEconomicsPanel({ report }: { report: BusinessReportRespo
   const { summary } = report;
   const max = Math.max(summary.delivery_charged, summary.courier_fees_recorded, 1);
   const comparison = [
-    { label: "Delivery charged", value: summary.delivery_charged, color: CHART.ink },
-    { label: "Courier fees recorded", value: summary.courier_fees_recorded, color: CHART.greys[2] },
+    { label: "Delivery charged", value: summary.delivery_charged, color: CHART.categorical[0] },
+    { label: "Courier fees recorded", value: summary.courier_fees_recorded, color: CHART.categorical[2] },
   ];
   const perOrder = [
     {
@@ -190,7 +190,7 @@ export function DeliveryEconomicsPanel({ report }: { report: BusinessReportRespo
     <Panel eyebrow="Delivery economics" title="Charges vs courier fees">
       <div>
         <p className="text-[10px] text-black/55">Net delivery position</p>
-        <p className={`mt-1 text-[26px] font-light tabular-nums tracking-[-0.03em] ${summary.net_delivery_position < 0 ? "text-[#B4473A]" : "text-black"}`}>
+        <p className={`mt-1 text-[26px] font-light tabular-nums tracking-[-0.03em] ${summary.net_delivery_position < 0 ? "text-[#B4473A]" : summary.net_delivery_position > 0 ? "text-[#2F7A55]" : "text-black"}`}>
           {signedTaka(summary.net_delivery_position)}
         </p>
       </div>
@@ -235,8 +235,9 @@ export function BestDayPanel({ report, reduceMotion }: PanelProps) {
       title="Best day"
       aside={(
         <div className="flex flex-col gap-1.5 text-[11px] text-black/60">
-          <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.ink }} />Social &amp; manual</span>
-          <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.greys[2] }} />Website</span>
+          <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.categorical[0] }} />Social &amp; manual</span>
+          <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.categorical[1] }} />Website</span>
+          <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.highlight }} />Best day</span>
         </div>
       )}
     >
@@ -292,7 +293,7 @@ export function ProductWeightPanel({ report, reduceMotion }: PanelProps) {
             const outcomeTotal = OUTCOME_KEYS.reduce((sum, key) => sum + outcomes[key], 0);
             return (
               <li key={product.product_id || product.product_name} className={`${WEIGHT_ROW_GRID} rounded-lg px-2.5 py-2 text-[12px] odd:bg-black/[0.04]`}>
-                <span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.greys[Math.min(index, 3)] }} />
+                <span className="h-2 w-2 rounded-[2px]" style={{ background: categoricalColor(index) }} />
                 <span className="font-semibold tabular-nums">{Math.round(rate(product.kg, total))}%</span>
                 <span className="grid min-w-0 gap-1">
                   <span className="truncate">{product.product_name}</span>

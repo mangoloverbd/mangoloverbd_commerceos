@@ -21,11 +21,10 @@ describe("Customers page routing", () => {
     const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
 
     expect(pageSource).toContain('apiFetch("/api/customers")');
-    expect(pageSource).toContain('/api/customers/ai-insight');
     expect(pageSource).toContain('CustomerDataTable');
     expect(pageSource).not.toContain('AI source-aware profiles');
-    expect(pageSource).toContain('custom_website: "Custom Website"');
-    expect(pageSource).toContain('shopify: "Shopify"');
+    expect(pageSource).toContain("ORDER_SOURCE_OPTIONS");
+    expect(pageSource).not.toContain("Shopify");
     expect(pageSource).toContain('primarySource');
   });
 
@@ -53,22 +52,16 @@ describe("Customers page routing", () => {
     expect(tabsSource).toContain('layoutRoot');
   });
 
-  it("opens customer details as a centered bloom popover instead of a right drawer", () => {
+  it("selects customers on row click instead of opening a profile popup", () => {
     const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
 
-    expect(pageSource).toContain("function CustomerBloomPopover");
-    expect(pageSource).toContain("pointerdown");
-    expect(pageSource).toContain("Escape");
-    expect(pageSource).not.toContain("motion.aside");
-    expect(pageSource).not.toContain("inset-y-0 right-0");
+    expect(pageSource).not.toContain("CustomerBloomPopover");
+    expect(pageSource).toContain("onSelectedIdsChange={setSelectedIds}");
   });
 
-  it("uses smooth modal animation and compact dashboard-style summary cards", () => {
+  it("uses compact dashboard-style summary cards", () => {
     const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
 
-    expect(pageSource).toContain("customerPopoverTransition");
-    expect(pageSource).toContain("scale: 0.96");
-    expect(pageSource).toContain('filter: "blur(8px)"');
     expect(pageSource).toContain("min-h-[92px]");
     expect(pageSource).toContain("grid gap-3 sm:grid-cols-2 lg:grid-cols-4");
     expect(pageSource).not.toContain("clipPath");

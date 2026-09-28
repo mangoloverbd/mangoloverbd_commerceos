@@ -40,21 +40,44 @@ describe("customer intelligence aggregation", () => {
     expect(findCustomerOrderByPhone(rows, "01912345678")).toBeNull();
   });
 
-  it("detects Shopify, custom website webhook, manual, and social sources", () => {
-    expect(detectCustomerOrderSource({ source: "custom_store" }, "order")).toBe("custom_website");
-    expect(detectCustomerOrderSource({ source: "storefront_review" }, "order")).toBe("custom_website");
+  it("uses the order's own source, the same list the order form offers", () => {
+    expect(detectCustomerOrderSource({ source: "website" }, "order")).toBe("website");
+    expect(detectCustomerOrderSource({ source: "custom_store" }, "order")).toBe("website");
+    expect(detectCustomerOrderSource({ source: "storefront" }, "order")).toBe("website");
+    expect(detectCustomerOrderSource({ source: "Telesales" }, "order")).toBe("telesales");
+    expect(detectCustomerOrderSource({ source: "phone" }, "order")).toBe("phone");
+    expect(detectCustomerOrderSource({ source: "upsell" }, "order")).toBe("upsell");
+    expect(detectCustomerOrderSource({ source: "facebook", shopify_order_id: 12345 }, "order")).toBe("facebook");
+    expect(detectCustomerOrderSource({ source: null, shopify_order_id: 12345 }, "order")).toBe("manual_other");
     expect(detectCustomerOrderSource({ platform: "facebook" }, "social")).toBe("facebook");
-    expect(detectCustomerOrderSource({ shopify_order_id: 12345 }, "order")).toBe("shopify");
-    expect(detectCustomerOrderSource({ shopify_order_id: -12345, order_number: "#1002" }, "order")).toBe("custom_website");
-    expect(detectCustomerOrderSource({ shopify_order_id: -12345, order_number: "#M12" }, "order")).toBe("manual");
+    expect(detectCustomerOrderSource({ platform: "tiktok" }, "social")).toBe("manual_other");
   });
 
-  it("merges Shopify and custom website orders into one source-aware customer", () => {
+  it("picks the source a customer ordered through most, breaking ties by the latest order", () => {
+    const order = (id: string, source: string, createdAt: string) => ({ id, source, phone: "01712345678", customer_name: "Rina", price: "500", status: "confirmed", created_at: createdAt });
+    const [mostly] = buildCustomers({
+      orders: [
+        order("a", "facebook", "2026-07-01T10:00:00Z"),
+        order("b", "facebook", "2026-07-02T10:00:00Z"),
+        order("c", "telesales", "2026-07-03T10:00:00Z"),
+      ],
+    });
+    expect(mostly.primarySource).toBe("facebook");
+    expect(mostly.sources).toEqual(["facebook", "telesales"]);
+
+    const [tied] = buildCustomers({
+      orders: [order("a", "facebook", "2026-07-01T10:00:00Z"), order("b", "phone", "2026-07-05T10:00:00Z")],
+    });
+    expect(tied.primarySource).toBe("phone");
+  });
+
+  it("merges a customer's orders across sources into one profile", () => {
     const customers = buildCustomers({
       now: new Date("2026-07-09T00:00:00Z"),
       orders: [
         {
-          id: "shopify-1",
+          id: "facebook-1",
+          source: "facebook",
           shopify_order_id: 111,
           order_number: "#1001",
           customer_name: "Nadia Rahman",
@@ -86,8 +109,8 @@ describe("customer intelligence aggregation", () => {
       phone: "01712345678",
       totalOrders: 2,
       totalSpent: 3600,
-      primarySource: "custom_website",
-      sources: ["shopify", "custom_website"],
+      primarySource: "website",
+      sources: ["facebook", "website"],
     });
     expect(customers[0].segments).toContain("repeat_buyer");
     expect(customers[0].riskLevel).toBe("medium");

@@ -44,10 +44,10 @@ describe("order source route wiring", () => {
 });
 
 describe("canonical order sources in customer analytics", () => {
-  it("maps canonical values without changing customer source vocabulary", () => {
-    expect(detectCustomerOrderSource({ source: "website" }, "order")).toBe("custom_website");
-    expect(detectCustomerOrderSource({ source: "phone" }, "order")).toBe("manual");
-    expect(detectCustomerOrderSource({ source: "manual_other" }, "order")).toBe("manual");
+  it("uses the canonical order source vocabulary for customers", () => {
+    expect(detectCustomerOrderSource({ source: "website" }, "order")).toBe("website");
+    expect(detectCustomerOrderSource({ source: "phone" }, "order")).toBe("phone");
+    expect(detectCustomerOrderSource({ source: "manual_other" }, "order")).toBe("manual_other");
     expect(detectCustomerOrderSource({ source: "facebook" }, "social")).toBe("facebook");
   });
 });

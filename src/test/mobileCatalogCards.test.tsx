@@ -19,7 +19,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
 function makeCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
     id: "customer-1", name: "Test Customer", phone: "01700000000", totalOrders: 1,
-    totalSpent: 850, averageOrderValue: 850, sources: ["manual"], primarySource: "manual",
+    totalSpent: 850, averageOrderValue: 850, sources: ["manual_other"], primarySource: "manual_other",
     riskLevel: "low", segments: [], lifecycleStage: "new", campaignSegments: [],
     lastOrderAt: "2026-09-11T08:00:00.000Z", timeline: [], ...overrides,
   };
@@ -45,12 +45,16 @@ describe("mobile catalog cards", () => {
     expect(onEditProduct).toHaveBeenCalledWith("product-1");
   });
 
-  it("selects a customer card using the existing callback", async () => {
+  it("toggles selection when a customer card is tapped", async () => {
     const user = userEvent.setup();
     const customer = makeCustomer({ name: "Nusrat Jahan", totalOrders: 3, totalSpent: 2400 });
-    const onSelect = vi.fn();
-    render(<MobileCustomerCards customers={[customer]} onSelect={onSelect} />);
-    await user.click(screen.getByRole("button", { name: /open customer nusrat jahan/i }));
-    expect(onSelect).toHaveBeenCalledWith(customer);
+    const onToggle = vi.fn();
+    const { rerender } = render(<MobileCustomerCards customers={[customer]} selectedIds={new Set()} onToggle={onToggle} />);
+    await user.click(screen.getByText("Nusrat Jahan"));
+    expect(onToggle).toHaveBeenLastCalledWith(customer.id, true);
+    rerender(<MobileCustomerCards customers={[customer]} selectedIds={new Set([customer.id])} onToggle={onToggle} />);
+    await user.click(screen.getByText("Nusrat Jahan"));
+    expect(onToggle).toHaveBeenLastCalledWith(customer.id, false);
+    expect(screen.queryByRole("button", { name: /open customer/i })).not.toBeInTheDocument();
   });
 });

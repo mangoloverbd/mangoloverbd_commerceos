@@ -18,17 +18,19 @@ export function findCustomerOrderByPhone(orders, phone) {
   return orders.find((order) => normalizeCustomerPhone(order?.phone) === normalized) || null;
 }
 
+// Mirrors ORDER_SOURCE_OPTIONS in src/lib/orderSource.ts, the sources staff pick on the order form.
+const ORDER_SOURCES = new Set(["website", "facebook", "instagram", "whatsapp", "phone", "telesales", "upsell", "manual_other"]);
+const WEBSITE_SOURCE_ALIASES = new Set(["custom_store", "custom_website", "custom_website_tracker", "storefront", "storefront_review", "webhook", "website"]);
+const SOCIAL_PLATFORMS = new Set(["facebook", "instagram", "whatsapp"]);
+
 export function detectCustomerOrderSource(row, tableKind) {
-  const source = String(row?.source || row?.platform || "").toLowerCase();
   if (tableKind === "social") {
-    if (["facebook", "instagram", "whatsapp"].includes(source)) return source;
-    return "social_inbox";
+    const platform = String(row?.platform || row?.source || "").trim().toLowerCase();
+    return SOCIAL_PLATFORMS.has(platform) ? platform : "manual_other";
   }
-  if (["custom_store", "custom_website", "custom_website_tracker", "storefront", "storefront_review", "webhook", "website"].includes(source)) return "custom_website";
-  if (source === "shopify") return "shopify";
-  if (Number(row?.shopify_order_id) > 0) return "shopify";
-  if (Number(row?.shopify_order_id) < 0 && /^#\d+$/.test(String(row?.order_number || ""))) return "custom_website";
-  return "manual";
+  const source = String(row?.source || "").trim().toLowerCase();
+  if (WEBSITE_SOURCE_ALIASES.has(source)) return "website";
+  return ORDER_SOURCES.has(source) ? source : "manual_other";
 }
 
 function toNumber(value) {
@@ -85,13 +87,20 @@ function campaignSegmentsFor(customer) {
   if (customer.totalOrders === 1) segments.push("first_order_nurture");
   if (customer.riskLevel !== "low") segments.push("cod_guardrail");
   if (customer.riskLevel === "low" && customer.totalOrders >= 1) segments.push("review_request");
-  if (customer.sources.some((source) => ["facebook", "instagram", "whatsapp", "social_inbox"].includes(source))) segments.push("social_retarget");
-  if (customer.sources.includes("custom_website")) segments.push("custom_site_retarget");
+  if (customer.sources.some((source) => SOCIAL_PLATFORMS.has(source))) segments.push("social_retarget");
+  if (customer.sources.includes("website")) segments.push("custom_site_retarget");
   return segments;
 }
 
-function sourceRank(source) {
-  return { custom_website: 4, shopify: 3, whatsapp: 2, facebook: 2, instagram: 2, social_inbox: 1, manual: 0 }[source] ?? 0;
+// The channel a customer used most; ties go to the channel of their latest order.
+function primarySourceFor(timeline) {
+  const counts = new Map();
+  for (const entry of timeline) counts.set(entry.source, (counts.get(entry.source) || 0) + 1);
+  let best = null;
+  for (const entry of timeline) {
+    if (best === null || counts.get(entry.source) > counts.get(best)) best = entry.source;
+  }
+  return best;
 }
 
 function addTimeline(customer, entry) {
@@ -136,7 +145,6 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
     if (name) customer.name = name;
     if (phone) customer.phone = phone;
     if (!customer.sources.includes(source)) customer.sources.push(source);
-    if (sourceRank(source) >= sourceRank(customer.primarySource)) customer.primarySource = source;
     customer.totalOrders += 1;
     customer.totalSpent += toNumber(order?.price);
     if (String(order?.status || "").toLowerCase() === "cancelled") customer.cancelledOrders += 1;
@@ -162,7 +170,6 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
     if (name) customer.name = name;
     if (phone) customer.phone = phone;
     if (!customer.sources.includes(source)) customer.sources.push(source);
-    if (sourceRank(source) >= sourceRank(customer.primarySource)) customer.primarySource = source;
     customer.totalOrders += 1;
     customer.totalSpent += toNumber(order?.total_price);
     if (String(order?.status || "").toLowerCase() === "cancelled") customer.cancelledOrders += 1;
@@ -181,6 +188,7 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
 
   const nowTime = now instanceof Date ? now.getTime() : new Date(now).getTime();
   return Array.from(byKey.values()).map((customer) => {
+    customer.primarySource = primarySourceFor(customer.timeline) || customer.primarySource;
     customer.averageOrderValue = customer.totalOrders ? Math.round(customer.totalSpent / customer.totalOrders) : 0;
     customer.riskLevel = riskLevelFor(customer);
     customer.daysSinceLastOrder = customer.lastOrderAt
@@ -199,7 +207,6 @@ export function summarizeCustomers(customers) {
     repeatBuyers: customers.filter((customer) => customer.segments.includes("repeat_buyer")).length,
     vipCustomers: customers.filter((customer) => customer.segments.includes("vip")).length,
     highRiskCustomers: customers.filter((customer) => customer.riskLevel === "high").length,
-    customWebsiteCustomers: customers.filter((customer) => customer.sources.includes("custom_website")).length,
-    shopifyCustomers: customers.filter((customer) => customer.sources.includes("shopify")).length,
+    websiteCustomers: customers.filter((customer) => customer.sources.includes("website")).length,
   };
 }

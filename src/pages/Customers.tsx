@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import { buildCustomerExportCsv } from "@/lib/customerExport";
-import { MagnifyingGlass, Sparkle, X } from "@phosphor-icons/react";
-import { motion, AnimatePresence, useReducedMotion, type Transition } from "framer-motion";
-import { Spinner } from "@/components/ui/ios-spinner";
+import { MagnifyingGlass, Package, X } from "@phosphor-icons/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/components/ui/sonner";
-import { RichButton } from "@/components/ui/rich-button";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { Button } from "@/components/base/buttons/button";
 import { RiDownloadLine } from "@remixicon/react";
 import { CustomerDataTable } from "@/components/CustomerDataTable";
-import { CopyButton } from "@/components/ui/copy-button";
+import { CustomerSmsDialog } from "@/components/CustomerSmsDialog";
+import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { customerOrderedInRange } from "@/lib/customerDateFilter";
+import { ORDER_SOURCE_OPTIONS, type OrderSource } from "@/lib/orderSource";
 import type { DateRange } from "react-day-picker";
 
-type Source = "shopify" | "custom_website" | "manual" | "facebook" | "instagram" | "whatsapp" | "social_inbox";
+export type Source = OrderSource;
 
 export type Customer = {
   id: string;
@@ -48,42 +48,13 @@ type CustomerSummary = {
   repeatBuyers: number;
   vipCustomers: number;
   highRiskCustomers: number;
-  customWebsiteCustomers: number;
-  shopifyCustomers: number;
-};
-
-type AiInsight = { summary: string; riskExplanation: string; nextAction: string };
-
-const sourceLabels: Record<Source, string> = {
-  custom_website: "Custom Website",
-  shopify: "Shopify",
-  manual: "Manual",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  whatsapp: "WhatsApp",
-  social_inbox: "Social Inbox",
-};
-
-const segmentLabels: Record<string, string> = {
-  repeat_buyer: "Repeat Buyer",
-  vip: "VIP",
-  high_risk: "High Risk",
-  inactive: "Inactive",
-  new_customer: "New Customer",
-};
-
-const lifecycleLabels: Record<Customer["lifecycleStage"], string> = {
-  new: "New",
-  repeat: "Repeat",
-  vip: "VIP",
-  dormant: "Dormant",
-  risky: "Risky",
+  websiteCustomers: number;
 };
 
 const campaignLabels: Record<string, string> = {
   all: "All Campaigns",
   cod_guardrail: "COD Guardrail",
-  custom_site_retarget: "Custom Site Retarget",
+  custom_site_retarget: "Website Retarget",
   first_order_nurture: "First Order",
   repeat_upsell: "Repeat Upsell",
   review_request: "Review Request",
@@ -92,24 +63,7 @@ const campaignLabels: Record<string, string> = {
   win_back: "Win-back",
 };
 
-const sourceOptions = ["all", "custom_website", "facebook", "instagram", "whatsapp", "manual"] as const;
 const campaignOptions = ["all", "win_back", "vip_loyalty", "repeat_upsell", "first_order_nurture", "review_request", "social_retarget", "custom_site_retarget", "cod_guardrail"] as const;
-
-const customerPopoverTransition: Transition = {
-  type: "spring",
-  stiffness: 240,
-  damping: 28,
-  mass: 0.9,
-};
-
-function money(value: number) {
-  return `৳${Math.round(value || 0).toLocaleString("en-BD")}`;
-}
-
-function dateLabel(value: string | null | undefined) {
-  if (!value) return "Never";
-  return new Date(value).toLocaleDateString("en-BD", { month: "short", day: "numeric", year: "numeric" });
-}
 
 function Stat({ label, value, sub }: { label: string; value: string | number; sub: string }) {
   return (
@@ -126,132 +80,38 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
   );
 }
 
-function CustomerBloomPopover({
-  customer,
-  insight,
-  insightLoading,
-  onClose,
-  onGenerateInsight,
-}: {
-  customer: Customer | null;
-  insight: AiInsight | null;
-  insightLoading: boolean;
-  onClose: () => void;
-  onGenerateInsight: (customer: Customer) => void;
-}) {
-  const reduce = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
+// Right padding that moves the dropdown arrow left so the reset × sits beside it, not on it.
+const RESET_ROOM = "pr-10";
 
-  useEffect(() => {
-    if (!customer) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    const onPointer = (event: PointerEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onPointer);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onPointer);
-    };
-  }, [customer, onClose]);
-
-  const morph = reduce ? { duration: 0.16 } : customerPopoverTransition;
-
+/** Wraps a filter so it shows a reset × while it is not on its "all" value, like the date picker. */
+function ResettableFilter({ label, active, onReset, children }: { label: string; active: boolean; onReset: () => void; children: ReactNode }) {
   return (
-    <AnimatePresence>
-      {customer ? (
-        <motion.div
-          key="customer-bloom-backdrop"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1, transition: { duration: 0.3, ease: "easeOut" } }}
-          exit={{ opacity: 0, transition: { duration: 0.2, ease: "easeIn" } }}
-          className="fixed inset-0 z-40 grid place-items-center bg-black/12 px-4 backdrop-blur-[3px]"
+    <div className="relative">
+      {children}
+      {active && (
+        <button
+          type="button"
+          aria-label={`Reset ${label}`}
+          onClick={onReset}
+          className="absolute right-2 top-1/2 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-foreground/50 transition-colors hover:bg-black/[0.05] hover:text-foreground"
         >
-          <motion.div
-            ref={ref}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.96, filter: "blur(8px)" }}
-            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: morph }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96, filter: "blur(4px)", transition: { duration: 0.2, ease: "easeIn" } }}
-            style={{ borderRadius: 18 }}
-            className="max-h-[88vh] w-[min(92vw,760px)] overflow-hidden border border-black/10 bg-[#FAFAF8] shadow-2xl shadow-black/15"
-          >
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { delay: reduce ? 0 : 0.08, duration: 0.2, ease: "easeOut" } }}
-              exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeIn" } }}
-            >
-              <div className="flex items-center justify-between border-b border-black/10 bg-white px-5 py-4">
-                <div>
-                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Customer Profile</p>
-                  <h2 className="mt-1 text-[22px] font-bold tracking-tight text-black">{customer.name}</h2>
-                  <div className="mt-1 flex items-center gap-1 text-[12px] text-black">
-                    <span>{customer.phone || "No phone"}</span>
-                    {customer.phone && (
-                      <CopyButton
-                        value={customer.phone}
-                        size="sm"
-                        aria-label={`Copy phone number ${customer.phone}`}
-                        className="h-6 w-6 shrink-0 rounded-md text-black/40 hover:bg-black/[0.06] hover:text-black"
-                      />
-                    )}
-                    <span>· {sourceLabels[customer.primarySource]}</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close customer profile"
-                  className="flex h-9 w-9 items-center justify-center rounded-xl text-black/35 transition-colors hover:bg-black/[0.04] hover:text-black"
-                >
-                  <X weight="light" size={18} />
-                </button>
-              </div>
+          <X weight="light" size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
 
-              <motion.div
-                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 4 }}
-                transition={{ delay: reduce ? 0 : 0.06, duration: 0.22, ease: "easeOut" }}
-                className="max-h-[calc(88vh-89px)] overflow-y-auto p-5"
-              >
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Stat label="Orders" value={customer.totalOrders} sub="Total" />
-                  <Stat label="Spent" value={money(customer.totalSpent)} sub="LTV" />
-                  <Stat label="AOV" value={money(customer.averageOrderValue)} sub="Average" />
-                </div>
+type ProductOption = { name: string; imageUrl: string | null };
 
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-medium text-black">{lifecycleLabels[customer.lifecycleStage] || customer.lifecycleStage}</span>
-                  {customer.segments.map((segment) => <span key={segment} className="rounded-full bg-black px-2.5 py-1 text-[10px] font-medium text-white">{segmentLabels[segment] || segment}</span>)}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {customer.campaignSegments.map((segment) => <span key={segment} className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[10px] font-medium text-black">{campaignLabels[segment] || segment}</span>)}
-                </div>
-
-                <RichButton type="button" onClick={() => onGenerateInsight(customer)} className="mt-6 h-10 w-full rounded-[10px] bg-black text-xs text-white shadow-[0_2px_4px_0_rgba(0,0,0,0.16),0_0_0_1px_rgba(0,0,0,0.3),inset_0_1px_0_0_rgba(255,255,255,0.18)] hover:bg-black"><Sparkle weight="light" size={16} /> Generate AI Insight</RichButton>
-
-                {(insightLoading || insight) && (
-                  <div className="mt-4 rounded-xl border border-black/10 bg-white p-4">
-                    {insightLoading ? <div className="flex items-center gap-2 text-sm text-black"><Spinner className="text-black" /> Thinking through customer behavior</div> : <div className="space-y-3 text-sm text-black"><p>{insight?.summary}</p><p>{insight?.riskExplanation}</p><p className="font-medium text-black">Next: {insight?.nextAction}</p></div>}
-                  </div>
-                )}
-
-                <div className="mt-6">
-                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Timeline</p>
-                  <div className="mt-3 grid gap-2">
-                    {customer.timeline.map((entry, index) => <div key={`${entry.id}-${index}`} className="rounded-xl border border-black/[0.06] bg-white p-3"><p className="text-xs font-medium text-black">{entry.orderNumber || entry.kind} · {sourceLabels[entry.source]}</p><p className="mt-1 text-xs text-black">{entry.product || "No product"} · {money(entry.amount || 0)} · {entry.status}</p><p className="mt-1 text-[10px] text-black/35">{dateLabel(entry.createdAt)}</p></div>)}
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+function ProductThumb({ imageUrl }: { imageUrl: string | null }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/[0.06]">
+      {imageUrl && !failed
+        ? <img src={imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setFailed(true)} />
+        : <Package weight="light" size={14} className="text-black/40" />}
+    </span>
   );
 }
 
@@ -262,10 +122,11 @@ export default function Customers() {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<Source | "all">("all");
   const [campaignFilter, setCampaignFilter] = useState<(typeof campaignOptions)[number]>("all");
+  const [productFilter, setProductFilter] = useState("all");
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
-  const [selected, setSelected] = useState<Customer | null>(null);
-  const [insight, setInsight] = useState<AiInsight | null>(null);
-  const [insightLoading, setInsightLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [smsOpen, setSmsOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -289,6 +150,31 @@ export default function Customers() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch("/api/products")
+      .then((res) => (res.ok ? res.json() : { products: [] }))
+      .then((data: { products?: Array<{ name?: string | null; image_url?: string | null }> }) => {
+        if (cancelled) return;
+        const byName = new Map<string, ProductOption>();
+        for (const product of data.products || []) {
+          const name = product.name?.trim();
+          if (name && !byName.has(name)) byName.set(name, { name, imageUrl: product.image_url || null });
+        }
+        setProductOptions([...byName.values()].sort((a, b) => a.name.localeCompare(b.name)));
+      })
+      .catch(() => {
+        // The product filter is optional; the customer list still works without it.
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Only offer sources this workspace has actually received orders from.
+  const sourceOptions = useMemo(() => {
+    const used = new Set(customers.flatMap((customer) => customer.sources));
+    return ORDER_SOURCE_OPTIONS.filter((option) => used.has(option.value));
+  }, [customers]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return customers.filter((customer) => {
@@ -302,9 +188,13 @@ export default function Customers() {
         ...customer.segments,
         ...customer.campaignSegments,
       ].join(" ").toLowerCase().includes(q);
-      return matchesSource && matchesCampaign && matchesQuery && customerOrderedInRange(customer, dateRange);
+      return matchesSource && matchesCampaign && matchesQuery && customerOrderedInRange(customer, dateRange, productFilter === "all" ? null : productFilter);
     });
-  }, [campaignFilter, customers, dateRange, query, source]);
+  }, [campaignFilter, customers, dateRange, productFilter, query, source]);
+
+  // Only customers still visible under the current filters count as selected.
+  const selectedCustomers = useMemo(() => filtered.filter((customer) => selectedIds.has(customer.id)), [filtered, selectedIds]);
+  const smsRecipients = useMemo(() => selectedCustomers.filter((customer) => customer.phone), [selectedCustomers]);
 
   const winBackCount = useMemo(() => customers.filter((customer) => customer.campaignSegments.includes("win_back")).length, [customers]);
 
@@ -326,26 +216,6 @@ export default function Customers() {
     toast.success(`Exported ${filtered.length} customers`);
   }
 
-  async function generateInsight(customer: Customer) {
-    setSelected(customer);
-    setInsightLoading(true);
-    setInsight(null);
-    try {
-      const res = await apiFetch("/api/customers/ai-insight", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customer }),
-      });
-      if (!res.ok) throw new Error("Failed to generate AI insight");
-      const data = await res.json();
-      setInsight(data.insight);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to generate AI insight");
-    } finally {
-      setInsightLoading(false);
-    }
-  }
-
   return (
     <div className="min-h-full space-y-6 bg-white p-1 max-md:p-2 lg:p-2">
       <motion.div
@@ -355,9 +225,9 @@ export default function Customers() {
         className="relative space-y-4"
       >
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Customer Intelligence</h1>
-            <p className="mt-1 max-w-2xl text-[13px] text-black">Source-aware customer profiles from Shopify, website webhook, manual, and social inbox orders.</p>
+            <p className="mt-1 text-[13px] text-black sm:truncate">One profile per phone number, built from every order across website, Facebook, telesales, phone and manual entry.</p>
           </div>
           <Button variant="ghost" size="medium" leadingIcon={RiDownloadLine} onClick={exportFilteredCustomers}>
             Export Audience
@@ -378,10 +248,28 @@ export default function Customers() {
         transition={{ delay: 0.1, duration: 0.4 }}
         className="overflow-hidden rounded-2xl bg-white"
       >
-        <div className="flex items-center gap-2.5 py-3">
+        <div className="flex min-h-14 items-center gap-2.5 py-3">
           <span className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground">Customer Queue</span>
           <div className="h-3.5 w-px bg-black/10" />
           <span className="text-[13px] tabular-nums text-muted-foreground">{loading ? "—" : `${filtered.length} customers`}</span>
+          <AnimatePresence initial={false}>
+            {selectedCustomers.length > 0 && (
+              <motion.div
+                key="customer-selection-actions"
+                initial={{ opacity: 0, x: 6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 6 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="ml-auto flex items-center gap-3"
+              >
+                <span className="text-[13px] tabular-nums text-black">{selectedCustomers.length} selected</span>
+                <button type="button" onClick={() => setSelectedIds(new Set())} className="text-[12px] text-black/55 underline-offset-2 hover:text-black hover:underline">Clear</button>
+                <Button variant="primary" size="small" onClick={() => setSmsOpen(true)} leadingIcon={SmsBubbleIcon}>
+                  Send SMS
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="flex flex-col gap-3 border-b border-black/[0.07] py-3 lg:flex-row lg:items-center">
@@ -391,50 +279,82 @@ export default function Customers() {
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <DateRangePicker value={dateRange} onChange={setDateRange} placement="bottom end" variant="toolbar" />
+            <DateRangePicker value={dateRange} onChange={setDateRange} placement="bottom" variant="toolbar" />
 
-            <Select
-              aria-label="Filter by source"
-              selectedKey={source}
-              onSelectionChange={(key) => setSource(String(key) as Source | "all")}
-              className="w-full sm:w-44"
-              popoverClassName="min-w-44"
-            >
-              {sourceOptions.map((item) => (
-                <SelectItem key={item} id={item} textValue={item === "all" ? "All Sources" : sourceLabels[item]}>
-                  {item === "all" ? "All Sources" : sourceLabels[item]}
-                </SelectItem>
-              ))}
-            </Select>
+            <ResettableFilter label="source filter" active={source !== "all"} onReset={() => setSource("all")}>
+              <Select
+                aria-label="Filter by source"
+                selectedKey={source}
+                onSelectionChange={(key) => setSource(String(key) as Source | "all")}
+                className="w-full sm:w-44"
+                triggerClassName={source !== "all" ? RESET_ROOM : undefined}
+                popoverClassName="min-w-44"
+              >
+                <SelectItem id="all" textValue="All Sources">All Sources</SelectItem>
+                {sourceOptions.map((option) => (
+                  <SelectItem key={option.value} id={option.value} textValue={option.label}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </Select>
+            </ResettableFilter>
 
-            <Select
-              aria-label="Filter by campaign"
-              selectedKey={campaignFilter}
-              onSelectionChange={(key) => setCampaignFilter(String(key) as typeof campaignFilter)}
-              className="w-full sm:w-48"
-              popoverClassName="min-w-48"
-            >
-              {campaignOptions.map((item) => (
-                <SelectItem key={item} id={item} textValue={campaignLabels[item]}>
-                  {campaignLabels[item]}
-                </SelectItem>
-              ))}
-            </Select>
+            <ResettableFilter label="product filter" active={productFilter !== "all"} onReset={() => setProductFilter("all")}>
+              <Select
+                aria-label="Filter by product"
+                selectedKey={productFilter}
+                onSelectionChange={(key) => setProductFilter(String(key))}
+                className="w-full sm:w-52"
+                triggerClassName={productFilter !== "all" ? RESET_ROOM : undefined}
+                popoverClassName="min-w-80"
+              >
+                <SelectItem id="all" textValue="All Products">All Products</SelectItem>
+                {productOptions.map((product) => (
+                  <SelectItem key={product.name} id={product.name} textValue={product.name}>
+                    <ProductThumb imageUrl={product.imageUrl} />
+                    <span className="truncate">{product.name}</span>
+                  </SelectItem>
+                ))}
+              </Select>
+            </ResettableFilter>
+
+            <ResettableFilter label="campaign filter" active={campaignFilter !== "all"} onReset={() => setCampaignFilter("all")}>
+              <Select
+                aria-label="Filter by campaign"
+                selectedKey={campaignFilter}
+                onSelectionChange={(key) => setCampaignFilter(String(key) as typeof campaignFilter)}
+                className="w-full sm:w-48"
+                triggerClassName={campaignFilter !== "all" ? RESET_ROOM : undefined}
+                popoverClassName="min-w-48"
+              >
+                {campaignOptions.map((item) => (
+                  <SelectItem key={item} id={item} textValue={campaignLabels[item]}>
+                    {campaignLabels[item]}
+                  </SelectItem>
+                ))}
+              </Select>
+            </ResettableFilter>
           </div>
         </div>
 
         <div className="pb-6 pt-4">
-          <CustomerDataTable customers={filtered} loading={loading} onSelect={(customer) => { setSelected(customer); setInsight(null); }} />
+          <CustomerDataTable
+            customers={filtered}
+            loading={loading}
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
+          />
         </div>
       </motion.div>
 
-      <CustomerBloomPopover
-        customer={selected}
-        insight={insight}
-        insightLoading={insightLoading}
-        onClose={() => { setSelected(null); setInsight(null); }}
-        onGenerateInsight={generateInsight}
+      <CustomerSmsDialog
+        open={smsOpen}
+        onOpenChange={setSmsOpen}
+        recipients={smsRecipients}
+        withoutPhone={selectedCustomers.length - smsRecipients.length}
+        onSent={() => setSelectedIds(new Set())}
       />
+
     </div>
   );
 }

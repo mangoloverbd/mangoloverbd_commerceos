@@ -1,6 +1,6 @@
 import { useId, useMemo, type ReactNode } from "react";
 import { EChart } from "@/components/business-report/EChart";
-import { CHART } from "@/components/business-report/chartTheme";
+import { CHART, OUTCOME_COLORS, categoricalColor } from "@/components/business-report/chartTheme";
 import { sourceMixOption } from "@/lib/businessReportCharts";
 import { leaderboardOption, YIELD_COLORS, YIELD_KEYS, YIELD_LABELS, yieldChartHeight, yieldOption } from "@/lib/staffPerformanceCharts";
 import { buildStaffTableRows, buildTeamFunnel, extraRevenue, groupStaffShare } from "@/lib/staffPerformanceMetrics";
@@ -92,8 +92,8 @@ export function TeamFunnelPanel({ rows }: PanelProps) {
   const percent = (value: number) => (funnel.handled > 0 ? (value / funnel.handled) * 100 : 0);
   const share = (value: number) => (funnel.handled > 0 ? formatPct((value / funnel.handled) * 100) : "—");
   const steps = [
-    { key: "handled", label: "Handled", value: funnel.handled, color: CHART.ink },
-    { key: "confirmed", label: "Confirmed, not cancelled", value: funnel.confirmed, color: CHART.ink },
+    { key: "handled", label: "Handled", value: funnel.handled, color: CHART.categorical[0] },
+    { key: "confirmed", label: "Confirmed, not cancelled", value: funnel.confirmed, color: CHART.categorical[1] },
     { key: "delivered", label: "Delivered", value: funnel.delivered, color: YIELD_COLORS.delivered },
   ];
   const byConfirmation = tableRows.filter((item) => item.confRate !== null).sort((a, b) => (b.confRate ?? 0) - (a.confRate ?? 0));
@@ -126,7 +126,7 @@ export function TeamFunnelPanel({ rows }: PanelProps) {
             <li key={item.key} className={`${FILL_ROW} text-[11px]`}>
               <span className="flex justify-between"><span className="text-black/60">{item.name}</span><span className={`tabular-nums ${item.flags.confRate === "worse" ? "font-medium text-[#B4473A]" : ""}`}>{formatPct(item.confRate ?? 0)}</span></span>
               <span className="h-1.5 overflow-hidden rounded-full bg-black/[0.08]" aria-hidden="true">
-                <span className="block h-full rounded-full" style={{ width: `${item.confRate}%`, background: item.flags.confRate === "worse" ? "#B4473A" : CHART.ink }} />
+                <span className="block h-full rounded-full" style={{ width: `${item.confRate}%`, background: item.flags.confRate === "worse" ? OUTCOME_COLORS.cancelled : CHART.categorical[1] }} />
               </span>
             </li>
           ))}
@@ -147,7 +147,7 @@ export function TeamContributionPanel({ rows, reduceMotion }: PanelProps) {
       <ul className="mt-auto grid gap-1.5">
         {slices.map((slice, index) => (
           <li key={slice.label} className="grid grid-cols-[10px_1fr_auto_auto] items-center gap-2 text-[12px]">
-            <Swatch color={CHART.greys[Math.min(index, CHART.greys.length - 1)]} />
+            <Swatch color={categoricalColor(index)} />
             <span className="truncate">{slice.label}</span>
             <span className="tabular-nums">{formatTaka(slice.value)}</span>
             <span className="min-w-[36px] text-right tabular-nums text-black/45">{Math.round((slice.value / total) * 100)}%</span>
@@ -159,9 +159,9 @@ export function TeamContributionPanel({ rows, reduceMotion }: PanelProps) {
 }
 
 const EXTRA_SOURCES = [
-  { key: "telesales", label: "Telesales", color: CHART.greys[0] },
-  { key: "upsell", label: "Upsell kept", color: CHART.greys[2] },
-  { key: "carts", label: "Carts converted", color: CHART.greys[3] },
+  { key: "telesales", label: "Telesales", color: CHART.categorical[0] },
+  { key: "upsell", label: "Upsell kept", color: CHART.categorical[1] },
+  { key: "carts", label: "Carts converted", color: CHART.highlight },
 ] as const;
 
 export function ExtraRevenuePanel({ rows }: PanelProps) {

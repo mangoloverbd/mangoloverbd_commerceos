@@ -5,7 +5,8 @@ import type { StaffTableRow, YieldKey } from "@/lib/staffPerformanceMetrics";
 
 export const LEADERBOARD_LIMIT = 8;
 // Mango accent for the #1 bar; kept off the outcome palette used by the yield chart.
-export const LEADERBOARD_HIGHLIGHT = "#F2A93B";
+export const LEADERBOARD_HIGHLIGHT = CHART.highlight;
+const LEADERBOARD_REST = "#93B4F5";
 const YIELD_ROW_HEIGHT = 34;
 
 export function yieldChartHeight(memberCount: number): number {
@@ -20,7 +21,7 @@ export const YIELD_LABELS: Record<YieldKey, string> = {
 };
 export const YIELD_COLORS: Record<YieldKey, string> = {
   delivered: OUTCOME_COLORS.approved,
-  inTransit: CHART.greys[3],
+  inTransit: CHART.categorical[4],
   returned: OUTCOME_COLORS.returned,
   cancelled: OUTCOME_COLORS.cancelled,
 };
@@ -66,7 +67,7 @@ export function leaderboardOption(rows: StaffTableRow[]): EChartsCoreOption {
       data: ranked.map((item, index) => ({
         value: item.value,
         itemStyle: {
-          color: index === 0 ? LEADERBOARD_HIGHLIGHT : CHART.greys[3],
+          color: index === 0 ? LEADERBOARD_HIGHLIGHT : LEADERBOARD_REST,
           borderRadius: [10, 10, 10, 10],
         },
       })),
