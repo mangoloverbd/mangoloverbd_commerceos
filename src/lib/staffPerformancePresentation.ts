@@ -13,8 +13,18 @@ export type ProductDetail = {
 
 export type StaffMetrics = {
   assigned_count: number;
+  // Handled basis: each regular order the member confirmed or cancelled,
+  // counted once and classified by their last action on it.
   handled_count: number;
-  confirmed_then_cancelled_count: number;
+  handled_confirmed_count: number;
+  handled_confirmed_value: number;
+  handled_confirmed_kg: number;
+  handled_cancelled_count: number;
+  handled_cancelled_value: number;
+  handled_delivered_count: number;
+  handled_delivered_value: number;
+  handled_returned_count: number;
+  handled_returned_value: number;
   confirmed_count: number;
   confirmed_assigned_count: number;
   confirmed_assigned_delivered_count: number;
@@ -69,8 +79,8 @@ type RegularOrderTotals = {
   confirmedValue: number;
   confirmedCount: number;
   handledCount: number;
-  confirmedNotCancelledCount: number;
-  deliveredCount: number;
+  handledConfirmedCount: number;
+  handledDeliveredCount: number;
 };
 
 function numberOrZero(value: number) {
@@ -82,25 +92,24 @@ export function buildStaffPerformanceSnapshot(rows: StaffRow[]): StaffPerformanc
     confirmedValue: current.confirmedValue + numberOrZero(row.orders.confirmed_value),
     confirmedCount: current.confirmedCount + numberOrZero(row.orders.confirmed_count),
     handledCount: current.handledCount + numberOrZero(row.orders.handled_count),
-    confirmedNotCancelledCount: current.confirmedNotCancelledCount
-      + numberOrZero(row.orders.confirmed_count) - numberOrZero(row.orders.confirmed_then_cancelled_count),
-    deliveredCount: current.deliveredCount + numberOrZero(row.orders.delivered_count),
+    handledConfirmedCount: current.handledConfirmedCount + numberOrZero(row.orders.handled_confirmed_count),
+    handledDeliveredCount: current.handledDeliveredCount + numberOrZero(row.orders.handled_delivered_count),
   }), {
     confirmedValue: 0,
     confirmedCount: 0,
     handledCount: 0,
-    confirmedNotCancelledCount: 0,
-    deliveredCount: 0,
+    handledConfirmedCount: 0,
+    handledDeliveredCount: 0,
   });
 
   return {
     confirmedValue: totals.confirmedValue,
     confirmedCount: totals.confirmedCount,
     confirmationRate: totals.handledCount > 0
-      ? totals.confirmedNotCancelledCount / totals.handledCount
+      ? totals.handledConfirmedCount / totals.handledCount
       : null,
-    deliveredRate: totals.confirmedCount > 0
-      ? totals.deliveredCount / totals.confirmedCount
+    deliveredRate: totals.handledConfirmedCount > 0
+      ? totals.handledDeliveredCount / totals.handledConfirmedCount
       : null,
   };
 }

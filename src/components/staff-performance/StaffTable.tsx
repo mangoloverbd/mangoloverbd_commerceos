@@ -76,18 +76,17 @@ function Detail({ item }: { item: StaffTableRow }) {
     cancelled_kg: sum.cancelled_kg + product.cancelled_kg,
   }), { packs: 0, kg: 0, delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 0, cancelled_kg: 0 });
   const totalLoss = productLoss(total);
-  const confirmedNotCancelled = item.yield.delivered + item.yield.inTransit + item.yield.returned;
   return (
     <section aria-label={`${item.name} details`} className="flex flex-col gap-3 px-3.5 pb-4 pt-3.5">
       <div className="grid gap-2.5 md:grid-cols-3">
         <div className="flex flex-col gap-2 rounded-xl bg-white px-3.5 py-3">
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Orders handled</p>
           <MiniBar label="Handled" value={item.handled} max={item.handled} color="#0B0B0A" />
-          <MiniBar label="Confirmed, not cancelled" value={confirmedNotCancelled} max={item.handled} color="#0B0B0A" amount={m.confirmed_value} />
-          <MiniBar label="Delivered" value={item.yield.delivered} max={item.handled} color={YIELD_COLORS.delivered} amount={m.delivered_value} />
+          <MiniBar label="Confirmed, not cancelled" value={item.confirmed} max={item.handled} color="#0B0B0A" amount={m.handled_confirmed_value} />
+          <MiniBar label="Delivered" value={item.yield.delivered} max={item.handled} color={YIELD_COLORS.delivered} amount={m.handled_delivered_value} />
           <MiniBar label={YIELD_LABELS.inTransit} value={item.yield.inTransit} max={item.handled} color={YIELD_COLORS.inTransit} />
-          <MiniBar label="RTO" value={item.yield.returned} max={item.handled} color={YIELD_COLORS.returned} amount={m.returned_value} />
-          <MiniBar label="Cancelled" value={item.yield.cancelled} max={item.handled} color={YIELD_COLORS.cancelled} amount={m.cancelled_value} />
+          <MiniBar label="RTO" value={item.yield.returned} max={item.handled} color={YIELD_COLORS.returned} amount={m.handled_returned_value} />
+          <MiniBar label="Cancelled" value={item.yield.cancelled} max={item.handled} color={YIELD_COLORS.cancelled} amount={m.handled_cancelled_value} />
         </div>
         <div className="flex flex-col gap-2 rounded-xl bg-white px-3.5 py-3 text-[12px] tabular-nums">
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Extra revenue</p>
@@ -272,7 +271,7 @@ export function StaffTable({ rows }: { rows: StaffRow[] }) {
         <span><span className="font-medium text-[#2F7A55]">Green</span> = best on the team</span>
       </div>
       <div className="flex flex-wrap justify-between gap-2 text-[10px] text-black/45">
-        <span>Conf. rate = confirmed ÷ handled · Delivered = delivered ÷ confirmed · Handled = orders confirmed or cancelled</span>
+        <span>Conf. rate = confirmed ÷ handled · Delivered = delivered ÷ confirmed · Handled = orders confirmed or cancelled (each order counted once, by the member's last action)</span>
         <span>Outcome mix covers each member's handled orders</span>
       </div>
     </section>

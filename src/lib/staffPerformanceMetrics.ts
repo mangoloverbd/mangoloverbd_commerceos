@@ -37,21 +37,17 @@ export function extraRevenue(row: StaffRow) {
   return { telesales, upsell, carts, total: telesales + upsell + carts };
 }
 
-// Handled = orders a member confirmed or cancelled, counted once. An order the
-// same member confirmed and then cancelled sits only in "cancelled".
-function confirmedNotCancelled(row: StaffRow) {
-  return (row.orders.confirmed_count || 0) - (row.orders.confirmed_then_cancelled_count || 0);
-}
-
+// Handled = orders a member confirmed or cancelled, each counted once and
+// classified by the member's last action, so confirmed + cancelled = handled.
 function staffYield(row: StaffRow): StaffYield {
   const m = row.orders;
-  const delivered = m.delivered_count || 0;
-  const returned = m.returned_count || 0;
+  const delivered = m.handled_delivered_count || 0;
+  const returned = m.handled_returned_count || 0;
   return {
     delivered,
-    inTransit: Math.max(0, confirmedNotCancelled(row) - delivered - returned),
+    inTransit: Math.max(0, (m.handled_confirmed_count || 0) - delivered - returned),
     returned,
-    cancelled: m.cancelled_count || 0,
+    cancelled: m.handled_cancelled_count || 0,
   };
 }
 
@@ -65,13 +61,12 @@ function flagFor(value: number | null, average: number | null, best: number | nu
 export function buildStaffTableRows(rows: StaffRow[]): StaffTableRow[] {
   const totals = rows.reduce((sum, row) => ({
     handled: sum.handled + (row.orders.handled_count || 0),
-    confirmedNotCancelled: sum.confirmedNotCancelled + confirmedNotCancelled(row),
-    cancelled: sum.cancelled + (row.orders.cancelled_count || 0),
-    confirmed: sum.confirmed + row.orders.confirmed_count,
-    delivered: sum.delivered + row.orders.delivered_count,
-  }), { handled: 0, confirmedNotCancelled: 0, cancelled: 0, confirmed: 0, delivered: 0 });
+    cancelled: sum.cancelled + (row.orders.handled_cancelled_count || 0),
+    confirmed: sum.confirmed + (row.orders.handled_confirmed_count || 0),
+    delivered: sum.delivered + (row.orders.handled_delivered_count || 0),
+  }), { handled: 0, cancelled: 0, confirmed: 0, delivered: 0 });
   const averages = {
-    confRate: pct(totals.confirmedNotCancelled, totals.handled),
+    confRate: pct(totals.confirmed, totals.handled),
     cancelRate: pct(totals.cancelled, totals.handled),
     delRate: pct(totals.delivered, totals.confirmed),
   };
@@ -79,18 +74,19 @@ export function buildStaffTableRows(rows: StaffRow[]): StaffTableRow[] {
     const m = row.orders;
     const segments = staffYield(row);
     const handled = m.handled_count || 0;
+    const confirmed = m.handled_confirmed_count || 0;
     return {
       key: row.user_id,
       name: row.display_name,
       isActive: row.is_active,
       handled,
-      confirmed: m.confirmed_count,
+      confirmed,
       value: m.confirmed_value,
       kg: m.confirmed_kg,
       aov: m.confirmed_count > 0 ? m.confirmed_value / m.confirmed_count : null,
-      confRate: pct(confirmedNotCancelled(row), handled),
+      confRate: pct(confirmed, handled),
       cancelRate: pct(segments.cancelled, handled),
-      delRate: pct(m.delivered_count, m.confirmed_count),
+      delRate: pct(segments.delivered, confirmed),
       yield: segments,
       deliveredShare: pct(segments.delivered, handled),
       extra: extraRevenue(row).total,
@@ -137,7 +133,7 @@ export function buildTeamFunnel(rows: StaffRow[]): TeamFunnel {
     const segments = staffYield(row);
     return {
       handled: sum.handled + (row.orders.handled_count || 0),
-      confirmed: sum.confirmed + confirmedNotCancelled(row),
+      confirmed: sum.confirmed + (row.orders.handled_confirmed_count || 0),
       delivered: sum.delivered + segments.delivered,
       returned: sum.returned + segments.returned,
       inTransit: sum.inTransit + segments.inTransit,

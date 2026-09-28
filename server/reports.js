@@ -97,7 +97,15 @@ function emptyMetrics() {
   return {
     assigned_count: 0,
     handled_count: 0,
-    confirmed_then_cancelled_count: 0,
+    handled_confirmed_count: 0,
+    handled_confirmed_value: 0,
+    handled_confirmed_kg: 0,
+    handled_cancelled_count: 0,
+    handled_cancelled_value: 0,
+    handled_delivered_count: 0,
+    handled_delivered_value: 0,
+    handled_returned_count: 0,
+    handled_returned_value: 0,
     confirmed_count: 0,
     confirmed_assigned_count: 0,
     confirmed_assigned_delivered_count: 0,
@@ -564,9 +572,11 @@ export function buildStaffReport(
   const seriesPoints = [];
 
   const outcomeProductRowsByMetrics = new Map();
-  // Per actor: the regular orders they confirmed and cancelled in range.
-  // Activities with no order id cannot be matched, so they only count once.
-  const handledByActor = new Map();
+  // Per actor: each regular order they confirmed or cancelled in range, keyed
+  // by order and classified by their latest action on it. Activities with no
+  // order id cannot be matched, so each gets its own key.
+  const lastActionByActor = new Map();
+  let unknownOrderSeq = 0;
 
   const productsForMetrics = (metrics) => {
     if (!productRowsByMetrics.has(metrics)) productRowsByMetrics.set(metrics, new Map());
@@ -578,11 +588,14 @@ export function buildStaffReport(
     if (!byOutcome[outcome]) byOutcome[outcome] = new Map();
     return byOutcome[outcome];
   };
-  const recordHandled = (actorId, action, orderId) => {
-    if (!handledByActor.has(actorId)) handledByActor.set(actorId, { confirmed: new Set(), cancelled: new Set(), unknown: 0 });
-    const handled = handledByActor.get(actorId);
-    if (orderId) handled[action].add(orderId);
-    else handled.unknown += 1;
+  const recordHandled = (actorId, action, orderId, order, occurredAt) => {
+    if (!lastActionByActor.has(actorId)) lastActionByActor.set(actorId, new Map());
+    const entries = lastActionByActor.get(actorId);
+    const key = orderId || `unknown:${unknownOrderSeq++}`;
+    const at = new Date(occurredAt).getTime();
+    const previous = entries.get(key);
+    // Ties go to the later-processed activity.
+    if (!previous || at >= previous.at) entries.set(key, { action, at, order, orderId });
   };
 
   for (const order of orders || []) {
@@ -603,7 +616,7 @@ export function buildStaffReport(
     metrics.cancelled_count += 1;
     metrics.cancelled_value += toNumber(order.price);
     const orderId = activityOrderId(activity, order);
-    recordHandled(actorId, "cancelled", orderId);
+    recordHandled(actorId, "cancelled", orderId, order, occurredAt);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
     if (
       order.assigned_to === actorId &&
@@ -613,15 +626,6 @@ export function buildStaffReport(
       cancelledAssignedOrderKeys.add(assignedKey);
       metrics.cancelled_assigned_count += 1;
     }
-    addProductDetails(
-      outcomeProductsForMetrics(metrics, "cancelled"),
-      itemsByOrderId.get(orderId),
-      productsById,
-      productsByName,
-      missingWeightProducts,
-      variantsById,
-      { orderWeightKg: order.weight_kg, variantsByProductId },
-    );
   }
 
   for (const activity of selectActivities(regularActivities, orders, "confirmed")) {
@@ -640,7 +644,7 @@ export function buildStaffReport(
     const confirmedParts = dhakaDayHour(occurredAt);
     if (confirmedParts) seriesPoints.push({ ...confirmedParts, value });
     const orderId = activityOrderId(activity, order);
-    recordHandled(actorId, "confirmed", orderId);
+    recordHandled(actorId, "confirmed", orderId, order, occurredAt);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
     const outcome = classifyCourierOutcome(order);
     if (
@@ -666,36 +670,43 @@ export function buildStaffReport(
       metrics.telesales_confirmed_value += value;
       metrics.telesales_confirmed_kg += weightKg;
     }
+  }
 
-    addProductDetails(
-      productsForMetrics(metrics),
-      itemsByOrderId.get(orderId),
-      productsById,
-      productsByName,
-      missingWeightProducts,
-      variantsById,
-      { orderWeightKg: order.weight_kg, variantsByProductId },
-    );
-    if (outcome === "delivered" || outcome === "returned") {
-      addProductDetails(
-        outcomeProductsForMetrics(metrics, outcome),
-        itemsByOrderId.get(orderId),
+  // Handled basis and product outcomes: one entry per (member, order), so a
+  // re-confirmed or twice-cancelled order is never counted twice.
+  for (const [actorId, entries] of lastActionByActor) {
+    const handledRow = rowsByUserId.get(actorId);
+    if (!handledRow) continue;
+    const metrics = handledRow.orders;
+    for (const { action, order, orderId } of entries.values()) {
+      const value = toNumber(order.price);
+      const addItems = (productRows) => addProductDetails(
+        productRows,
+        orderId ? itemsByOrderId.get(orderId) : undefined,
         productsById,
         productsByName,
         missingWeightProducts,
         variantsById,
         { orderWeightKg: order.weight_kg, variantsByProductId },
       );
+      metrics.handled_count += 1;
+      if (action === "cancelled") {
+        metrics.handled_cancelled_count += 1;
+        metrics.handled_cancelled_value += value;
+        addItems(outcomeProductsForMetrics(metrics, "cancelled"));
+        continue;
+      }
+      metrics.handled_confirmed_count += 1;
+      metrics.handled_confirmed_value += value;
+      metrics.handled_confirmed_kg += toNumber(order.weight_kg);
+      addItems(productsForMetrics(metrics));
+      const outcome = classifyCourierOutcome(order);
+      if (outcome === "delivered" || outcome === "returned") {
+        metrics[`handled_${outcome}_count`] += 1;
+        metrics[`handled_${outcome}_value`] += value;
+        addItems(outcomeProductsForMetrics(metrics, outcome));
+      }
     }
-  }
-
-  for (const [actorId, handled] of handledByActor) {
-    const handledRow = rowsByUserId.get(actorId);
-    if (!handledRow) continue;
-    let overlap = 0;
-    for (const orderId of handled.confirmed) if (handled.cancelled.has(orderId)) overlap += 1;
-    handledRow.orders.confirmed_then_cancelled_count = overlap;
-    handledRow.orders.handled_count = handled.confirmed.size + handled.cancelled.size - overlap + handled.unknown;
   }
 
   for (const assignedKey of cancelledAssignedOrderKeys) {

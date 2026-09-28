@@ -37,7 +37,15 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   return {
     assigned_count: 2,
     handled_count: 1,
-    confirmed_then_cancelled_count: 0,
+    handled_confirmed_count: 1,
+    handled_confirmed_value: 1200,
+    handled_confirmed_kg: 2,
+    handled_cancelled_count: 0,
+    handled_cancelled_value: 0,
+    handled_delivered_count: 1,
+    handled_delivered_value: 1200,
+    handled_returned_count: 0,
+    handled_returned_value: 0,
     confirmed_count: 1,
     confirmed_assigned_count: 1,
     confirmed_assigned_delivered_count: 0,
@@ -307,16 +315,21 @@ describe("StaffPerformance", () => {
       rows: [reportRow({
         orders: metrics({
           handled_count: 10,
-          confirmed_count: 6,
-          confirmed_then_cancelled_count: 1,
-          cancelled_count: 5,
-          delivered_count: 3,
-          returned_count: 1,
-          confirmed_value: 6000,
-          delivered_value: 3000,
-          returned_value: 900,
-          cancelled_value: 1500,
-          // The assigned counters must no longer drive the card.
+          handled_confirmed_count: 5,
+          handled_confirmed_value: 6000,
+          handled_cancelled_count: 5,
+          handled_cancelled_value: 1500,
+          handled_delivered_count: 3,
+          handled_delivered_value: 3000,
+          handled_returned_count: 1,
+          handled_returned_value: 900,
+          // Per-activity and assigned counters must not drive the card.
+          confirmed_count: 7,
+          cancelled_count: 9,
+          confirmed_value: 99999,
+          delivered_value: 88888,
+          returned_value: 77777,
+          cancelled_value: 66666,
           assigned_count: 2,
           confirmed_assigned_count: 1,
           cancelled_assigned_count: 0,
@@ -331,7 +344,7 @@ describe("StaffPerformance", () => {
     const card = within(screen.getByRole("region", { name: "Rafi details" })).getByText("Orders handled").parentElement;
     if (!card) throw new Error("Orders handled card is missing");
     expect(within(card).getByText("Handled").closest("p")).toHaveTextContent(/^Handled10$/);
-    // Confirmed, not cancelled = 6 - 1 = 5; open = 5 - 3 delivered - 1 RTO = 1
+    // Confirmed, not cancelled = 5; open = 5 - 3 delivered - 1 RTO = 1
     expect(within(card).getByText("Confirmed, not cancelled").closest("p")).toHaveTextContent(/^Confirmed, not cancelled5 · ৳6,000$/);
     expect(within(card).getByText("Delivered").closest("p")).toHaveTextContent(/^Delivered3 · ৳3,000$/);
     expect(within(card).getByText("Open / in transit").closest("p")).toHaveTextContent(/^Open \/ in transit1$/);
@@ -349,9 +362,12 @@ describe("StaffPerformance", () => {
           confirmed_assigned_count: 39,
           cancelled_assigned_count: 0,
           handled_count: 340,
+          handled_confirmed_count: 328,
+          handled_cancelled_count: 12,
+          handled_delivered_count: 300,
+          handled_returned_count: 10,
           confirmed_count: 331,
-          confirmed_then_cancelled_count: 3,
-          cancelled_count: 12,
+          cancelled_count: 15,
           delivered_count: 300,
           returned_count: 10,
         }),
@@ -363,8 +379,10 @@ describe("StaffPerformance", () => {
     const row = await screen.findByTestId(`staff-performance-row-${RafiId}`);
     const cells = within(row).getAllByRole("cell");
     expect(cells[1]).toHaveTextContent(/^340$/); // Handled column
+    expect(cells[2]).toHaveTextContent(/^328$/); // Confirmed column = handled_confirmed
     expect(cells[6]).toHaveTextContent(/^3\.5%$/); // Cancel rate = 12 / 340
-    expect(cells[5]).toHaveTextContent(/^96\.5%$/); // Conf. rate = (331 - 3) / 340
+    expect(cells[5]).toHaveTextContent(/^96\.5%$/); // Conf. rate = 328 / 340
+    expect(screen.getByText("Conf. rate = confirmed ÷ handled · Delivered = delivered ÷ confirmed · Handled = orders confirmed or cancelled (each order counted once, by the member's last action)")).toBeInTheDocument();
     await user.click(within(row).getByRole("button", { name: "Show details for Rafi" }));
     const card = within(screen.getByRole("region", { name: "Rafi details" })).getByText("Orders handled").parentElement;
     if (!card) throw new Error("Orders handled card is missing");
@@ -426,9 +444,10 @@ describe("StaffPerformance", () => {
         reportRow({
           orders: metrics({
             handled_count: 2,
+            handled_confirmed_count: 1,
+            handled_delivered_count: 1,
             confirmed_count: 3,
-            confirmed_then_cancelled_count: 1,
-            delivered_count: 2,
+            delivered_count: 9,
           }),
         }),
         reportRow({
@@ -436,9 +455,10 @@ describe("StaffPerformance", () => {
           display_name: "Nadia",
           orders: metrics({
             handled_count: 8,
+            handled_confirmed_count: 5,
+            handled_delivered_count: 2,
             confirmed_count: 5,
-            confirmed_then_cancelled_count: 1,
-            delivered_count: 2,
+            delivered_count: 9,
           }),
         }),
       ],

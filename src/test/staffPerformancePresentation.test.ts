@@ -11,7 +11,8 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   return {
     assigned_count: 0,
     handled_count: 0,
-    confirmed_then_cancelled_count: 0,
+    handled_confirmed_count: 0, handled_confirmed_value: 0, handled_confirmed_kg: 0, handled_cancelled_count: 0, handled_cancelled_value: 0,
+    handled_delivered_count: 0, handled_delivered_value: 0, handled_returned_count: 0, handled_returned_value: 0,
     confirmed_count: 0,
     confirmed_assigned_count: 0,
     confirmed_assigned_delivered_count: 0,
@@ -86,25 +87,27 @@ describe("staff performance presentation", () => {
   it("weights team confirmation over handled orders and delivery over confirmed orders", () => {
     const snapshot = buildStaffPerformanceSnapshot([
       makeRow({
-        // The assigned counters must no longer drive the confirmation rate.
+        // Assigned and per-activity counters must not drive the rates.
         assigned_count: 100,
         confirmed_assigned_count: 1,
-        handled_count: 2,
         confirmed_count: 3,
-        confirmed_then_cancelled_count: 1,
-        delivered_count: 2,
+        delivered_count: 9,
+        handled_count: 2,
+        handled_confirmed_count: 1,
+        handled_delivered_count: 1,
         confirmed_value: 2400,
       }),
       makeRow({
-        handled_count: 8,
         confirmed_count: 5,
-        confirmed_then_cancelled_count: 1,
-        delivered_count: 2,
+        delivered_count: 9,
+        handled_count: 8,
+        handled_confirmed_count: 5,
+        handled_delivered_count: 2,
         confirmed_value: 1200,
       }),
     ]);
 
-    // (3 - 1 + 5 - 1) / (2 + 8) = 0.6; delivered 4 / confirmed 8 = 0.5
+    // confirmation = (1 + 5) / (2 + 8) = 0.6; delivered = (1 + 2) / (1 + 5) = 0.5
     expect(snapshot).toEqual({
       confirmedValue: 3600,
       confirmedCount: 8,

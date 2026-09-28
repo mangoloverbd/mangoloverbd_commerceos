@@ -1056,18 +1056,76 @@ describe("buildStaffReport handled orders and product outcomes", () => {
     { id: "p-honey", name: "Honey", weight_kg: 0.5 },
   ];
 
-  it("counts every order a member confirmed or cancelled once, and the confirm-then-cancel overlap", () => {
+  it("counts every order a member confirmed or cancelled once, classified by the member's last action", () => {
     const report = buildStaffReport(handledOrders, [], [], [], staff, interval);
 
     expect(report.rows[0].orders).toMatchObject({
       handled_count: 3,
-      confirmed_then_cancelled_count: 1,
+      handled_confirmed_count: 1,
+      handled_confirmed_value: 1000,
+      handled_confirmed_kg: 2,
+      handled_cancelled_count: 2,
+      handled_cancelled_value: 800,
+      handled_delivered_count: 1,
+      handled_delivered_value: 1000,
+      handled_returned_count: 0,
+      handled_returned_value: 0,
+      // Activity counters stay as they were for compatibility.
       confirmed_count: 2,
       cancelled_count: 2,
     });
+    expect(report.rows[0].orders).not.toHaveProperty("confirmed_then_cancelled_count");
   });
 
-  it("counts activities with an unknown order id once each and never as an overlap", () => {
+  it("counts each order once when a member re-confirms or cancels it again", () => {
+    const orderB = { id: "B", price: 500, weight_kg: 2, courier_status: "delivered" };
+    const orderD = { id: "D", price: 300, weight_kg: 1 };
+    const at = (hour: number) => `2026-09-18T0${hour}:00:00.000Z`;
+    const report = buildStaffReport(
+      [],
+      [],
+      [
+        { order_id: "B", product_id: "p-mango", product_name: "Mango", quantity: 2 },
+        { order_id: "D", product_id: "p-honey", product_name: "Honey", quantity: 1 },
+      ],
+      catalog,
+      staff,
+      {
+        ...interval,
+        regularActivities: [
+          { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: at(1), order_id: "B", order: orderB },
+          { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(2), order_id: "B", order: orderB },
+          { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: at(3), order_id: "B", order: orderB },
+          { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(1), order_id: "D", order: orderD },
+          { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(4), order_id: "D", order: orderD },
+        ],
+      },
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      handled_count: 2,
+      handled_confirmed_count: 1,
+      handled_confirmed_value: 500,
+      handled_cancelled_count: 1,
+      handled_cancelled_value: 300,
+      handled_delivered_count: 1,
+      handled_delivered_value: 500,
+      confirmed_count: 2,
+      cancelled_count: 3,
+    });
+    expect(report.rows[0].orders.products).toEqual([
+      {
+        product_id: "p-mango", product_name: "Mango", packs: 2, kg: 2,
+        delivered_packs: 2, delivered_kg: 2, returned_packs: 0, returned_kg: 0, cancelled_packs: 0, cancelled_kg: 0,
+      },
+      {
+        product_id: "p-honey", product_name: "Honey", packs: 0, kg: 0,
+        delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 1, cancelled_kg: 0.5,
+      },
+    ]);
+  });
+
+  it("counts activities with an unknown order id once each and never merges them", () => {
     const report = buildStaffReport([], [], [], [], staff, {
       ...interval,
       regularActivities: [
@@ -1076,7 +1134,7 @@ describe("buildStaffReport handled orders and product outcomes", () => {
       ],
     });
 
-    expect(report.rows[0].orders).toMatchObject({ handled_count: 2, confirmed_then_cancelled_count: 0 });
+    expect(report.rows[0].orders).toMatchObject({ handled_count: 2, handled_confirmed_count: 1, handled_cancelled_count: 1 });
   });
 
   it("splits each product into confirmed, delivered, returned and cancelled packs and kg", () => {
