@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.37] - 2026-09-28
+
+### Added
+
+- Business Report redesign: summary tiles with sparklines and changes against the previous period, an hour-of-day intake grid, a source-to-outcome flow chart, a source mix donut, an approval gauge with an outcome breakdown, a best-day chart, and product weight rings.
+- Source performance is now a sortable table with approval, loss, average order value and net delivery per source. Clicking a row opens its landing pages and a products-by-outcome kg breakdown (approved, pending, cancelled, RTO).
+- Delivery economics shows per-order averages and how many orders have courier fees and weight recorded.
+
+### Changed
+
+- The business report API returns an hour-of-day profile, per-bucket website value, weight and outcome counts, and a previous-period summary. A "Today" view is compared with the same elapsed time the day before.
+
 ## [0.1.0.36] - 2026-09-27
 
 ### Added
