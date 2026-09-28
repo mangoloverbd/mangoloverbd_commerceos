@@ -96,13 +96,13 @@ export function SummaryTiles({ report, reduceMotion }: { report: BusinessReportR
     {
       label: "Approved / progressing", value: formatNumber(summary.approved_count),
       description: `${formatPct(approvedRate)} of intake${summary.approved_kg > 0 ? ` · ${formatKg(summary.approved_kg)}` : ""}`,
-      delta: pointsDelta(approvedRate, prev ? rate(prev.approved_count, prev.intake_count) : undefined, true),
+      delta: pointsDelta(approvedRate, prev && prev.intake_count > 0 ? rate(prev.approved_count, prev.intake_count) : undefined, true),
       spark: pick(buckets, "approved_count"), testId: "business-report-summary-approved",
     },
     {
       label: "Cancelled", value: formatNumber(summary.cancelled_count),
       description: `${formatPct(cancelledRate)} of intake${summary.cancelled_kg > 0 ? ` · ${formatKg(summary.cancelled_kg)}` : ""}`,
-      delta: pointsDelta(cancelledRate, prev ? rate(prev.cancelled_count, prev.intake_count) : undefined, false),
+      delta: pointsDelta(cancelledRate, prev && prev.intake_count > 0 ? rate(prev.cancelled_count, prev.intake_count) : undefined, false),
       spark: pick(buckets, "cancelled_count"), testId: "business-report-summary-cancelled",
     },
     ];

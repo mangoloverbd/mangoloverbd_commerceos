@@ -239,6 +239,21 @@ describe("BusinessReport", () => {
     expect(screen.getByTestId("business-report-summary-cancelled")).toHaveTextContent("+25 pts");
   });
 
+  it("omits previous-period changes when the previous period had no orders", async () => {
+    apiFetch.mockResolvedValue(jsonResponse(reportResponse({
+      previous: {
+        range: { from: "2026-09-19", to: "2026-09-19" },
+        summary: metrics({ intake_count: 0 }),
+      },
+    })));
+
+    renderPage();
+
+    expect(await screen.findByTestId("business-report-summary-intake")).not.toHaveTextContent("vs previous period");
+    expect(screen.getByTestId("business-report-summary-approved")).not.toHaveTextContent("pts");
+    expect(screen.getByTestId("business-report-summary-cancelled")).not.toHaveTextContent("pts");
+  });
+
   it("omits previous-period changes when there is no previous period", async () => {
     apiFetch.mockResolvedValue(jsonResponse(reportResponse()));
 
