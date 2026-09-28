@@ -57,26 +57,27 @@ export function LeaderboardPanel({ rows, reduceMotion }: PanelProps) {
 export function OrderYieldPanel({ rows, reduceMotion }: PanelProps) {
   const tableRows = useMemo(() => buildStaffTableRows(rows), [rows]);
   const funnel = useMemo(() => buildTeamFunnel(rows), [rows]);
-  const teamShare = funnel.assigned > 0 ? (funnel.delivered / funnel.assigned) * 100 : null;
+  const teamShare = funnel.handled > 0 ? (funnel.delivered / funnel.handled) * 100 : null;
   const option = useMemo(() => yieldOption(tableRows, teamShare), [tableRows, teamShare]);
   const yieldCount = tableRows.filter((item) => item.deliveredShare !== null).length;
   return (
     <Panel
       eyebrow="Order yield"
-      title="Where every assigned order ended up"
-      aside={teamShare !== null && <span className="rounded-full bg-black/[0.05] px-3 py-1 text-[11px] tabular-nums text-black/70">Team delivered {formatPct(teamShare)} of assigned</span>}
+      title="Where every handled order ended up"
+      aside={teamShare !== null && <span className="rounded-full bg-black/[0.05] px-3 py-1 text-[11px] tabular-nums text-black/70">Team delivered {formatPct(teamShare)} of handled</span>}
     >
       {teamShare !== null
         ? (
           <div style={{ height: yieldChartHeight(yieldCount) }}>
-            <EChart option={option} ariaLabel="Share of each member's assigned orders that were delivered, open or in transit, returned, cancelled or not confirmed" className="h-full w-full" animate={!reduceMotion} />
+            <EChart option={option} ariaLabel="Share of each member's handled orders that were delivered, open or in transit, returned or cancelled" className="h-full w-full" animate={!reduceMotion} />
           </div>
         )
-        : <p className="py-10 text-center text-[12px] text-black/55">No assigned orders in this range.</p>}
+        : <p className="py-10 text-center text-[12px] text-black/55">No handled orders in this range.</p>}
       <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-black/60">
         {YIELD_KEYS.map((key) => <span key={key} className="inline-flex items-center gap-1.5"><Swatch color={YIELD_COLORS[key]} />{YIELD_LABELS[key]}</span>)}
       </div>
-      <p className="text-[10px] text-black/45">Sorted by delivered ÷ assigned · dashed line = team average</p>
+      <p className="text-[10px] text-black/45">Sorted by delivered ÷ handled · dashed line = team average</p>
+      <p className="text-[10px] text-black/45">Handled = orders a member confirmed or cancelled</p>
     </Panel>
   );
 }
@@ -84,16 +85,16 @@ export function OrderYieldPanel({ rows, reduceMotion }: PanelProps) {
 export function TeamFunnelPanel({ rows }: PanelProps) {
   const funnel = useMemo(() => buildTeamFunnel(rows), [rows]);
   const tableRows = useMemo(() => buildStaffTableRows(rows), [rows]);
-  const width = (value: number) => (funnel.assigned > 0 ? `${Math.max(2, (value / funnel.assigned) * 100)}%` : "0%");
-  const share = (value: number) => (funnel.assigned > 0 ? formatPct((value / funnel.assigned) * 100) : "—");
+  const width = (value: number) => (funnel.handled > 0 ? `${Math.max(2, (value / funnel.handled) * 100)}%` : "0%");
+  const share = (value: number) => (funnel.handled > 0 ? formatPct((value / funnel.handled) * 100) : "—");
   const steps = [
-    { label: "Assigned", value: funnel.assigned, color: CHART.ink, drop: `${formatNumber(funnel.notConfirmed + funnel.cancelled)} not confirmed (${formatNumber(funnel.cancelled)} cancelled)` },
-    { label: "Confirmed, not cancelled", value: funnel.confirmed, color: CHART.ink, drop: `${formatNumber(funnel.returned)} RTO · ${formatNumber(funnel.inTransit)} in transit` },
-    { label: "Delivered", value: funnel.delivered, color: YIELD_COLORS.delivered, drop: null },
+    { label: "Handled", value: funnel.handled, color: CHART.ink },
+    { label: "Confirmed, not cancelled", value: funnel.confirmed, color: CHART.ink },
+    { label: "Delivered", value: funnel.delivered, color: YIELD_COLORS.delivered },
   ];
   const byConfirmation = tableRows.filter((item) => item.confRate !== null).sort((a, b) => (b.confRate ?? 0) - (a.confRate ?? 0));
   return (
-    <Panel eyebrow="Team funnel" title="From assigned to delivered">
+    <Panel eyebrow="Team funnel" title="From handled to delivered">
       <div className="grid gap-2">
         {steps.map((step) => (
           <div key={step.label} className="grid gap-1">
@@ -104,7 +105,6 @@ export function TeamFunnelPanel({ rows }: PanelProps) {
               </div>
               <span className="text-right tabular-nums text-black/55">{share(step.value)}</span>
             </div>
-            {step.drop && <p className="pl-[142px] text-[11px] tabular-nums text-[#B4473A]">− {step.drop}</p>}
           </div>
         ))}
       </div>

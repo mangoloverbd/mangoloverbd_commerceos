@@ -36,6 +36,8 @@ type StaffReportResponse = {
 function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   return {
     assigned_count: 2,
+    handled_count: 1,
+    confirmed_then_cancelled_count: 0,
     confirmed_count: 1,
     confirmed_assigned_count: 1,
     confirmed_assigned_delivered_count: 0,
@@ -64,6 +66,10 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   };
 }
 
+const NO_OUTCOMES = {
+  delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 0, cancelled_kg: 0,
+};
+
 function abandonedMetrics(overrides: Partial<AbandonedCartMetrics> = {}): AbandonedCartMetrics {
   return {
     contacted_count: 0,
@@ -79,7 +85,7 @@ function reportRow({
   user_id = RafiId,
   display_name = "Rafi",
   is_active = true,
-  orders = metrics({ products: [{ product_id: "p1", product_name: "Mango", packs: 2, kg: 2 }] }),
+  orders = metrics({ products: [{ product_id: "p1", product_name: "Mango", packs: 2, kg: 2, ...NO_OUTCOMES }] }),
   social_inbox_orders = metrics({
     assigned_count: 0,
     confirmation_rate: null,
@@ -188,9 +194,11 @@ describe("StaffPerformance", () => {
 
     expect(await screen.findByRole("region", { name: "Confirmed value by staff" })).toBeInTheDocument();
     expect(screen.getByText("Top this period").closest("section")).toHaveTextContent("Rafi");
-    expect(screen.getByRole("region", { name: "Where every assigned order ended up" })).toBeInTheDocument();
-    const funnel = screen.getByRole("region", { name: "From assigned to delivered" });
-    expect(within(funnel).getByText("Assigned")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Where every handled order ended up" })).toBeInTheDocument();
+    expect(screen.getByText("Handled = orders a member confirmed or cancelled")).toBeInTheDocument();
+    const funnel = screen.getByRole("region", { name: "From handled to delivered" });
+    expect(within(funnel).getByText("Handled")).toBeInTheDocument();
+    expect(within(funnel).queryByText(/cancelled\)$/)).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Team contribution" })).toHaveTextContent("Rafi");
     expect(screen.getByRole("region", { name: "Telesales, upsells and saved carts" })).toBeInTheDocument();
   });
@@ -200,7 +208,7 @@ describe("StaffPerformance", () => {
 
     renderPage();
 
-    const funnel = await screen.findByRole("region", { name: "From assigned to delivered" });
+    const funnel = await screen.findByRole("region", { name: "From handled to delivered" });
     const row = funnel.parentElement as HTMLElement;
     expect(row).toHaveClass("lg:h-[520px]");
     expect(within(row).getByRole("region", { name: "Team contribution" })).toHaveClass("lg:h-full");
@@ -249,7 +257,7 @@ describe("StaffPerformance", () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
       rows: [reportRow({
-        orders: metrics({ retained_upsell_count: 2, retained_upsell_value: 600, products: [{ product_id: "p1", product_name: "Mango", packs: 2, kg: 2 }] }),
+        orders: metrics({ retained_upsell_count: 2, retained_upsell_value: 600, products: [{ product_id: "p1", product_name: "Mango", packs: 2, kg: 2, ...NO_OUTCOMES }] }),
         abandoned_checkouts: abandonedMetrics({ contacted_count: 4, converted_count: 1, converted_value: 900 }),
       })],
     })));
@@ -262,7 +270,7 @@ describe("StaffPerformance", () => {
     const detail = screen.getByRole("region", { name: "Rafi details" });
     expect(within(detail).getByText("Upsell kept · 2 items")).toBeInTheDocument();
     expect(within(detail).getByText("Contacted").closest("p")).toHaveTextContent("4");
-    expect(within(detail).getByRole("table", { name: "Rafi confirmed products" })).toHaveTextContent("Mango");
+    expect(within(detail).getByRole("table", { name: "Rafi products by outcome" })).toHaveTextContent("Mango");
 
     await user.click(within(row).getByRole("button", { name: "Hide details for Rafi" }));
     expect(within(row).getByRole("button", { name: "Show details for Rafi" })).toHaveAttribute("aria-expanded", "false");
@@ -293,18 +301,25 @@ describe("StaffPerformance", () => {
     expect(screen.getByRole("button", { name: "Collapse all" })).toBeInTheDocument();
   });
 
-  it("builds the detail's assigned-orders card from the assigned population, matching the outcome mix", async () => {
+  it("builds the detail's orders-handled card from confirmed and cancelled work, matching the outcome mix", async () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
       rows: [reportRow({
         orders: metrics({
-          assigned_count: 10,
-          confirmed_assigned_count: 6,
-          confirmed_assigned_cancelled_count: 1,
-          cancelled_assigned_count: 3,
-          confirmed_assigned_delivered_count: 3,
-          confirmed_assigned_returned_count: 1,
-          cancelled_count: 7, // any order Rafi cancelled — must not leak into the assigned card
+          handled_count: 10,
+          confirmed_count: 6,
+          confirmed_then_cancelled_count: 1,
+          cancelled_count: 5,
+          delivered_count: 3,
+          returned_count: 1,
+          confirmed_value: 6000,
+          delivered_value: 3000,
+          returned_value: 900,
+          cancelled_value: 1500,
+          // The assigned counters must no longer drive the card.
+          assigned_count: 2,
+          confirmed_assigned_count: 1,
+          cancelled_assigned_count: 0,
         }),
       })],
     })));
@@ -313,12 +328,87 @@ describe("StaffPerformance", () => {
 
     const row = await screen.findByTestId(`staff-performance-row-${RafiId}`);
     await user.click(within(row).getByRole("button", { name: "Show details for Rafi" }));
-    const card = within(screen.getByRole("region", { name: "Rafi details" })).getByText("Assigned orders").parentElement;
-    if (!card) throw new Error("Assigned orders card is missing");
-    // Confirmed = delivered 3 + in transit (6 - 1 - 3 - 1 = 1) + RTO 1 = 5
-    expect(within(card).getByText("Confirmed, not cancelled").closest("p")).toHaveTextContent(/^Confirmed, not cancelled5$/);
-    expect(within(card).getByText("Cancelled").closest("p")).toHaveTextContent(/^Cancelled3$/);
-    expect(within(card).getByText("Not confirmed").closest("p")).toHaveTextContent(/^Not confirmed2$/);
+    const card = within(screen.getByRole("region", { name: "Rafi details" })).getByText("Orders handled").parentElement;
+    if (!card) throw new Error("Orders handled card is missing");
+    expect(within(card).getByText("Handled").closest("p")).toHaveTextContent(/^Handled10$/);
+    // Confirmed, not cancelled = 6 - 1 = 5; open = 5 - 3 delivered - 1 RTO = 1
+    expect(within(card).getByText("Confirmed, not cancelled").closest("p")).toHaveTextContent(/^Confirmed, not cancelled5 · ৳6,000$/);
+    expect(within(card).getByText("Delivered").closest("p")).toHaveTextContent(/^Delivered3 · ৳3,000$/);
+    expect(within(card).getByText("Open / in transit").closest("p")).toHaveTextContent(/^Open \/ in transit1$/);
+    expect(within(card).getByText("RTO").closest("p")).toHaveTextContent(/^RTO1 · ৳900$/);
+    expect(within(card).getByText("Cancelled").closest("p")).toHaveTextContent(/^Cancelled5 · ৳1,500$/);
+    expect(within(card).queryByText("Not confirmed")).not.toBeInTheDocument();
+  });
+
+  it("measures a website-order handler by orders handled, not by assignment", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [reportRow({
+        orders: metrics({
+          assigned_count: 39,
+          confirmed_assigned_count: 39,
+          cancelled_assigned_count: 0,
+          handled_count: 340,
+          confirmed_count: 331,
+          confirmed_then_cancelled_count: 3,
+          cancelled_count: 12,
+          delivered_count: 300,
+          returned_count: 10,
+        }),
+      })],
+    })));
+
+    renderPage();
+
+    const row = await screen.findByTestId(`staff-performance-row-${RafiId}`);
+    const cells = within(row).getAllByRole("cell");
+    expect(cells[1]).toHaveTextContent(/^340$/); // Handled column
+    expect(cells[6]).toHaveTextContent(/^3\.5%$/); // Cancel rate = 12 / 340
+    expect(cells[5]).toHaveTextContent(/^96\.5%$/); // Conf. rate = (331 - 3) / 340
+    await user.click(within(row).getByRole("button", { name: "Show details for Rafi" }));
+    const card = within(screen.getByRole("region", { name: "Rafi details" })).getByText("Orders handled").parentElement;
+    if (!card) throw new Error("Orders handled card is missing");
+    expect(within(card).getByText("Cancelled").closest("p")).toHaveTextContent(/^Cancelled12/);
+  });
+
+  it("lists products by outcome, including a product that was only cancelled, and flags high loss", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [reportRow({
+        orders: metrics({
+          products: [
+            { product_id: "p1", product_name: "Mango", packs: 5, kg: 10, delivered_packs: 4, delivered_kg: 8, returned_packs: 1, returned_kg: 1, cancelled_packs: 0, cancelled_kg: 0 },
+            { product_id: "p2", product_name: "Honey", packs: 0, kg: 0, delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 1, cancelled_kg: 0.5 },
+          ],
+        }),
+      })],
+    })));
+
+    renderPage();
+
+    const row = await screen.findByTestId(`staff-performance-row-${RafiId}`);
+    await user.click(within(row).getByRole("button", { name: "Show details for Rafi" }));
+    const detail = screen.getByRole("region", { name: "Rafi details" });
+    expect(within(detail).getByText("Products by outcome · Rafi")).toBeInTheDocument();
+    const table = within(detail).getByRole("table", { name: "Rafi products by outcome" });
+    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["Product", "Confirmed", "Delivered", "RTO", "Cancelled", "Loss"]);
+
+    const honey = within(table).getByText("Honey").closest("tr") as HTMLElement;
+    const [confirmed, , , cancelled, honeyLoss] = within(honey).getAllByRole("cell");
+    expect(confirmed).toHaveTextContent(/^—$/);
+    expect(cancelled).toHaveTextContent(/^1 · 0\.5 kg$/);
+    expect(honeyLoss).toHaveTextContent(/^100%$/); // 0.5 / (0 + 0.5)
+    expect(within(honeyLoss).getByText("100%")).toHaveAttribute("data-flag", "worse");
+
+    const mango = within(table).getByText("Mango").closest("tr") as HTMLElement;
+    const mangoCells = within(mango).getAllByRole("cell");
+    expect(mangoCells[0]).toHaveTextContent(/^5 · 10 kg$/);
+    expect(mangoCells[2]).toHaveTextContent(/^1 · 1 kg$/);
+    expect(mangoCells[4]).toHaveTextContent(/^10%$/); // 1 / 10, below all-products 14.3% + 5
+    expect(within(mangoCells[4]).queryByText("10%")).not.toHaveAttribute("data-flag");
+
+    const total = within(table).getByText("All products").closest("tr") as HTMLElement;
+    expect(within(total).getAllByRole("cell")[4]).toHaveTextContent(/^14\.3%$/); // 1.5 / 10.5
   });
 
   it("starts the page header directly with Staff Performance", async () => {
@@ -335,9 +425,9 @@ describe("StaffPerformance", () => {
       rows: [
         reportRow({
           orders: metrics({
-            assigned_count: 2,
-            confirmed_assigned_count: 2,
-            confirmed_count: 2,
+            handled_count: 2,
+            confirmed_count: 3,
+            confirmed_then_cancelled_count: 1,
             delivered_count: 2,
           }),
         }),
@@ -345,10 +435,10 @@ describe("StaffPerformance", () => {
           user_id: NadiaId,
           display_name: "Nadia",
           orders: metrics({
-            assigned_count: 8,
-            confirmed_assigned_count: 4,
-            confirmed_count: 4,
-            delivered_count: 1,
+            handled_count: 8,
+            confirmed_count: 5,
+            confirmed_then_cancelled_count: 1,
+            delivered_count: 2,
           }),
         }),
       ],
@@ -357,6 +447,7 @@ describe("StaffPerformance", () => {
     renderPage();
 
     expect(await screen.findByTestId("staff-performance-summary-confirmation-rate")).toHaveTextContent("60%");
+    expect(screen.getByTestId("staff-performance-summary-confirmation-rate")).toHaveTextContent("Of handled orders");
     expect(screen.getByTestId("staff-performance-summary-delivered-rate")).toHaveTextContent("50%");
   });
 

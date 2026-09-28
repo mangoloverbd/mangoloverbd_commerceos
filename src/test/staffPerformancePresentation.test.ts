@@ -10,6 +10,8 @@ import {
 function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   return {
     assigned_count: 0,
+    handled_count: 0,
+    confirmed_then_cancelled_count: 0,
     confirmed_count: 0,
     confirmed_assigned_count: 0,
     confirmed_assigned_delivered_count: 0,
@@ -31,6 +33,8 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
     telesales_confirmed_count: 0,
     telesales_confirmed_value: 0,
     telesales_confirmed_kg: 0,
+    retained_upsell_count: 0,
+    retained_upsell_value: 0,
     products: [],
     ...overrides,
   };
@@ -79,27 +83,31 @@ describe("staff performance presentation", () => {
     expect(rows.map((row) => row.display_name)).toEqual(["Zara", "Asha", "Rafi"]);
   });
 
-  it("weights team confirmation and delivery rates from regular-order totals", () => {
+  it("weights team confirmation over handled orders and delivery over confirmed orders", () => {
     const snapshot = buildStaffPerformanceSnapshot([
       makeRow({
-        assigned_count: 2,
-        confirmed_assigned_count: 2,
-        confirmed_count: 2,
+        // The assigned counters must no longer drive the confirmation rate.
+        assigned_count: 100,
+        confirmed_assigned_count: 1,
+        handled_count: 2,
+        confirmed_count: 3,
+        confirmed_then_cancelled_count: 1,
         delivered_count: 2,
         confirmed_value: 2400,
       }),
       makeRow({
-        assigned_count: 8,
-        confirmed_assigned_count: 4,
-        confirmed_count: 4,
-        delivered_count: 1,
+        handled_count: 8,
+        confirmed_count: 5,
+        confirmed_then_cancelled_count: 1,
+        delivered_count: 2,
         confirmed_value: 1200,
       }),
     ]);
 
+    // (3 - 1 + 5 - 1) / (2 + 8) = 0.6; delivered 4 / confirmed 8 = 0.5
     expect(snapshot).toEqual({
       confirmedValue: 3600,
-      confirmedCount: 6,
+      confirmedCount: 8,
       confirmationRate: 0.6,
       deliveredRate: 0.5,
     });

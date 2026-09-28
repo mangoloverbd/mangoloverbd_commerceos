@@ -312,7 +312,7 @@ export default function StaffPerformance() {
           <SnapshotCard
             label="Confirmation rate"
             value={formatRate(snapshot.confirmationRate)}
-            description="Of assigned work"
+            description="Of handled orders"
             testId="staff-performance-summary-confirmation-rate"
             delay={0.1}
             reduceMotion={reduceMotion}

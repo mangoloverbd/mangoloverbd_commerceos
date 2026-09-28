@@ -9,20 +9,18 @@ const YIELD_ROW_HEIGHT = 34;
 export function yieldChartHeight(memberCount: number): number {
   return Math.max(220, memberCount * YIELD_ROW_HEIGHT + 36);
 }
-export const YIELD_KEYS: YieldKey[] = ["delivered", "inTransit", "returned", "cancelled", "notConfirmed"];
+export const YIELD_KEYS: YieldKey[] = ["delivered", "inTransit", "returned", "cancelled"];
 export const YIELD_LABELS: Record<YieldKey, string> = {
   delivered: "Delivered",
   inTransit: "Open / in transit",
   returned: "RTO",
   cancelled: "Cancelled",
-  notConfirmed: "Not confirmed",
 };
 export const YIELD_COLORS: Record<YieldKey, string> = {
   delivered: OUTCOME_COLORS.approved,
   inTransit: CHART.greys[3],
   returned: OUTCOME_COLORS.returned,
   cancelled: OUTCOME_COLORS.cancelled,
-  notConfirmed: CHART.greys[4],
 };
 
 const taka = (value: number) => `৳${Math.round(value).toLocaleString("en-BD")}`;
@@ -92,7 +90,7 @@ export function yieldOption(rows: StaffTableRow[], teamDeliveredShare: number | 
   const ordered = rows
     .filter((item): item is StaffTableRow & { deliveredShare: number } => item.deliveredShare !== null)
     .sort((a, b) => a.deliveredShare - b.deliveredShare);
-  const share = (item: StaffTableRow, key: YieldKey) => (item.assigned > 0 ? (item.yield[key] / item.assigned) * 100 : 0);
+  const share = (item: StaffTableRow, key: YieldKey) => (item.handled > 0 ? (item.yield[key] / item.handled) * 100 : 0);
   return {
     grid: { left: 104, right: 58, top: 6, bottom: 22 },
     tooltip: tooltip({
@@ -100,7 +98,7 @@ export function yieldOption(rows: StaffTableRow[], teamDeliveredShare: number | 
       axisPointer: { type: "none" },
       formatter: (params: Array<{ dataIndex: number }>) => {
         const item = ordered[params[0].dataIndex];
-        return `<b>${escapeHtml(item.name)}</b> · ${count(item.assigned)} assigned<br>`
+        return `<b>${escapeHtml(item.name)}</b> · ${count(item.handled)} handled<br>`
           + YIELD_KEYS.map((key) => `${YIELD_LABELS[key]} ${count(item.yield[key])} (${share(item, key).toFixed(1)}%)`).join("<br>");
       },
     }),

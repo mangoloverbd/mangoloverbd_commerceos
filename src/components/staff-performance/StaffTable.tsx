@@ -2,17 +2,23 @@ import { Fragment, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CaretRight } from "@phosphor-icons/react";
 import { YIELD_COLORS, YIELD_KEYS, YIELD_LABELS } from "@/lib/staffPerformanceCharts";
-import { buildStaffTableRows, extraRevenue, sortStaffTableRows, type RateFlag, type SortDir, type StaffSortKey, type StaffTableRow } from "@/lib/staffPerformanceMetrics";
-import type { StaffRow } from "@/lib/staffPerformancePresentation";
+import { buildStaffTableRows, extraRevenue, sortStaffTableRows, STAFF_FLAG_POINTS, type RateFlag, type SortDir, type StaffSortKey, type StaffTableRow } from "@/lib/staffPerformanceMetrics";
+import type { ProductDetail, StaffRow } from "@/lib/staffPerformancePresentation";
 
 const formatNumber = (value: number) => Number(value || 0).toLocaleString("en-BD");
 const formatTaka = (value: number) => `৳${Math.round(value || 0).toLocaleString("en-BD")}`;
 const formatKg = (value: number) => `${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 2 })} kg`;
 const formatPct = (value: number | null) => (value === null ? "—" : `${value.toLocaleString("en-BD", { maximumFractionDigits: 1 })}%`);
+const formatPacks = (packs: number, kg: number) => (packs > 0 ? `${formatNumber(packs)}${kg > 0 ? ` · ${formatKg(kg)}` : ""}` : "—");
+// Loss = kg that was cancelled or returned, out of every kg the member confirmed or cancelled.
+const productLoss = (product: Pick<ProductDetail, "kg" | "returned_kg" | "cancelled_kg">) => {
+  const denominator = product.kg + product.cancelled_kg;
+  return denominator > 0 ? ((product.cancelled_kg + product.returned_kg) / denominator) * 100 : null;
+};
 
 const COLUMNS: Array<{ key: StaffSortKey | null; label: string; align?: "right" }> = [
   { key: "name", label: "Staff" },
-  { key: "assigned", label: "Assigned", align: "right" },
+  { key: "handled", label: "Handled", align: "right" },
   { key: "confirmed", label: "Confirmed", align: "right" },
   { key: "value", label: "Confirmed value", align: "right" },
   { key: null, label: "Outcome mix" },
@@ -31,20 +37,23 @@ function Rate({ value, flag }: { value: number | null; flag: RateFlag }) {
 }
 
 function YieldBar({ item }: { item: StaffTableRow }) {
-  if (item.assigned === 0) return <span className="text-black/35">—</span>;
+  if (item.handled === 0) return <span className="text-black/35">—</span>;
   return (
     <div className="flex h-2 w-[150px] gap-[2px] overflow-hidden rounded" role="img" aria-label={YIELD_KEYS.map((key) => `${YIELD_LABELS[key]} ${item.yield[key]}`).join(", ")}>
       {YIELD_KEYS.map((key) => item.yield[key] > 0 && (
-        <i key={key} className="block h-full" style={{ width: `${(item.yield[key] / item.assigned) * 100}%`, background: YIELD_COLORS[key] }} />
+        <i key={key} className="block h-full" style={{ width: `${(item.yield[key] / item.handled) * 100}%`, background: YIELD_COLORS[key] }} />
       ))}
     </div>
   );
 }
 
-function MiniBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+function MiniBar({ label, value, max, color, amount }: { label: string; value: number; max: number; color: string; amount?: number }) {
   return (
     <div className="grid gap-1">
-      <p className="flex justify-between text-[11px]"><span className="text-black/60">{label}</span><span className="tabular-nums">{formatNumber(value)}</span></p>
+      <p className="flex justify-between text-[11px]">
+        <span className="text-black/60">{label}</span>
+        <span className="tabular-nums">{formatNumber(value)}{amount !== undefined && <span className="text-black/45"> · {formatTaka(amount)}</span>}</span>
+      </p>
       <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.08]" aria-hidden="true">
         <div className="h-full rounded-full" style={{ width: `${max > 0 ? (value / max) * 100 : 0}%`, background: color }} />
       </div>
@@ -56,21 +65,29 @@ function Detail({ item }: { item: StaffTableRow }) {
   const m = item.row.orders;
   const carts = item.row.abandoned_checkouts;
   const extra = extraRevenue(item.row);
-  const totalKg = m.products.reduce((sum, product) => sum + product.kg, 0);
-  const totalPacks = m.products.reduce((sum, product) => sum + product.packs, 0);
-  const maxKg = Math.max(0, ...m.products.map((product) => product.kg));
+  const total = m.products.reduce((sum, product) => ({
+    packs: sum.packs + product.packs,
+    kg: sum.kg + product.kg,
+    delivered_packs: sum.delivered_packs + product.delivered_packs,
+    delivered_kg: sum.delivered_kg + product.delivered_kg,
+    returned_packs: sum.returned_packs + product.returned_packs,
+    returned_kg: sum.returned_kg + product.returned_kg,
+    cancelled_packs: sum.cancelled_packs + product.cancelled_packs,
+    cancelled_kg: sum.cancelled_kg + product.cancelled_kg,
+  }), { packs: 0, kg: 0, delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 0, cancelled_kg: 0 });
+  const totalLoss = productLoss(total);
+  const confirmedNotCancelled = item.yield.delivered + item.yield.inTransit + item.yield.returned;
   return (
     <section aria-label={`${item.name} details`} className="flex flex-col gap-3 px-3.5 pb-4 pt-3.5">
       <div className="grid gap-2.5 md:grid-cols-3">
         <div className="flex flex-col gap-2 rounded-xl bg-white px-3.5 py-3">
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Assigned orders</p>
-          <MiniBar label="Assigned" value={item.assigned} max={item.assigned} color="#0B0B0A" />
-          <MiniBar label="Confirmed, not cancelled" value={item.yield.delivered + item.yield.inTransit + item.yield.returned} max={item.assigned} color="#0B0B0A" />
-          <MiniBar label="Delivered" value={item.yield.delivered} max={item.assigned} color={YIELD_COLORS.delivered} />
-          <MiniBar label={YIELD_LABELS.inTransit} value={item.yield.inTransit} max={item.assigned} color={YIELD_COLORS.inTransit} />
-          <MiniBar label="RTO" value={item.yield.returned} max={item.assigned} color={YIELD_COLORS.returned} />
-          <MiniBar label="Cancelled" value={item.yield.cancelled} max={item.assigned} color={YIELD_COLORS.cancelled} />
-          <MiniBar label="Not confirmed" value={item.yield.notConfirmed} max={item.assigned} color={YIELD_COLORS.notConfirmed} />
+          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Orders handled</p>
+          <MiniBar label="Handled" value={item.handled} max={item.handled} color="#0B0B0A" />
+          <MiniBar label="Confirmed, not cancelled" value={confirmedNotCancelled} max={item.handled} color="#0B0B0A" amount={m.confirmed_value} />
+          <MiniBar label="Delivered" value={item.yield.delivered} max={item.handled} color={YIELD_COLORS.delivered} amount={m.delivered_value} />
+          <MiniBar label={YIELD_LABELS.inTransit} value={item.yield.inTransit} max={item.handled} color={YIELD_COLORS.inTransit} />
+          <MiniBar label="RTO" value={item.yield.returned} max={item.handled} color={YIELD_COLORS.returned} amount={m.returned_value} />
+          <MiniBar label="Cancelled" value={item.yield.cancelled} max={item.handled} color={YIELD_COLORS.cancelled} amount={m.cancelled_value} />
         </div>
         <div className="flex flex-col gap-2 rounded-xl bg-white px-3.5 py-3 text-[12px] tabular-nums">
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Extra revenue</p>
@@ -90,39 +107,46 @@ function Detail({ item }: { item: StaffTableRow }) {
           </p>
         </div>
       </div>
-      <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Confirmed products · {item.name}</p>
+      <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Products by outcome · {item.name}</p>
       {m.products.length === 0 ? (
-        <p className="px-1 text-[11px] text-black/55">No confirmed products in this range.</p>
+        <p className="px-1 text-[11px] text-black/55">No products in this range.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table aria-label={`${item.name} confirmed products`} className="w-full min-w-[560px] border-collapse rounded-xl bg-white text-[12px] tabular-nums">
+          <table aria-label={`${item.name} products by outcome`} className="w-full min-w-[640px] border-collapse rounded-xl bg-white text-[12px] tabular-nums">
             <thead>
               <tr className="border-b border-black/[0.08] text-[8px] uppercase tracking-[0.22em] text-black/55">
                 <th scope="col" className="px-3 pb-2 pt-2.5 text-left font-medium">Product</th>
-                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Packs</th>
-                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Weight</th>
-                <th scope="col" className="w-[40%] px-3 pb-2 pt-2.5 text-left font-medium">Share of kg</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Confirmed</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Delivered</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">RTO</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Cancelled</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Loss</th>
               </tr>
             </thead>
             <tbody>
-              {m.products.map((product) => (
-                <tr key={product.product_id ?? product.product_name} className="border-b border-black/[0.06]">
-                  <th scope="row" className="px-3 py-2 text-left font-normal">{product.product_name}</th>
-                  <td className="px-3 py-2 text-right">{formatNumber(product.packs)}</td>
-                  <td className="px-3 py-2 text-right">{product.kg > 0 ? formatKg(product.kg) : "—"}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 flex-1 overflow-hidden rounded-full bg-black/[0.08]" aria-hidden="true"><div className="h-full rounded-full bg-black" style={{ width: `${maxKg > 0 ? (product.kg / maxKg) * 100 : 0}%` }} /></div>
-                      <span className="w-9 text-right text-[10px] text-black/45">{totalKg > 0 ? `${Math.round((product.kg / totalKg) * 100)}%` : "—"}</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {m.products.map((product) => {
+                const loss = productLoss(product);
+                const worse = loss !== null && totalLoss !== null && loss > totalLoss + STAFF_FLAG_POINTS;
+                return (
+                  <tr key={product.product_id ?? product.product_name} className="border-b border-black/[0.06]">
+                    <th scope="row" className="px-3 py-2 text-left font-normal">{product.product_name}</th>
+                    <td className="px-3 py-2 text-right">{formatPacks(product.packs, product.kg)}</td>
+                    <td className="px-3 py-2 text-right">{formatPacks(product.delivered_packs, product.delivered_kg)}</td>
+                    <td className="px-3 py-2 text-right">{formatPacks(product.returned_packs, product.returned_kg)}</td>
+                    <td className="px-3 py-2 text-right">{formatPacks(product.cancelled_packs, product.cancelled_kg)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {worse ? <span data-flag="worse" className="font-medium text-[#B4473A]">{formatPct(loss)}</span> : <span>{formatPct(loss)}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
               <tr className="bg-black/[0.03] font-semibold">
                 <th scope="row" className="px-3 py-2 text-left">All products</th>
-                <td className="px-3 py-2 text-right">{formatNumber(totalPacks)}</td>
-                <td className="px-3 py-2 text-right">{totalKg > 0 ? formatKg(totalKg) : "—"}</td>
-                <td />
+                <td className="px-3 py-2 text-right">{formatPacks(total.packs, total.kg)}</td>
+                <td className="px-3 py-2 text-right">{formatPacks(total.delivered_packs, total.delivered_kg)}</td>
+                <td className="px-3 py-2 text-right">{formatPacks(total.returned_packs, total.returned_kg)}</td>
+                <td className="px-3 py-2 text-right">{formatPacks(total.cancelled_packs, total.cancelled_kg)}</td>
+                <td className="px-3 py-2 text-right">{formatPct(totalLoss)}</td>
               </tr>
             </tbody>
           </table>
@@ -212,7 +236,7 @@ export function StaffTable({ rows }: { rows: StaffRow[] }) {
                         {!item.isActive && <span className="whitespace-nowrap text-[10px] font-normal text-black/45">· Former staff</span>}
                       </button>
                     </td>
-                    <td className="px-2.5 py-3 text-right">{formatNumber(item.assigned)}</td>
+                    <td className="px-2.5 py-3 text-right">{formatNumber(item.handled)}</td>
                     <td className="px-2.5 py-3 text-right">{formatNumber(item.confirmed)}</td>
                     <td className="px-2.5 py-3 text-right">{formatTaka(item.value)}</td>
                     <td className="px-2.5 py-3"><YieldBar item={item} /></td>
@@ -248,8 +272,8 @@ export function StaffTable({ rows }: { rows: StaffRow[] }) {
         <span><span className="font-medium text-[#2F7A55]">Green</span> = best on the team</span>
       </div>
       <div className="flex flex-wrap justify-between gap-2 text-[10px] text-black/45">
-        <span>Conf. rate = confirmed ÷ assigned · Delivered = delivered ÷ confirmed · AOV = confirmed value ÷ confirmed orders</span>
-        <span>Outcome mix covers each member's assigned orders</span>
+        <span>Conf. rate = confirmed ÷ handled · Delivered = delivered ÷ confirmed · Handled = orders confirmed or cancelled</span>
+        <span>Outcome mix covers each member's handled orders</span>
       </div>
     </section>
   );

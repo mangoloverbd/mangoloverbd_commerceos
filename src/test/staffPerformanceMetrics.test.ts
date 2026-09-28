@@ -10,7 +10,7 @@ import {
 
 function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   return {
-    assigned_count: 0, confirmed_count: 0, confirmed_assigned_count: 0, confirmed_assigned_delivered_count: 0,
+    assigned_count: 0, handled_count: 0, confirmed_then_cancelled_count: 0, confirmed_count: 0, confirmed_assigned_count: 0, confirmed_assigned_delivered_count: 0,
     confirmed_assigned_returned_count: 0, confirmed_assigned_cancelled_count: 0, confirmed_value: 0, confirmed_kg: 0, confirmation_rate: null,
     average_order_value: null, cancelled_count: 0, cancelled_assigned_count: 0, cancelled_value: 0,
     cancellation_rate: null, delivered_count: 0, delivered_value: 0, delivered_rate: null, returned_count: 0,
@@ -25,45 +25,53 @@ function row(id: string, name: string, orders: Partial<StaffMetrics>, extra: Par
   return { user_id: id, display_name: name, is_active: true, orders: metrics(orders), social_inbox_orders: metrics(), abandoned_checkouts: carts(), ...extra };
 }
 
+// Handled basis: (confirmed - confirmed_then_cancelled) + cancelled = handled.
+// The assigned counters are deliberately misleading: the UI must ignore them.
 const sadia = row("s", "Sadia", {
-  assigned_count: 100, confirmed_count: 88, confirmed_assigned_count: 85, confirmed_assigned_delivered_count: 78,
-  confirmed_assigned_returned_count: 2, cancelled_assigned_count: 8, cancelled_count: 8, confirmed_value: 88000,
-  delivered_count: 80, confirmed_kg: 220, telesales_confirmed_value: 5000, retained_upsell_value: 2000,
+  handled_count: 100, confirmed_count: 90, confirmed_then_cancelled_count: 2, cancelled_count: 12,
+  delivered_count: 78, returned_count: 2, confirmed_value: 90000, confirmed_kg: 220,
+  telesales_confirmed_value: 5000, retained_upsell_value: 2000,
+  assigned_count: 5, confirmed_assigned_count: 5, cancelled_assigned_count: 0,
 }, { abandoned_checkouts: carts({ converted_value: 1000 }) });
 const rahim = row("r", "Rahim", {
-  assigned_count: 100, confirmed_count: 70, confirmed_assigned_count: 65, confirmed_assigned_delivered_count: 50,
-  confirmed_assigned_returned_count: 8, cancelled_assigned_count: 20, cancelled_count: 20, confirmed_value: 70000,
-  delivered_count: 52, confirmed_kg: 170,
+  handled_count: 100, confirmed_count: 72, confirmed_then_cancelled_count: 0, cancelled_count: 28,
+  delivered_count: 50, returned_count: 8, confirmed_value: 70000, confirmed_kg: 170,
 });
 const idle = row("i", "Idle", {}, { is_active: false });
 
 describe("buildStaffTableRows", () => {
-  it("derives rates, yield segments over assigned orders, and flags versus the team average", () => {
+  it("derives rates, yield segments over handled orders, and flags versus the team average", () => {
     const [s, r, i] = buildStaffTableRows([sadia, rahim, idle]);
 
-    expect(s).toMatchObject({ key: "s", name: "Sadia", assigned: 100, confirmed: 88, value: 88000, confRate: 85, cancelRate: 8, kg: 220, aov: 1000, extra: 8000, isActive: true });
-    expect(s.delRate).toBeCloseTo(90.91, 1); // 80 / 88
-    expect(s.yield).toEqual({ delivered: 78, inTransit: 5, returned: 2, cancelled: 8, notConfirmed: 7 });
+    // conf = (90 - 2) / 100, cancel = 12 / 100
+    expect(s).toMatchObject({ key: "s", name: "Sadia", handled: 100, confirmed: 90, value: 90000, confRate: 88, cancelRate: 12, kg: 220, aov: 1000, extra: 8000, isActive: true });
+    expect(s.delRate).toBeCloseTo(86.67, 1); // 78 / 90
+    expect(s.yield).toEqual({ delivered: 78, inTransit: 8, returned: 2, cancelled: 12 });
+    expect(Object.values(s.yield).reduce((sum, value) => sum + value, 0)).toBe(100);
     expect(s.deliveredShare).toBe(78);
-    // team: conf 150/200 = 75, cancel 28/200 = 14, delivered 132/158 = 83.5
+    expect(r).toMatchObject({ handled: 100, confRate: 72 });
+    expect(r.cancelRate).toBeCloseTo(28, 6);
+    expect(r.yield).toEqual({ delivered: 50, inTransit: 14, returned: 8, cancelled: 28 });
+    // team: conf 160/200 = 80, cancel 40/200 = 20, delivered 128/162 = 79.0
     expect(s.flags).toEqual({ confRate: "best", cancelRate: "best", delRate: "best" });
-    expect(r.flags).toEqual({ confRate: "worse", cancelRate: "worse", delRate: "worse" }); // 52/70 = 74.3 < 83.5 - 5
-    expect(i).toMatchObject({ assigned: 0, confRate: null, cancelRate: null, delRate: null, deliveredShare: null, isActive: false });
+    expect(r.flags).toEqual({ confRate: "worse", cancelRate: "worse", delRate: "worse" }); // 50/72 = 69.4 < 79.0 - 5
+    expect(i).toMatchObject({ handled: 0, confRate: null, cancelRate: null, delRate: null, deliveredShare: null, isActive: false });
     expect(i.flags).toEqual({ confRate: null, cancelRate: null, delRate: null });
   });
 
-  it("does not double count an assigned order that was confirmed and then cancelled", () => {
+  it("does not double count an order the member confirmed and then cancelled", () => {
     const flip = row("f", "Flip", {
-      assigned_count: 10, confirmed_assigned_count: 6, cancelled_assigned_count: 3, confirmed_assigned_cancelled_count: 1,
-      confirmed_assigned_delivered_count: 3, confirmed_assigned_returned_count: 1,
+      handled_count: 10, confirmed_count: 6, confirmed_then_cancelled_count: 1, cancelled_count: 5,
+      delivered_count: 3, returned_count: 1,
     });
     const [f] = buildStaffTableRows([flip]);
-    expect(f.yield).toEqual({ delivered: 3, inTransit: 1, returned: 1, cancelled: 3, notConfirmed: 2 });
+    expect(f.yield).toEqual({ delivered: 3, inTransit: 1, returned: 1, cancelled: 5 });
     expect(Object.values(f.yield).reduce((sum, value) => sum + value, 0)).toBe(10);
+    expect(f).toMatchObject({ confRate: 50, cancelRate: 50 });
     expect(buildTeamFunnel([flip]).confirmed).toBe(5);
   });
 
-  it("never marks anyone best when fewer than two members have assigned orders", () => {
+  it("never marks anyone best when fewer than two members have handled orders", () => {
     const [s] = buildStaffTableRows([sadia, idle]);
     expect(s.flags).toEqual({ confRate: null, cancelRate: null, delRate: null });
   });
@@ -79,9 +87,9 @@ describe("sortStaffTableRows", () => {
 });
 
 describe("buildTeamFunnel", () => {
-  it("sums the assigned population and its outcomes", () => {
+  it("sums the handled population and its outcomes", () => {
     expect(buildTeamFunnel([sadia, rahim, idle])).toEqual({
-      assigned: 200, confirmed: 150, delivered: 128, returned: 10, inTransit: 12, cancelled: 28, notConfirmed: 22,
+      handled: 200, confirmed: 160, delivered: 128, returned: 10, inTransit: 22, cancelled: 40,
     });
   });
 });

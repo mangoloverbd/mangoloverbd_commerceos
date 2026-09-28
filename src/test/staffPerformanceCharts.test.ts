@@ -10,9 +10,9 @@ const tooltipOf = (option: unknown) => (option as { tooltip: { formatter: Toolti
 
 function row(name: string, value: number, deliveredShare: number | null, extra = 0): StaffTableRow {
   return {
-    key: name, name, isActive: true, assigned: 100, confirmed: 10, value, kg: 0, aov: value / 10,
+    key: name, name, isActive: true, handled: 100, confirmed: 10, value, kg: 0, aov: value / 10,
     confRate: 80, cancelRate: 10, delRate: 90, deliveredShare, extra,
-    yield: { delivered: deliveredShare ?? 0, inTransit: 5, returned: 5, cancelled: 10, notConfirmed: 100 - (deliveredShare ?? 0) - 20 },
+    yield: { delivered: deliveredShare ?? 0, inTransit: 100 - (deliveredShare ?? 0) - 15, returned: 5, cancelled: 10 },
     flags: { confRate: null, cancelRate: null, delRate: null },
     row: { user_id: name, display_name: name, is_active: true, orders: {} as never, social_inbox_orders: {} as never, abandoned_checkouts: { contacted_count: 0, dismissed_count: 0, reopened_count: 0, converted_count: 0, converted_value: 0 } },
   };
@@ -40,14 +40,17 @@ describe("leaderboardOption", () => {
 });
 
 describe("yieldOption", () => {
-  it("stacks five outcome segments as percentages of assigned, sorted so the best share is on top", () => {
+  it("stacks four outcome segments as percentages of handled, sorted so the best share is on top", () => {
     const option = yieldOption([row("Low", 1, 40), row("High", 1, 80), row("None", 1, null)], 60);
     const series = seriesOf(option);
 
-    expect(series).toHaveLength(5);
+    expect(series).toHaveLength(4);
+    expect(series.map((item) => item.name)).toEqual(["Delivered", "Open / in transit", "RTO", "Cancelled"]);
+    expect(series[3].data).toEqual([10, 10]); // 10 cancelled of 100 handled
     expect(axisData(option, "yAxis")).toEqual(["Low", "High"]); // category axis draws bottom-up
     expect(series[0].data).toEqual([40, 80]);
     expect(series[0].markLine?.data).toEqual([{ xAxis: 60 }]);
+    expect(tooltipOf(option)([{ dataIndex: 0 }])).toContain("100 handled");
   });
 });
 

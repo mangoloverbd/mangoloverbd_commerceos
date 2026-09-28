@@ -96,6 +96,8 @@ function isInInterval(value, since, until) {
 function emptyMetrics() {
   return {
     assigned_count: 0,
+    handled_count: 0,
+    confirmed_then_cancelled_count: 0,
     confirmed_count: 0,
     confirmed_assigned_count: 0,
     confirmed_assigned_delivered_count: 0,
@@ -357,6 +359,47 @@ export function addProductDetails(
   }
 }
 
+const PRODUCT_OUTCOMES = ["delivered", "returned", "cancelled"];
+
+// Confirmed packs/kg keep their meaning; outcome columns come from their own
+// maps, so a product that was only cancelled still appears with zero packs.
+function mergeProductOutcomes(confirmedRows, outcomeRows = {}) {
+  const merged = new Map();
+  const ensure = (key, detail) => {
+    if (!merged.has(key)) {
+      merged.set(key, {
+        product_id: detail.product_id,
+        product_name: detail.product_name,
+        packs: 0,
+        kg: 0,
+        delivered_packs: 0,
+        delivered_kg: 0,
+        returned_packs: 0,
+        returned_kg: 0,
+        cancelled_packs: 0,
+        cancelled_kg: 0,
+      });
+    }
+    return merged.get(key);
+  };
+  for (const [key, detail] of confirmedRows || new Map()) {
+    const row = ensure(key, detail);
+    row.packs = detail.packs;
+    row.kg = detail.kg;
+  }
+  for (const outcome of PRODUCT_OUTCOMES) {
+    for (const [key, detail] of outcomeRows[outcome] || new Map()) {
+      const row = ensure(key, detail);
+      row[`${outcome}_packs`] = detail.packs;
+      row[`${outcome}_kg`] = detail.kg;
+    }
+  }
+  return [...merged.values()].sort((a, b) => (
+    (b.packs + b.cancelled_packs) - (a.packs + a.cancelled_packs)
+    || a.product_name.localeCompare(b.product_name)
+  ));
+}
+
 function currentAttributionActivities(orders, action) {
   const actorField = action === "confirmed" ? "confirmed_by" : "cancelled_by";
   const timestampField = action === "confirmed" ? "confirmed_at" : "cancelled_at";
@@ -520,9 +563,26 @@ export function buildStaffReport(
   const cancelledAssignedOrderKeys = new Set();
   const seriesPoints = [];
 
+  const outcomeProductRowsByMetrics = new Map();
+  // Per actor: the regular orders they confirmed and cancelled in range.
+  // Activities with no order id cannot be matched, so they only count once.
+  const handledByActor = new Map();
+
   const productsForMetrics = (metrics) => {
     if (!productRowsByMetrics.has(metrics)) productRowsByMetrics.set(metrics, new Map());
     return productRowsByMetrics.get(metrics);
+  };
+  const outcomeProductsForMetrics = (metrics, outcome) => {
+    if (!outcomeProductRowsByMetrics.has(metrics)) outcomeProductRowsByMetrics.set(metrics, {});
+    const byOutcome = outcomeProductRowsByMetrics.get(metrics);
+    if (!byOutcome[outcome]) byOutcome[outcome] = new Map();
+    return byOutcome[outcome];
+  };
+  const recordHandled = (actorId, action, orderId) => {
+    if (!handledByActor.has(actorId)) handledByActor.set(actorId, { confirmed: new Set(), cancelled: new Set(), unknown: 0 });
+    const handled = handledByActor.get(actorId);
+    if (orderId) handled[action].add(orderId);
+    else handled.unknown += 1;
   };
 
   for (const order of orders || []) {
@@ -543,6 +603,7 @@ export function buildStaffReport(
     metrics.cancelled_count += 1;
     metrics.cancelled_value += toNumber(order.price);
     const orderId = activityOrderId(activity, order);
+    recordHandled(actorId, "cancelled", orderId);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
     if (
       order.assigned_to === actorId &&
@@ -552,6 +613,15 @@ export function buildStaffReport(
       cancelledAssignedOrderKeys.add(assignedKey);
       metrics.cancelled_assigned_count += 1;
     }
+    addProductDetails(
+      outcomeProductsForMetrics(metrics, "cancelled"),
+      itemsByOrderId.get(orderId),
+      productsById,
+      productsByName,
+      missingWeightProducts,
+      variantsById,
+      { orderWeightKg: order.weight_kg, variantsByProductId },
+    );
   }
 
   for (const activity of selectActivities(regularActivities, orders, "confirmed")) {
@@ -570,6 +640,7 @@ export function buildStaffReport(
     const confirmedParts = dhakaDayHour(occurredAt);
     if (confirmedParts) seriesPoints.push({ ...confirmedParts, value });
     const orderId = activityOrderId(activity, order);
+    recordHandled(actorId, "confirmed", orderId);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
     const outcome = classifyCourierOutcome(order);
     if (
@@ -605,6 +676,26 @@ export function buildStaffReport(
       variantsById,
       { orderWeightKg: order.weight_kg, variantsByProductId },
     );
+    if (outcome === "delivered" || outcome === "returned") {
+      addProductDetails(
+        outcomeProductsForMetrics(metrics, outcome),
+        itemsByOrderId.get(orderId),
+        productsById,
+        productsByName,
+        missingWeightProducts,
+        variantsById,
+        { orderWeightKg: order.weight_kg, variantsByProductId },
+      );
+    }
+  }
+
+  for (const [actorId, handled] of handledByActor) {
+    const handledRow = rowsByUserId.get(actorId);
+    if (!handledRow) continue;
+    let overlap = 0;
+    for (const orderId of handled.confirmed) if (handled.cancelled.has(orderId)) overlap += 1;
+    handledRow.orders.confirmed_then_cancelled_count = overlap;
+    handledRow.orders.handled_count = handled.confirmed.size + handled.cancelled.size - overlap + handled.unknown;
   }
 
   for (const assignedKey of cancelledAssignedOrderKeys) {
@@ -673,10 +764,11 @@ export function buildStaffReport(
   }
 
   for (const row of rows) {
-    row.orders.products = [...(productRowsByMetrics.get(row.orders) || new Map()).values()];
-    row.social_inbox_orders.products = [...(productRowsByMetrics.get(row.social_inbox_orders) || new Map()).values()];
-    row.orders.products.sort((a, b) => b.packs - a.packs || a.product_name.localeCompare(b.product_name));
-    row.social_inbox_orders.products.sort((a, b) => b.packs - a.packs || a.product_name.localeCompare(b.product_name));
+    row.orders.products = mergeProductOutcomes(
+      productRowsByMetrics.get(row.orders),
+      outcomeProductRowsByMetrics.get(row.orders),
+    );
+    row.social_inbox_orders.products = mergeProductOutcomes(productRowsByMetrics.get(row.social_inbox_orders));
     finalizeMetrics(row.orders);
     finalizeMetrics(row.social_inbox_orders);
   }

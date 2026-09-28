@@ -61,7 +61,14 @@ describe("GET /api/reports/staff", () => {
     expect(section).toContain('.eq("actor_kind", "user")');
     expect(section).toContain("regularActivities");
     expect(section).toContain("socialActivities");
-    expect(section).toContain("chunkIds(regularConfirmedOrderIds)");
+    expect(section).toContain("chunkIds(regularHandledOrderIds)");
+  });
+
+  it("fetches order items for both confirmed and cancelled regular activities", () => {
+    const section = route();
+
+    expect(section).toMatch(/const regularHandledOrderIds = \[\.\.\.new Set\(\s*regularActivities\s*\.filter\(\(activity\) => activity\.action === "confirmed" \|\| activity\.action === "cancelled"\)/);
+    expect(section).toMatch(/chunkIds\(regularHandledOrderIds\)\)[\s\S]*?\.from\("order_items"\)[\s\S]*?\.eq\("org_id", orgId\)/);
   });
 
   it("also classifies abandoned-checkout status events and credits them to the acting staff member", () => {

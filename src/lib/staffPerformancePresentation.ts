@@ -3,10 +3,18 @@ export type ProductDetail = {
   product_name: string;
   packs: number;
   kg: number;
+  delivered_packs: number;
+  delivered_kg: number;
+  returned_packs: number;
+  returned_kg: number;
+  cancelled_packs: number;
+  cancelled_kg: number;
 };
 
 export type StaffMetrics = {
   assigned_count: number;
+  handled_count: number;
+  confirmed_then_cancelled_count: number;
   confirmed_count: number;
   confirmed_assigned_count: number;
   confirmed_assigned_delivered_count: number;
@@ -60,8 +68,8 @@ export type StaffPerformanceSnapshot = {
 type RegularOrderTotals = {
   confirmedValue: number;
   confirmedCount: number;
-  assignedCount: number;
-  confirmedAssignedCount: number;
+  handledCount: number;
+  confirmedNotCancelledCount: number;
   deliveredCount: number;
 };
 
@@ -73,22 +81,23 @@ export function buildStaffPerformanceSnapshot(rows: StaffRow[]): StaffPerformanc
   const totals = rows.reduce<RegularOrderTotals>((current, row) => ({
     confirmedValue: current.confirmedValue + numberOrZero(row.orders.confirmed_value),
     confirmedCount: current.confirmedCount + numberOrZero(row.orders.confirmed_count),
-    assignedCount: current.assignedCount + numberOrZero(row.orders.assigned_count),
-    confirmedAssignedCount: current.confirmedAssignedCount + numberOrZero(row.orders.confirmed_assigned_count),
+    handledCount: current.handledCount + numberOrZero(row.orders.handled_count),
+    confirmedNotCancelledCount: current.confirmedNotCancelledCount
+      + numberOrZero(row.orders.confirmed_count) - numberOrZero(row.orders.confirmed_then_cancelled_count),
     deliveredCount: current.deliveredCount + numberOrZero(row.orders.delivered_count),
   }), {
     confirmedValue: 0,
     confirmedCount: 0,
-    assignedCount: 0,
-    confirmedAssignedCount: 0,
+    handledCount: 0,
+    confirmedNotCancelledCount: 0,
     deliveredCount: 0,
   });
 
   return {
     confirmedValue: totals.confirmedValue,
     confirmedCount: totals.confirmedCount,
-    confirmationRate: totals.assignedCount > 0
-      ? totals.confirmedAssignedCount / totals.assignedCount
+    confirmationRate: totals.handledCount > 0
+      ? totals.confirmedNotCancelledCount / totals.handledCount
       : null,
     deliveredRate: totals.confirmedCount > 0
       ? totals.deliveredCount / totals.confirmedCount
