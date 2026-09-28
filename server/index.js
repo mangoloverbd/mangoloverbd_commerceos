@@ -4387,14 +4387,14 @@ app.get("/api/reports/staff", async (req, res) => {
       new Map(socialEventOrders.map((order) => [order.id, order])),
       { confirmed: confirmedInboxOrders, cancelled: cancelledInboxOrders },
     );
-    const regularConfirmedOrderIds = [...new Set(
+    const regularHandledOrderIds = [...new Set(
       regularActivities
-        .filter((activity) => activity.action === "confirmed")
+        .filter((activity) => activity.action === "confirmed" || activity.action === "cancelled")
         .map((activity) => activity.order?.id)
         .filter(Boolean),
     )];
     const orderItems = [];
-    for (const orderIdBatch of chunkIds(regularConfirmedOrderIds)) {
+    for (const orderIdBatch of chunkIds(regularHandledOrderIds)) {
       orderItems.push(...await fetchReportPages(() => supabase
         .from("order_items")
         .select("id, order_id, product_id, variant_id, product_name, quantity")

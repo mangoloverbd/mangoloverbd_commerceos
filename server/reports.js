@@ -96,8 +96,21 @@ function isInInterval(value, since, until) {
 function emptyMetrics() {
   return {
     assigned_count: 0,
+    handled_count: 0,
+    handled_confirmed_count: 0,
+    handled_confirmed_value: 0,
+    handled_confirmed_kg: 0,
+    handled_cancelled_count: 0,
+    handled_cancelled_value: 0,
+    handled_delivered_count: 0,
+    handled_delivered_value: 0,
+    handled_returned_count: 0,
+    handled_returned_value: 0,
     confirmed_count: 0,
     confirmed_assigned_count: 0,
+    confirmed_assigned_delivered_count: 0,
+    confirmed_assigned_returned_count: 0,
+    confirmed_assigned_cancelled_count: 0,
     confirmed_value: 0,
     confirmed_kg: 0,
     confirmation_rate: null,
@@ -160,6 +173,7 @@ export function calculateRetainedUpsells(events = [], {
   since = null,
   until = null,
   terminalLossOrderIds = new Set(),
+  onRetainedLot = null,
 } = {}) {
   const selected = new Set(selectedActorIds);
   const totals = new Map([...selected].map((actorId) => [actorId, { count: 0, value: 0 }]));
@@ -203,7 +217,7 @@ export function calculateRetainedUpsells(events = [], {
       if (change?.addition_reason === "upsell" && quantityDelta > 0 && event?.actor_id && inRange) {
         const key = `${event.order_id}:${itemKey || "unknown"}`;
         const lots = lotsByItem.get(key) || [];
-        lots.push({ actorId: event.actor_id, quantity: quantityDelta, value: Math.max(0, activityNumber(change?.amount_delta)) });
+        lots.push({ actorId: event.actor_id, quantity: quantityDelta, value: Math.max(0, activityNumber(change?.amount_delta)), occurredAt: event.created_at });
         lotsByItem.set(key, lots);
         continue;
       }
@@ -247,6 +261,7 @@ export function calculateRetainedUpsells(events = [], {
       total.count += lot.quantity;
       total.value += lot.value;
       totals.set(lot.actorId, total);
+      onRetainedLot?.(lot);
     }
   }
   for (const actorId of [...totals.keys()]) {
@@ -354,6 +369,47 @@ export function addProductDetails(
   }
 }
 
+const PRODUCT_OUTCOMES = ["delivered", "returned", "cancelled"];
+
+// Confirmed packs/kg keep their meaning; outcome columns come from their own
+// maps, so a product that was only cancelled still appears with zero packs.
+function mergeProductOutcomes(confirmedRows, outcomeRows = {}) {
+  const merged = new Map();
+  const ensure = (key, detail) => {
+    if (!merged.has(key)) {
+      merged.set(key, {
+        product_id: detail.product_id,
+        product_name: detail.product_name,
+        packs: 0,
+        kg: 0,
+        delivered_packs: 0,
+        delivered_kg: 0,
+        returned_packs: 0,
+        returned_kg: 0,
+        cancelled_packs: 0,
+        cancelled_kg: 0,
+      });
+    }
+    return merged.get(key);
+  };
+  for (const [key, detail] of confirmedRows || new Map()) {
+    const row = ensure(key, detail);
+    row.packs = detail.packs;
+    row.kg = detail.kg;
+  }
+  for (const outcome of PRODUCT_OUTCOMES) {
+    for (const [key, detail] of outcomeRows[outcome] || new Map()) {
+      const row = ensure(key, detail);
+      row[`${outcome}_packs`] = detail.packs;
+      row[`${outcome}_kg`] = detail.kg;
+    }
+  }
+  return [...merged.values()].sort((a, b) => (
+    (b.packs + b.cancelled_packs) - (a.packs + a.cancelled_packs)
+    || a.product_name.localeCompare(b.product_name)
+  ));
+}
+
 function currentAttributionActivities(orders, action) {
   const actorField = action === "confirmed" ? "confirmed_by" : "cancelled_by";
   const timestampField = action === "confirmed" ? "confirmed_at" : "cancelled_at";
@@ -413,13 +469,85 @@ export function createProductLookups(products, variants) {
   return { productsById, productsByName, variantsById, variantsByProductId };
 }
 
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const dayLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+function dhakaDayHour(value) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  const shifted = new Date(timestamp + DHAKA_OFFSET_MS);
+  return { day: shifted.toISOString().slice(0, 10), hour: shifted.getUTCHours() };
+}
+
+function hourLabel(hour) {
+  return `${hour % 12 || 12}${hour < 12 ? "a" : "p"}`;
+}
+
+function dayLabel(day) {
+  return dayLabelFormatter.format(new Date(`${day}T00:00:00Z`));
+}
+
+const SERIES_FIELDS = [
+  "confirmed_count",
+  "confirmed_value",
+  "handled_count",
+  "handled_confirmed_count",
+  "handled_delivered_count",
+  "extra_value",
+];
+
+function createSeriesBucket(key, label) {
+  const bucket = { key, label };
+  for (const field of SERIES_FIELDS) bucket[field] = 0;
+  return bucket;
+}
+
+// Each point is { day, hour, ...increments } where increments add to SERIES_FIELDS.
+function buildConfirmationSeries(points, range) {
+  const byDay = new Map();
+  const byDayHour = new Map();
+  const addTo = (bucket, point) => {
+    for (const field of SERIES_FIELDS) bucket[field] += point[field] || 0;
+  };
+  for (const point of points) {
+    const day = byDay.get(point.day) || createSeriesBucket(point.day, dayLabel(point.day));
+    addTo(day, point);
+    byDay.set(point.day, day);
+    const key = `${point.day}-${point.hour}`;
+    const hour = byDayHour.get(key) || createSeriesBucket(key, hourLabel(point.hour));
+    addTo(hour, point);
+    byDayHour.set(key, hour);
+  }
+  if (range?.from && range?.to && range.from === range.to) {
+    return {
+      granularity: "hour",
+      buckets: Array.from({ length: 24 }, (_, hour) => byDayHour.get(`${range.from}-${hour}`) || createSeriesBucket(`${range.from}-${hour}`, hourLabel(hour))),
+    };
+  }
+  if (range?.from && range?.to) {
+    const start = new Date(`${range.from}T00:00:00Z`).getTime();
+    const end = new Date(`${range.to}T00:00:00Z`).getTime();
+    const buckets = [];
+    for (let time = start; time <= end; time += MS_PER_DAY) {
+      const day = new Date(time).toISOString().slice(0, 10);
+      buckets.push(byDay.get(day) || createSeriesBucket(day, dayLabel(day)));
+    }
+    return { granularity: "day", buckets };
+  }
+  return {
+    granularity: "day",
+    buckets: [...byDay.keys()].sort().slice(-30).map((day) => byDay.get(day)),
+  };
+}
+
 export function buildStaffReport(
   orders,
   inboxOrders,
   orderItems,
   products,
   staff,
-  { since = null, until = null, regularActivities, socialActivities, abandonedActivities, upsellActivities, variants = null } = {},
+  { since = null, until = null, range = null, regularActivities, socialActivities, abandonedActivities, upsellActivities, variants = null } = {},
   variantsArg = null,
 ) {
   const variantsList = Array.isArray(variantsArg) ? variantsArg : (Array.isArray(variants) ? variants : []);
@@ -442,10 +570,16 @@ export function buildStaffReport(
     abandoned_checkouts: emptyAbandonedMetrics(),
   }));
   const rowsByUserId = new Map(rows.map((row) => [row.user_id, row]));
+  const seriesPoints = [];
+  const addSeriesPoint = (occurredAt, increments) => {
+    const parts = dhakaDayHour(occurredAt);
+    if (parts) seriesPoints.push({ ...parts, ...increments });
+  };
   const retainedUpsells = calculateRetainedUpsells(upsellActivities || [], {
     selectedActorIds: rows.map((row) => row.user_id),
     since,
     until,
+    onRetainedLot: (lot) => addSeriesPoint(lot.occurredAt, { extra_value: lot.value }),
   });
   for (const row of rows) {
     const retained = retainedUpsells.get(row.user_id);
@@ -457,9 +591,33 @@ export function buildStaffReport(
   const confirmedAssignedOrderKeys = new Set();
   const cancelledAssignedOrderKeys = new Set();
 
+  const outcomeProductRowsByMetrics = new Map();
+  // Per actor: each regular order they confirmed or cancelled in range, keyed
+  // by order and classified by their latest action on it. Activities with no
+  // order id cannot be matched, so each gets its own key.
+  const lastActionByActor = new Map();
+  let unknownOrderSeq = 0;
+
   const productsForMetrics = (metrics) => {
     if (!productRowsByMetrics.has(metrics)) productRowsByMetrics.set(metrics, new Map());
     return productRowsByMetrics.get(metrics);
+  };
+  const outcomeProductsForMetrics = (metrics, outcome) => {
+    if (!outcomeProductRowsByMetrics.has(metrics)) outcomeProductRowsByMetrics.set(metrics, {});
+    const byOutcome = outcomeProductRowsByMetrics.get(metrics);
+    if (!byOutcome[outcome]) byOutcome[outcome] = new Map();
+    return byOutcome[outcome];
+  };
+  const recordHandled = (actorId, action, orderId, order, occurredAt) => {
+    if (!lastActionByActor.has(actorId)) lastActionByActor.set(actorId, new Map());
+    const entries = lastActionByActor.get(actorId);
+    const key = orderId || `unknown:${unknownOrderSeq++}`;
+    const at = new Date(occurredAt).getTime();
+    const previous = entries.get(key);
+    // A confirm and cancel at the same instant means the order ended cancelled.
+    if (!previous || at > previous.at || (at === previous.at && action === "cancelled")) {
+      entries.set(key, { action, at, order, orderId });
+    }
   };
 
   for (const order of orders || []) {
@@ -480,6 +638,7 @@ export function buildStaffReport(
     metrics.cancelled_count += 1;
     metrics.cancelled_value += toNumber(order.price);
     const orderId = activityOrderId(activity, order);
+    recordHandled(actorId, "cancelled", orderId, order, occurredAt);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
     if (
       order.assigned_to === actorId &&
@@ -504,8 +663,12 @@ export function buildStaffReport(
     metrics.confirmed_count += 1;
     metrics.confirmed_value += value;
     metrics.confirmed_kg += weightKg;
+    const isTelesales = String(order.source || "").trim().toLowerCase() === "telesales";
+    addSeriesPoint(occurredAt, { confirmed_count: 1, confirmed_value: value, extra_value: isTelesales ? value : 0 });
     const orderId = activityOrderId(activity, order);
+    recordHandled(actorId, "confirmed", orderId, order, occurredAt);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
+    const outcome = classifyCourierOutcome(order);
     if (
       order.assigned_to === actorId &&
       isInInterval(order.created_at, since, until) &&
@@ -513,8 +676,9 @@ export function buildStaffReport(
     ) {
       confirmedAssignedOrderKeys.add(assignedKey);
       metrics.confirmed_assigned_count += 1;
+      if (outcome === "delivered") metrics.confirmed_assigned_delivered_count += 1;
+      if (outcome === "returned") metrics.confirmed_assigned_returned_count += 1;
     }
-    const outcome = classifyCourierOutcome(order);
     if (outcome === "delivered") {
       metrics.delivered_count += 1;
       metrics.delivered_value += value;
@@ -523,21 +687,60 @@ export function buildStaffReport(
       metrics.returned_count += 1;
       metrics.returned_value += value;
     }
-    if (String(order.source || "").trim().toLowerCase() === "telesales") {
+    if (isTelesales) {
       metrics.telesales_confirmed_count += 1;
       metrics.telesales_confirmed_value += value;
       metrics.telesales_confirmed_kg += weightKg;
     }
+  }
 
-    addProductDetails(
-      productsForMetrics(metrics),
-      itemsByOrderId.get(orderId),
-      productsById,
-      productsByName,
-      missingWeightProducts,
-      variantsById,
-      { orderWeightKg: order.weight_kg, variantsByProductId },
-    );
+  // Handled basis and product outcomes: one entry per (member, order), so a
+  // re-confirmed or twice-cancelled order is never counted twice.
+  for (const [actorId, entries] of lastActionByActor) {
+    const handledRow = rowsByUserId.get(actorId);
+    if (!handledRow) continue;
+    const metrics = handledRow.orders;
+    for (const { action, at, order, orderId } of entries.values()) {
+      const value = toNumber(order.price);
+      const addItems = (productRows) => addProductDetails(
+        productRows,
+        orderId ? itemsByOrderId.get(orderId) : undefined,
+        productsById,
+        productsByName,
+        missingWeightProducts,
+        variantsById,
+        { orderWeightKg: order.weight_kg, variantsByProductId },
+      );
+      metrics.handled_count += 1;
+      const outcome = action === "cancelled" ? null : classifyCourierOutcome(order);
+      addSeriesPoint(at, {
+        handled_count: 1,
+        handled_confirmed_count: action === "cancelled" ? 0 : 1,
+        handled_delivered_count: outcome === "delivered" ? 1 : 0,
+      });
+      if (action === "cancelled") {
+        metrics.handled_cancelled_count += 1;
+        metrics.handled_cancelled_value += value;
+        addItems(outcomeProductsForMetrics(metrics, "cancelled"));
+        continue;
+      }
+      metrics.handled_confirmed_count += 1;
+      metrics.handled_confirmed_value += value;
+      metrics.handled_confirmed_kg += toNumber(order.weight_kg);
+      addItems(productsForMetrics(metrics));
+      if (outcome === "delivered" || outcome === "returned") {
+        metrics[`handled_${outcome}_count`] += 1;
+        metrics[`handled_${outcome}_value`] += value;
+        addItems(outcomeProductsForMetrics(metrics, outcome));
+      }
+    }
+  }
+
+  for (const assignedKey of cancelledAssignedOrderKeys) {
+    if (!confirmedAssignedOrderKeys.has(assignedKey)) continue;
+    const actorId = assignedKey.slice(0, assignedKey.indexOf(":"));
+    const overlapRow = rowsByUserId.get(actorId);
+    if (overlapRow) overlapRow.orders.confirmed_assigned_cancelled_count += 1;
   }
 
   for (const activity of selectActivities(socialActivities, inboxOrders, "cancelled")) {
@@ -595,20 +798,23 @@ export function buildStaffReport(
     else if (activity.action === "converted") {
       metrics.converted_count += 1;
       metrics.converted_value += toNumber(activity.value);
+      addSeriesPoint(activity.occurred_at, { extra_value: toNumber(activity.value) });
     }
   }
 
   for (const row of rows) {
-    row.orders.products = [...(productRowsByMetrics.get(row.orders) || new Map()).values()];
-    row.social_inbox_orders.products = [...(productRowsByMetrics.get(row.social_inbox_orders) || new Map()).values()];
-    row.orders.products.sort((a, b) => b.packs - a.packs || a.product_name.localeCompare(b.product_name));
-    row.social_inbox_orders.products.sort((a, b) => b.packs - a.packs || a.product_name.localeCompare(b.product_name));
+    row.orders.products = mergeProductOutcomes(
+      productRowsByMetrics.get(row.orders),
+      outcomeProductRowsByMetrics.get(row.orders),
+    );
+    row.social_inbox_orders.products = mergeProductOutcomes(productRowsByMetrics.get(row.social_inbox_orders));
     finalizeMetrics(row.orders);
     finalizeMetrics(row.social_inbox_orders);
   }
 
   return {
     rows,
+    series: buildConfirmationSeries(seriesPoints, range),
     missing_weight_products: [...missingWeightProducts.values()].sort((a, b) => a.name.localeCompare(b.name)),
   };
 }

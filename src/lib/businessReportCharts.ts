@@ -9,7 +9,7 @@ export const GRID_ROWS = 14;
 const taka = (value: number) => `৳${Math.round(value).toLocaleString("en-BD")}`;
 
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
 
 function tooltip(extra: Record<string, unknown> = {}) {
   return {

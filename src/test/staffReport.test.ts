@@ -9,6 +9,9 @@ import {
 
 const ADMIN_ID = "11111111-1111-1111-1111-111111111111";
 const TEAM_MEMBER_ID = "22222222-2222-2222-2222-222222222222";
+const NO_OUTCOMES = {
+  delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 0, cancelled_kg: 0,
+};
 
 describe("calculateRetainedUpsells", () => {
   it("credits upsell additions and removes value retained no longer in the order", () => {
@@ -518,7 +521,7 @@ describe("buildStaffReport", () => {
     );
 
     expect(report.rows[0].orders.products).toEqual([
-      { product_id: "green-mango", product_name: "Green Mango", packs: 2, kg: 2.5 },
+      { product_id: "green-mango", product_name: "Green Mango", packs: 2, kg: 2.5, ...NO_OUTCOMES },
     ]);
   });
 
@@ -727,7 +730,7 @@ describe("buildStaffReport", () => {
     );
 
     expect(report.rows[0].social_inbox_orders.products).toEqual([
-      { product_id: "product-mango", product_name: "Mango", packs: 2, kg: 0 },
+      { product_id: "product-mango", product_name: "Mango", packs: 2, kg: 0, ...NO_OUTCOMES },
     ]);
     expect(report.missing_weight_products).toEqual([
       { id: "product-mango", name: "Mango" },
@@ -755,7 +758,7 @@ describe("buildStaffReport", () => {
     );
 
     expect(report.rows[0].social_inbox_orders.products).toEqual([
-      { product_id: null, product_name: "Mango", packs: 1, kg: 0 },
+      { product_id: null, product_name: "Mango", packs: 1, kg: 0, ...NO_OUTCOMES },
     ]);
     expect(report.missing_weight_products).toEqual([]);
   });
@@ -813,7 +816,7 @@ describe("buildStaffReport", () => {
     );
 
     expect(report.rows[0].social_inbox_orders.products).toEqual([
-      { product_id: "product-1", product_name: "Mango", packs: 2, kg: 1 },
+      { product_id: "product-1", product_name: "Mango", packs: 2, kg: 1, ...NO_OUTCOMES },
     ]);
     expect(report.missing_weight_products).toEqual([]);
   });
@@ -931,5 +934,294 @@ describe("classifyCourierOutcome", () => {
     [{ return_status: "processing" }, null],
   ])("classifies %o as %s", (order, expected) => {
     expect(classifyCourierOutcome(order)).toBe(expected);
+  });
+});
+
+describe("buildStaffReport assigned outcomes and series", () => {
+  const staff = [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }];
+  // The route passes resolveStaffReportRequest's output, which carries `range`;
+  // toDhakaInterval alone does not, so mirror the route's shape here.
+  const withRange = (interval: ReturnType<typeof toDhakaInterval>) => ({
+    ...interval,
+    range: { from: interval.from, to: interval.to },
+  });
+
+  it("counts delivered and returned outcomes among the member's own assigned confirmations", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [
+        { id: "a1", assigned_to: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T02:00:00.000Z", price: 1000, courier_status: "delivered" },
+        { id: "a2", assigned_to: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:00:00.000Z", price: 500, courier_status: "returned" },
+        { id: "a3", assigned_to: TEAM_MEMBER_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T04:00:00.000Z", price: 700, courier_status: "in_review" },
+        { id: "other", assigned_to: ADMIN_ID, created_at: "2026-09-18T01:00:00.000Z", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T05:00:00.000Z", price: 900, courier_status: "delivered" },
+      ],
+      [], [], [], staff, interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      assigned_count: 3,
+      confirmed_count: 4,
+      confirmed_assigned_count: 3,
+      delivered_count: 2,
+      confirmed_assigned_delivered_count: 1,
+      confirmed_assigned_returned_count: 1,
+    });
+  });
+
+  it("counts an assigned order confirmed then cancelled by the same member as an overlap", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [{
+        id: "flip",
+        assigned_to: TEAM_MEMBER_ID,
+        created_at: "2026-09-18T01:00:00.000Z",
+        confirmed_by: TEAM_MEMBER_ID,
+        confirmed_at: "2026-09-18T02:00:00.000Z",
+        cancelled_by: TEAM_MEMBER_ID,
+        cancelled_at: "2026-09-18T03:00:00.000Z",
+        price: 800,
+      }],
+      [], [], [], staff, interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      confirmed_assigned_count: 1,
+      cancelled_assigned_count: 1,
+      confirmed_assigned_cancelled_count: 1,
+    });
+  });
+
+  it("buckets team confirmations by Dhaka hour for a single-day range", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [
+        { id: "c1", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:10:00.000Z", price: 1000 }, // 09:10 Dhaka
+        { id: "c2", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:50:00.000Z", price: 500 },  // 09:50 Dhaka
+        { id: "c3", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T15:00:00.000Z", price: 700 },  // 21:00 Dhaka
+      ],
+      [], [], [], staff, withRange(interval),
+    );
+
+    expect(report.series.granularity).toBe("hour");
+    expect(report.series.buckets).toHaveLength(24);
+    expect(report.series.buckets[9]).toMatchObject({ key: "2026-09-18-9", label: "9a", confirmed_count: 2, confirmed_value: 1500 });
+    expect(report.series.buckets[21]).toMatchObject({ label: "9p", confirmed_count: 1, confirmed_value: 700 });
+    expect(report.series.buckets[0]).toMatchObject({ label: "12a", confirmed_count: 0 });
+  });
+
+  it("buckets handled outcomes and extra revenue by Dhaka hour", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [
+        // 09:xx Dhaka: one telesales confirm (delivered), one plain confirm, one cancel.
+        { id: "t1", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:10:00.000Z", price: 1000, source: "telesales", courier_status: "delivered" },
+        { id: "c2", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:20:00.000Z", price: 500 },
+        { id: "x3", cancelled_by: TEAM_MEMBER_ID, cancelled_at: "2026-09-18T03:30:00.000Z", price: 400 },
+      ],
+      [], [], [], staff,
+      {
+        ...withRange(interval),
+        abandonedActivities: [
+          { actor_id: TEAM_MEMBER_ID, action: "converted", value: 300, occurred_at: "2026-09-18T15:00:00.000Z" }, // 21:00 Dhaka
+        ],
+        upsellActivities: [{
+          id: "u1",
+          order_id: "c2",
+          actor_id: TEAM_MEMBER_ID,
+          created_at: "2026-09-18T15:30:00.000Z", // 21:30 Dhaka
+          changes: [{ item_key: "i1", addition_reason: "upsell", quantity_delta: 1, amount_delta: 200 }],
+        }],
+      },
+    );
+
+    expect(report.series.buckets[9]).toMatchObject({
+      confirmed_count: 2,
+      confirmed_value: 1500,
+      handled_count: 3,
+      handled_confirmed_count: 2,
+      handled_delivered_count: 1,
+      extra_value: 1000,
+    });
+    expect(report.series.buckets[21]).toMatchObject({ confirmed_count: 0, handled_count: 0, extra_value: 500 });
+    expect(report.series.buckets[0]).toMatchObject({ handled_count: 0, handled_confirmed_count: 0, handled_delivered_count: 0, extra_value: 0 });
+  });
+
+  it("fills every day of a bounded multi-day range", () => {
+    const interval = toDhakaInterval("2026-09-17", "2026-09-19");
+    const report = buildStaffReport(
+      [{ id: "c1", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-19T03:00:00.000Z", price: 800 }],
+      [], [], [], staff, withRange(interval),
+    );
+
+    expect(report.series.granularity).toBe("day");
+    expect(report.series.buckets.map((bucket) => [bucket.key, bucket.confirmed_count, bucket.confirmed_value])).toEqual([
+      ["2026-09-17", 0, 0],
+      ["2026-09-18", 0, 0],
+      ["2026-09-19", 1, 800],
+    ]);
+    expect(report.series.buckets[0].label).toBe("Sep 17");
+  });
+
+  it("keeps the 30 most recent active days for All time", () => {
+    const orders = Array.from({ length: 32 }, (_, index) => ({
+      id: `c${index}`,
+      confirmed_by: TEAM_MEMBER_ID,
+      confirmed_at: new Date(Date.UTC(2026, 7, 1 + index, 3)).toISOString(),
+      price: 100,
+    }));
+    const report = buildStaffReport(orders, [], [], [], staff, { since: null, until: null, range: { from: null, to: null } });
+
+    expect(report.series.granularity).toBe("day");
+    expect(report.series.buckets).toHaveLength(30);
+    expect(report.series.buckets[0].key).toBe("2026-08-03");
+    expect(report.series.buckets[29].key).toBe("2026-09-01");
+  });
+});
+
+describe("buildStaffReport handled orders and product outcomes", () => {
+  const staff = [{ user_id: TEAM_MEMBER_ID, display_name: "Rafi" }];
+  const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+  const confirmedAt = "2026-09-18T02:00:00.000Z";
+  const cancelledAt = "2026-09-18T03:00:00.000Z";
+  const handledOrders = [
+    { id: "A", confirmed_by: TEAM_MEMBER_ID, confirmed_at: confirmedAt, price: 1000, weight_kg: 2, courier_status: "delivered" },
+    { id: "B", confirmed_by: TEAM_MEMBER_ID, confirmed_at: confirmedAt, cancelled_by: TEAM_MEMBER_ID, cancelled_at: cancelledAt, price: 500 },
+    { id: "C", cancelled_by: TEAM_MEMBER_ID, cancelled_at: cancelledAt, price: 300, weight_kg: 1.5 },
+  ];
+  const catalog = [
+    { id: "p-mango", name: "Mango", weight_kg: 1 },
+    { id: "p-honey", name: "Honey", weight_kg: 0.5 },
+  ];
+
+  it("counts every order a member confirmed or cancelled once, classified by the member's last action", () => {
+    const report = buildStaffReport(handledOrders, [], [], [], staff, interval);
+
+    expect(report.rows[0].orders).toMatchObject({
+      handled_count: 3,
+      handled_confirmed_count: 1,
+      handled_confirmed_value: 1000,
+      handled_confirmed_kg: 2,
+      handled_cancelled_count: 2,
+      handled_cancelled_value: 800,
+      handled_delivered_count: 1,
+      handled_delivered_value: 1000,
+      handled_returned_count: 0,
+      handled_returned_value: 0,
+      // Activity counters stay as they were for compatibility.
+      confirmed_count: 2,
+      cancelled_count: 2,
+    });
+    expect(report.rows[0].orders).not.toHaveProperty("confirmed_then_cancelled_count");
+  });
+
+  it("counts each order once when a member re-confirms or cancels it again", () => {
+    const orderB = { id: "B", price: 500, weight_kg: 2, courier_status: "delivered" };
+    const orderD = { id: "D", price: 300, weight_kg: 1 };
+    const at = (hour: number) => `2026-09-18T0${hour}:00:00.000Z`;
+    const report = buildStaffReport(
+      [],
+      [],
+      [
+        { order_id: "B", product_id: "p-mango", product_name: "Mango", quantity: 2 },
+        { order_id: "D", product_id: "p-honey", product_name: "Honey", quantity: 1 },
+      ],
+      catalog,
+      staff,
+      {
+        ...interval,
+        regularActivities: [
+          { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: at(1), order_id: "B", order: orderB },
+          { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(2), order_id: "B", order: orderB },
+          { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: at(3), order_id: "B", order: orderB },
+          { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(1), order_id: "D", order: orderD },
+          { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(4), order_id: "D", order: orderD },
+        ],
+      },
+    );
+
+    expect(report.rows[0].orders).toMatchObject({
+      handled_count: 2,
+      handled_confirmed_count: 1,
+      handled_confirmed_value: 500,
+      handled_cancelled_count: 1,
+      handled_cancelled_value: 300,
+      handled_delivered_count: 1,
+      handled_delivered_value: 500,
+      confirmed_count: 2,
+      cancelled_count: 3,
+    });
+    expect(report.rows[0].orders.products).toEqual([
+      {
+        product_id: "p-mango", product_name: "Mango", packs: 2, kg: 2,
+        delivered_packs: 2, delivered_kg: 2, returned_packs: 0, returned_kg: 0, cancelled_packs: 0, cancelled_kg: 0,
+      },
+      {
+        product_id: "p-honey", product_name: "Honey", packs: 0, kg: 0,
+        delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 1, cancelled_kg: 0.5,
+      },
+    ]);
+  });
+
+  it("classifies an order as cancelled when the member's confirm and cancel share a timestamp", () => {
+    const report = buildStaffReport(
+      [{ id: "T", confirmed_by: TEAM_MEMBER_ID, confirmed_at: confirmedAt, cancelled_by: TEAM_MEMBER_ID, cancelled_at: confirmedAt, price: 400 }],
+      [], [], [], staff, interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({ handled_count: 1, handled_cancelled_count: 1, handled_confirmed_count: 0 });
+  });
+
+  it("counts activities with an unknown order id once each and never merges them", () => {
+    const report = buildStaffReport([], [], [], [], staff, {
+      ...interval,
+      regularActivities: [
+        { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: confirmedAt, order: {} },
+        { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: cancelledAt, order: {} },
+      ],
+    });
+
+    expect(report.rows[0].orders).toMatchObject({ handled_count: 2, handled_confirmed_count: 1, handled_cancelled_count: 1 });
+  });
+
+  it("splits each product into confirmed, delivered, returned and cancelled packs and kg", () => {
+    const report = buildStaffReport(
+      handledOrders,
+      [],
+      [
+        { order_id: "A", product_id: "p-mango", product_name: "Mango", quantity: 2 },
+        { order_id: "C", product_id: "p-mango", product_name: "Mango", quantity: 1 },
+        { order_id: "C", product_id: "p-honey", product_name: "Honey", quantity: 1 },
+      ],
+      catalog,
+      staff,
+      interval,
+    );
+
+    expect(report.rows[0].orders.products).toEqual([
+      {
+        product_id: "p-mango", product_name: "Mango", packs: 2, kg: 2,
+        delivered_packs: 2, delivered_kg: 2, returned_packs: 0, returned_kg: 0, cancelled_packs: 1, cancelled_kg: 1,
+      },
+      {
+        product_id: "p-honey", product_name: "Honey", packs: 0, kg: 0,
+        delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 1, cancelled_kg: 0.5,
+      },
+    ]);
+  });
+
+  it("puts a returned confirmation's items in the returned columns", () => {
+    const report = buildStaffReport(
+      [{ id: "R", confirmed_by: TEAM_MEMBER_ID, confirmed_at: confirmedAt, price: 700, courier_status: "returned" }],
+      [],
+      [{ order_id: "R", product_id: "p-honey", product_name: "Honey", quantity: 2 }],
+      catalog,
+      staff,
+      interval,
+    );
+
+    expect(report.rows[0].orders.products).toEqual([{
+      product_id: "p-honey", product_name: "Honey", packs: 2, kg: 1,
+      delivered_packs: 0, delivered_kg: 0, returned_packs: 2, returned_kg: 1, cancelled_packs: 0, cancelled_kg: 0,
+    }]);
   });
 });

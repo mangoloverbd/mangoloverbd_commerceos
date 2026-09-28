@@ -1,28 +1,38 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, startOfMonth } from "date-fns";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { format } from "date-fns";
+import { motion, useReducedMotion } from "framer-motion";
 import type { DateRange } from "react-day-picker";
 import { Link } from "react-router-dom";
 import {
   CaretDown,
-  CaretRight,
   Funnel,
   WarningCircle,
 } from "@phosphor-icons/react";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { Chip } from "@/components/base/badges/chip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { EChart } from "@/components/business-report/EChart";
+import {
+  ExtraRevenuePanel,
+  LeaderboardPanel,
+  OrderYieldPanel,
+  TeamContributionPanel,
+  TeamFunnelPanel,
+} from "@/components/staff-performance/StaffCharts";
+import { StaffTable } from "@/components/staff-performance/StaffTable";
 import { apiFetch } from "@/lib/api";
 import { useUserRole } from "@/hooks/useUserRole";
+import { sparklineOption } from "@/lib/businessReportCharts";
+import { extraRevenue } from "@/lib/staffPerformanceMetrics";
 import {
   buildStaffPerformanceSnapshot,
+  buildStaffSparks,
   sortStaffPerformanceRows,
-  type StaffMetrics,
   type StaffRow,
+  type StaffSeries,
 } from "@/lib/staffPerformancePresentation";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +48,7 @@ type StaffReportResponse = {
   selected_user_ids: string[];
   rows: StaffRow[];
   missing_weight_products: Array<{ id: string; name: string }>;
+  series: StaffSeries;
 };
 
 function dhakaToday(): Date {
@@ -48,10 +59,6 @@ function dhakaToday(): Date {
 
 function formatTaka(value: number) {
   return `৳${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 0 })}`;
-}
-
-function formatKg(value: number) {
-  return `${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 2 })} kg`;
 }
 
 function formatRate(value: number | null) {
@@ -137,6 +144,7 @@ function SnapshotCard({
   testId,
   delay,
   reduceMotion,
+  spark,
 }: {
   label: string;
   value: string;
@@ -144,224 +152,24 @@ function SnapshotCard({
   testId: string;
   delay: number;
   reduceMotion: boolean | null;
+  spark?: number[];
 }) {
+  const sparkOption = useMemo(() => sparklineOption(spark ?? []), [spark]);
   return (
     <motion.div
       data-testid={testId}
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: reduceMotion ? 0 : delay, duration: 0.35 }}
-      className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
+      className="flex min-h-[92px] flex-col rounded-2xl bg-black/[0.04] px-5 py-3"
     >
       <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{label}</p>
       <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
       <p className="mt-0.5 text-[11px] text-black">{description}</p>
+      {spark && spark.length > 1 && (
+        <EChart option={sparkOption} ariaLabel={`${label} trend`} className="mt-auto h-[30px] w-full" animate={!reduceMotion} />
+      )}
     </motion.div>
-  );
-}
-
-function DetailGroup({
-  title,
-  items,
-}: {
-  title: string;
-  items: Array<{ label: string; value: string }>;
-}) {
-  return (
-    <div className="rounded-xl bg-white p-3">
-      <p className="text-[8px] font-medium uppercase tracking-[0.25em] text-black/60">{title}</p>
-      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
-        {items.map((item) => (
-          <div key={item.label}>
-            <dt className="text-[10px] text-black/55">{item.label}</dt>
-            <dd className="mt-0.5 text-[12px] font-medium tabular-nums text-black">{item.value}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-function StaffPerformanceCard({
-  row,
-  index,
-  reduceMotion,
-}: {
-  row: StaffRow;
-  index: number;
-  reduceMotion: boolean | null;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const metrics = row.orders;
-  const detailsId = `staff-performance-details-${row.user_id}`;
-  const action = expanded ? "Hide" : "Show";
-  const detailGroups: Array<{ title: string; items: Array<{ label: string; value: string }> }> = [
-    {
-      title: "Assigned",
-      items: [
-        { label: "Work", value: formatNumber(metrics.assigned_count) },
-        { label: "Confirmation rate", value: formatRate(metrics.confirmation_rate) },
-      ],
-    },
-    {
-      title: "Confirmed",
-      items: [
-        { label: "Orders", value: formatNumber(metrics.confirmed_count) },
-        { label: "Value", value: formatTaka(metrics.confirmed_value) },
-        { label: "Weight", value: formatKg(metrics.confirmed_kg) },
-        { label: "AOV", value: metrics.average_order_value === null ? "—" : formatTaka(metrics.average_order_value) },
-      ],
-    },
-    {
-      title: "Cancelled",
-      items: [
-        { label: "Orders", value: formatNumber(metrics.cancelled_count) },
-        { label: "Value", value: formatTaka(metrics.cancelled_value) },
-        { label: "Cancellation rate", value: formatRate(metrics.cancellation_rate) },
-      ],
-    },
-    {
-      title: "Delivered",
-      items: [
-        { label: "Orders", value: formatNumber(metrics.delivered_count) },
-        { label: "Value", value: formatTaka(metrics.delivered_value) },
-        { label: "Delivered rate", value: formatRate(metrics.delivered_rate) },
-      ],
-    },
-    {
-      title: "Return / RTO",
-      items: [
-        { label: "Orders", value: formatNumber(metrics.returned_count) },
-        { label: "Value", value: formatTaka(metrics.returned_value) },
-      ],
-    },
-    {
-      title: "Telesales",
-      items: [
-        { label: "Confirmed", value: formatNumber(metrics.telesales_confirmed_count) },
-        { label: "Value", value: formatTaka(metrics.telesales_confirmed_value) },
-        { label: "Weight", value: formatKg(metrics.telesales_confirmed_kg) },
-      ],
-    },
-    {
-      title: "Retained upsell",
-      items: [
-        { label: "Items", value: formatNumber(metrics.retained_upsell_count || 0) },
-        { label: "Value", value: formatTaka(metrics.retained_upsell_value || 0) },
-      ],
-    },
-    {
-      title: "Abandoned carts",
-      items: [
-        { label: "Contacted", value: formatNumber(row.abandoned_checkouts.contacted_count) },
-        { label: "Dismissed", value: formatNumber(row.abandoned_checkouts.dismissed_count) },
-        { label: "Reopened", value: formatNumber(row.abandoned_checkouts.reopened_count) },
-        { label: "Converted", value: formatNumber(row.abandoned_checkouts.converted_count) },
-        { label: "Converted value", value: formatTaka(row.abandoned_checkouts.converted_value) },
-      ],
-    },
-  ];
-
-  return (
-    <motion.article
-      data-testid={`staff-performance-card-${row.user_id}`}
-      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: reduceMotion ? 0 : Math.min(index * 0.04, 0.2), duration: 0.3 }}
-      className="overflow-hidden rounded-2xl bg-black/[0.04] transition-colors hover:bg-black/[0.055]"
-    >
-      <button
-        type="button"
-        aria-label={`${action} details for ${row.display_name}`}
-        aria-expanded={expanded}
-        aria-controls={detailsId}
-        onClick={() => setExpanded((current) => !current)}
-        className="group flex w-full items-start justify-between gap-4 px-5 pb-3 pt-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/25"
-      >
-        <span className="min-w-0">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[15px] font-semibold tracking-tight text-black">
-              {row.display_name}{!row.is_active ? " · Former staff" : ""}
-            </span>
-          </span>
-          <span className="mt-1 block text-[11px] text-black/60">Ranked by confirmed value</span>
-        </span>
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-black/60 transition-colors group-hover:text-black">
-          {expanded ? <CaretDown size={15} weight="light" /> : <CaretRight size={15} weight="light" />}
-        </span>
-      </button>
-
-      <div className="grid grid-cols-3 gap-2 px-5 pb-4">
-        <div>
-          <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Confirmed</p>
-          <p className="mt-1 text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatNumber(metrics.confirmed_count)}</p>
-        </div>
-        <div>
-          <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Rate</p>
-          <p className="mt-1 text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatRate(metrics.confirmation_rate)}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-black/55">Value</p>
-          <p className="mt-1 truncate text-[16px] font-light tabular-nums tracking-[-0.04em] text-black">{formatTaka(metrics.confirmed_value)}</p>
-        </div>
-      </div>
-
-      <div className="mx-5 border-t border-black/[0.08]" />
-      <div className="flex flex-wrap gap-1.5 px-5 py-3">
-        <Chip variant="caption" color="blue" className="gap-1 tabular-nums">Assigned {formatNumber(metrics.assigned_count)}</Chip>
-        <Chip variant="caption" color="lime" className="gap-1 tabular-nums">Delivered {formatNumber(metrics.delivered_count)}</Chip>
-        <Chip variant="caption" color="rose" className="gap-1 tabular-nums">Cancelled {formatNumber(metrics.cancelled_count)}</Chip>
-        <Chip variant="caption" color="yellow" className="gap-1 tabular-nums">RTO {formatNumber(metrics.returned_count)}</Chip>
-        {(metrics.retained_upsell_count || 0) > 0 && (
-          <Chip variant="caption" color="lime" className="gap-1 tabular-nums">Upsell {formatNumber(metrics.retained_upsell_count)}</Chip>
-        )}
-        {(row.abandoned_checkouts.contacted_count + row.abandoned_checkouts.converted_count) > 0 && (
-          <Chip variant="caption" color="soft" className="gap-1 tabular-nums">Cart converted {formatNumber(row.abandoned_checkouts.converted_count)}</Chip>
-        )}
-      </div>
-
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            id={detailsId}
-            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-            transition={{ duration: reduceMotion ? 0 : 0.22, ease: "easeOut" }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-black/[0.08] px-5 py-4">
-              <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Operational detail</p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {detailGroups.map((group) => <DetailGroup key={group.title} {...group} />)}
-              </div>
-
-              <div className="mt-4">
-                <div className="flex items-center gap-2">
-                  <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Confirmed products</p>
-                  <div className="h-px flex-1 bg-black/[0.08]" />
-                </div>
-                {metrics.products.length === 0 ? (
-                  <p className="mt-3 text-[11px] text-black/60">No confirmed product items in this range.</p>
-                ) : (
-                  <div className="mt-3 grid gap-2">
-                    {metrics.products.map((product) => (
-                      <div
-                        key={`${row.user_id}-${product.product_id || product.product_name}`}
-                        className="flex min-w-0 items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5"
-                      >
-                        <span className="truncate text-[11px] font-medium text-black">{product.product_name}</span>
-                        <span className="shrink-0 text-[10px] tabular-nums text-black/60">{formatNumber(product.packs)} packs · {formatKg(product.kg)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.article>
   );
 }
 
@@ -370,7 +178,7 @@ export default function StaffPerformance() {
   const { isAdmin } = useUserRole();
   const defaultRange = useMemo<DateRange>(() => {
     const today = dhakaToday();
-    return { from: startOfMonth(today), to: today };
+    return { from: today, to: today };
   }, []);
   const [dateRange, setDateRange] = useState<DateRange | null>(defaultRange);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -404,6 +212,10 @@ export default function StaffPerformance() {
   const snapshot = useMemo(
     () => buildStaffPerformanceSnapshot(rankedRows),
     [rankedRows],
+  );
+  const sparks = useMemo(
+    () => buildStaffSparks(reportQuery.data?.series.buckets ?? []),
+    [reportQuery.data],
   );
 
   if (reportQuery.isLoading) {
@@ -475,7 +287,7 @@ export default function StaffPerformance() {
             </svg>
           </div>
         )}
-        <div aria-hidden={!isAdmin || undefined} className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", !isAdmin && "blur-[8px] pointer-events-none select-none")}>
+        <div aria-hidden={!isAdmin || undefined} className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-5", !isAdmin && "blur-[8px] pointer-events-none select-none")}>
           <SnapshotCard
             label="Confirmed value"
             value={formatTaka(snapshot.confirmedValue)}
@@ -483,6 +295,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-confirmed-value"
             delay={0.02}
             reduceMotion={reduceMotion}
+            spark={sparks.value}
           />
           <SnapshotCard
             label="Confirmed orders"
@@ -491,14 +304,16 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-confirmed-orders"
             delay={0.06}
             reduceMotion={reduceMotion}
+            spark={sparks.count}
           />
           <SnapshotCard
             label="Confirmation rate"
             value={formatRate(snapshot.confirmationRate)}
-            description="Of assigned work"
+            description="Of handled orders"
             testId="staff-performance-summary-confirmation-rate"
             delay={0.1}
             reduceMotion={reduceMotion}
+            spark={sparks.confirmationRate}
           />
           <SnapshotCard
             label="Delivered rate"
@@ -507,10 +322,30 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-delivered-rate"
             delay={0.14}
             reduceMotion={reduceMotion}
+            spark={sparks.deliveredRate}
+          />
+          <SnapshotCard
+            label="Extra revenue"
+            value={formatTaka(rankedRows.reduce((sum, row) => sum + extraRevenue(row).total, 0))}
+            description="Telesales, upsells and saved carts"
+            testId="staff-performance-summary-extra-revenue"
+            delay={0.18}
+            reduceMotion={reduceMotion}
+            spark={sparks.extra}
           />
         </div>
         </div>
       </motion.div>
+
+      <section className="grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <LeaderboardPanel rows={rankedRows} reduceMotion={reduceMotion} />
+        <OrderYieldPanel rows={rankedRows} reduceMotion={reduceMotion} />
+      </section>
+      <section className="grid gap-3 lg:h-[520px] lg:grid-cols-3">
+        <TeamFunnelPanel rows={rankedRows} reduceMotion={reduceMotion} />
+        <TeamContributionPanel rows={rankedRows} reduceMotion={reduceMotion} />
+        <ExtraRevenuePanel rows={rankedRows} reduceMotion={reduceMotion} />
+      </section>
 
       {data.missing_weight_products.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-y border-amber-500/20 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-950/70">
@@ -527,24 +362,7 @@ export default function StaffPerformance() {
           No staff attribution is available for this range yet.
         </div>
       ) : (
-        <motion.section
-          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: reduceMotion ? 0 : 0.1, duration: 0.4 }}
-          aria-labelledby="team-performance-heading"
-        >
-          <div className="flex items-center gap-2.5 py-3">
-            <h2 id="team-performance-heading" className="font-sf-display text-[15px] font-semibold tracking-normal text-black">Team performance</h2>
-            <div className="h-3.5 w-px bg-black/10" />
-            <span className="text-[13px] tabular-nums text-black/60">{rankedRows.length} staff</span>
-            <span className="hidden text-[11px] text-black/45 sm:inline">Ranked by confirmed value</span>
-          </div>
-          <div className="grid grid-cols-1 gap-3">
-            {rankedRows.map((row, index) => (
-              <StaffPerformanceCard key={row.user_id} row={row} index={index} reduceMotion={reduceMotion} />
-            ))}
-          </div>
-        </motion.section>
+        <StaffTable rows={rankedRows} />
       )}
     </div>
   );

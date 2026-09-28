@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStaffPerformanceSnapshot,
+  buildStaffSparks,
   sortStaffPerformanceRows,
   type AbandonedCartMetrics,
   type StaffMetrics,
@@ -10,8 +11,14 @@ import {
 function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
   return {
     assigned_count: 0,
+    handled_count: 0,
+    handled_confirmed_count: 0, handled_confirmed_value: 0, handled_confirmed_kg: 0, handled_cancelled_count: 0, handled_cancelled_value: 0,
+    handled_delivered_count: 0, handled_delivered_value: 0, handled_returned_count: 0, handled_returned_value: 0,
     confirmed_count: 0,
     confirmed_assigned_count: 0,
+    confirmed_assigned_delivered_count: 0,
+    confirmed_assigned_returned_count: 0,
+    confirmed_assigned_cancelled_count: 0,
     confirmed_value: 0,
     confirmed_kg: 0,
     confirmation_rate: null,
@@ -28,6 +35,8 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
     telesales_confirmed_count: 0,
     telesales_confirmed_value: 0,
     telesales_confirmed_kg: 0,
+    retained_upsell_count: 0,
+    retained_upsell_value: 0,
     products: [],
     ...overrides,
   };
@@ -76,27 +85,33 @@ describe("staff performance presentation", () => {
     expect(rows.map((row) => row.display_name)).toEqual(["Zara", "Asha", "Rafi"]);
   });
 
-  it("weights team confirmation and delivery rates from regular-order totals", () => {
+  it("weights team confirmation over handled orders and delivery over confirmed orders", () => {
     const snapshot = buildStaffPerformanceSnapshot([
       makeRow({
-        assigned_count: 2,
-        confirmed_assigned_count: 2,
-        confirmed_count: 2,
-        delivered_count: 2,
+        // Assigned and per-activity counters must not drive the rates.
+        assigned_count: 100,
+        confirmed_assigned_count: 1,
+        confirmed_count: 3,
+        delivered_count: 9,
+        handled_count: 2,
+        handled_confirmed_count: 1,
+        handled_delivered_count: 1,
         confirmed_value: 2400,
       }),
       makeRow({
-        assigned_count: 8,
-        confirmed_assigned_count: 4,
-        confirmed_count: 4,
-        delivered_count: 1,
+        confirmed_count: 5,
+        delivered_count: 9,
+        handled_count: 8,
+        handled_confirmed_count: 5,
+        handled_delivered_count: 2,
         confirmed_value: 1200,
       }),
     ]);
 
+    // confirmation = (1 + 5) / (2 + 8) = 0.6; delivered = (1 + 2) / (1 + 5) = 0.5
     expect(snapshot).toEqual({
       confirmedValue: 3600,
-      confirmedCount: 6,
+      confirmedCount: 8,
       confirmationRate: 0.6,
       deliveredRate: 0.5,
     });
@@ -109,5 +124,40 @@ describe("staff performance presentation", () => {
       confirmationRate: null,
       deliveredRate: null,
     });
+  });
+});
+
+describe("buildStaffSparks", () => {
+  const bucket = (handled: number, confirmed: number, delivered: number, extra: number) => ({
+    key: "k",
+    label: "l",
+    confirmed_count: confirmed,
+    confirmed_value: confirmed * 100,
+    handled_count: handled,
+    handled_confirmed_count: confirmed,
+    handled_delivered_count: delivered,
+    extra_value: extra,
+  });
+
+  it("derives per-bucket rates and carries the last rate over empty buckets", () => {
+    const sparks = buildStaffSparks([
+      bucket(0, 0, 0, 0),
+      bucket(4, 2, 1, 300),
+      bucket(0, 0, 0, 0),
+      bucket(5, 5, 5, 50),
+    ]);
+
+    expect(sparks.value).toEqual([0, 200, 0, 500]);
+    expect(sparks.count).toEqual([0, 2, 0, 5]);
+    expect(sparks.confirmationRate).toEqual([0.5, 0.5, 0.5, 1]);
+    expect(sparks.deliveredRate).toEqual([0.5, 0.5, 0.5, 1]);
+    expect(sparks.extra).toEqual([0, 300, 0, 50]);
+  });
+
+  it("returns no rate points when no bucket has a denominator", () => {
+    const sparks = buildStaffSparks([bucket(0, 0, 0, 0), bucket(0, 0, 0, 0)]);
+
+    expect(sparks.confirmationRate).toEqual([]);
+    expect(sparks.deliveredRate).toEqual([]);
   });
 });

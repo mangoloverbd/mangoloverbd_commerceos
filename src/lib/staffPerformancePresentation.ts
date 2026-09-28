@@ -3,12 +3,33 @@ export type ProductDetail = {
   product_name: string;
   packs: number;
   kg: number;
+  delivered_packs: number;
+  delivered_kg: number;
+  returned_packs: number;
+  returned_kg: number;
+  cancelled_packs: number;
+  cancelled_kg: number;
 };
 
 export type StaffMetrics = {
   assigned_count: number;
+  // Handled basis: each regular order the member confirmed or cancelled,
+  // counted once and classified by their last action on it.
+  handled_count: number;
+  handled_confirmed_count: number;
+  handled_confirmed_value: number;
+  handled_confirmed_kg: number;
+  handled_cancelled_count: number;
+  handled_cancelled_value: number;
+  handled_delivered_count: number;
+  handled_delivered_value: number;
+  handled_returned_count: number;
+  handled_returned_value: number;
   confirmed_count: number;
   confirmed_assigned_count: number;
+  confirmed_assigned_delivered_count: number;
+  confirmed_assigned_returned_count: number;
+  confirmed_assigned_cancelled_count: number;
   confirmed_value: number;
   confirmed_kg: number;
   confirmation_rate: number | null;
@@ -57,9 +78,9 @@ export type StaffPerformanceSnapshot = {
 type RegularOrderTotals = {
   confirmedValue: number;
   confirmedCount: number;
-  assignedCount: number;
-  confirmedAssignedCount: number;
-  deliveredCount: number;
+  handledCount: number;
+  handledConfirmedCount: number;
+  handledDeliveredCount: number;
 };
 
 function numberOrZero(value: number) {
@@ -70,25 +91,25 @@ export function buildStaffPerformanceSnapshot(rows: StaffRow[]): StaffPerformanc
   const totals = rows.reduce<RegularOrderTotals>((current, row) => ({
     confirmedValue: current.confirmedValue + numberOrZero(row.orders.confirmed_value),
     confirmedCount: current.confirmedCount + numberOrZero(row.orders.confirmed_count),
-    assignedCount: current.assignedCount + numberOrZero(row.orders.assigned_count),
-    confirmedAssignedCount: current.confirmedAssignedCount + numberOrZero(row.orders.confirmed_assigned_count),
-    deliveredCount: current.deliveredCount + numberOrZero(row.orders.delivered_count),
+    handledCount: current.handledCount + numberOrZero(row.orders.handled_count),
+    handledConfirmedCount: current.handledConfirmedCount + numberOrZero(row.orders.handled_confirmed_count),
+    handledDeliveredCount: current.handledDeliveredCount + numberOrZero(row.orders.handled_delivered_count),
   }), {
     confirmedValue: 0,
     confirmedCount: 0,
-    assignedCount: 0,
-    confirmedAssignedCount: 0,
-    deliveredCount: 0,
+    handledCount: 0,
+    handledConfirmedCount: 0,
+    handledDeliveredCount: 0,
   });
 
   return {
     confirmedValue: totals.confirmedValue,
     confirmedCount: totals.confirmedCount,
-    confirmationRate: totals.assignedCount > 0
-      ? totals.confirmedAssignedCount / totals.assignedCount
+    confirmationRate: totals.handledCount > 0
+      ? totals.handledConfirmedCount / totals.handledCount
       : null,
-    deliveredRate: totals.confirmedCount > 0
-      ? totals.deliveredCount / totals.confirmedCount
+    deliveredRate: totals.handledConfirmedCount > 0
+      ? totals.handledDeliveredCount / totals.handledConfirmedCount
       : null,
   };
 }
@@ -98,4 +119,52 @@ export function sortStaffPerformanceRows(rows: StaffRow[]): StaffRow[] {
     numberOrZero(right.orders.confirmed_value) - numberOrZero(left.orders.confirmed_value)
     || left.display_name.localeCompare(right.display_name)
   ));
+}
+
+export type StaffSeriesBucket = {
+  key: string;
+  label: string;
+  confirmed_count: number;
+  confirmed_value: number;
+  handled_count: number;
+  handled_confirmed_count: number;
+  handled_delivered_count: number;
+  extra_value: number;
+};
+
+export type StaffSeries = {
+  granularity: "hour" | "day";
+  buckets: StaffSeriesBucket[];
+};
+
+export type StaffSparks = {
+  value: number[];
+  count: number[];
+  confirmationRate: number[];
+  deliveredRate: number[];
+  extra: number[];
+};
+
+// A bucket with no denominator has no rate; it takes the previous bucket's rate
+// (or the first known one) so the line holds level instead of dropping to 0%.
+function rateSpark(buckets: StaffSeriesBucket[], rate: (bucket: StaffSeriesBucket) => number | null): number[] {
+  const rates = buckets.map(rate);
+  const first = rates.find((value) => value !== null);
+  if (first === undefined || first === null) return [];
+  let previous = first;
+  return rates.map((value) => (previous = value ?? previous));
+}
+
+export function buildStaffSparks(buckets: StaffSeriesBucket[]): StaffSparks {
+  return {
+    value: buckets.map((bucket) => bucket.confirmed_value),
+    count: buckets.map((bucket) => bucket.confirmed_count),
+    confirmationRate: rateSpark(buckets, (bucket) => (
+      bucket.handled_count > 0 ? bucket.handled_confirmed_count / bucket.handled_count : null
+    )),
+    deliveredRate: rateSpark(buckets, (bucket) => (
+      bucket.handled_confirmed_count > 0 ? bucket.handled_delivered_count / bucket.handled_confirmed_count : null
+    )),
+    extra: buckets.map((bucket) => bucket.extra_value),
+  };
 }
