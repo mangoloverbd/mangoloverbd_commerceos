@@ -324,51 +324,11 @@ describe("BusinessReport", () => {
     expect(await screen.findByTestId("business-report-summary-intake")).not.toHaveTextContent("vs previous period");
   });
 
-  it("keeps source outcomes and fee coverage visible, then expands Website landing pages", async () => {
-    const user = userEvent.setup();
-    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
-
-    renderPage();
-
-    const website = await screen.findByTestId("business-report-source-website");
-    expect(within(website).getByText("Intake 2")).toBeInTheDocument();
-    expect(within(website).getByText("Approved 1")).toBeInTheDocument();
-    expect(within(website).getByText("Cancelled 1")).toBeInTheDocument();
-    expect(within(website).getByText("RTO 0")).toBeInTheDocument();
-    expect(within(website).getByText("Pending 0")).toBeInTheDocument();
-    expect(within(website).getByText("Courier fee coverage: 1 of 2 orders")).toBeInTheDocument();
-    expect(within(website).getByText("Approved 1")).toHaveClass("bg-status-lime-background");
-    expect(within(website).getByText("Cancelled 1")).toHaveClass("bg-status-rose-background");
-    expect(within(website).getByText("RTO 0")).toHaveClass("bg-status-yellow-background");
-    expect(within(website).getByText("Intake 2")).toHaveClass("bg-status-blue-background");
-
-    await user.click(within(website).getByRole("button", { name: "Show details for Website" }));
-
-    expect(within(website).getByRole("button", { name: "Hide details for Website" })).toBeInTheDocument();
-    expect(within(website).getByText("Landing pages")).toBeInTheDocument();
-    expect(within(website).getByText("/step/katimon-mango")).toBeInTheDocument();
-    expect(within(website).getByText("Other website")).toBeInTheDocument();
-    expect(within(website).getByText("Fee coverage")).toBeInTheDocument();
-  });
-
-  it("shows kg totals in the summary, source breakdown, and landing pages", async () => {
-    const user = userEvent.setup();
+  it("shows kg totals in the summary", async () => {
     const base = reportResponse();
-    const website = base.sources[0];
     apiFetchMock.mockResolvedValue(jsonResponse({
       ...base,
       summary: { ...base.summary, order_kg: 12.5, approved_kg: 5, cancelled_kg: 2.5, weight_order_count: 3 },
-      sources: [
-        {
-          ...website,
-          order_kg: 7.5,
-          approved_kg: 5,
-          cancelled_kg: 2.5,
-          weight_order_count: 2,
-          landing_pages: [{ ...website.landing_pages[0], order_kg: 5 }, website.landing_pages[1]],
-        },
-        base.sources[1],
-      ],
     }));
 
     renderPage();
@@ -377,38 +337,78 @@ describe("BusinessReport", () => {
     expect(weight).toHaveTextContent("12.5 kg");
     expect(weight).toHaveTextContent("Recorded on 3 of 4 orders");
     expect(screen.getByTestId("business-report-summary-approved")).toHaveTextContent("5 kg");
-
-    const card = screen.getByTestId("business-report-source-website");
-    expect(within(card).getByText("7.5 kg")).toBeInTheDocument();
-    expect(within(card).getByText("Approved 1 · 5 kg")).toBeInTheDocument();
-    expect(within(card).getByText("Cancelled 1 · 2.5 kg")).toBeInTheDocument();
-    expect(within(card).getByText("Weight recorded: 2 of 2 orders")).toBeInTheDocument();
-
-    await user.click(within(card).getByRole("button", { name: "Show details for Website" }));
-    expect(within(card).getByText("Weight by outcome")).toBeInTheDocument();
-    expect(within(card).getByText("1 orders · ৳1,000 · 5 kg")).toBeInTheDocument();
   });
 
-  it("shows product packs and kg inside each source", async () => {
-    const user = userEvent.setup();
-    const outcomeDefaults = { cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0 };
-    const himsagar = { ...outcomeDefaults, product_id: "p-1", product_name: "Himsagar", packs: 4, kg: 25, approved_packs: 3, approved_kg: 20, cancelled_packs: 1, cancelled_kg: 5, order_count: 2 };
-    const langra = { ...outcomeDefaults, product_id: "p-2", product_name: "Langra", packs: 3, kg: 0, approved_packs: 3, approved_kg: 0, order_count: 1 };
-    const base = reportResponse();
-    apiFetchMock.mockResolvedValue(jsonResponse({
-      ...base,
-      products: [himsagar, langra],
-      missing_weight_products: [{ id: "p-2", name: "Langra" }],
-      sources: [{ ...base.sources[0], products: [himsagar] }, base.sources[1]],
-    }));
+  it("compares sources in a table with rates and flags the weaker source", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
 
     renderPage();
 
-    const website = await screen.findByTestId("business-report-source-website");
-    expect(within(website).queryByText("Himsagar")).not.toBeInTheDocument();
-    await user.click(within(website).getByRole("button", { name: "Show details for Website" }));
-    expect(within(website).getByText("Himsagar")).toBeInTheDocument();
-    expect(within(website).getByText("4 packs · 25 kg")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    const website = within(table).getByTestId("business-report-source-website");
+    const manual = within(table).getByTestId("business-report-source-manual_other");
+    expect(within(website).getByText("50%")).toBeInTheDocument(); // approval 1 of 2
+    expect(within(website).getByText("28.6%")).toBeInTheDocument(); // loss 400 of 1,400
+    expect(within(manual).getByText("0%")).toBeInTheDocument(); // approval 0 of 2 → flagged
+    expect(within(manual).getByText("0%")).toHaveAttribute("data-flag", "worse");
+    expect(within(manual).getByText("−৳25")).toBeInTheDocument(); // net −50 over 2 orders
+    expect(screen.getByText("Courier fees recorded on 3 of 4 orders · weight on 0 of 4")).toBeInTheDocument();
+  });
+
+  it("sorts sources when a column header is clicked", async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    const firstSource = () => within(table).getAllByTestId(/^business-report-source-/)[0];
+    expect(firstSource()).toHaveAttribute("data-testid", "business-report-source-website"); // default: order value desc
+
+    await user.click(within(table).getByRole("button", { name: /^Loss/ }));
+    expect(firstSource()).toHaveAttribute("data-testid", "business-report-source-manual_other"); // 70% loss first
+  });
+
+  it("expands a source to show landing pages and products by outcome with kg", async () => {
+    const user = userEvent.setup();
+    const outcomeDefaults = { pending_packs: 0, pending_kg: 0 };
+    const himsagar = { ...outcomeDefaults, product_id: "p-1", product_name: "Himsagar", packs: 4, kg: 20, approved_packs: 3, approved_kg: 18, cancelled_packs: 1, cancelled_kg: 2, returned_packs: 0, returned_kg: 0, order_count: 2 };
+    const fazli = { ...outcomeDefaults, product_id: "p-2", product_name: "Fazli", packs: 2, kg: 10, approved_packs: 1, approved_kg: 6, cancelled_packs: 0, cancelled_kg: 1, returned_packs: 1, returned_kg: 3, order_count: 2 };
+    const base = reportResponse();
+    apiFetchMock.mockResolvedValue(jsonResponse({ ...base, sources: [{ ...base.sources[0], products: [himsagar, fazli] }, base.sources[1]] }));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    expect(within(table).queryByRole("table", { name: "Website products by outcome" })).not.toBeInTheDocument();
+
+    await user.click(within(table).getByRole("button", { name: "Show products for Website" }));
+
+    expect(within(table).getByRole("button", { name: "Hide products for Website" })).toHaveAttribute("aria-expanded", "true");
+    expect(within(table).getByText("/step/katimon-mango")).toBeInTheDocument();
+    const products = within(table).getByRole("table", { name: "Website products by outcome" });
+    const fazliRow = within(products).getByRole("row", { name: /Fazli/ });
+    expect(within(fazliRow).getByText("10 kg")).toBeInTheDocument();
+    expect(within(fazliRow).getByText("6")).toBeInTheDocument(); // approved kg
+    expect(within(fazliRow).getByText("3")).toBeInTheDocument(); // RTO kg
+    expect(within(fazliRow).getByText("40%")).toHaveAttribute("data-flag", "worse"); // loss 4/10 = 40% vs all products 6/30 = 20%
+    const himsagarRow = within(products).getByRole("row", { name: /Himsagar/ });
+    expect(himsagarRow.querySelector("[data-flag]")).toBeNull(); // loss 2/20 = 10%, not flagged
+    expect(within(products).getByRole("row", { name: /All products/ })).toHaveTextContent("30 kg");
+  });
+
+  it("expands and collapses every source at once", async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    await user.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(within(table).getByRole("button", { name: "Hide products for Website" })).toBeInTheDocument();
+    expect(within(table).getByRole("button", { name: "Hide products for Manual / Other" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(within(table).getByRole("button", { name: "Show products for Website" })).toBeInTheDocument();
   });
 
   it("removes date parameters when the user chooses All Time", async () => {
