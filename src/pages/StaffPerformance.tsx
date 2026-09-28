@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, startOfMonth } from "date-fns";
+import { format } from "date-fns";
 import { motion, useReducedMotion } from "framer-motion";
 import type { DateRange } from "react-day-picker";
 import { Link } from "react-router-dom";
@@ -29,6 +29,7 @@ import { sparklineOption } from "@/lib/businessReportCharts";
 import { extraRevenue } from "@/lib/staffPerformanceMetrics";
 import {
   buildStaffPerformanceSnapshot,
+  buildStaffSparks,
   sortStaffPerformanceRows,
   type StaffRow,
   type StaffSeries,
@@ -177,7 +178,7 @@ export default function StaffPerformance() {
   const { isAdmin } = useUserRole();
   const defaultRange = useMemo<DateRange>(() => {
     const today = dhakaToday();
-    return { from: startOfMonth(today), to: today };
+    return { from: today, to: today };
   }, []);
   const [dateRange, setDateRange] = useState<DateRange | null>(defaultRange);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
@@ -212,12 +213,8 @@ export default function StaffPerformance() {
     () => buildStaffPerformanceSnapshot(rankedRows),
     [rankedRows],
   );
-  const valueSpark = useMemo(
-    () => reportQuery.data?.series.buckets.map((bucket) => bucket.confirmed_value) ?? [],
-    [reportQuery.data],
-  );
-  const countSpark = useMemo(
-    () => reportQuery.data?.series.buckets.map((bucket) => bucket.confirmed_count) ?? [],
+  const sparks = useMemo(
+    () => buildStaffSparks(reportQuery.data?.series.buckets ?? []),
     [reportQuery.data],
   );
 
@@ -298,7 +295,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-confirmed-value"
             delay={0.02}
             reduceMotion={reduceMotion}
-            spark={valueSpark}
+            spark={sparks.value}
           />
           <SnapshotCard
             label="Confirmed orders"
@@ -307,7 +304,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-confirmed-orders"
             delay={0.06}
             reduceMotion={reduceMotion}
-            spark={countSpark}
+            spark={sparks.count}
           />
           <SnapshotCard
             label="Confirmation rate"
@@ -316,6 +313,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-confirmation-rate"
             delay={0.1}
             reduceMotion={reduceMotion}
+            spark={sparks.confirmationRate}
           />
           <SnapshotCard
             label="Delivered rate"
@@ -324,6 +322,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-delivered-rate"
             delay={0.14}
             reduceMotion={reduceMotion}
+            spark={sparks.deliveredRate}
           />
           <SnapshotCard
             label="Extra revenue"
@@ -332,6 +331,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-extra-revenue"
             delay={0.18}
             reduceMotion={reduceMotion}
+            spark={sparks.extra}
           />
         </div>
         </div>

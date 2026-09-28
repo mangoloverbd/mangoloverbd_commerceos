@@ -1,9 +1,11 @@
 import type { EChartsCoreOption } from "@/lib/echarts";
 import { CHART, OUTCOME_COLORS } from "@/components/business-report/chartTheme";
 import { escapeHtml } from "@/lib/businessReportCharts";
-import { extraRevenue, type StaffTableRow, type YieldKey } from "@/lib/staffPerformanceMetrics";
+import type { StaffTableRow, YieldKey } from "@/lib/staffPerformanceMetrics";
 
 export const LEADERBOARD_LIMIT = 8;
+// Mango accent for the #1 bar; kept off the outcome palette used by the yield chart.
+export const LEADERBOARD_HIGHLIGHT = "#F2A93B";
 const YIELD_ROW_HEIGHT = 34;
 
 export function yieldChartHeight(memberCount: number): number {
@@ -64,9 +66,8 @@ export function leaderboardOption(rows: StaffTableRow[]): EChartsCoreOption {
       data: ranked.map((item, index) => ({
         value: item.value,
         itemStyle: {
-          color: index === 0 ? CHART.ink : CHART.greys[3],
+          color: index === 0 ? LEADERBOARD_HIGHLIGHT : CHART.greys[3],
           borderRadius: [10, 10, 10, 10],
-          ...(index === 0 ? { shadowBlur: 16, shadowColor: CHART.ink3 } : {}),
         },
       })),
       label: {
@@ -148,48 +149,6 @@ export function yieldOption(rows: StaffTableRow[], teamDeliveredShare: number | 
           fontWeight: 500,
           formatter: (params: { dataIndex: number }) => `${ordered[params.dataIndex].deliveredShare.toFixed(1)}%`,
         },
-      } : {}),
-    })),
-  };
-}
-
-export function extraRevenueOption(rows: StaffTableRow[]): EChartsCoreOption {
-  const ordered = rows.filter((item) => item.extra > 0).sort((a, b) => a.extra - b.extra);
-  const parts = ordered.map((item) => extraRevenue(item.row));
-  const stack = [
-    { name: "Telesales", color: CHART.greys[0], pick: (index: number) => parts[index].telesales },
-    { name: "Upsell kept", color: CHART.greys[2], pick: (index: number) => parts[index].upsell },
-    { name: "Carts converted", color: CHART.greys[3], pick: (index: number) => parts[index].carts },
-  ];
-  return {
-    grid: { left: 64, right: 64, top: 4, bottom: 4 },
-    tooltip: tooltip({
-      trigger: "axis",
-      axisPointer: { type: "none" },
-      formatter: (params: Array<{ dataIndex: number }>) => {
-        const index = params[0].dataIndex;
-        const item = ordered[index];
-        return `<b>${escapeHtml(item.name)}</b> · ${taka(item.extra)}<br>`
-          + stack.map((entry) => `${entry.name} ${taka(entry.pick(index))}`).join("<br>");
-      },
-    }),
-    xAxis: { type: "value", show: false },
-    yAxis: {
-      type: "category",
-      data: ordered.map((item) => item.name),
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: CHART.ink, fontSize: 12, overflow: "truncate", width: 58 },
-    },
-    series: stack.map((entry, index) => ({
-      name: entry.name,
-      type: "bar",
-      stack: "extra",
-      barWidth: 14,
-      data: ordered.map((_, rowIndex) => entry.pick(rowIndex)),
-      itemStyle: { color: entry.color, borderRadius: index === 0 ? [3, 0, 0, 3] : index === 2 ? [0, 3, 3, 0] : 0 },
-      ...(index === 2 ? {
-        label: { show: true, position: "right", color: CHART.ink2, fontSize: 11, formatter: (params: { dataIndex: number }) => taka(ordered[params.dataIndex].extra) },
       } : {}),
     })),
   };

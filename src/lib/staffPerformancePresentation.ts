@@ -126,9 +126,45 @@ export type StaffSeriesBucket = {
   label: string;
   confirmed_count: number;
   confirmed_value: number;
+  handled_count: number;
+  handled_confirmed_count: number;
+  handled_delivered_count: number;
+  extra_value: number;
 };
 
 export type StaffSeries = {
   granularity: "hour" | "day";
   buckets: StaffSeriesBucket[];
 };
+
+export type StaffSparks = {
+  value: number[];
+  count: number[];
+  confirmationRate: number[];
+  deliveredRate: number[];
+  extra: number[];
+};
+
+// A bucket with no denominator has no rate; it takes the previous bucket's rate
+// (or the first known one) so the line holds level instead of dropping to 0%.
+function rateSpark(buckets: StaffSeriesBucket[], rate: (bucket: StaffSeriesBucket) => number | null): number[] {
+  const rates = buckets.map(rate);
+  const first = rates.find((value) => value !== null);
+  if (first === undefined || first === null) return [];
+  let previous = first;
+  return rates.map((value) => (previous = value ?? previous));
+}
+
+export function buildStaffSparks(buckets: StaffSeriesBucket[]): StaffSparks {
+  return {
+    value: buckets.map((bucket) => bucket.confirmed_value),
+    count: buckets.map((bucket) => bucket.confirmed_count),
+    confirmationRate: rateSpark(buckets, (bucket) => (
+      bucket.handled_count > 0 ? bucket.handled_confirmed_count / bucket.handled_count : null
+    )),
+    deliveredRate: rateSpark(buckets, (bucket) => (
+      bucket.handled_confirmed_count > 0 ? bucket.handled_delivered_count / bucket.handled_confirmed_count : null
+    )),
+    extra: buckets.map((bucket) => bucket.extra_value),
+  };
+}

@@ -1004,9 +1004,46 @@ describe("buildStaffReport assigned outcomes and series", () => {
 
     expect(report.series.granularity).toBe("hour");
     expect(report.series.buckets).toHaveLength(24);
-    expect(report.series.buckets[9]).toEqual({ key: "2026-09-18-9", label: "9a", confirmed_count: 2, confirmed_value: 1500 });
+    expect(report.series.buckets[9]).toMatchObject({ key: "2026-09-18-9", label: "9a", confirmed_count: 2, confirmed_value: 1500 });
     expect(report.series.buckets[21]).toMatchObject({ label: "9p", confirmed_count: 1, confirmed_value: 700 });
     expect(report.series.buckets[0]).toMatchObject({ label: "12a", confirmed_count: 0 });
+  });
+
+  it("buckets handled outcomes and extra revenue by Dhaka hour", () => {
+    const interval = toDhakaInterval("2026-09-18", "2026-09-18");
+    const report = buildStaffReport(
+      [
+        // 09:xx Dhaka: one telesales confirm (delivered), one plain confirm, one cancel.
+        { id: "t1", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:10:00.000Z", price: 1000, source: "telesales", courier_status: "delivered" },
+        { id: "c2", confirmed_by: TEAM_MEMBER_ID, confirmed_at: "2026-09-18T03:20:00.000Z", price: 500 },
+        { id: "x3", cancelled_by: TEAM_MEMBER_ID, cancelled_at: "2026-09-18T03:30:00.000Z", price: 400 },
+      ],
+      [], [], [], staff,
+      {
+        ...withRange(interval),
+        abandonedActivities: [
+          { actor_id: TEAM_MEMBER_ID, action: "converted", value: 300, occurred_at: "2026-09-18T15:00:00.000Z" }, // 21:00 Dhaka
+        ],
+        upsellActivities: [{
+          id: "u1",
+          order_id: "c2",
+          actor_id: TEAM_MEMBER_ID,
+          created_at: "2026-09-18T15:30:00.000Z", // 21:30 Dhaka
+          changes: [{ item_key: "i1", addition_reason: "upsell", quantity_delta: 1, amount_delta: 200 }],
+        }],
+      },
+    );
+
+    expect(report.series.buckets[9]).toMatchObject({
+      confirmed_count: 2,
+      confirmed_value: 1500,
+      handled_count: 3,
+      handled_confirmed_count: 2,
+      handled_delivered_count: 1,
+      extra_value: 1000,
+    });
+    expect(report.series.buckets[21]).toMatchObject({ confirmed_count: 0, handled_count: 0, extra_value: 500 });
+    expect(report.series.buckets[0]).toMatchObject({ handled_count: 0, handled_confirmed_count: 0, handled_delivered_count: 0, extra_value: 0 });
   });
 
   it("fills every day of a bounded multi-day range", () => {

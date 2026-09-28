@@ -173,11 +173,11 @@ describe("StaffPerformance", () => {
     expect(screen.getByTestId("staff-performance-summary-confirmed-value").parentElement).not.toHaveClass("blur-[8px]");
   });
 
-  it("shows the extra revenue tile and sparklines on the value and count tiles", async () => {
+  it("shows the extra revenue tile and a sparkline on every summary tile", async () => {
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
       series: { granularity: "day", buckets: [
-        { key: "2026-09-17", label: "Sep 17", confirmed_count: 1, confirmed_value: 500 },
-        { key: "2026-09-18", label: "Sep 18", confirmed_count: 2, confirmed_value: 900 },
+        { key: "2026-09-17", label: "Sep 17", confirmed_count: 1, confirmed_value: 500, handled_count: 2, handled_confirmed_count: 1, handled_delivered_count: 1, extra_value: 200 },
+        { key: "2026-09-18", label: "Sep 18", confirmed_count: 2, confirmed_value: 900, handled_count: 2, handled_confirmed_count: 2, handled_delivered_count: 1, extra_value: 0 },
       ] },
     })));
 
@@ -186,7 +186,9 @@ describe("StaffPerformance", () => {
     const extra = await screen.findByTestId("staff-performance-summary-extra-revenue");
     expect(extra).toHaveTextContent("৳2,400"); // Rafi and Nadia each have telesales ৳1,200 in the default fixture; no upsell or carts
     expect(within(screen.getByTestId("staff-performance-summary-confirmed-value")).getByRole("img", { name: "Confirmed value trend" })).toBeInTheDocument();
-    expect(within(screen.getByTestId("staff-performance-summary-confirmation-rate")).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("staff-performance-summary-confirmation-rate")).getByRole("img", { name: "Confirmation rate trend" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("staff-performance-summary-delivered-rate")).getByRole("img", { name: "Delivered rate trend" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("staff-performance-summary-extra-revenue")).getByRole("img", { name: "Extra revenue trend" })).toBeInTheDocument();
   });
 
   it("renders the leaderboard, order yield, funnel, contribution and extra revenue panels", async () => {
@@ -223,6 +225,41 @@ describe("StaffPerformance", () => {
     expect(within(row).getByRole("region", { name: "Telesales, upsells and saved carts" })).toHaveClass("lg:h-full");
     expect(funnel).toHaveClass("lg:h-full");
     expect(within(funnel).getByRole("list", { name: "Confirmation rate by staff" })).toHaveClass("overflow-y-auto");
+  });
+
+  it("lists extra revenue per member, largest first, under a per-source summary", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [
+        reportRow({ orders: metrics({ telesales_confirmed_value: 3000, retained_upsell_value: 500 }) }),
+        reportRow({ user_id: NadiaId, display_name: "Nadia", orders: metrics({ telesales_confirmed_value: 0 }), abandoned_checkouts: { contacted_count: 0, dismissed_count: 0, reopened_count: 0, converted_count: 1, converted_value: 800 } }),
+      ],
+    })));
+
+    renderPage();
+
+    const panel = await screen.findByRole("region", { name: "Telesales, upsells and saved carts" });
+    const summary = within(panel).getByRole("list", { name: "Extra revenue by source" });
+    expect(within(summary).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Telesales৳3,000",
+      "Upsell kept৳500",
+      "Carts converted৳800",
+    ]);
+    const members = within(panel).getByRole("list", { name: "Extra revenue by staff" });
+    expect(within(members).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Rafi৳3,500", "Nadia৳800"]);
+    expect(members).toHaveClass("overflow-y-auto");
+  });
+
+  it("keeps funnel labels on one line and shows a zero count beside its empty bar", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [reportRow({ orders: metrics({ handled_count: 10, handled_confirmed_count: 9, handled_delivered_count: 0, handled_returned_count: 0 }) })],
+    })));
+
+    renderPage();
+
+    const funnel = await screen.findByRole("region", { name: "From handled to delivered" });
+    expect(within(funnel).getByText("Confirmed, not cancelled")).toHaveClass("whitespace-nowrap");
+    const delivered = within(funnel).getByTestId("staff-funnel-step-delivered");
+    expect(within(delivered).getByText("0")).toHaveClass("text-black");
   });
 
   it("keeps the charts visible to team members while the tiles stay blurred", async () => {
@@ -503,6 +540,18 @@ describe("StaffPerformance", () => {
         expect.stringContaining(`users=${RafiId}`),
       );
     });
+  });
+
+  it("defaults the report to today", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Staff Performance" });
+    const firstUrl = String(vi.mocked(apiFetch).mock.calls[0][0]);
+    const params = new URL(firstUrl, "http://local").searchParams;
+    expect(params.get("from")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(params.get("to")).toBe(params.get("from"));
   });
 
   it("removes date parameters when the date picker switches to all time", async () => {

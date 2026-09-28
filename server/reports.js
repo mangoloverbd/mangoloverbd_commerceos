@@ -173,6 +173,7 @@ export function calculateRetainedUpsells(events = [], {
   since = null,
   until = null,
   terminalLossOrderIds = new Set(),
+  onRetainedLot = null,
 } = {}) {
   const selected = new Set(selectedActorIds);
   const totals = new Map([...selected].map((actorId) => [actorId, { count: 0, value: 0 }]));
@@ -216,7 +217,7 @@ export function calculateRetainedUpsells(events = [], {
       if (change?.addition_reason === "upsell" && quantityDelta > 0 && event?.actor_id && inRange) {
         const key = `${event.order_id}:${itemKey || "unknown"}`;
         const lots = lotsByItem.get(key) || [];
-        lots.push({ actorId: event.actor_id, quantity: quantityDelta, value: Math.max(0, activityNumber(change?.amount_delta)) });
+        lots.push({ actorId: event.actor_id, quantity: quantityDelta, value: Math.max(0, activityNumber(change?.amount_delta)), occurredAt: event.created_at });
         lotsByItem.set(key, lots);
         continue;
       }
@@ -260,6 +261,7 @@ export function calculateRetainedUpsells(events = [], {
       total.count += lot.quantity;
       total.value += lot.value;
       totals.set(lot.actorId, total);
+      onRetainedLot?.(lot);
     }
   }
   for (const actorId of [...totals.keys()]) {
@@ -486,22 +488,35 @@ function dayLabel(day) {
   return dayLabelFormatter.format(new Date(`${day}T00:00:00Z`));
 }
 
+const SERIES_FIELDS = [
+  "confirmed_count",
+  "confirmed_value",
+  "handled_count",
+  "handled_confirmed_count",
+  "handled_delivered_count",
+  "extra_value",
+];
+
 function createSeriesBucket(key, label) {
-  return { key, label, confirmed_count: 0, confirmed_value: 0 };
+  const bucket = { key, label };
+  for (const field of SERIES_FIELDS) bucket[field] = 0;
+  return bucket;
 }
 
+// Each point is { day, hour, ...increments } where increments add to SERIES_FIELDS.
 function buildConfirmationSeries(points, range) {
   const byDay = new Map();
   const byDayHour = new Map();
+  const addTo = (bucket, point) => {
+    for (const field of SERIES_FIELDS) bucket[field] += point[field] || 0;
+  };
   for (const point of points) {
     const day = byDay.get(point.day) || createSeriesBucket(point.day, dayLabel(point.day));
-    day.confirmed_count += 1;
-    day.confirmed_value += point.value;
+    addTo(day, point);
     byDay.set(point.day, day);
     const key = `${point.day}-${point.hour}`;
     const hour = byDayHour.get(key) || createSeriesBucket(key, hourLabel(point.hour));
-    hour.confirmed_count += 1;
-    hour.confirmed_value += point.value;
+    addTo(hour, point);
     byDayHour.set(key, hour);
   }
   if (range?.from && range?.to && range.from === range.to) {
@@ -555,10 +570,16 @@ export function buildStaffReport(
     abandoned_checkouts: emptyAbandonedMetrics(),
   }));
   const rowsByUserId = new Map(rows.map((row) => [row.user_id, row]));
+  const seriesPoints = [];
+  const addSeriesPoint = (occurredAt, increments) => {
+    const parts = dhakaDayHour(occurredAt);
+    if (parts) seriesPoints.push({ ...parts, ...increments });
+  };
   const retainedUpsells = calculateRetainedUpsells(upsellActivities || [], {
     selectedActorIds: rows.map((row) => row.user_id),
     since,
     until,
+    onRetainedLot: (lot) => addSeriesPoint(lot.occurredAt, { extra_value: lot.value }),
   });
   for (const row of rows) {
     const retained = retainedUpsells.get(row.user_id);
@@ -569,7 +590,6 @@ export function buildStaffReport(
   const productRowsByMetrics = new Map();
   const confirmedAssignedOrderKeys = new Set();
   const cancelledAssignedOrderKeys = new Set();
-  const seriesPoints = [];
 
   const outcomeProductRowsByMetrics = new Map();
   // Per actor: each regular order they confirmed or cancelled in range, keyed
@@ -643,8 +663,8 @@ export function buildStaffReport(
     metrics.confirmed_count += 1;
     metrics.confirmed_value += value;
     metrics.confirmed_kg += weightKg;
-    const confirmedParts = dhakaDayHour(occurredAt);
-    if (confirmedParts) seriesPoints.push({ ...confirmedParts, value });
+    const isTelesales = String(order.source || "").trim().toLowerCase() === "telesales";
+    addSeriesPoint(occurredAt, { confirmed_count: 1, confirmed_value: value, extra_value: isTelesales ? value : 0 });
     const orderId = activityOrderId(activity, order);
     recordHandled(actorId, "confirmed", orderId, order, occurredAt);
     const assignedKey = `${actorId}:${orderId || "unknown"}`;
@@ -667,7 +687,7 @@ export function buildStaffReport(
       metrics.returned_count += 1;
       metrics.returned_value += value;
     }
-    if (String(order.source || "").trim().toLowerCase() === "telesales") {
+    if (isTelesales) {
       metrics.telesales_confirmed_count += 1;
       metrics.telesales_confirmed_value += value;
       metrics.telesales_confirmed_kg += weightKg;
@@ -680,7 +700,7 @@ export function buildStaffReport(
     const handledRow = rowsByUserId.get(actorId);
     if (!handledRow) continue;
     const metrics = handledRow.orders;
-    for (const { action, order, orderId } of entries.values()) {
+    for (const { action, at, order, orderId } of entries.values()) {
       const value = toNumber(order.price);
       const addItems = (productRows) => addProductDetails(
         productRows,
@@ -692,6 +712,12 @@ export function buildStaffReport(
         { orderWeightKg: order.weight_kg, variantsByProductId },
       );
       metrics.handled_count += 1;
+      const outcome = action === "cancelled" ? null : classifyCourierOutcome(order);
+      addSeriesPoint(at, {
+        handled_count: 1,
+        handled_confirmed_count: action === "cancelled" ? 0 : 1,
+        handled_delivered_count: outcome === "delivered" ? 1 : 0,
+      });
       if (action === "cancelled") {
         metrics.handled_cancelled_count += 1;
         metrics.handled_cancelled_value += value;
@@ -702,7 +728,6 @@ export function buildStaffReport(
       metrics.handled_confirmed_value += value;
       metrics.handled_confirmed_kg += toNumber(order.weight_kg);
       addItems(productsForMetrics(metrics));
-      const outcome = classifyCourierOutcome(order);
       if (outcome === "delivered" || outcome === "returned") {
         metrics[`handled_${outcome}_count`] += 1;
         metrics[`handled_${outcome}_value`] += value;
@@ -773,6 +798,7 @@ export function buildStaffReport(
     else if (activity.action === "converted") {
       metrics.converted_count += 1;
       metrics.converted_value += toNumber(activity.value);
+      addSeriesPoint(activity.occurred_at, { extra_value: toNumber(activity.value) });
     }
   }
 

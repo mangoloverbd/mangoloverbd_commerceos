@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStaffPerformanceSnapshot,
+  buildStaffSparks,
   sortStaffPerformanceRows,
   type AbandonedCartMetrics,
   type StaffMetrics,
@@ -123,5 +124,40 @@ describe("staff performance presentation", () => {
       confirmationRate: null,
       deliveredRate: null,
     });
+  });
+});
+
+describe("buildStaffSparks", () => {
+  const bucket = (handled: number, confirmed: number, delivered: number, extra: number) => ({
+    key: "k",
+    label: "l",
+    confirmed_count: confirmed,
+    confirmed_value: confirmed * 100,
+    handled_count: handled,
+    handled_confirmed_count: confirmed,
+    handled_delivered_count: delivered,
+    extra_value: extra,
+  });
+
+  it("derives per-bucket rates and carries the last rate over empty buckets", () => {
+    const sparks = buildStaffSparks([
+      bucket(0, 0, 0, 0),
+      bucket(4, 2, 1, 300),
+      bucket(0, 0, 0, 0),
+      bucket(5, 5, 5, 50),
+    ]);
+
+    expect(sparks.value).toEqual([0, 200, 0, 500]);
+    expect(sparks.count).toEqual([0, 2, 0, 5]);
+    expect(sparks.confirmationRate).toEqual([0.5, 0.5, 0.5, 1]);
+    expect(sparks.deliveredRate).toEqual([0.5, 0.5, 0.5, 1]);
+    expect(sparks.extra).toEqual([0, 300, 0, 50]);
+  });
+
+  it("returns no rate points when no bucket has a denominator", () => {
+    const sparks = buildStaffSparks([bucket(0, 0, 0, 0), bucket(0, 0, 0, 0)]);
+
+    expect(sparks.confirmationRate).toEqual([]);
+    expect(sparks.deliveredRate).toEqual([]);
   });
 });

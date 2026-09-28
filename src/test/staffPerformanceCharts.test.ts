@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StaffTableRow } from "@/lib/staffPerformanceMetrics";
-import { LEADERBOARD_LIMIT, extraRevenueOption, leaderboardOption, yieldChartHeight, yieldOption } from "@/lib/staffPerformanceCharts";
+import { LEADERBOARD_HIGHLIGHT, LEADERBOARD_LIMIT, leaderboardOption, yieldChartHeight, yieldOption } from "@/lib/staffPerformanceCharts";
 
 type Series = { name?: string; type: string; data: Array<{ value: number; itemStyle?: { color?: string } } | number>; markLine?: { data: Array<{ xAxis: number }> } };
 const seriesOf = (option: unknown) => (option as { series: Series[] }).series;
@@ -31,6 +31,14 @@ describe("leaderboardOption", () => {
     expect(new Set(colors.slice(1)).size).toBe(1);
   });
 
+  it("highlights #1 in the flat mango accent with no shadow", () => {
+    const [bars] = seriesOf(leaderboardOption([row("A", 2000, 50), row("B", 1000, 50)]));
+    const top = (bars.data as Array<{ itemStyle: Record<string, unknown> }>)[0].itemStyle;
+
+    expect(top.color).toBe(LEADERBOARD_HIGHLIGHT);
+    expect(top).not.toHaveProperty("shadowBlur");
+  });
+
   it("escapes staff names in the tooltip", () => {
     const option = leaderboardOption([row("<img src=x onerror=alert(1)>", 1000, 50)]);
     const html = tooltipOf(option)([{ dataIndex: 0 }]);
@@ -51,15 +59,6 @@ describe("yieldOption", () => {
     expect(series[0].data).toEqual([40, 80]);
     expect(series[0].markLine?.data).toEqual([{ xAxis: 60 }]);
     expect(tooltipOf(option)([{ dataIndex: 0 }])).toContain("100 handled");
-  });
-});
-
-describe("extraRevenueOption", () => {
-  it("draws one stacked bar per member with extra revenue, largest at the top", () => {
-    const rows = [row("A", 1, 50, 3000), row("B", 1, 50, 0), row("C", 1, 50, 9000)];
-    const option = extraRevenueOption(rows);
-    expect(axisData(option, "yAxis")).toEqual(["A", "C"]);
-    expect(seriesOf(option)).toHaveLength(3);
   });
 });
 
