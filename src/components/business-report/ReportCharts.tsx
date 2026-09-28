@@ -129,7 +129,7 @@ export function BestDayPanel({ report, reduceMotion }: PanelProps) {
   const buckets = report.series.buckets;
   const bestIndex = useMemo(() => maxIndex(buckets.map((bucket) => bucket.order_value)), [buckets]);
   const option = useMemo(() => bestDayOption(buckets, bestIndex), [buckets, bestIndex]);
-  if (report.series.granularity === "hour" || bestIndex < 0) return null;
+  if (report.range.from === null || report.series.granularity === "hour" || bestIndex < 0) return null;
   const best = buckets[bestIndex];
   return (
     <Panel

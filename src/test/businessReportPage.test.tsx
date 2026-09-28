@@ -257,6 +257,18 @@ describe("BusinessReport", () => {
     expect(within(best).getByText(/45% website/)).toBeInTheDocument();
   });
 
+  it("hides Best day for All time because the series only covers recent active days", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse({
+      range: { from: null, to: null },
+      series: { granularity: "day", label: "Recent intake activity", buckets: dailyBuckets() },
+    })));
+
+    renderPage();
+
+    expect(await screen.findByRole("region", { name: "When orders arrive" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Best day" })).not.toBeInTheDocument();
+  });
+
   it("lists overall product weight with approved kg and packs", async () => {
     const outcomeDefaults = { cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0 };
     const himsagar = { ...outcomeDefaults, product_id: "p-1", product_name: "Himsagar", packs: 4, kg: 25, approved_packs: 3, approved_kg: 20, cancelled_packs: 1, cancelled_kg: 5, order_count: 2 };
