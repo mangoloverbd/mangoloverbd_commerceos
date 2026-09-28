@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.38] - 2026-09-28
+
+### Fixed
+
+- Customer phone copy controls now show the confirmation tick during the click, and the customer list renders in 50-row batches to avoid long interaction stalls on large audiences.
+
 ## [0.1.0.37] - 2026-09-28
 
 ### Added

@@ -10,6 +10,7 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { Button } from "@/components/base/buttons/button";
 import { RiDownloadLine } from "@remixicon/react";
 import { CustomerDataTable } from "@/components/CustomerDataTable";
+import { CopyButton } from "@/components/ui/copy-button";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { customerOrderedInRange } from "@/lib/customerDateFilter";
 import type { DateRange } from "react-day-picker";
@@ -186,7 +187,18 @@ function CustomerBloomPopover({
                 <div>
                   <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Customer Profile</p>
                   <h2 className="mt-1 text-[22px] font-bold tracking-tight text-black">{customer.name}</h2>
-                  <p className="mt-1 text-[12px] text-black">{customer.phone || "No phone"} · {sourceLabels[customer.primarySource]}</p>
+                  <div className="mt-1 flex items-center gap-1 text-[12px] text-black">
+                    <span>{customer.phone || "No phone"}</span>
+                    {customer.phone && (
+                      <CopyButton
+                        value={customer.phone}
+                        size="sm"
+                        aria-label={`Copy phone number ${customer.phone}`}
+                        className="h-6 w-6 shrink-0 rounded-md text-black/40 hover:bg-black/[0.06] hover:text-black"
+                      />
+                    )}
+                    <span>· {sourceLabels[customer.primarySource]}</span>
+                  </div>
                 </div>
                 <button
                   type="button"

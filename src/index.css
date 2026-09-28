@@ -401,6 +401,14 @@
   50% { transform: scaleY(1); }
 }
 
+/* Copy-to-clipboard tick. Opacity stays 1 for the whole animation so the mark
+   is legible on the very first painted frame — only the transform animates. */
+@keyframes copy-tick-pop {
+  0% { opacity: 1; transform: scale(0.55); }
+  60% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
 /* ── Design tokens ─────────────────────────────────────── */
 :root {
   --ink: #111111;

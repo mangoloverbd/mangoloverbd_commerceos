@@ -1,4 +1,5 @@
 import { ArrowRight, UserCircle } from "@phosphor-icons/react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { Customer } from "@/pages/Customers";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,17 @@ export function MobileCustomerCards({ customers, onSelect }: MobileCustomerCards
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-xs font-semibold text-black/60">{initials(customer.name)}</span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-black">{customer.name}</p>
-              <p className="mt-1 truncate text-xs text-black/45">{customer.phone || "No phone"}</p>
+              <div className="mt-1 flex min-w-0 items-center gap-1">
+                <p className="truncate text-xs text-black/45">{customer.phone || "No phone"}</p>
+                {customer.phone && (
+                  <CopyButton
+                    value={customer.phone}
+                    size="sm"
+                    aria-label={`Copy phone number ${customer.phone}`}
+                    className="h-6 w-6 shrink-0 rounded-md text-black/40 hover:bg-black/[0.06] hover:text-black"
+                  />
+                )}
+              </div>
             </div>
             <span className={cn("rounded-full px-2 py-1 text-[9px] font-semibold uppercase tracking-wide", customer.riskLevel === "high" ? "bg-red-50 text-red-600" : customer.riskLevel === "medium" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")}>
               {customer.riskLevel} risk

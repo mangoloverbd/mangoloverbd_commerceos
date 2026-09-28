@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SortDescriptor } from "react-aria-components";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { Chip } from "@/components/base/badges/chip";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Table,
   TableHeader,
@@ -61,6 +62,7 @@ const riskColor: Record<Customer["riskLevel"], "green" | "yellow" | "rose"> = {
 
 /** One fixed chip size across the Source, Lifecycle and Risk columns. */
 const COLUMN_CHIP_CLASS = "w-[128px] justify-center";
+const CUSTOMER_BATCH_SIZE = 50;
 
 function initialsOf(name: string) {
   return (
@@ -124,8 +126,14 @@ export function CustomerDataTable({
     column: "name",
     direction: "ascending",
   });
+  const [visibleCount, setVisibleCount] = useState(CUSTOMER_BATCH_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(CUSTOMER_BATCH_SIZE);
+  }, [customers]);
 
   function toggleSort(column: SortColumn) {
+    setVisibleCount(CUSTOMER_BATCH_SIZE);
     setSortDescriptor((prev) =>
       prev.column === column
         ? { column, direction: prev.direction === "ascending" ? "descending" : "ascending" }
@@ -150,11 +158,12 @@ export function CustomerDataTable({
     });
     return arr;
   }, [customers, sortDescriptor]);
+  const visible = sorted.slice(0, visibleCount);
 
   return (
     <>
       <div className="md:hidden">
-        <MobileCustomerCards customers={sorted} onSelect={onSelect} />
+        <MobileCustomerCards customers={visible} onSelect={onSelect} />
       </div>
       <div className="hidden md:block">
     <Table
@@ -168,7 +177,7 @@ export function CustomerDataTable({
       className="min-w-[990px]"
     >
       <TableHeader>
-        <TableColumn id="name" className="w-[300px]">
+        <TableColumn id="name" isRowHeader className="w-[300px]">
           <SortHeader label="Customer" column="name" sortDescriptor={sortDescriptor} onSort={toggleSort} />
         </TableColumn>
         <TableColumn id="source" className="w-[150px]">
@@ -204,14 +213,24 @@ export function CustomerDataTable({
                 ))}
               </TableRow>
             ))
-          : sorted.map((customer) => (
+          : visible.map((customer) => (
               <TableRow key={customer.id} id={customer.id}>
                 <TableCell className="w-[300px]">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <Avatar size="sm" color="neutral" initials={initialsOf(customer.name)} />
                     <div className="min-w-0">
                       <p className="truncate text-body-medium text-text-primary">{customer.name}</p>
-                      <p className="truncate text-[11px] text-text-tertiary">{customer.phone || "No phone"}</p>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <p className="truncate text-[11px] text-text-tertiary">{customer.phone || "No phone"}</p>
+                        {customer.phone && (
+                          <CopyButton
+                            value={customer.phone}
+                            size="sm"
+                            aria-label={`Copy phone number ${customer.phone}`}
+                            className="h-6 w-6 shrink-0 rounded-md text-black/40 hover:bg-black/[0.06] hover:text-black"
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
                 </TableCell>
@@ -241,6 +260,17 @@ export function CustomerDataTable({
       </TableBody>
     </Table>
       </div>
+      {!loading && visibleCount < sorted.length && (
+        <div className="flex justify-center py-4">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + CUSTOMER_BATCH_SIZE)}
+            className="min-h-10 rounded-md px-4 text-sm text-black transition-colors hover:bg-black/[0.05]"
+          >
+            Show more customers ({sorted.length - visibleCount} remaining)
+          </button>
+        </div>
+      )}
     </>
   );
 }
