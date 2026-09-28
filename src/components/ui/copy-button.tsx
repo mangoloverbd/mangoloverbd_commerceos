@@ -1,4 +1,5 @@
 import * as React from "react";
+import { flushSync } from "react-dom";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -57,7 +58,8 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
           document.body.removeChild(area);
         }
       }
-      setCopied(true);
+      // Commit the check before expensive table/row click work can hold up the paint.
+      flushSync(() => setCopied(true));
       if (timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
       }
@@ -75,32 +77,35 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
         aria-label={copied ? "Copied" : "Copy to clipboard"}
         disabled={copied}
         className={cn(
-          "relative cursor-pointer active:scale-[0.97] transition-all ease-out duration-200 inline-flex items-center justify-center rounded-md text-neutral-900 disabled:pointer-events-none disabled:opacity-100 dark:text-neutral-50",
+          "relative inline-flex cursor-pointer items-center justify-center rounded-md text-neutral-900 transition duration-100 ease-out active:scale-[0.97] disabled:opacity-100 disabled:text-black dark:text-neutral-50",
           buttonSize,
           className,
         )}
         {...props}
       >
+        {/* Tick enters under a keyframe animation (not a transition) so it is at
+            full opacity on the first painted frame — only the scale animates. A
+            fading/blurred enter is what made the tick read as "late". The
+            transition is kept in both states so the reset cross-fades smoothly
+            without flashing the tick on mount. */}
         <div
           className={cn(
-            "transition-all duration-200",
+            "pointer-events-none transition-[transform,opacity] duration-100",
             copied
-              ? "scale-100 opacity-100 blur-none"
-              : "scale-75 opacity-0 blur-[2px]",
+              ? "scale-100 opacity-100 animate-[copy-tick-pop_140ms_ease-out]"
+              : "scale-50 opacity-0",
           )}
         >
           <CheckIcon
             size={iconSize}
-            strokeWidth={2}
+            strokeWidth={2.5}
             aria-hidden="true"
           />
         </div>
         <div
           className={cn(
-            "absolute transition-all duration-200",
-            copied
-              ? "scale-0 opacity-0 blur-[2px]"
-              : "scale-100 opacity-100 blur-none",
+            "pointer-events-none absolute transition-[transform,opacity] duration-100 ease-in",
+            copied ? "scale-60 opacity-0" : "scale-100 opacity-100",
           )}
         >
           <CopyIcon size={iconSize} strokeWidth={2} aria-hidden="true" />

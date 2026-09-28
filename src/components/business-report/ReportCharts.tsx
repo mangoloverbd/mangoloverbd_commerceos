@@ -249,16 +249,19 @@ export function BestDayPanel({ report, reduceMotion }: PanelProps) {
   );
 }
 
+const WEIGHT_ROW_GRID = "grid grid-cols-[10px_36px_minmax(0,1fr)_64px_64px] items-center gap-2.5";
+
 export function ProductWeightPanel({ report, reduceMotion }: PanelProps) {
   const option = useMemo(() => productRingsOption(report.products), [report.products]);
   const total = report.products.reduce((sum, product) => sum + product.kg, 0);
+  const approvedTotal = report.products.reduce((sum, product) => sum + product.approved_kg, 0);
   const ringed = report.products.filter((product) => product.kg > 0).slice(0, 5);
   if (report.products.length === 0) return null;
   return (
     <Panel
       eyebrow="Product weight"
       title="Product weight"
-      aside={<span className="text-[13px] tabular-nums text-black/60">{`${formatKg(total)} · ${formatNumber(report.products.length)} ${report.products.length === 1 ? "product" : "products"}`}</span>}
+      aside={<span className="text-[13px] tabular-nums text-black/60">{`${formatKg(approvedTotal)} approved of ${formatKg(total)} ordered · ${formatNumber(report.products.length)} ${report.products.length === 1 ? "product" : "products"}`}</span>}
     >
       {total > 0 && (
         <div>
@@ -270,17 +273,62 @@ export function ProductWeightPanel({ report, reduceMotion }: PanelProps) {
           </div>
         </div>
       )}
-      <ul className="grid gap-0.5">
-        {report.products.map((product, index) => (
-          <li key={product.product_id || product.product_name} className="grid grid-cols-[10px_44px_minmax(0,1fr)_auto_auto] items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] odd:bg-black/[0.04]">
-            <span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.greys[Math.min(index, 3)] }} />
-            <span className="font-semibold tabular-nums">{Math.round(rate(product.kg, total))}%</span>
-            <span className="truncate">{product.product_name}</span>
-            <span className="hidden text-[11px] tabular-nums text-black/45 sm:inline">{`${formatKg(product.approved_kg)} approved · ${formatNumber(product.packs)} packs`}</span>
-            <span className="tabular-nums">{formatKg(product.kg)}</span>
-          </li>
-        ))}
-      </ul>
+      <div>
+        <div aria-hidden="true" className={`${WEIGHT_ROW_GRID} px-2.5 pb-1.5 text-[8px] font-medium uppercase tracking-[0.3em] text-black/50`}>
+          <span />
+          <span>Share</span>
+          <span>Product</span>
+          <span className="text-right">Ordered</span>
+          <span className="text-right">Approved</span>
+        </div>
+        <ul aria-label="Weight by product" className="grid gap-0.5">
+          {report.products.map((product, index) => {
+            const outcomes = {
+              approved: product.approved_kg,
+              pending: product.pending_kg,
+              cancelled: product.cancelled_kg,
+              returned: product.returned_kg,
+            };
+            const outcomeTotal = OUTCOME_KEYS.reduce((sum, key) => sum + outcomes[key], 0);
+            return (
+              <li key={product.product_id || product.product_name} className={`${WEIGHT_ROW_GRID} rounded-lg px-2.5 py-2 text-[12px] odd:bg-black/[0.04]`}>
+                <span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.greys[Math.min(index, 3)] }} />
+                <span className="font-semibold tabular-nums">{Math.round(rate(product.kg, total))}%</span>
+                <span className="grid min-w-0 gap-1">
+                  <span className="truncate">{product.product_name}</span>
+                  {outcomeTotal > 0 && (
+                    <span
+                      role="img"
+                      aria-label={OUTCOME_KEYS.map((key) => `${OUTCOME_LABELS[key]} ${Math.round(rate(outcomes[key], outcomeTotal))}%`).join(", ")}
+                      className="flex h-1 max-w-[240px] gap-[2px] overflow-hidden rounded-full"
+                    >
+                      {OUTCOME_KEYS.map((key) => outcomes[key] > 0 && (
+                        <i key={key} className="block h-full" style={{ width: `${rate(outcomes[key], outcomeTotal)}%`, background: OUTCOME_COLORS[key] }} />
+                      ))}
+                    </span>
+                  )}
+                </span>
+                <span data-testid="product-weight-ordered" className="text-right tabular-nums text-black/60">
+                  <span className="block">{formatKg(product.kg)}</span>
+                  <span className="block text-[10px] text-black/45">{`${formatNumber(product.packs)} packs`}</span>
+                </span>
+                <span data-testid="product-weight-approved" className="text-right tabular-nums">
+                  <span className="block font-medium">{formatKg(product.approved_kg)}</span>
+                  <span className="block text-[10px] text-black/45">{`${formatNumber(product.approved_packs)} packs`}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-black/60">
+          {OUTCOME_KEYS.map((key) => (
+            <span key={key} className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-[2px]" style={{ background: OUTCOME_COLORS[key] }} />{OUTCOME_LABELS[key]}</span>
+          ))}
+        </div>
+        <p className="text-[10px] text-black/45">Approved = confirmed, processing, shipped or delivered. Ordered = every order placed in this range, including pending, cancelled and returned.</p>
+      </div>
     </Panel>
   );
 }
