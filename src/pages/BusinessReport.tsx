@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import {
   ApprovalGaugePanel,
+  DeliveryEconomicsPanel,
   BestDayPanel,
   IntakeRhythmPanel,
   OutcomeSankeyPanel,
@@ -140,26 +141,7 @@ export default function BusinessReport() {
             <section className="grid gap-3 lg:grid-cols-3">
               <SourceMixPanel report={data} reduceMotion={reduceMotion} />
               <ApprovalGaugePanel report={data} reduceMotion={reduceMotion} />
-              <div className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5">
-                <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Delivery economics</p>
-                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
-                  <div>
-                    <dt className="text-[10px] text-black/55">Delivery charged</dt>
-                    <dd className="mt-1 text-[18px] font-light tabular-nums tracking-[-0.04em] text-black">{formatTaka(summary.delivery_charged)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[10px] text-black/55">Courier fees recorded</dt>
-                    <dd className="mt-1 text-[18px] font-light tabular-nums tracking-[-0.04em] text-black">{formatTaka(summary.courier_fees_recorded)}</dd>
-                  </div>
-                  <div className="col-span-2 border-t border-black/[0.08] pt-3">
-                    <dt className="text-[10px] text-black/55">Net delivery position</dt>
-                    <dd className="mt-1 text-[22px] font-light tabular-nums tracking-[-0.04em] text-black">{formatTaka(summary.net_delivery_position)}</dd>
-                  </div>
-                </dl>
-                <p className="mt-3 text-[10px] tabular-nums text-black/55">
-                  Courier fee coverage: {formatNumber(summary.courier_fee_order_count)} of {formatNumber(summary.intake_count)} orders
-                </p>
-              </div>
+              <DeliveryEconomicsPanel report={data} />
             </section>
             <BestDayPanel report={data} reduceMotion={reduceMotion} />
             <ProductWeightPanel report={data} reduceMotion={reduceMotion} />

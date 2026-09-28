@@ -1,6 +1,6 @@
 import { useId, useMemo, type ReactNode } from "react";
 import { EChart } from "@/components/business-report/EChart";
-import { CHART } from "@/components/business-report/chartTheme";
+import { CHART, OUTCOME_COLORS, OUTCOME_KEYS, OUTCOME_LABELS } from "@/components/business-report/chartTheme";
 import type { BusinessReportResponse } from "@/components/business-report/types";
 import {
   approvalBand,
@@ -19,6 +19,18 @@ type PanelProps = { report: BusinessReportResponse; reduceMotion: boolean | null
 const formatNumber = (value: number) => Number(value || 0).toLocaleString("en-BD");
 const formatTaka = (value: number) => `৳${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 0 })}`;
 const formatKg = (value: number) => `${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 2 })} kg`;
+const signedTaka = (value: number) => {
+  const rounded = Math.round(Math.abs(value || 0));
+  if (rounded === 0) return "৳0";
+  return `${value < 0 ? "−" : ""}৳${rounded.toLocaleString("en-BD")}`;
+};
+
+const OUTCOME_COUNT_FIELDS = {
+  approved: "approved_count",
+  pending: "pending_count",
+  cancelled: "cancelled_count",
+  returned: "returned_count",
+} as const;
 
 function Panel({ eyebrow, title, aside, children, className = "" }: { eyebrow: string; title: string; aside?: ReactNode; children: ReactNode; className?: string }) {
   const headingId = useId();
@@ -111,17 +123,101 @@ export function SourceMixPanel({ report, reduceMotion }: PanelProps) {
 }
 
 export function ApprovalGaugePanel({ report, reduceMotion }: PanelProps) {
-  const approvalRate = rate(report.summary.approved_count, report.summary.intake_count);
+  const { summary } = report;
+  const approvalRate = rate(summary.approved_count, summary.intake_count);
   const option = useMemo(() => approvalGaugeOption(approvalRate), [approvalRate]);
   const band = approvalBand(approvalRate);
   return (
     <Panel eyebrow="Approval health" title="Approval rate">
-      <EChart option={option} ariaLabel={`Approval rate ${approvalRate.toFixed(1)} percent, ${band.label}`} className="h-[190px] w-full" animate={!reduceMotion} />
+      <EChart option={option} ariaLabel={`Approval rate ${approvalRate.toFixed(1)} percent, ${band.label}`} className="h-[170px] w-full" animate={!reduceMotion} />
       <div className="-mt-2 text-center">
         <p className="text-[22px] font-light tabular-nums text-black">{`${approvalRate.toLocaleString("en-BD", { maximumFractionDigits: 1 })}%`}</p>
         <p className="text-[11px] text-black/60">
-          <span className="font-medium" style={{ color: band.color }}>{band.label}</span> · {formatNumber(report.summary.approved_count)} of {formatNumber(report.summary.intake_count)}
+          <span className="font-medium" style={{ color: band.color }}>{band.label}</span> · {formatNumber(summary.approved_count)} of {formatNumber(summary.intake_count)}
         </p>
+      </div>
+      <ul aria-label="Order outcomes" className="mt-auto grid gap-1.5">
+        {OUTCOME_KEYS.map((key) => {
+          const count = summary[OUTCOME_COUNT_FIELDS[key]];
+          return (
+            <li key={key} className="grid grid-cols-[10px_1fr_auto_auto] items-center gap-2 text-[12px]">
+              <span className="h-2 w-2 rounded-[2px]" style={{ background: OUTCOME_COLORS[key] }} />
+              <span>{OUTCOME_LABELS[key]}</span>
+              <span className="tabular-nums">{formatNumber(count)}</span>
+              <span className="min-w-[36px] text-right tabular-nums text-black/45">{Math.round(rate(count, summary.intake_count))}%</span>
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
+  );
+}
+
+function CoverageBar({ label, covered, total }: { label: string; covered: number; total: number }) {
+  const share = rate(covered, total);
+  return (
+    <div className="grid gap-1.5">
+      <p className="text-[10px] tabular-nums text-black/55">{label}</p>
+      <div className="h-1 overflow-hidden rounded-full bg-black/[0.08]" aria-hidden="true">
+        <div className="h-full rounded-full" style={{ width: `${share}%`, background: share >= 80 ? CHART.ink : OUTCOME_COLORS.pending }} />
+      </div>
+    </div>
+  );
+}
+
+export function DeliveryEconomicsPanel({ report }: { report: BusinessReportResponse }) {
+  const { summary } = report;
+  const max = Math.max(summary.delivery_charged, summary.courier_fees_recorded, 1);
+  const comparison = [
+    { label: "Delivery charged", value: summary.delivery_charged, color: CHART.ink },
+    { label: "Courier fees recorded", value: summary.courier_fees_recorded, color: CHART.greys[2] },
+  ];
+  const perOrder = [
+    {
+      label: "Avg charge per approved order",
+      value: summary.approved_count > 0 ? formatTaka(summary.delivery_charged / summary.approved_count) : "—",
+    },
+    {
+      label: "Avg courier fee per recorded order",
+      value: summary.courier_fee_order_count > 0 ? formatTaka(summary.courier_fees_recorded / summary.courier_fee_order_count) : "—",
+    },
+    {
+      label: "Net per order",
+      value: summary.intake_count > 0 ? signedTaka(summary.net_delivery_position / summary.intake_count) : "—",
+    },
+  ];
+  return (
+    <Panel eyebrow="Delivery economics" title="Charges vs courier fees">
+      <div>
+        <p className="text-[10px] text-black/55">Net delivery position</p>
+        <p className={`mt-1 text-[26px] font-light tabular-nums tracking-[-0.03em] ${summary.net_delivery_position < 0 ? "text-[#B4473A]" : "text-black"}`}>
+          {signedTaka(summary.net_delivery_position)}
+        </p>
+      </div>
+      <div className="grid gap-2.5">
+        {comparison.map((item) => (
+          <div key={item.label} className="grid gap-1.5">
+            <p className="flex justify-between text-[12px]">
+              <span className="text-black/60">{item.label}</span>
+              <span className="tabular-nums text-black">{formatTaka(item.value)}</span>
+            </p>
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.08]" aria-hidden="true">
+              <div className="h-full rounded-full" style={{ width: `${rate(item.value, max)}%`, background: item.color }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <ul aria-label="Per-order figures" className="grid gap-1.5 border-t border-black/[0.08] pt-3">
+        {perOrder.map((item) => (
+          <li key={item.label} className="flex justify-between gap-2 text-[12px]">
+            <span className="text-black/60">{item.label}</span>
+            <span className="tabular-nums text-black">{item.value}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-auto grid gap-2.5 border-t border-black/[0.08] pt-3">
+        <CoverageBar label={`Courier fee coverage: ${formatNumber(summary.courier_fee_order_count)} of ${formatNumber(summary.intake_count)} orders`} covered={summary.courier_fee_order_count} total={summary.intake_count} />
+        <CoverageBar label={`Weight recorded on ${formatNumber(summary.weight_order_count)} of ${formatNumber(summary.intake_count)} orders`} covered={summary.weight_order_count} total={summary.intake_count} />
       </div>
     </Panel>
   );

@@ -233,8 +233,33 @@ describe("BusinessReport", () => {
     expect(within(mix).getByText("Website")).toBeInTheDocument();
     expect(within(mix).getByText("৳1,400")).toBeInTheDocument();
     const gauge = screen.getByRole("region", { name: "Approval rate" });
-    expect(within(gauge).getByText("25%")).toBeInTheDocument();
+    expect(within(gauge).getByText("25%", { selector: "p" })).toBeInTheDocument();
     expect(within(gauge).getByText("Needs attention")).toBeInTheDocument();
+  });
+
+  it("breaks approval down by outcome and shows per-order delivery figures with coverage", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse({
+      summary: { ...reportResponse().summary, approved_count: 2, pending_count: 0, weight_order_count: 3 },
+    })));
+
+    renderPage();
+
+    const gauge = await screen.findByRole("region", { name: "Approval rate" });
+    const outcomes = within(gauge).getByRole("list", { name: "Order outcomes" });
+    expect(within(outcomes).getAllByRole("listitem")).toHaveLength(4);
+    expect(within(outcomes).getByText("Approved").closest("li")).toHaveTextContent("250%");
+    expect(within(outcomes).getByText("Pending").closest("li")).toHaveTextContent("00%");
+    expect(within(outcomes).getByText("RTO").closest("li")).toHaveTextContent("125%");
+
+    const delivery = screen.getByRole("region", { name: "Charges vs courier fees" });
+    expect(within(delivery).getByText("Net delivery position")).toBeInTheDocument();
+    expect(within(delivery).getByText("−৳10")).toBeInTheDocument();
+    const perOrder = within(delivery).getByRole("list", { name: "Per-order figures" });
+    expect(within(perOrder).getByText("Avg charge per approved order").closest("li")).toHaveTextContent("৳60");
+    expect(within(perOrder).getByText("Avg courier fee per recorded order").closest("li")).toHaveTextContent("৳43");
+    expect(within(perOrder).getByText("Net per order").closest("li")).toHaveTextContent("−৳3");
+    expect(within(delivery).getByText("Courier fee coverage: 3 of 4 orders")).toBeInTheDocument();
+    expect(within(delivery).getByText("Weight recorded on 3 of 4 orders")).toBeInTheDocument();
   });
 
   it("hides Best day for a single-day range and shows it with the best day for a multi-day range", async () => {
