@@ -71,7 +71,7 @@ function ProductOutcomeTable({ label, source }: { label: string; source: Busines
       <td className="px-3 py-2 text-right">{cell(item.pendingKg, item.kg)}</td>
       <td className="px-3 py-2 text-right">{cell(item.cancelledKg, item.kg)}</td>
       <td className="px-3 py-2 text-right">{cell(item.returnedKg, item.kg)}</td>
-      <td className="px-3 py-2 text-right"><Flagged value={formatPct(item.lossRate)} flagged={item.flagged} /></td>
+      <td className="px-3 py-2 text-right">{item.kg > 0 ? <Flagged value={formatPct(item.lossRate)} flagged={item.flagged} /> : "—"}</td>
     </tr>
   );
   return (

@@ -397,6 +397,28 @@ describe("BusinessReport", () => {
     expect(within(products).getByRole("row", { name: /All products/ })).toHaveTextContent("30 kg");
   });
 
+  it("shows a dash instead of 0% loss for a product with no recorded weight", async () => {
+    const user = userEvent.setup();
+    const langra = { product_id: "p-3", product_name: "Langra", packs: 3, kg: 0, approved_packs: 3, approved_kg: 0, cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0, order_count: 1 };
+    const base = reportResponse();
+    apiFetchMock.mockResolvedValue(jsonResponse({ ...base, sources: [{ ...base.sources[0], products: [langra] }, base.sources[1]] }));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    await user.click(within(table).getByRole("button", { name: "Show products for Website" }));
+
+    const products = within(table).getByRole("table", { name: "Website products by outcome" });
+    const langraRow = within(products).getByRole("row", { name: /Langra/ });
+    expect(within(langraRow).getByText("3 packs")).toBeInTheDocument();
+    const langraCells = within(langraRow).getAllByRole("cell");
+    expect(langraCells[langraCells.length - 1]).toHaveTextContent(/^—$/);
+    expect(within(langraRow).queryByText("0%")).not.toBeInTheDocument();
+    const totalCells = within(within(products).getByRole("row", { name: /All products/ })).getAllByRole("cell");
+    expect(totalCells[totalCells.length - 1]).toHaveTextContent(/^—$/);
+    expect(products.querySelector("[data-flag]")).toBeNull();
+  });
+
   it("expands and collapses every source at once", async () => {
     const user = userEvent.setup();
     apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
