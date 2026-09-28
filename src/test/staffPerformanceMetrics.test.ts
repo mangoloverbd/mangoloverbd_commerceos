@@ -32,13 +32,15 @@ function row(id: string, name: string, orders: Partial<StaffMetrics>, extra: Par
 const sadia = row("s", "Sadia", {
   handled_count: 100, handled_confirmed_count: 88, handled_cancelled_count: 12,
   handled_delivered_count: 78, handled_returned_count: 2,
+  handled_confirmed_value: 88000, handled_confirmed_kg: 200,
   confirmed_count: 90, cancelled_count: 999, delivered_count: 999, returned_count: 999,
-  confirmed_value: 90000, confirmed_kg: 220, telesales_confirmed_value: 5000, retained_upsell_value: 2000,
+  confirmed_value: 95000, confirmed_kg: 220, telesales_confirmed_value: 5000, retained_upsell_value: 2000,
   assigned_count: 5, confirmed_assigned_count: 5, cancelled_assigned_count: 0,
 }, { abandoned_checkouts: carts({ converted_value: 1000 }) });
 const rahim = row("r", "Rahim", {
   handled_count: 100, handled_confirmed_count: 72, handled_cancelled_count: 28,
   handled_delivered_count: 50, handled_returned_count: 8,
+  handled_confirmed_value: 70000, handled_confirmed_kg: 170,
   confirmed_count: 72, confirmed_value: 70000, confirmed_kg: 170,
 });
 const idle = row("i", "Idle", {}, { is_active: false });
@@ -48,7 +50,7 @@ describe("buildStaffTableRows", () => {
     const [s, r, i] = buildStaffTableRows([sadia, rahim, idle]);
 
     // conf = 88 / 100, cancel = 12 / 100
-    expect(s).toMatchObject({ key: "s", name: "Sadia", handled: 100, confirmed: 88, value: 90000, confRate: 88, cancelRate: 12, kg: 220, aov: 1000, extra: 8000, isActive: true });
+    expect(s).toMatchObject({ key: "s", name: "Sadia", handled: 100, confirmed: 88, value: 88000, confRate: 88, cancelRate: 12, kg: 200, aov: 1000, extra: 8000, isActive: true });
     expect(s.delRate).toBeCloseTo(88.64, 1); // 78 / 88
     expect(s.yield).toEqual({ delivered: 78, inTransit: 8, returned: 2, cancelled: 12 });
     expect(Object.values(s.yield).reduce((sum, value) => sum + value, 0)).toBe(100);
@@ -61,6 +63,18 @@ describe("buildStaffTableRows", () => {
     expect(r.flags).toEqual({ confRate: "worse", cancelRate: "worse", delRate: "worse" }); // 50/72 = 69.4 < 80 - 5
     expect(i).toMatchObject({ handled: 0, confRate: null, cancelRate: null, delRate: null, deliveredShare: null, isActive: false });
     expect(i.flags).toEqual({ confRate: null, cancelRate: null, delRate: null });
+  });
+
+  it("takes value, weight and AOV from the handled confirmed orders so value / orders = AOV", () => {
+    // Brief's A/B/C shape: activity counters say 2 confirmations worth ৳1,500; only A is still confirmed.
+    const abc = row("a", "ABC", {
+      handled_count: 3, handled_confirmed_count: 1, handled_confirmed_value: 1000, handled_confirmed_kg: 2,
+      handled_cancelled_count: 2, handled_delivered_count: 1,
+      confirmed_count: 2, confirmed_value: 1500, confirmed_kg: 5,
+    });
+    const [item] = buildStaffTableRows([abc]);
+    expect(item).toMatchObject({ confirmed: 1, value: 1000, kg: 2, aov: 1000 });
+    expect(buildStaffTableRows([row("z", "Zero", { confirmed_value: 500, confirmed_count: 1 })])[0].aov).toBeNull();
   });
 
   it("keeps the outcome segments summing to handled even when activity counters repeat", () => {

@@ -1125,6 +1125,15 @@ describe("buildStaffReport handled orders and product outcomes", () => {
     ]);
   });
 
+  it("classifies an order as cancelled when the member's confirm and cancel share a timestamp", () => {
+    const report = buildStaffReport(
+      [{ id: "T", confirmed_by: TEAM_MEMBER_ID, confirmed_at: confirmedAt, cancelled_by: TEAM_MEMBER_ID, cancelled_at: confirmedAt, price: 400 }],
+      [], [], [], staff, interval,
+    );
+
+    expect(report.rows[0].orders).toMatchObject({ handled_count: 1, handled_cancelled_count: 1, handled_confirmed_count: 0 });
+  });
+
   it("counts activities with an unknown order id once each and never merges them", () => {
     const report = buildStaffReport([], [], [], [], staff, {
       ...interval,

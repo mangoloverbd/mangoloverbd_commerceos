@@ -193,8 +193,8 @@ describe("StaffPerformance", () => {
     // Default rows tie at ৳1,200 (name tiebreak ranks Nadia first), so give Rafi the clear lead.
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
       rows: [
-        reportRow({ orders: metrics({ confirmed_value: 1800 }) }),
-        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, products: [] }) }),
+        reportRow({ orders: metrics({ confirmed_value: 1800, handled_confirmed_value: 1800 }) }),
+        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, handled_confirmed_value: 900, products: [] }) }),
       ],
     })));
 
@@ -247,8 +247,8 @@ describe("StaffPerformance", () => {
     // The default fixture ties both members at ৳1,200 (name tiebreak ranks Nadia first), so give Rafi the clear lead.
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
       rows: [
-        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, products: [] }) }),
-        reportRow({ orders: metrics({ confirmed_value: 1800, confirmed_count: 2 }), social_inbox_orders: metrics({ confirmed_value: 999999 }) }),
+        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, handled_confirmed_value: 900, products: [] }) }),
+        reportRow({ orders: metrics({ confirmed_value: 1800, handled_confirmed_value: 1800, confirmed_count: 2 }), social_inbox_orders: metrics({ confirmed_value: 999999 }) }),
       ],
     })));
 
@@ -289,8 +289,8 @@ describe("StaffPerformance", () => {
     // Distinct values so the default order (Rafi first by confirmed value) differs from the name sort (Nadia first).
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
       rows: [
-        reportRow({ orders: metrics({ confirmed_value: 1800 }) }),
-        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, products: [] }) }),
+        reportRow({ orders: metrics({ confirmed_value: 1800, handled_confirmed_value: 1800 }) }),
+        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, handled_confirmed_value: 900, products: [] }) }),
       ],
     })));
 

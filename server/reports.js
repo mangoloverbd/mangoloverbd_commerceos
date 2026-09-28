@@ -594,8 +594,10 @@ export function buildStaffReport(
     const key = orderId || `unknown:${unknownOrderSeq++}`;
     const at = new Date(occurredAt).getTime();
     const previous = entries.get(key);
-    // Ties go to the later-processed activity.
-    if (!previous || at >= previous.at) entries.set(key, { action, at, order, orderId });
+    // A confirm and cancel at the same instant means the order ended cancelled.
+    if (!previous || at > previous.at || (at === previous.at && action === "cancelled")) {
+      entries.set(key, { action, at, order, orderId });
+    }
   };
 
   for (const order of orders || []) {
