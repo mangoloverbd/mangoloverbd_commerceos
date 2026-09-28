@@ -261,12 +261,25 @@ function sortByValueThenCount(a, b) {
 }
 
 function createSeriesBucket(key, label) {
-  return { key, label, intake_count: 0, order_value: 0 };
+  return {
+    key,
+    label,
+    intake_count: 0,
+    order_value: 0,
+    website_value: 0,
+    order_kg: 0,
+    approved_count: 0,
+    cancelled_count: 0,
+  };
 }
 
-function addToSeriesBucket(bucket, value) {
+function addToSeriesBucket(bucket, row) {
   bucket.intake_count += 1;
-  bucket.order_value += value;
+  bucket.order_value += row.value;
+  bucket.order_kg += row.kg;
+  if (row.source === "website") bucket.website_value += row.value;
+  if (row.outcome === "approved") bucket.approved_count += 1;
+  else if (row.outcome === "cancelled") bucket.cancelled_count += 1;
 }
 
 function buildSeries(seriesRows, request) {
@@ -276,13 +289,13 @@ function buildSeries(seriesRows, request) {
   for (const row of seriesRows) {
     const dayBucket = bucketsByDay.get(row.day)
       || createSeriesBucket(row.day, dayLabel(row.day));
-    addToSeriesBucket(dayBucket, row.value);
+    addToSeriesBucket(dayBucket, row);
     bucketsByDay.set(row.day, dayBucket);
 
     const dayHourKey = `${row.day}-${row.hour}`;
     const hourBucket = bucketsByDayHour.get(dayHourKey)
       || createSeriesBucket(dayHourKey, hourLabel(row.hour));
-    addToSeriesBucket(hourBucket, row.value);
+    addToSeriesBucket(hourBucket, row);
     bucketsByDayHour.set(dayHourKey, hourBucket);
   }
 
@@ -318,6 +331,12 @@ function buildSeries(seriesRows, request) {
     label: "Recent intake activity",
     buckets: recentDays.map((day) => bucketsByDay.get(day)),
   };
+}
+
+function buildHourlyProfile(seriesRows) {
+  const buckets = Array.from({ length: 24 }, (_, hour) => createSeriesBucket(`hour-${hour}`, hourLabel(hour)));
+  for (const row of seriesRows) addToSeriesBucket(buckets[row.hour], row);
+  return buckets;
 }
 
 function isWithinRequest(timestamp, request) {
@@ -364,6 +383,25 @@ export function resolveBusinessReportRequest({ from, to } = {}) {
   };
 }
 
+export function resolvePreviousBusinessReportRequest(request, nowMs = Date.now()) {
+  if (!request?.range?.from || !request?.range?.to) return null;
+  const days = inclusiveDayCount(request.range.from, request.range.to);
+  const interval = toDhakaInterval(
+    dayAtOffset(request.range.from, -days),
+    dayAtOffset(request.range.from, -1),
+  );
+  let until = interval.until;
+  if (new Date(request.until).getTime() > nowMs) {
+    const elapsedMs = nowMs - new Date(request.since).getTime();
+    until = new Date(new Date(interval.since).getTime() + elapsedMs).toISOString();
+  }
+  return {
+    range: { from: interval.from, to: interval.to },
+    since: interval.since,
+    until,
+  };
+}
+
 export function normalizeBusinessReportSource(value) {
   const source = String(value ?? "").trim().toLowerCase();
   if (WEBSITE_ALIASES.has(source)) return "website";
@@ -401,8 +439,9 @@ export function classifyBusinessReportOutcome(order) {
     : "pending";
 }
 
-export function buildBusinessReport(orders, request, { products = [], variants = [] } = {}) {
+export function buildBusinessReport(orders, request, { products = [], variants = [], previousRequest = null } = {}) {
   const summary = createMetrics();
+  const previousSummary = createMetrics();
   const sourceGroups = new Map();
   const seriesRows = [];
   const { productsById, productsByName, variantsById, variantsByProductId } = createProductLookups(products, variants);
@@ -411,7 +450,12 @@ export function buildBusinessReport(orders, request, { products = [], variants =
 
   for (const order of orders || []) {
     const dhakaParts = toDhakaParts(order?.created_at);
-    if (!dhakaParts || !isWithinRequest(dhakaParts.timestamp, request)) continue;
+    if (!dhakaParts) continue;
+    if (previousRequest && isWithinRequest(dhakaParts.timestamp, previousRequest)) {
+      addOrderMetrics(previousSummary, order, classifyBusinessReportOutcome(order), toNumber(order.price));
+      continue;
+    }
+    if (!isWithinRequest(dhakaParts.timestamp, request)) continue;
 
     const source = normalizeBusinessReportSource(order.source);
     const sourceLabel = SOURCE_LABELS.get(source);
@@ -444,7 +488,14 @@ export function buildBusinessReport(orders, request, { products = [], variants =
     }
 
     sourceGroups.set(source, sourceGroup);
-    seriesRows.push({ day: dhakaParts.day, hour: dhakaParts.hour, value });
+    seriesRows.push({
+      day: dhakaParts.day,
+      hour: dhakaParts.hour,
+      value,
+      kg: toNumber(order.weight_kg),
+      source,
+      outcome,
+    });
   }
 
   const sources = [...sourceGroups.values()]
@@ -462,7 +513,11 @@ export function buildBusinessReport(orders, request, { products = [], variants =
   return {
     range: request.range,
     summary: finalizeMetrics(summary),
+    previous: previousRequest
+      ? { range: previousRequest.range, summary: finalizeMetrics(previousSummary) }
+      : null,
     series: buildSeries(seriesRows, request),
+    hourly_profile: buildHourlyProfile(seriesRows),
     sources,
     products: sortProducts(allProducts),
     missing_weight_products: [...missingWeightProducts.values()].sort((a, b) => a.name.localeCompare(b.name)),

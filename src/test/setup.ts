@@ -23,6 +23,12 @@ Object.defineProperty(Element.prototype, "scrollIntoView", {
   configurable: true,
   value: () => undefined,
 });
+// jsdom does not implement window.scrollTo; Framer Motion calls it while measuring height: "auto".
+Object.defineProperty(window, "scrollTo", {
+  configurable: true,
+  writable: true,
+  value: () => undefined,
+});
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,

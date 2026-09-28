@@ -5,6 +5,7 @@ import {
   normalizeBusinessReportLandingPage,
   normalizeBusinessReportSource,
   resolveBusinessReportRequest,
+  resolvePreviousBusinessReportRequest,
 } from "../../server/businessReport.js";
 
 function order(overrides: Record<string, unknown> = {}) {
@@ -341,6 +342,34 @@ describe("buildBusinessReport", () => {
       ]);
   });
 
+  it("adds website value, weight and outcome counts to each series bucket", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-19" });
+    const report = buildBusinessReport([
+      order({ id: "web-approved", created_at: "2026-09-18T03:00:00.000Z", source: "website", status: "confirmed", price: 1000, weight_kg: 5 }),
+      order({ id: "fb-cancelled", created_at: "2026-09-18T04:00:00.000Z", source: "facebook", status: "cancelled", price: 600, weight_kg: 2.5 }),
+      order({ id: "fb-pending", created_at: "2026-09-19T05:00:00.000Z", source: "facebook", price: 400 }),
+    ], request);
+
+    expect(report.series.buckets).toEqual([
+      { key: "2026-09-18", label: expect.any(String), intake_count: 2, order_value: 1600, website_value: 1000, order_kg: 7.5, approved_count: 1, cancelled_count: 1 },
+      { key: "2026-09-19", label: expect.any(String), intake_count: 1, order_value: 400, website_value: 0, order_kg: 0, approved_count: 0, cancelled_count: 0 },
+    ]);
+  });
+
+  it("returns a 24-hour intake profile summed across every day in the range", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-20" });
+    const report = buildBusinessReport([
+      order({ id: "d1-9am", created_at: "2026-09-18T03:00:00.000Z", price: 100 }), // 09:00 Dhaka
+      order({ id: "d3-9am", created_at: "2026-09-20T03:30:00.000Z", price: 200 }), // 09:30 Dhaka
+      order({ id: "d2-9pm", created_at: "2026-09-19T15:00:00.000Z", price: 300 }), // 21:00 Dhaka
+    ], request);
+
+    expect(report.hourly_profile).toHaveLength(24);
+    expect(report.hourly_profile[9]).toMatchObject({ key: "hour-9", label: "9a", intake_count: 2, order_value: 300 });
+    expect(report.hourly_profile[21]).toMatchObject({ key: "hour-21", label: "9p", intake_count: 1, order_value: 300 });
+    expect(report.hourly_profile[0]).toMatchObject({ key: "hour-0", label: "12a", intake_count: 0 });
+  });
+
   it("stops at the requested final day near the calendar maximum", () => {
     const originalToISOString = Date.prototype.toISOString;
     let toISOStringCalls = 0;
@@ -387,5 +416,60 @@ describe("business report upsell source", () => {
   it("keeps Upsell orders as their own source", async () => {
     const { normalizeBusinessReportSource } = await import("../../server/businessReport.js");
     expect(normalizeBusinessReportSource("upsell")).toBe("upsell");
+  });
+});
+
+describe("business report previous period", () => {
+  it("resolves the same-length window immediately before a bounded range", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-20" });
+    expect(resolvePreviousBusinessReportRequest(request, new Date("2026-09-25T06:00:00.000Z").getTime())).toEqual({
+      range: { from: "2026-09-15", to: "2026-09-17" },
+      since: "2026-09-14T18:00:00.000Z",
+      until: "2026-09-17T18:00:00.000Z",
+    });
+  });
+
+  it("clips the previous window to the same elapsed time when the current range is still in progress", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-18" });
+    const nowMs = new Date("2026-09-18T06:00:00.000Z").getTime(); // 12:00 Asia/Dhaka
+    const previousRequest = resolvePreviousBusinessReportRequest(request, nowMs);
+
+    expect(previousRequest).toEqual({
+      range: { from: "2026-09-17", to: "2026-09-17" },
+      since: "2026-09-16T18:00:00.000Z",
+      until: "2026-09-17T06:00:00.000Z",
+    });
+
+    const report = buildBusinessReport([
+      order({ id: "yesterday-morning", created_at: "2026-09-17T03:00:00.000Z", price: 400 }), // 09:00 Dhaka
+      order({ id: "yesterday-afternoon", created_at: "2026-09-17T09:00:00.000Z", price: 900 }), // 15:00 Dhaka
+    ], request, { previousRequest });
+
+    expect(report.previous?.summary).toMatchObject({ intake_count: 1, order_value: 400 });
+  });
+
+  it("has no previous period for All Time", () => {
+    expect(resolvePreviousBusinessReportRequest(resolveBusinessReportRequest({}))).toBeNull();
+  });
+
+  it("summarises previous-period orders separately and keeps them out of current totals", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-18" });
+    const previousRequest = resolvePreviousBusinessReportRequest(request);
+    const report = buildBusinessReport([
+      order({ id: "current", created_at: "2026-09-18T03:00:00.000Z", price: 1000 }),
+      order({ id: "previous", created_at: "2026-09-17T03:00:00.000Z", status: "cancelled", price: 700 }),
+      order({ id: "too-old", created_at: "2026-09-16T03:00:00.000Z", price: 900 }),
+    ], request, { previousRequest });
+
+    expect(report.summary).toMatchObject({ intake_count: 1, order_value: 1000 });
+    expect(report.previous).toMatchObject({
+      range: { from: "2026-09-17", to: "2026-09-17" },
+      summary: { intake_count: 1, order_value: 700, cancelled_count: 1 },
+    });
+  });
+
+  it("returns previous: null when no previous request is given", () => {
+    const report = buildBusinessReport([order({ price: 100 })], dayRequest());
+    expect(report.previous).toBeNull();
   });
 });
