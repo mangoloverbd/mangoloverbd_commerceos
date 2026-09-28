@@ -2,7 +2,7 @@ import { useId, useMemo, type ReactNode } from "react";
 import { EChart } from "@/components/business-report/EChart";
 import { CHART } from "@/components/business-report/chartTheme";
 import { sourceMixOption } from "@/lib/businessReportCharts";
-import { extraRevenueOption, leaderboardOption, YIELD_COLORS, YIELD_KEYS, YIELD_LABELS, yieldOption } from "@/lib/staffPerformanceCharts";
+import { extraRevenueOption, leaderboardOption, YIELD_COLORS, YIELD_KEYS, YIELD_LABELS, yieldChartHeight, yieldOption } from "@/lib/staffPerformanceCharts";
 import { buildStaffTableRows, buildTeamFunnel, groupStaffShare } from "@/lib/staffPerformanceMetrics";
 import type { StaffRow } from "@/lib/staffPerformancePresentation";
 
@@ -48,7 +48,7 @@ export function LeaderboardPanel({ rows, reduceMotion }: PanelProps) {
       )}
     >
       {top
-        ? <EChart option={option} ariaLabel="Confirmed value for each staff member, ranked" className="h-[260px] w-full" animate={!reduceMotion} />
+        ? <EChart option={option} ariaLabel="Confirmed value for each staff member, ranked" className="min-h-[260px] w-full flex-1" animate={!reduceMotion} />
         : <p className="py-10 text-center text-[12px] text-black/55">No confirmed orders in this range.</p>}
     </Panel>
   );
@@ -59,6 +59,7 @@ export function OrderYieldPanel({ rows, reduceMotion }: PanelProps) {
   const funnel = useMemo(() => buildTeamFunnel(rows), [rows]);
   const teamShare = funnel.assigned > 0 ? (funnel.delivered / funnel.assigned) * 100 : null;
   const option = useMemo(() => yieldOption(tableRows, teamShare), [tableRows, teamShare]);
+  const yieldCount = tableRows.filter((item) => item.deliveredShare !== null).length;
   return (
     <Panel
       eyebrow="Order yield"
@@ -66,7 +67,11 @@ export function OrderYieldPanel({ rows, reduceMotion }: PanelProps) {
       aside={teamShare !== null && <span className="rounded-full bg-black/[0.05] px-3 py-1 text-[11px] tabular-nums text-black/70">Team delivered {formatPct(teamShare)} of assigned</span>}
     >
       {teamShare !== null
-        ? <EChart option={option} ariaLabel="Share of each member's assigned orders that were delivered, in transit, returned, cancelled or not confirmed" className="h-[260px] w-full" animate={!reduceMotion} />
+        ? (
+          <div style={{ height: yieldChartHeight(yieldCount) }}>
+            <EChart option={option} ariaLabel="Share of each member's assigned orders that were delivered, open or in transit, returned, cancelled or not confirmed" className="h-full w-full" animate={!reduceMotion} />
+          </div>
+        )
         : <p className="py-10 text-center text-[12px] text-black/55">No assigned orders in this range.</p>}
       <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-black/60">
         {YIELD_KEYS.map((key) => <span key={key} className="inline-flex items-center gap-1.5"><Swatch color={YIELD_COLORS[key]} />{YIELD_LABELS[key]}</span>)}

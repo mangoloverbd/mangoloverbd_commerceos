@@ -4,6 +4,11 @@ import { escapeHtml } from "@/lib/businessReportCharts";
 import { extraRevenue, type StaffTableRow, type YieldKey } from "@/lib/staffPerformanceMetrics";
 
 export const LEADERBOARD_LIMIT = 8;
+const YIELD_ROW_HEIGHT = 34;
+
+export function yieldChartHeight(memberCount: number): number {
+  return Math.max(220, memberCount * YIELD_ROW_HEIGHT + 36);
+}
 export const YIELD_KEYS: YieldKey[] = ["delivered", "inTransit", "returned", "cancelled", "notConfirmed"];
 export const YIELD_LABELS: Record<YieldKey, string> = {
   delivered: "Delivered",
@@ -54,7 +59,7 @@ export function leaderboardOption(rows: StaffTableRow[]): EChartsCoreOption {
       axisTick: { show: false },
       axisLabel: { color: CHART.ink, fontSize: 12, fontWeight: 500, margin: 12, lineHeight: 16, interval: 0, overflow: "truncate", width: 90 },
     },
-    yAxis: { type: "value", show: false },
+    yAxis: { type: "value", show: false, max: (extent: { max: number }) => extent.max * 1.06 },
     series: [{
       type: "bar",
       barWidth: "46%",
@@ -72,7 +77,7 @@ export function leaderboardOption(rows: StaffTableRow[]): EChartsCoreOption {
         distance: 8,
         formatter: (params: { dataIndex: number }) => {
           const item = ranked[params.dataIndex];
-          return `{v|${taka(item.value)}}\n{m|${count(item.confirmed)} orders${item.aov === null ? "" : ` · ${taka(item.aov)}`}}`;
+          return `{v|${taka(item.value)}}\n{m|${count(item.confirmed)} orders}`;
         },
         rich: {
           v: { color: CHART.ink, fontSize: 13, fontWeight: 500, lineHeight: 18 },
@@ -89,7 +94,7 @@ export function yieldOption(rows: StaffTableRow[], teamDeliveredShare: number | 
     .sort((a, b) => a.deliveredShare - b.deliveredShare);
   const share = (item: StaffTableRow, key: YieldKey) => (item.assigned > 0 ? (item.yield[key] / item.assigned) * 100 : 0);
   return {
-    grid: { left: 72, right: 58, top: 6, bottom: 22 },
+    grid: { left: 104, right: 58, top: 6, bottom: 22 },
     tooltip: tooltip({
       trigger: "axis",
       axisPointer: { type: "none" },
@@ -112,13 +117,14 @@ export function yieldOption(rows: StaffTableRow[], teamDeliveredShare: number | 
       data: ordered.map((item) => item.name),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: CHART.ink, fontSize: 12, fontWeight: 500, overflow: "truncate", width: 64 },
+      axisLabel: { color: CHART.ink, fontSize: 12, fontWeight: 500, overflow: "truncate", width: 96 },
     },
     series: YIELD_KEYS.map((key, index) => ({
       name: YIELD_LABELS[key],
       type: "bar",
       stack: "yield",
-      barWidth: 18,
+      barMaxWidth: 18,
+      barCategoryGap: "40%",
       data: ordered.map((item) => (key === "delivered" ? item.deliveredShare : share(item, key))),
       itemStyle: {
         color: YIELD_COLORS[key],

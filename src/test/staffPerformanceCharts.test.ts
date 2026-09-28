@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StaffTableRow } from "@/lib/staffPerformanceMetrics";
-import { LEADERBOARD_LIMIT, extraRevenueOption, leaderboardOption, yieldOption } from "@/lib/staffPerformanceCharts";
+import { LEADERBOARD_LIMIT, extraRevenueOption, leaderboardOption, yieldChartHeight, yieldOption } from "@/lib/staffPerformanceCharts";
 
 type Series = { name?: string; type: string; data: Array<{ value: number; itemStyle?: { color?: string } } | number>; markLine?: { data: Array<{ xAxis: number }> } };
 const seriesOf = (option: unknown) => (option as { series: Series[] }).series;
@@ -57,5 +57,19 @@ describe("extraRevenueOption", () => {
     const option = extraRevenueOption(rows);
     expect(axisData(option, "yAxis")).toEqual(["A", "C"]);
     expect(seriesOf(option)).toHaveLength(3);
+  });
+});
+
+describe("layout helpers", () => {
+  it("grows the yield chart with the number of members, with a floor", () => {
+    expect(yieldChartHeight(2)).toBe(220);
+    expect(yieldChartHeight(12)).toBe(12 * 34 + 36);
+  });
+
+  it("keeps the leaderboard value label short: value plus order count only", () => {
+    const option = leaderboardOption([row("A", 139410, 50)]);
+    const label = (option as { series: Array<{ label: { formatter: (p: { dataIndex: number }) => string } }> }).series[0].label.formatter({ dataIndex: 0 });
+    expect(label).toContain("10 orders");
+    expect(label).not.toContain("·");
   });
 });
