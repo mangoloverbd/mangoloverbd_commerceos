@@ -16,13 +16,24 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { EChart } from "@/components/business-report/EChart";
+import {
+  ExtraRevenuePanel,
+  LeaderboardPanel,
+  OrderYieldPanel,
+  TeamContributionPanel,
+  TeamFunnelPanel,
+} from "@/components/staff-performance/StaffCharts";
 import { apiFetch } from "@/lib/api";
 import { useUserRole } from "@/hooks/useUserRole";
+import { sparklineOption } from "@/lib/businessReportCharts";
+import { extraRevenue } from "@/lib/staffPerformanceMetrics";
 import {
   buildStaffPerformanceSnapshot,
   sortStaffPerformanceRows,
   type StaffMetrics,
   type StaffRow,
+  type StaffSeries,
 } from "@/lib/staffPerformancePresentation";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +49,7 @@ type StaffReportResponse = {
   selected_user_ids: string[];
   rows: StaffRow[];
   missing_weight_products: Array<{ id: string; name: string }>;
+  series: StaffSeries;
 };
 
 function dhakaToday(): Date {
@@ -137,6 +149,7 @@ function SnapshotCard({
   testId,
   delay,
   reduceMotion,
+  spark,
 }: {
   label: string;
   value: string;
@@ -144,7 +157,9 @@ function SnapshotCard({
   testId: string;
   delay: number;
   reduceMotion: boolean | null;
+  spark?: number[];
 }) {
+  const sparkOption = useMemo(() => sparklineOption(spark ?? []), [spark]);
   return (
     <motion.div
       data-testid={testId}
@@ -156,6 +171,9 @@ function SnapshotCard({
       <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{label}</p>
       <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
       <p className="mt-0.5 text-[11px] text-black">{description}</p>
+      {spark && spark.length > 1 && (
+        <EChart option={sparkOption} ariaLabel={`${label} trend`} className="mt-auto h-[30px] w-full" animate={!reduceMotion} />
+      )}
     </motion.div>
   );
 }
@@ -405,6 +423,14 @@ export default function StaffPerformance() {
     () => buildStaffPerformanceSnapshot(rankedRows),
     [rankedRows],
   );
+  const valueSpark = useMemo(
+    () => reportQuery.data?.series.buckets.map((bucket) => bucket.confirmed_value) ?? [],
+    [reportQuery.data],
+  );
+  const countSpark = useMemo(
+    () => reportQuery.data?.series.buckets.map((bucket) => bucket.confirmed_count) ?? [],
+    [reportQuery.data],
+  );
 
   if (reportQuery.isLoading) {
     return (
@@ -475,7 +501,7 @@ export default function StaffPerformance() {
             </svg>
           </div>
         )}
-        <div aria-hidden={!isAdmin || undefined} className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", !isAdmin && "blur-[8px] pointer-events-none select-none")}>
+        <div aria-hidden={!isAdmin || undefined} className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-5", !isAdmin && "blur-[8px] pointer-events-none select-none")}>
           <SnapshotCard
             label="Confirmed value"
             value={formatTaka(snapshot.confirmedValue)}
@@ -483,6 +509,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-confirmed-value"
             delay={0.02}
             reduceMotion={reduceMotion}
+            spark={valueSpark}
           />
           <SnapshotCard
             label="Confirmed orders"
@@ -491,6 +518,7 @@ export default function StaffPerformance() {
             testId="staff-performance-summary-confirmed-orders"
             delay={0.06}
             reduceMotion={reduceMotion}
+            spark={countSpark}
           />
           <SnapshotCard
             label="Confirmation rate"
@@ -508,9 +536,27 @@ export default function StaffPerformance() {
             delay={0.14}
             reduceMotion={reduceMotion}
           />
+          <SnapshotCard
+            label="Extra revenue"
+            value={formatTaka(rankedRows.reduce((sum, row) => sum + extraRevenue(row).total, 0))}
+            description="Telesales, upsells and saved carts"
+            testId="staff-performance-summary-extra-revenue"
+            delay={0.18}
+            reduceMotion={reduceMotion}
+          />
         </div>
         </div>
       </motion.div>
+
+      <section className="grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <LeaderboardPanel rows={rankedRows} reduceMotion={reduceMotion} />
+        <OrderYieldPanel rows={rankedRows} reduceMotion={reduceMotion} />
+      </section>
+      <section className="grid gap-3 lg:grid-cols-3">
+        <TeamFunnelPanel rows={rankedRows} reduceMotion={reduceMotion} />
+        <TeamContributionPanel rows={rankedRows} reduceMotion={reduceMotion} />
+        <ExtraRevenuePanel rows={rankedRows} reduceMotion={reduceMotion} />
+      </section>
 
       {data.missing_weight_products.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-y border-amber-500/20 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-950/70">

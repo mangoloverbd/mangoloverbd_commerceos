@@ -13,9 +13,12 @@ vi.mock("@/components/DateRangePicker", () => ({
     <button type="button" onClick={() => onChange(null)}>All time</button>
   ),
 }));
+vi.mock("@/components/business-report/EChart", () => ({
+  EChart: ({ ariaLabel }: { ariaLabel: string }) => <div role="img" aria-label={ariaLabel} />,
+}));
 
 import { apiFetch } from "@/lib/api";
-import type { AbandonedCartMetrics, StaffMetrics, StaffRow } from "@/lib/staffPerformancePresentation";
+import type { AbandonedCartMetrics, StaffMetrics, StaffRow, StaffSeries } from "@/lib/staffPerformancePresentation";
 import StaffPerformance from "@/pages/StaffPerformance";
 
 const RafiId = "11111111-1111-1111-1111-111111111111";
@@ -27,6 +30,7 @@ type StaffReportResponse = {
   selected_user_ids: string[];
   rows: StaffRow[];
   missing_weight_products: Array<{ id: string; name: string }>;
+  series: StaffSeries;
 };
 
 function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
@@ -108,6 +112,7 @@ function reportResponse(overrides: Partial<StaffReportResponse> = {}): StaffRepo
       }),
     ],
     missing_weight_products: [{ id: "p2", name: "Green Mango" }],
+    series: { granularity: "day", buckets: [] },
     ...overrides,
   };
 }
@@ -141,7 +146,7 @@ describe("StaffPerformance", () => {
 
     expect(await screen.findByTestId("staff-performance-summary-locked")).toBeInTheDocument();
     expect(screen.getByTestId("staff-performance-summary-confirmed-value").parentElement).toHaveClass("blur-[8px]");
-    expect(screen.getByText("Nadia")).toBeInTheDocument();
+    expect(within(screen.getByTestId(`staff-performance-card-${NadiaId}`)).getByText("Nadia")).toBeInTheDocument();
   });
 
   it("shows the team totals unblurred to admins", async () => {
@@ -152,6 +157,52 @@ describe("StaffPerformance", () => {
     expect(await screen.findByTestId("staff-performance-summary-confirmed-value")).toBeInTheDocument();
     expect(screen.queryByTestId("staff-performance-summary-locked")).not.toBeInTheDocument();
     expect(screen.getByTestId("staff-performance-summary-confirmed-value").parentElement).not.toHaveClass("blur-[8px]");
+  });
+
+  it("shows the extra revenue tile and sparklines on the value and count tiles", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      series: { granularity: "day", buckets: [
+        { key: "2026-09-17", label: "Sep 17", confirmed_count: 1, confirmed_value: 500 },
+        { key: "2026-09-18", label: "Sep 18", confirmed_count: 2, confirmed_value: 900 },
+      ] },
+    })));
+
+    renderPage();
+
+    const extra = await screen.findByTestId("staff-performance-summary-extra-revenue");
+    expect(extra).toHaveTextContent("৳2,400"); // Rafi and Nadia each have telesales ৳1,200 in the default fixture; no upsell or carts
+    expect(within(screen.getByTestId("staff-performance-summary-confirmed-value")).getByRole("img", { name: "Confirmed value trend" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("staff-performance-summary-confirmation-rate")).queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("renders the leaderboard, order yield, funnel, contribution and extra revenue panels", async () => {
+    // Default rows tie at ৳1,200 (name tiebreak ranks Nadia first), so give Rafi the clear lead.
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [
+        reportRow({ orders: metrics({ confirmed_value: 1800 }) }),
+        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, products: [] }) }),
+      ],
+    })));
+
+    renderPage();
+
+    expect(await screen.findByRole("region", { name: "Confirmed value by staff" })).toBeInTheDocument();
+    expect(screen.getByText("Top this period").closest("section")).toHaveTextContent("Rafi");
+    expect(screen.getByRole("region", { name: "Where every assigned order ended up" })).toBeInTheDocument();
+    const funnel = screen.getByRole("region", { name: "From assigned to delivered" });
+    expect(within(funnel).getByText("Assigned")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Team contribution" })).toHaveTextContent("Rafi");
+    expect(screen.getByRole("region", { name: "Telesales, upsells and saved carts" })).toBeInTheDocument();
+  });
+
+  it("keeps the charts visible to team members while the tiles stay blurred", async () => {
+    roleState.isAdmin = false;
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    expect(await screen.findByTestId("staff-performance-summary-locked")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Confirmed value by staff" })).toBeInTheDocument();
   });
 
   it("shows a loading state before the report arrives", () => {
