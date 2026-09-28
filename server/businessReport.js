@@ -383,17 +383,22 @@ export function resolveBusinessReportRequest({ from, to } = {}) {
   };
 }
 
-export function resolvePreviousBusinessReportRequest(request) {
+export function resolvePreviousBusinessReportRequest(request, nowMs = Date.now()) {
   if (!request?.range?.from || !request?.range?.to) return null;
   const days = inclusiveDayCount(request.range.from, request.range.to);
   const interval = toDhakaInterval(
     dayAtOffset(request.range.from, -days),
     dayAtOffset(request.range.from, -1),
   );
+  let until = interval.until;
+  if (new Date(request.until).getTime() > nowMs) {
+    const elapsedMs = nowMs - new Date(request.since).getTime();
+    until = new Date(new Date(interval.since).getTime() + elapsedMs).toISOString();
+  }
   return {
     range: { from: interval.from, to: interval.to },
     since: interval.since,
-    until: interval.until,
+    until,
   };
 }
 

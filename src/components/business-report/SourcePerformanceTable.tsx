@@ -17,7 +17,11 @@ const formatNumber = (value: number) => Number(value || 0).toLocaleString("en-BD
 const formatTaka = (value: number) => `৳${Math.round(value || 0).toLocaleString("en-BD")}`;
 const formatKg = (value: number) => `${Number(value || 0).toLocaleString("en-BD", { maximumFractionDigits: 2 })} kg`;
 const formatPct = (value: number) => `${value.toLocaleString("en-BD", { maximumFractionDigits: 1 })}%`;
-const signedTaka = (value: number) => `${value < 0 ? "−" : "+"}৳${Math.abs(Math.round(value)).toLocaleString("en-BD")}`;
+const signedTaka = (value: number) => {
+  const rounded = Math.round(value);
+  if (rounded === 0) return "৳0";
+  return `${rounded < 0 ? "−" : "+"}৳${Math.abs(rounded).toLocaleString("en-BD")}`;
+};
 
 const COLUMNS: Array<{ key: SourceSortKey | null; label: string; align?: "right" }> = [
   { key: "label", label: "Source" },
@@ -109,7 +113,7 @@ function SourceDetail({ row }: { row: SourceRow }) {
           <p className="flex justify-between"><span className="text-black/60">Courier fees</span><span>{formatTaka(source.courier_fees_recorded)}</span></p>
           <p className="flex justify-between border-t border-black/[0.08] pt-2 font-medium">
             <span>Net</span>
-            <span className={source.net_delivery_position < 0 ? "text-[#B4473A]" : ""}>{signedTaka(source.net_delivery_position)}</span>
+            <span className={Math.round(source.net_delivery_position) < 0 ? "text-[#B4473A]" : ""}>{signedTaka(source.net_delivery_position)}</span>
           </p>
         </div>
         {source.landing_pages.length > 0 ? (
@@ -118,7 +122,7 @@ function SourceDetail({ row }: { row: SourceRow }) {
             {source.landing_pages.map((page) => (
               <p key={page.path || "other"} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2.5">
                 <span className="truncate font-mono text-[11px]">{page.label}</span>
-                <span>{formatNumber(page.intake_count)} orders · {formatTaka(page.order_value)}</span>
+                <span>{`${formatNumber(page.intake_count)} ${page.intake_count === 1 ? "order" : "orders"} · ${formatTaka(page.order_value)}`}</span>
                 <span className="text-black/45">{formatPct(rate(page.approved_count, page.intake_count))} approved</span>
               </p>
             ))}
@@ -135,7 +139,7 @@ function SourceDetail({ row }: { row: SourceRow }) {
       </div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Products by outcome · {row.label}</p>
-        <p className="text-[10px] text-black/45">kg · Loss = cancelled + RTO kg ÷ ordered kg · red = 5+ pts above this source</p>
+        <p className="text-[10px] text-black/45">kg · Loss = cancelled + RTO kg ÷ ordered kg · red = more than 5 pts above this source</p>
       </div>
       <ProductOutcomeTable label={row.label} source={source} />
     </div>
@@ -187,7 +191,7 @@ export function SourcePerformanceTable({ report }: { report: BusinessReportRespo
                 >
                   {column.key ? (
                     <button type="button" onClick={() => onSort(column.key as SourceSortKey)} className={`uppercase tracking-[0.22em] hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25 ${sort.key === column.key ? "text-black" : ""}`}>
-                      {column.label}{sort.key === column.key ? (sort.dir === 1 ? " ▴" : " ▾") : ""}
+                      {column.label}{sort.key === column.key && <span aria-hidden="true">{sort.dir === 1 ? " ▴" : " ▾"}</span>}
                     </button>
                   ) : column.label}
                 </th>
@@ -210,7 +214,7 @@ export function SourcePerformanceTable({ report }: { report: BusinessReportRespo
                         onClick={() => toggle(row.key)}
                         className="flex items-center gap-2 text-[13px] font-semibold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25"
                       >
-                        <CaretRight weight="light" size={14} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                        <CaretRight weight="light" size={14} className={`transition-transform motion-reduce:transition-none ${isOpen ? "rotate-90" : ""}`} />
                         {row.label}
                       </button>
                     </td>
@@ -227,7 +231,7 @@ export function SourcePerformanceTable({ report }: { report: BusinessReportRespo
                     <td className="px-2.5 py-3 text-right"><Flagged value={formatPct(row.lossRate)} flagged={row.flags.loss} /></td>
                     <td className="px-2.5 py-3 text-right">{formatTaka(row.aov)}</td>
                     <td className="px-2.5 py-3 text-right">{formatKg(row.kg)}</td>
-                    <td className={`px-2.5 py-3 text-right ${row.netPerOrder < 0 ? "text-[#B4473A]" : ""}`}>{signedTaka(row.netPerOrder)}</td>
+                    <td className={`px-2.5 py-3 text-right ${Math.round(row.netPerOrder) < 0 ? "text-[#B4473A]" : ""}`}>{signedTaka(row.netPerOrder)}</td>
                   </tr>
                   {isOpen && (
                     <tr id={detailId} className="bg-black/[0.03]">

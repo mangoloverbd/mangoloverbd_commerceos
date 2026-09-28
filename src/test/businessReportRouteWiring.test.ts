@@ -40,9 +40,21 @@ describe("GET /api/reports/business", () => {
     expect(section).toContain("order_items(");
     expect(section).toMatch(/from\("products"\)[\s\S]*?\.eq\("org_id", orgId\)/);
     expect(section).toMatch(/from\("product_variants"\)[\s\S]*?\.eq\("org_id", orgId\)/);
-    expect(section).toContain("request.since");
-    expect(section).toContain("request.until");
+    expect(section).toContain('.gte("created_at", request.since)');
+    expect(section).toContain('.lt("created_at", request.until)');
     expect(section).not.toContain('from("social_inbox_orders")');
+  });
+
+  it("reads the previous period with a separate lean workspace-scoped query", () => {
+    const section = route();
+    const previousQuery = section.match(/\.from\("orders"\)\s*\.select\(([^)]*)\)\s*\.eq\("org_id", orgId\)\s*\.gte\("created_at", previousRequest\.since\)\s*\.lt\("created_at", previousRequest\.until\)/);
+
+    expect(previousQuery).not.toBeNull();
+    const selectArg = previousQuery?.[1] ?? "";
+    const leanFields = selectArg.startsWith('"') ? selectArg : (section.match(new RegExp(`const ${selectArg} = ("[^"]*")`))?.[1] ?? "");
+    expect(leanFields).toContain("created_at");
+    expect(leanFields).not.toContain("order_items(");
+    expect(section).not.toContain("windowStart");
   });
 
   it("delegates input validation and output aggregation to the pure module", () => {
@@ -53,7 +65,7 @@ describe("GET /api/reports/business", () => {
     expect(section).toContain("from: req.query.from");
     expect(section).toContain("to: req.query.to");
     expect(section).toContain("resolvePreviousBusinessReportRequest(request)");
-    expect(section).toContain("buildBusinessReport(orders, request, { products, variants, previousRequest })");
+    expect(section).toContain("buildBusinessReport([...orders, ...previousOrders], request, { products, variants, previousRequest })");
   });
 });
 

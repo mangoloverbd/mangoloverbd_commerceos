@@ -3,6 +3,7 @@ import type { BusinessReportSource, Metrics, ProductWeight, SeriesBucket } from 
 import {
   GRID_ROWS,
   approvalBand,
+  approvalGaugeOption,
   bestDayOption,
   intakeGridOption,
   outcomeSankeyOption,
@@ -96,6 +97,13 @@ describe("approvalBand", () => {
     expect(approvalBand(70).label).toBe("Watch");
     expect(approvalBand(79.5).label).toBe("Healthy");
     expect(approvalBand(93).label).toBe("Excellent");
+  });
+});
+
+describe("approvalGaugeOption", () => {
+  it("hides the gauge's own value readout so the panel text is the only one", () => {
+    const [gauge] = (approvalGaugeOption(79.5) as { series: Array<{ detail: { show?: boolean } }> }).series;
+    expect(gauge.detail.show).toBe(false);
   });
 });
 

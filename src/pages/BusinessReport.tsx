@@ -48,6 +48,7 @@ export default function BusinessReport() {
   const reportQuery = useQuery({
     queryKey: ["business-report", from, to],
     retry: false,
+    staleTime: 60_000,
     queryFn: async (): Promise<BusinessReportResponse> => {
       const params = new URLSearchParams();
       if (from && to) {

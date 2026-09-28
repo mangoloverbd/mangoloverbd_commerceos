@@ -277,9 +277,11 @@ describe("BusinessReport", () => {
     renderPage();
 
     const overall = await screen.findByRole("region", { name: "Product weight" });
-    expect(within(overall).getByText("Himsagar")).toBeInTheDocument();
+    expect(within(overall).getAllByText("Himsagar")).toHaveLength(2); // ring label + list row
+    expect(within(within(overall).getByRole("list")).getByText("Himsagar")).toBeInTheDocument();
     expect(within(overall).getByText("25 kg")).toBeInTheDocument();
     expect(within(overall).getByText("20 kg approved · 4 packs")).toBeInTheDocument();
+    expect(within(overall).getByText("25 kg · 1 product")).toBeInTheDocument();
     expect(screen.getByText(/1 product is missing a catalog weight: Langra/)).toBeInTheDocument();
   });
 
@@ -355,6 +357,44 @@ describe("BusinessReport", () => {
     expect(screen.getByText("Courier fees recorded on 3 of 4 orders · weight on 0 of 4")).toBeInTheDocument();
   });
 
+  it("prints a rounded-to-zero net delivery position as ৳0 without a sign or red", async () => {
+    const user = userEvent.setup();
+    const base = reportResponse();
+    apiFetchMock.mockResolvedValue(jsonResponse({
+      ...base,
+      sources: [{ ...base.sources[0], net_delivery_position: -0.4 }, base.sources[1]],
+    }));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Source performance" });
+    const website = within(table).getByTestId("business-report-source-website");
+    const netCell = within(website).getAllByRole("cell").at(-1);
+    expect(netCell).toHaveTextContent(/^৳0$/);
+    expect(netCell).not.toHaveClass("text-[#B4473A]");
+
+    await user.click(within(table).getByRole("button", { name: "Show products for Website" }));
+    const net = within(table).getByText("Net").nextElementSibling;
+    expect(net).toHaveTextContent(/^৳0$/);
+    expect(net).not.toHaveClass("text-[#B4473A]");
+  });
+
+  it("counts only sources and outcomes that carry order value in the outcome badge", async () => {
+    const base = reportResponse();
+    apiFetchMock.mockResolvedValueOnce(jsonResponse(base));
+    const first = renderPage();
+    const flow = await screen.findByRole("region", { name: "Where each channel's orders end up" });
+    expect(within(flow).getByText("2 sources · 4 outcomes")).toBeInTheDocument();
+    first.unmount();
+
+    const empty = { ...base.sources[1], source: "facebook", label: "Facebook", ...metrics({}) };
+    const approvedOnly = { ...base.sources[0], ...metrics({ intake_count: 1, order_value: 500, approved_count: 1, approved_value: 500 }) };
+    apiFetchMock.mockResolvedValueOnce(jsonResponse({ ...base, sources: [approvedOnly, empty] }));
+    renderPage();
+    const single = await screen.findByRole("region", { name: "Where each channel's orders end up" });
+    expect(within(single).getByText("1 source · 1 outcome")).toBeInTheDocument();
+  });
+
   it("sorts sources when a column header is clicked", async () => {
     const user = userEvent.setup();
     apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
@@ -386,6 +426,7 @@ describe("BusinessReport", () => {
 
     expect(within(table).getByRole("button", { name: "Hide products for Website" })).toHaveAttribute("aria-expanded", "true");
     expect(within(table).getByText("/step/katimon-mango")).toBeInTheDocument();
+    expect(within(table).getByText("1 order · ৳1,000")).toBeInTheDocument();
     const products = within(table).getByRole("table", { name: "Website products by outcome" });
     const fazliRow = within(products).getByRole("row", { name: /Fazli/ });
     expect(within(fazliRow).getByText("10 kg")).toBeInTheDocument();

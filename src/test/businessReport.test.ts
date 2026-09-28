@@ -422,11 +422,30 @@ describe("business report upsell source", () => {
 describe("business report previous period", () => {
   it("resolves the same-length window immediately before a bounded range", () => {
     const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-20" });
-    expect(resolvePreviousBusinessReportRequest(request)).toEqual({
+    expect(resolvePreviousBusinessReportRequest(request, new Date("2026-09-25T06:00:00.000Z").getTime())).toEqual({
       range: { from: "2026-09-15", to: "2026-09-17" },
       since: "2026-09-14T18:00:00.000Z",
       until: "2026-09-17T18:00:00.000Z",
     });
+  });
+
+  it("clips the previous window to the same elapsed time when the current range is still in progress", () => {
+    const request = resolveBusinessReportRequest({ from: "2026-09-18", to: "2026-09-18" });
+    const nowMs = new Date("2026-09-18T06:00:00.000Z").getTime(); // 12:00 Asia/Dhaka
+    const previousRequest = resolvePreviousBusinessReportRequest(request, nowMs);
+
+    expect(previousRequest).toEqual({
+      range: { from: "2026-09-17", to: "2026-09-17" },
+      since: "2026-09-16T18:00:00.000Z",
+      until: "2026-09-17T06:00:00.000Z",
+    });
+
+    const report = buildBusinessReport([
+      order({ id: "yesterday-morning", created_at: "2026-09-17T03:00:00.000Z", price: 400 }), // 09:00 Dhaka
+      order({ id: "yesterday-afternoon", created_at: "2026-09-17T09:00:00.000Z", price: 900 }), // 15:00 Dhaka
+    ], request, { previousRequest });
+
+    expect(report.previous?.summary).toMatchObject({ intake_count: 1, order_value: 400 });
   });
 
   it("has no previous period for All Time", () => {

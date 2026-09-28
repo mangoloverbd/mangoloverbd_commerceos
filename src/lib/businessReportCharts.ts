@@ -94,10 +94,15 @@ const SANKEY_VALUE_FIELDS = {
   returned: "returned_value",
 } as const;
 
-export function outcomeSankeyOption(sources: BusinessReportSource[]): EChartsCoreOption {
+export function sankeyParticipants(sources: BusinessReportSource[]) {
   const active = sources.filter((source) => source.order_value > 0);
-  const total = active.reduce((sum, source) => sum + source.order_value, 0);
   const outcomes = OUTCOME_KEYS.filter((key) => active.some((source) => source[SANKEY_VALUE_FIELDS[key]] > 0));
+  return { active, outcomes };
+}
+
+export function outcomeSankeyOption(sources: BusinessReportSource[]): EChartsCoreOption {
+  const { active, outcomes } = sankeyParticipants(sources);
+  const total = active.reduce((sum, source) => sum + source.order_value, 0);
   const nodes = [
     ...active.map((source, index) => ({ name: source.label, depth: 0, itemStyle: { color: CHART.greys[Math.min(index, CHART.greys.length - 1)] } })),
     ...outcomes.map((key) => ({ name: OUTCOME_LABELS[key], depth: 1, itemStyle: { color: OUTCOME_COLORS[key] } })),
@@ -203,14 +208,7 @@ export function approvalGaugeOption(approvalRate: number): EChartsCoreOption {
       splitLine: { show: true, length: 10, distance: -10, lineStyle: { color: CHART.bg, width: 3 } },
       axisLabel: { show: false },
       title: { show: false },
-      detail: {
-        offsetCenter: [0, "0%"],
-        formatter: (value: number) => `${value.toFixed(1)}%`,
-        color: CHART.ink,
-        fontSize: 30,
-        fontWeight: 300,
-        fontFamily: CHART.font,
-      },
+      detail: { show: false },
       data: [{ value: Number(approvalRate.toFixed(1)) }],
     }],
   };
@@ -278,8 +276,8 @@ export function productRingsOption(products: ProductWeight[]): EChartsCoreOption
     }),
     series: top.map((product, index) => ({
       type: "pie",
-      radius: ["26%", "32%"],
-      center: [`${(index + 0.5) * width}%`, "40%"],
+      radius: ["40%", "50%"],
+      center: [`${(index + 0.5) * width}%`, "50%"],
       startAngle: 90,
       label: { show: false },
       emphasis: { scale: false },
@@ -287,12 +285,6 @@ export function productRingsOption(products: ProductWeight[]): EChartsCoreOption
         { name: product.product_name, value: product.kg, itemStyle: { color: CHART.greys[Math.min(index, 3)] } },
         { name: "rest", value: Math.max(total - product.kg, 0), itemStyle: { color: CHART.track }, tooltip: { show: false } },
       ],
-    })),
-    graphic: top.map((product, index) => ({
-      type: "text",
-      left: `${(index + 0.5) * width}%`,
-      top: "82%",
-      style: { text: product.product_name, fill: CHART.ink2, font: `400 11px ${CHART.font}`, textAlign: "center" },
     })),
   };
 }

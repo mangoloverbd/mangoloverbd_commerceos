@@ -9,6 +9,7 @@ import {
   intakeGridOption,
   outcomeSankeyOption,
   productRingsOption,
+  sankeyParticipants,
   sourceMixOption,
 } from "@/lib/businessReportCharts";
 import { groupSourceMix, maxIndex, rate } from "@/lib/businessReportMetrics";
@@ -64,13 +65,14 @@ export function IntakeRhythmPanel({ report, reduceMotion }: PanelProps) {
 
 export function OutcomeSankeyPanel({ report, reduceMotion }: PanelProps) {
   const option = useMemo(() => outcomeSankeyOption(report.sources), [report.sources]);
+  const { active, outcomes } = useMemo(() => sankeyParticipants(report.sources), [report.sources]);
   const { summary } = report;
   const moving = rate(summary.approved_value, summary.order_value);
   return (
     <Panel
       eyebrow="Order outcomes"
       title="Where each channel's orders end up"
-      aside={<span className="rounded-full bg-black/[0.05] px-3 py-1 text-[11px] tabular-nums text-black/70">{report.sources.length} sources · 4 outcomes</span>}
+      aside={<span className="rounded-full bg-black/[0.05] px-3 py-1 text-[11px] tabular-nums text-black/70">{`${formatNumber(active.length)} ${active.length === 1 ? "source" : "sources"} · ${formatNumber(outcomes.length)} ${outcomes.length === 1 ? "outcome" : "outcomes"}`}</span>}
     >
       <div className="flex gap-7">
         <div>
@@ -78,7 +80,7 @@ export function OutcomeSankeyPanel({ report, reduceMotion }: PanelProps) {
           <p className="mt-1 text-[26px] font-light tabular-nums tracking-[-0.03em] text-black">{formatTaka(summary.order_value)}</p>
         </div>
         <div>
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Delivered or moving</p>
+          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Approved by value</p>
           <p className="mt-1 text-[26px] font-light tabular-nums tracking-[-0.03em] text-black">{moving.toLocaleString("en-BD", { maximumFractionDigits: 1 })}%</p>
         </div>
       </div>
@@ -154,21 +156,31 @@ export function BestDayPanel({ report, reduceMotion }: PanelProps) {
 export function ProductWeightPanel({ report, reduceMotion }: PanelProps) {
   const option = useMemo(() => productRingsOption(report.products), [report.products]);
   const total = report.products.reduce((sum, product) => sum + product.kg, 0);
+  const ringed = report.products.filter((product) => product.kg > 0).slice(0, 5);
   if (report.products.length === 0) return null;
   return (
     <Panel
       eyebrow="Product weight"
       title="Product weight"
-      aside={<span className="text-[13px] tabular-nums text-black/60">{formatKg(total)} · {formatNumber(report.products.length)} products</span>}
+      aside={<span className="text-[13px] tabular-nums text-black/60">{`${formatKg(total)} · ${formatNumber(report.products.length)} ${report.products.length === 1 ? "product" : "products"}`}</span>}
     >
-      {total > 0 && <EChart option={option} ariaLabel="Share of weight by product" className="h-[110px] w-full" animate={!reduceMotion} />}
+      {total > 0 && (
+        <div>
+          <EChart option={option} ariaLabel="Share of weight by product" className="h-[110px] w-full" animate={!reduceMotion} />
+          <div className="grid" style={{ gridTemplateColumns: `repeat(${Math.max(ringed.length, 1)}, minmax(0, 1fr))` }}>
+            {ringed.map((product) => (
+              <span key={product.product_id || product.product_name} className="truncate px-1 text-center text-[11px] text-black/60">{product.product_name}</span>
+            ))}
+          </div>
+        </div>
+      )}
       <ul className="grid gap-0.5">
         {report.products.map((product, index) => (
           <li key={product.product_id || product.product_name} className="grid grid-cols-[10px_44px_minmax(0,1fr)_auto_auto] items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] odd:bg-black/[0.04]">
             <span className="h-2 w-2 rounded-[2px]" style={{ background: CHART.greys[Math.min(index, 3)] }} />
             <span className="font-semibold tabular-nums">{Math.round(rate(product.kg, total))}%</span>
             <span className="truncate">{product.product_name}</span>
-            <span className="text-[11px] tabular-nums text-black/45">{`${formatKg(product.approved_kg)} approved · ${formatNumber(product.packs)} packs`}</span>
+            <span className="hidden text-[11px] tabular-nums text-black/45 sm:inline">{`${formatKg(product.approved_kg)} approved · ${formatNumber(product.packs)} packs`}</span>
             <span className="tabular-nums">{formatKg(product.kg)}</span>
           </li>
         ))}
