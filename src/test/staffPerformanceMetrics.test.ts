@@ -94,6 +94,13 @@ describe("groupStaffShare", () => {
     ]);
     expect(groupStaffShare([idle], 4)).toEqual([]);
   });
+
+  it("names a single leftover member instead of folding it into Other", () => {
+    const five = ["A", "B", "C", "D", "E"].map((name, index) => row(name, name, { confirmed_value: 600 - index * 100 }));
+    expect(groupStaffShare(five, 4)).toEqual([
+      { label: "A", value: 600 }, { label: "B", value: 500 }, { label: "C", value: 400 }, { label: "D", value: 300 }, { label: "E", value: 200 },
+    ]);
+  });
 });
 
 describe("extraRevenue", () => {

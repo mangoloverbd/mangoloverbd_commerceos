@@ -63,7 +63,7 @@ export function OrderYieldPanel({ rows, reduceMotion }: PanelProps) {
     <Panel
       eyebrow="Order yield"
       title="Where every assigned order ended up"
-      aside={teamShare !== null && <span className="rounded-full bg-black/[0.05] px-3 py-1 text-[11px] tabular-nums text-black/70">Team delivered {formatPct(teamShare)}</span>}
+      aside={teamShare !== null && <span className="rounded-full bg-black/[0.05] px-3 py-1 text-[11px] tabular-nums text-black/70">Team delivered {formatPct(teamShare)} of assigned</span>}
     >
       {teamShare !== null
         ? <EChart option={option} ariaLabel="Share of each member's assigned orders that were delivered, in transit, returned, cancelled or not confirmed" className="h-[260px] w-full" animate={!reduceMotion} />
@@ -83,7 +83,7 @@ export function TeamFunnelPanel({ rows }: PanelProps) {
   const share = (value: number) => (funnel.assigned > 0 ? formatPct((value / funnel.assigned) * 100) : "—");
   const steps = [
     { label: "Assigned", value: funnel.assigned, color: CHART.ink, drop: `${formatNumber(funnel.notConfirmed + funnel.cancelled)} not confirmed (${formatNumber(funnel.cancelled)} cancelled)` },
-    { label: "Confirmed", value: funnel.confirmed, color: CHART.ink, drop: `${formatNumber(funnel.returned)} RTO · ${formatNumber(funnel.inTransit)} in transit` },
+    { label: "Confirmed, not cancelled", value: funnel.confirmed, color: CHART.ink, drop: `${formatNumber(funnel.returned)} RTO · ${formatNumber(funnel.inTransit)} in transit` },
     { label: "Delivered", value: funnel.delivered, color: YIELD_COLORS.delivered, drop: null },
   ];
   const byConfirmation = tableRows.filter((item) => item.confRate !== null).sort((a, b) => (b.confRate ?? 0) - (a.confRate ?? 0));
@@ -92,14 +92,14 @@ export function TeamFunnelPanel({ rows }: PanelProps) {
       <div className="grid gap-2">
         {steps.map((step) => (
           <div key={step.label} className="grid gap-1">
-            <div className="grid grid-cols-[76px_minmax(0,1fr)_52px] items-center gap-2.5 text-[12px]">
+            <div className="grid grid-cols-[132px_minmax(0,1fr)_52px] items-center gap-2.5 text-[12px]">
               <span>{step.label}</span>
               <div className="h-[22px] rounded-md" style={{ width: width(step.value), background: step.color }}>
                 <span className="block px-2 text-[11px] font-medium leading-[22px] tabular-nums text-[#FAFAF8]">{formatNumber(step.value)}</span>
               </div>
               <span className="text-right tabular-nums text-black/55">{share(step.value)}</span>
             </div>
-            {step.drop && <p className="pl-[86px] text-[11px] tabular-nums text-[#B4473A]">− {step.drop}</p>}
+            {step.drop && <p className="pl-[142px] text-[11px] tabular-nums text-[#B4473A]">− {step.drop}</p>}
           </div>
         ))}
       </div>

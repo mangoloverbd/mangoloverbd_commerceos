@@ -148,7 +148,8 @@ export function groupStaffShare(rows: StaffRow[], maxSlices = 4): ShareSlice[] {
   const sorted = rows
     .filter((row) => row.orders.confirmed_value > 0)
     .sort((a, b) => b.orders.confirmed_value - a.orders.confirmed_value);
-  const top = sorted.slice(0, maxSlices).map((row) => ({ label: row.display_name, value: row.orders.confirmed_value }));
-  const rest = sorted.slice(maxSlices).reduce((sum, row) => sum + row.orders.confirmed_value, 0);
+  const shown = sorted.length === maxSlices + 1 ? sorted.length : maxSlices;
+  const top = sorted.slice(0, shown).map((row) => ({ label: row.display_name, value: row.orders.confirmed_value }));
+  const rest = sorted.slice(shown).reduce((sum, row) => sum + row.orders.confirmed_value, 0);
   return rest > 0 ? [...top, { label: "Other", value: rest }] : top;
 }

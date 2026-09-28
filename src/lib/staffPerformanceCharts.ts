@@ -7,7 +7,7 @@ export const LEADERBOARD_LIMIT = 8;
 export const YIELD_KEYS: YieldKey[] = ["delivered", "inTransit", "returned", "cancelled", "notConfirmed"];
 export const YIELD_LABELS: Record<YieldKey, string> = {
   delivered: "Delivered",
-  inTransit: "In transit",
+  inTransit: "Open / in transit",
   returned: "RTO",
   cancelled: "Cancelled",
   notConfirmed: "Not confirmed",

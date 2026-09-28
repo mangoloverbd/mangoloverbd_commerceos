@@ -30,7 +30,6 @@ import { extraRevenue } from "@/lib/staffPerformanceMetrics";
 import {
   buildStaffPerformanceSnapshot,
   sortStaffPerformanceRows,
-  type StaffMetrics,
   type StaffRow,
   type StaffSeries,
 } from "@/lib/staffPerformancePresentation";
@@ -161,7 +160,7 @@ function SnapshotCard({
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: reduceMotion ? 0 : delay, duration: 0.35 }}
-      className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
+      className="flex min-h-[92px] flex-col rounded-2xl bg-black/[0.04] px-5 py-3"
     >
       <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{label}</p>
       <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>

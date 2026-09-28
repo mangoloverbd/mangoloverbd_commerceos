@@ -65,9 +65,9 @@ function Detail({ item }: { item: StaffTableRow }) {
         <div className="flex flex-col gap-2 rounded-xl bg-white px-3.5 py-3">
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Assigned orders</p>
           <MiniBar label="Assigned" value={item.assigned} max={item.assigned} color="#0B0B0A" />
-          <MiniBar label="Confirmed" value={item.yield.delivered + item.yield.inTransit + item.yield.returned} max={item.assigned} color="#0B0B0A" />
+          <MiniBar label="Confirmed, not cancelled" value={item.yield.delivered + item.yield.inTransit + item.yield.returned} max={item.assigned} color="#0B0B0A" />
           <MiniBar label="Delivered" value={item.yield.delivered} max={item.assigned} color={YIELD_COLORS.delivered} />
-          <MiniBar label="In transit" value={item.yield.inTransit} max={item.assigned} color={YIELD_COLORS.inTransit} />
+          <MiniBar label={YIELD_LABELS.inTransit} value={item.yield.inTransit} max={item.assigned} color={YIELD_COLORS.inTransit} />
           <MiniBar label="RTO" value={item.yield.returned} max={item.assigned} color={YIELD_COLORS.returned} />
           <MiniBar label="Cancelled" value={item.yield.cancelled} max={item.assigned} color={YIELD_COLORS.cancelled} />
           <MiniBar label="Not confirmed" value={item.yield.notConfirmed} max={item.assigned} color={YIELD_COLORS.notConfirmed} />
@@ -204,12 +204,12 @@ export function StaffTable({ rows }: { rows: StaffRow[] }) {
                         aria-expanded={isOpen}
                         aria-controls={detailId}
                         aria-label={`${isOpen ? "Hide" : "Show"} details for ${item.name}`}
-                        className="flex items-center gap-2 text-[13px] font-semibold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25"
+                        className="flex items-center gap-2 whitespace-nowrap text-[13px] font-semibold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25"
                       >
                         <CaretRight weight="light" size={14} className={`transition-transform motion-reduce:transition-none ${isOpen ? "rotate-90" : ""}`} />
                         <span className={`grid h-5 w-5 place-items-center rounded-md text-[10px] ${position === 1 ? "bg-black text-[#FAFAF8]" : "bg-black/[0.06] text-black/60"}`}>{position}</span>
-                        {item.name}
-                        {!item.isActive && <span className="text-[10px] font-normal text-black/45">· Former staff</span>}
+                        <span className="max-w-[160px] truncate" title={item.name}>{item.name}</span>
+                        {!item.isActive && <span className="whitespace-nowrap text-[10px] font-normal text-black/45">· Former staff</span>}
                       </button>
                     </td>
                     <td className="px-2.5 py-3 text-right">{formatNumber(item.assigned)}</td>

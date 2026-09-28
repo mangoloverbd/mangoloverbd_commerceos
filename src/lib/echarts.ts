@@ -1,6 +1,6 @@
 import * as echarts from "echarts/core";
 import { BarChart, GaugeChart, LineChart, PictorialBarChart, PieChart, SankeyChart } from "echarts/charts";
-import { GraphicComponent, GridComponent, MarkPointComponent, TooltipComponent } from "echarts/components";
+import { GraphicComponent, GridComponent, MarkLineComponent, MarkPointComponent, TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 
 echarts.use([
@@ -12,6 +12,7 @@ echarts.use([
   SankeyChart,
   GraphicComponent,
   GridComponent,
+  MarkLineComponent,
   MarkPointComponent,
   TooltipComponent,
   SVGRenderer,

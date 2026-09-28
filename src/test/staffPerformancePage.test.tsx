@@ -302,7 +302,7 @@ describe("StaffPerformance", () => {
     const card = within(screen.getByRole("region", { name: "Rafi details" })).getByText("Assigned orders").parentElement;
     if (!card) throw new Error("Assigned orders card is missing");
     // Confirmed = delivered 3 + in transit (6 - 1 - 3 - 1 = 1) + RTO 1 = 5
-    expect(within(card).getByText("Confirmed").closest("p")).toHaveTextContent(/^Confirmed5$/);
+    expect(within(card).getByText("Confirmed, not cancelled").closest("p")).toHaveTextContent(/^Confirmed, not cancelled5$/);
     expect(within(card).getByText("Cancelled").closest("p")).toHaveTextContent(/^Cancelled3$/);
     expect(within(card).getByText("Not confirmed").closest("p")).toHaveTextContent(/^Not confirmed2$/);
   });
