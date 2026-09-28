@@ -146,7 +146,7 @@ describe("StaffPerformance", () => {
 
     expect(await screen.findByTestId("staff-performance-summary-locked")).toBeInTheDocument();
     expect(screen.getByTestId("staff-performance-summary-confirmed-value").parentElement).toHaveClass("blur-[8px]");
-    expect(within(screen.getByTestId(`staff-performance-card-${NadiaId}`)).getByText("Nadia")).toBeInTheDocument();
+    expect(within(screen.getByTestId(`staff-performance-row-${NadiaId}`)).getByText("Nadia")).toBeInTheDocument();
   });
 
   it("shows the team totals unblurred to admins", async () => {
@@ -213,34 +213,61 @@ describe("StaffPerformance", () => {
     expect(screen.getByText("Loading staff performance")).toBeInTheDocument();
   });
 
-  it("ranks regular-order staff cards by confirmed value without rendering Social Inbox", async () => {
+  it("lists the team in a ranked table, most confirmed value first, without Social Inbox", async () => {
+    // The default fixture ties both members at ৳1,200 (name tiebreak ranks Nadia first), so give Rafi the clear lead.
     vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
       rows: [
-        reportRow({
-          user_id: NadiaId,
-          display_name: "Nadia",
-          is_active: false,
-          orders: metrics({ confirmed_value: 900, confirmed_count: 1, products: [] }),
-        }),
-        reportRow({
-          orders: metrics({ confirmed_value: 1800, confirmed_count: 2 }),
-          social_inbox_orders: metrics({ confirmed_value: 999999 }),
-        }),
+        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, products: [] }) }),
+        reportRow({ orders: metrics({ confirmed_value: 1800, confirmed_count: 2 }), social_inbox_orders: metrics({ confirmed_value: 999999 }) }),
       ],
     })));
 
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Staff Performance" })).toBeInTheDocument();
-    expect(screen.getByText("Confirmed value")).toBeInTheDocument();
-    expect(screen.getByText("Confirmed orders")).toBeInTheDocument();
-    expect(screen.queryByText("Social Inbox")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId(/staff-performance-card-/).map((card) => card.dataset.testid)).toEqual([
-      `staff-performance-card-${RafiId}`,
-      `staff-performance-card-${NadiaId}`,
-    ]);
-    expect(screen.getByText("Nadia · Former staff")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Review products" })).toHaveAttribute("href", "/products");
+    const table = await screen.findByRole("table", { name: "Team performance" });
+    const rows = within(table).getAllByTestId(/^staff-performance-row-/);
+    expect(rows[0]).toHaveAttribute("data-testid", `staff-performance-row-${RafiId}`);
+    expect(within(rows[1]).getByText(/Former staff/)).toBeInTheDocument();
+    expect(screen.queryByText(/Social Inbox/i)).not.toBeInTheDocument();
+  });
+
+  it("opens a member's details when any part of the row is clicked", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [reportRow({
+        orders: metrics({ retained_upsell_count: 2, retained_upsell_value: 600, products: [{ product_id: "p1", product_name: "Mango", packs: 2, kg: 2 }] }),
+        abandoned_checkouts: abandonedMetrics({ contacted_count: 4, converted_count: 1, converted_value: 900 }),
+      })],
+    })));
+
+    renderPage();
+
+    const row = await screen.findByTestId(`staff-performance-row-${RafiId}`);
+    await user.click(within(row).getAllByRole("cell")[2]);
+    expect(within(row).getByRole("button", { name: "Hide details for Rafi" })).toHaveAttribute("aria-expanded", "true");
+    const detail = screen.getByRole("region", { name: "Rafi details" });
+    expect(within(detail).getByText("Upsell kept · 2 items")).toBeInTheDocument();
+    expect(within(detail).getByText("Contacted").closest("p")).toHaveTextContent("4");
+    expect(within(detail).getByRole("table", { name: "Rafi confirmed products" })).toHaveTextContent("Mango");
+
+    await user.click(within(row).getByRole("button", { name: "Hide details for Rafi" }));
+    expect(within(row).getByRole("button", { name: "Show details for Rafi" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("sorts the table when a column header is clicked and expands everyone at once", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Team performance" });
+    await user.click(within(table).getByRole("button", { name: /^Staff/ }));
+    expect(within(table).getAllByTestId(/^staff-performance-row-/)[0]).toHaveAttribute("data-testid", `staff-performance-row-${NadiaId}`);
+
+    await user.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(within(table).getByRole("button", { name: "Hide details for Rafi" })).toBeInTheDocument();
+    expect(within(table).getByRole("button", { name: "Hide details for Nadia" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse all" })).toBeInTheDocument();
   });
 
   it("starts the page header directly with Staff Performance", async () => {
@@ -250,109 +277,6 @@ describe("StaffPerformance", () => {
 
     expect(await screen.findByRole("heading", { name: "Staff Performance" })).toBeInTheDocument();
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
-  });
-
-  it("stacks team performance cards in a single column", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
-
-    renderPage();
-
-    const [firstCard] = await screen.findAllByTestId(/staff-performance-card-/);
-    const teamList = firstCard.parentElement;
-    if (!teamList) throw new Error("Team performance card list is missing");
-
-    expect(teamList).toHaveClass("grid-cols-1");
-    expect(teamList).not.toHaveClass("md:grid-cols-2");
-    expect(teamList).not.toHaveClass("xl:grid-cols-3");
-  });
-
-  it("highlights regular-order outcomes with colorful chips", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
-      rows: [
-        reportRow({
-          orders: metrics({
-            assigned_count: 4,
-            delivered_count: 3,
-            cancelled_count: 2,
-            returned_count: 1,
-          }),
-        }),
-      ],
-    })));
-
-    renderPage();
-
-    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
-    expect(within(card).getByText("Assigned 4")).toHaveClass("bg-status-blue-background");
-    expect(within(card).getByText("Delivered 3")).toHaveClass("bg-status-lime-background");
-    expect(within(card).getByText("Cancelled 2")).toHaveClass("bg-status-rose-background");
-    expect(within(card).getByText("RTO 1")).toHaveClass("bg-status-yellow-background");
-  });
-
-  it("shows retained upsell count and value for each staff member", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
-      rows: [reportRow({ orders: metrics({ retained_upsell_count: 3, retained_upsell_value: 875 }) })],
-    })));
-    const user = userEvent.setup();
-    renderPage();
-
-    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
-    expect(within(card).getByText("Upsell 3")).toBeInTheDocument();
-    await user.click(within(card).getByRole("button", { name: "Show details for Rafi" }));
-    expect(within(card).getByText("Retained upsell")).toBeInTheDocument();
-    expect(within(card).getByText("৳875")).toBeInTheDocument();
-  });
-
-  it("expands regular-order staff details inline", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
-    const user = userEvent.setup();
-
-    renderPage();
-
-    await screen.findByRole("heading", { name: "Staff Performance" });
-    await user.click(screen.getByRole("button", { name: "Show details for Rafi" }));
-
-    expect(screen.getByRole("button", { name: "Hide details for Rafi" })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Mango")).toBeInTheDocument();
-    expect(screen.getByText("2 packs · 2 kg")).toBeInTheDocument();
-  });
-
-  it("shows abandoned-cart activity as a quick-glance chip and in the expanded detail", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
-      rows: [
-        reportRow({
-          abandoned_checkouts: abandonedMetrics({
-            contacted_count: 5,
-            dismissed_count: 2,
-            reopened_count: 1,
-            converted_count: 3,
-            converted_value: 4500,
-          }),
-        }),
-      ],
-    })));
-    const user = userEvent.setup();
-
-    renderPage();
-
-    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
-    expect(within(card).getByText("Cart converted 3")).toBeInTheDocument();
-
-    await user.click(within(card).getByRole("button", { name: "Show details for Rafi" }));
-
-    expect(screen.getByText("Abandoned carts")).toBeInTheDocument();
-    expect(screen.getByText("Contacted")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument();
-    expect(screen.getByText("৳4,500")).toBeInTheDocument();
-  });
-
-  it("hides the abandoned-cart chip when there is no cart activity", async () => {
-    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
-
-    renderPage();
-
-    const card = await screen.findByTestId(`staff-performance-card-${RafiId}`);
-    expect(within(card).queryByText(/Cart converted/)).not.toBeInTheDocument();
   });
 
   it("shows weighted regular-order rates in the team snapshot", async () => {
