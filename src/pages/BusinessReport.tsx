@@ -6,6 +6,7 @@ import type { DateRange } from "react-day-picker";
 import { CaretDown, CaretRight, WarningCircle } from "@phosphor-icons/react";
 import { Link } from "react-router-dom";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { SummaryTiles } from "@/components/business-report/SummaryTiles";
 import { Chip } from "@/components/base/badges/chip";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -32,41 +33,6 @@ function formatKg(value: number) {
 
 function withKg(label: string, kg: number) {
   return kg > 0 ? `${label} · ${formatKg(kg)}` : label;
-}
-
-function formatPercent(numerator: number, denominator: number) {
-  if (!denominator) return "0%";
-  return `${((numerator / denominator) * 100).toLocaleString("en-BD", { maximumFractionDigits: 1 })}%`;
-}
-
-function SnapshotCard({
-  label,
-  value,
-  description,
-  testId,
-  delay,
-  reduceMotion,
-}: {
-  label: string;
-  value: string;
-  description: string;
-  testId: string;
-  delay: number;
-  reduceMotion: boolean | null;
-}) {
-  return (
-    <motion.div
-      data-testid={testId}
-      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: reduceMotion ? 0 : delay, duration: 0.35 }}
-      className="min-h-[92px] rounded-2xl bg-black/[0.04] px-5 py-3"
-    >
-      <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{label}</p>
-      <p className="mt-1 text-2xl font-light tabular-nums tracking-[-0.04em] text-black">{value}</p>
-      <p className="mt-0.5 text-[11px] text-black/60">{description}</p>
-    </motion.div>
-  );
 }
 
 function DetailGroup({
@@ -413,48 +379,7 @@ export default function BusinessReport() {
           </div>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <SnapshotCard
-                label="Intake"
-                value={formatNumber(summary.intake_count)}
-                description="Regular orders created"
-                testId="business-report-summary-intake"
-                delay={0.02}
-                reduceMotion={reduceMotion}
-              />
-              <SnapshotCard
-                label="Order value"
-                value={formatTaka(summary.order_value)}
-                description="Intake value before delivery"
-                testId="business-report-summary-order-value"
-                delay={0.06}
-                reduceMotion={reduceMotion}
-              />
-              <SnapshotCard
-                label="Weight"
-                value={formatKg(summary.order_kg)}
-                description={`Recorded on ${formatNumber(summary.weight_order_count)} of ${formatNumber(summary.intake_count)} orders`}
-                testId="business-report-summary-weight"
-                delay={0.08}
-                reduceMotion={reduceMotion}
-              />
-              <SnapshotCard
-                label="Approved / progressing"
-                value={formatNumber(summary.approved_count)}
-                description={withKg(`${formatPercent(summary.approved_count, summary.intake_count)} of intake`, summary.approved_kg)}
-                testId="business-report-summary-approved"
-                delay={0.1}
-                reduceMotion={reduceMotion}
-              />
-              <SnapshotCard
-                label="Cancelled"
-                value={formatNumber(summary.cancelled_count)}
-                description={withKg(`${formatPercent(summary.cancelled_count, summary.intake_count)} of intake`, summary.cancelled_kg)}
-                testId="business-report-summary-cancelled"
-                delay={0.14}
-                reduceMotion={reduceMotion}
-              />
-            </div>
+            <SummaryTiles report={data} reduceMotion={reduceMotion} />
 
             <section className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]" aria-label="Business report operations">
               <div className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5">

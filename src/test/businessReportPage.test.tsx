@@ -10,76 +10,13 @@ vi.mock("@/components/DateRangePicker", () => ({
     <button type="button" onClick={() => onChange(null)}>All time</button>
   ),
 }));
+vi.mock("@/components/business-report/EChart", () => ({
+  EChart: ({ ariaLabel }: { ariaLabel: string }) => <div role="img" aria-label={ariaLabel} />,
+}));
 
 import { apiFetch } from "@/lib/api";
+import type { BusinessReportResponse, Metrics, ProductWeight, SeriesBucket } from "@/components/business-report/types";
 import BusinessReport from "@/pages/BusinessReport";
-
-type Metrics = {
-  intake_count: number;
-  order_value: number;
-  approved_count: number;
-  approved_value: number;
-  cancelled_count: number;
-  cancelled_value: number;
-  returned_count: number;
-  returned_value: number;
-  pending_count: number;
-  pending_value: number;
-  delivery_charged: number;
-  courier_fees_recorded: number;
-  net_delivery_position: number;
-  courier_fee_order_count: number;
-  order_kg: number;
-  approved_kg: number;
-  cancelled_kg: number;
-  returned_kg: number;
-  pending_kg: number;
-  weight_order_count: number;
-};
-
-type ProductWeight = {
-  product_id: string | null;
-  product_name: string;
-  packs: number;
-  kg: number;
-  approved_packs: number;
-  approved_kg: number;
-  cancelled_packs: number;
-  cancelled_kg: number;
-  returned_packs: number;
-  returned_kg: number;
-  pending_packs: number;
-  pending_kg: number;
-  order_count: number;
-};
-
-type BusinessReportResponse = {
-  range: { from: string | null; to: string | null };
-  summary: Metrics;
-  series: {
-    granularity: "hour" | "day";
-    label: string;
-    buckets: Array<{ key: string; label: string; intake_count: number; order_value: number }>;
-  };
-  products: ProductWeight[];
-  missing_weight_products: Array<{ id: string; name: string }>;
-  sources: Array<Metrics & {
-    source: string;
-    label: string;
-    products: ProductWeight[];
-    landing_pages: Array<{
-      path: string | null;
-      label: string;
-      intake_count: number;
-      order_value: number;
-      approved_count: number;
-      cancelled_count: number;
-      returned_count: number;
-      pending_count: number;
-      order_kg: number;
-    }>;
-  }>;
-};
 
 function metrics(overrides: Partial<Metrics> = {}): Metrics {
   return {
@@ -107,7 +44,7 @@ function metrics(overrides: Partial<Metrics> = {}): Metrics {
   };
 }
 
-function hourlyBuckets() {
+function hourlyBuckets(): SeriesBucket[] {
   return Array.from({ length: 24 }, (_, hour) => {
     const label = `${hour % 12 || 12}${hour < 12 ? "a" : "p"}`;
     return {
@@ -115,16 +52,24 @@ function hourlyBuckets() {
       label,
       intake_count: hour === 9 ? 2 : 0,
       order_value: hour === 9 ? 1400 : 0,
+      website_value: 0,
+      order_kg: 0,
+      approved_count: 0,
+      cancelled_count: 0,
     };
   });
 }
 
-function dailyBuckets() {
+function dailyBuckets(): SeriesBucket[] {
   return Array.from({ length: 7 }, (_, index) => ({
     key: `2026-09-${14 + index}`,
     label: `Sep ${14 + index}`,
     intake_count: 80 + index * 5,
     order_value: (80 + index * 5) * 100,
+    website_value: 0,
+    order_kg: 0,
+    approved_count: 0,
+    cancelled_count: 0,
   }));
 }
 
@@ -214,6 +159,8 @@ function reportResponse(overrides: Partial<BusinessReportResponse> = {}): Busine
     ],
     products: [],
     missing_weight_products: [],
+    previous: null,
+    hourly_profile: hourlyBuckets().map((bucket, hour) => ({ ...bucket, key: `hour-${hour}` })),
     ...overrides,
   };
 }
@@ -272,6 +219,32 @@ describe("BusinessReport", () => {
 
     const chart = screen.getByRole("region", { name: "Intake by hour" });
     expect(within(chart).getByLabelText("9a: 2 orders")).toBeInTheDocument();
+  });
+
+  it("shows previous-period changes on the summary tiles for a bounded range", async () => {
+    apiFetch.mockResolvedValue(jsonResponse(reportResponse({
+      previous: {
+        range: { from: "2026-09-19", to: "2026-09-19" },
+        summary: metrics({ intake_count: 2, order_value: 2000, approved_count: 1, cancelled_count: 0 }),
+      },
+    })));
+
+    renderPage();
+
+    expect(await screen.findByTestId("business-report-summary-intake")).toHaveTextContent("+100% vs previous period");
+    expect(screen.getByTestId("business-report-summary-order-value")).toHaveTextContent("+20% vs previous period");
+    // approved 1 of 4 = 25% now vs 1 of 2 = 50% before
+    expect(screen.getByTestId("business-report-summary-approved")).toHaveTextContent("−25 pts");
+    // cancelled 1 of 4 = 25% now vs 0% before
+    expect(screen.getByTestId("business-report-summary-cancelled")).toHaveTextContent("+25 pts");
+  });
+
+  it("omits previous-period changes when there is no previous period", async () => {
+    apiFetch.mockResolvedValue(jsonResponse(reportResponse()));
+
+    renderPage();
+
+    expect(await screen.findByTestId("business-report-summary-intake")).not.toHaveTextContent("vs previous period");
   });
 
   it("keeps source outcomes and fee coverage visible, then expands Website landing pages", async () => {
