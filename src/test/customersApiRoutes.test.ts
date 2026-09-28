@@ -27,24 +27,27 @@ describe("customers API routes", () => {
     expect(route).toContain("findCustomerOrderByPhone(formattedCandidates, normalizedPhone)");
   });
 
-  it("serves customers from org-scoped orders and social inbox orders", () => {
+  it("serves customers from every page of org-scoped orders and social inbox orders", () => {
     const start = source.indexOf('app.get("/api/customers"');
     const end = source.indexOf('app.post("/api/customers/ai-insight"', start);
     const route = source.slice(start, end);
+    const helperStart = source.indexOf("async function fetchAllWorkspaceRows");
+    const helper = source.slice(helperStart, source.indexOf('app.get("/api/customers"', helperStart));
 
     expect(start).toBeGreaterThan(-1);
     expect(route).toContain("await getUser(getToken(req))");
     expect(route).toContain("if (!user) return res.status(401)");
     expect(route).toContain("await getUserOrg(supabase, user.id)");
-    expect(route).toContain('.from("orders")');
-    expect(route).toContain('.select("*")');
-    expect(route).toContain('.eq("org_id", orgId)');
-    expect(route).toContain('.from("social_inbox_orders")');
-    expect(route).not.toContain("return_status");
-    expect(route).not.toContain("fraud_checked");
-    expect(route).not.toContain("status, source, notes");
-    expect(route).toContain('buildCustomers({ orders: orders || [], inboxOrders: inboxOrders || [] })');
+    expect(route).toContain("await loadWorkspaceCustomers(supabase, orgId)");
     expect(route).toContain("summarizeCustomers(customers)");
+
+    expect(helper).toContain('.select("*")');
+    expect(helper).toContain('.eq("org_id", orgId)');
+    expect(helper).toContain(".range(from, from + CUSTOMER_ORDER_PAGE_SIZE - 1)");
+    expect(helper).toContain("data.length < CUSTOMER_ORDER_PAGE_SIZE");
+    expect(helper).toContain('fetchAllWorkspaceRows(supabase, "orders", orgId)');
+    expect(helper).toContain('fetchAllWorkspaceRows(supabase, "social_inbox_orders", orgId)');
+    expect(helper).toContain("buildCustomers({ orders, inboxOrders })");
   });
 
   it("provides an authenticated AI customer insight endpoint", () => {
@@ -59,5 +62,19 @@ describe("customers API routes", () => {
     expect(route).toContain("await getUserOrg(supabase, user.id)");
     expect(route).toContain("buildCustomerAiInsight(customer)");
     expect(route).toContain("AI_API_KEY");
+  });
+  it("sends customer SMS only to this workspace's customers, with a recipient cap", () => {
+    const start = source.indexOf('app.post("/api/customers/send-sms"');
+    const end = source.indexOf("// ── Order attribution", start);
+    const route = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(route).toContain("await getUser(getToken(req))");
+    expect(route).toContain("if (!user) return res.status(401)");
+    expect(route).toContain("await getUserOrg(supabase, user.id)");
+    expect(route).toContain("MAX_CUSTOMER_SMS_RECIPIENTS");
+    expect(route).toContain("await loadWorkspaceCustomers(supabase, orgId)");
+    expect(route).toContain("planCustomerSms({ customers, customerIds, message, normalizePhone: normalizeBdPhone })");
+    expect(route).not.toContain("req.body.phone");
   });
 });

@@ -23,7 +23,7 @@ type IndividualSmsDialogProps = {
 };
 
 const MAX_MESSAGE_LENGTH = 1000;
-const DEFAULT_STORE_PHONE = "+8801301636461";
+export const DEFAULT_STORE_PHONE = "+8801301636461";
 
 const SMS_TEMPLATES = [
   { id: "custom", label: "Custom", message: "" },

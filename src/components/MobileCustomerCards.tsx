@@ -1,11 +1,14 @@
-import { ArrowRight, UserCircle } from "@phosphor-icons/react";
+import { UserCircle } from "@phosphor-icons/react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Customer } from "@/pages/Customers";
 import { cn } from "@/lib/utils";
+import { orderSourceLabel } from "@/lib/orderSource";
+import { Checkbox } from "@/components/base/checkbox/checkbox";
 
 type MobileCustomerCardsProps = {
   customers: Customer[];
-  onSelect: (customer: Customer) => void;
+  selectedIds: Set<string>;
+  onToggle: (id: string, checked: boolean) => void;
 };
 
 function money(value: number) {
@@ -16,14 +19,32 @@ function initials(name: string) {
   return name.trim().split(/\s+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
 }
 
-export function MobileCustomerCards({ customers, onSelect }: MobileCustomerCardsProps) {
+export function MobileCustomerCards({ customers, selectedIds, onToggle }: MobileCustomerCardsProps) {
   if (!customers.length) return <div className="px-5 py-20 text-center text-sm text-black/45">No customers match your filters.</div>;
 
   return (
     <div className="space-y-3" data-testid="mobile-customer-cards">
       {customers.map((customer) => (
-        <article key={customer.id} className="rounded-2xl border border-black/[0.08] bg-white p-4">
+        <article
+          key={customer.id}
+          onClick={(event) => {
+            // The checkbox and copy button handle their own clicks.
+            if ((event.target as HTMLElement).closest("label, button")) return;
+            onToggle(customer.id, !selectedIds.has(customer.id));
+          }}
+          className={cn(
+            "cursor-pointer rounded-2xl border bg-white p-4 transition-colors",
+            selectedIds.has(customer.id) ? "border-black/25 bg-black/[0.02]" : "border-black/[0.08]",
+          )}
+        >
           <div className="flex items-start gap-3">
+            <Checkbox
+              slot={null}
+              aria-label={`Select ${customer.name}`}
+              isSelected={selectedIds.has(customer.id)}
+              onChange={(checked) => onToggle(customer.id, checked)}
+              className="mt-3.5"
+            />
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-xs font-semibold text-black/60">{initials(customer.name)}</span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-black">{customer.name}</p>
@@ -48,9 +69,8 @@ export function MobileCustomerCards({ customers, onSelect }: MobileCustomerCards
             <div><p className="text-[9px] uppercase tracking-[0.16em] text-black/40">Spent</p><p className="mt-1 text-sm font-semibold tabular-nums text-black">{money(customer.totalSpent)}</p></div>
             <div><p className="text-[9px] uppercase tracking-[0.16em] text-black/40">Stage</p><p className="mt-1 truncate text-sm font-semibold capitalize text-black">{customer.lifecycleStage}</p></div>
           </div>
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-black/45"><UserCircle weight="light" size={15} />{customer.primarySource.replaceAll("_", " ")}</span>
-            <button type="button" onClick={() => onSelect(customer)} className="flex min-h-11 items-center gap-1 rounded-xl px-3 text-xs font-semibold text-black hover:bg-black/[0.05]" aria-label={`Open customer ${customer.name}`}>View profile <ArrowRight weight="light" size={15} /></button>
+          <div className="mt-3 flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-black/45"><UserCircle weight="light" size={15} />{orderSourceLabel(customer.primarySource)}</span>
           </div>
         </article>
       ))}

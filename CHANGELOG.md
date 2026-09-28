@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.0.39] - 2026-09-29
+
+### Added
+
+- Customers: select customers with checkboxes or by clicking a row, then send a personalised SMS through Bulk SMS BD with audience templates (Thank you, New season, We miss you, Special offer, Back in stock, Feedback, Eid greeting), a credit estimate and a confirm step. Up to 500 customers per send; recipients are resolved on the server from the workspace's own orders.
+- Customers: product filter with product images, a Last order column (newest first by default), page-number pagination (50 per page), and a reset × on every filter.
+- Date picker: a Reset button in the calendar, a reset × on the toolbar trigger, and Solar duotone preset icons.
+
+### Fixed
+
+- Customers page read only the newest 1,000 orders because of the Supabase row limit, undercounting customers (955 instead of 1,759) and repeat buyers. Orders are now read in pages, including for bulk SMS.
+- Customer sources now use each order's own source (Website, Facebook, Telesales, Phone, Upsell, WhatsApp, Manual / Other) instead of labelling every order with a `shopify_order_id` as Shopify. A customer's main source is the channel they ordered through most.
+
+### Changed
+
+- Business Report and Staff Performance charts use a colour palette for channels, staff and products, with mango highlighting the peak hour, best day and top performer, and a stronger intake-rhythm scale.
+- Customers: the profile popup is removed; clicking a customer selects it.
+
 ## [0.1.0.38] - 2026-09-28
 
 ### Fixed

@@ -32,6 +32,7 @@ import {
   parseLegacyProductLines,
 } from "./orderItemParsing.js";
 import { buildCustomers, customerPhoneCandidates, findCustomerOrderByPhone, summarizeCustomers } from "./customers.js";
+import { MAX_CUSTOMER_SMS_RECIPIENTS, mapWithConcurrency, planCustomerSms } from "./customerSms.js";
 import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
   HANDLE_REGEX,
@@ -921,7 +922,7 @@ async function sendBulkSms(orgId, type, order) {
   }
 }
 
-async function sendManualBulkSms(orgId, order, message) {
+async function getManualBulkSmsCredentials(orgId) {
   const settings = await getSettings([
     `${orgId}:bulksms_enabled`,
     `${orgId}:bulksms_api_key`,
@@ -936,6 +937,11 @@ async function sendManualBulkSms(orgId, order, message) {
   if (!apiKey || !senderId) {
     throw bulkSmsError("Bulk SMS credentials are not configured. Go to Settings → Integrations.", 409);
   }
+  return { apiKey, senderId };
+}
+
+async function sendManualBulkSms(orgId, order, message) {
+  const { apiKey, senderId } = await getManualBulkSmsCredentials(orgId);
 
   if (typeof message !== "string" || !message.trim()) {
     throw bulkSmsError("Message cannot be empty", 422);
@@ -8357,6 +8363,33 @@ app.get("/api/customers/lookup", async (req, res) => {
   }
 });
 
+// PostgREST returns at most 1000 rows per request, so read every page or customers go missing.
+const CUSTOMER_ORDER_PAGE_SIZE = 1000;
+
+async function fetchAllWorkspaceRows(supabase, table, orgId) {
+  const rows = [];
+  for (let from = 0; ; from += CUSTOMER_ORDER_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, from + CUSTOMER_ORDER_PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < CUSTOMER_ORDER_PAGE_SIZE) return rows;
+  }
+}
+
+async function loadWorkspaceCustomers(supabase, orgId) {
+  const [orders, inboxOrders] = await Promise.all([
+    fetchAllWorkspaceRows(supabase, "orders", orgId),
+    fetchAllWorkspaceRows(supabase, "social_inbox_orders", orgId),
+  ]);
+  return buildCustomers({ orders, inboxOrders });
+}
+
 app.get("/api/customers", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -8364,23 +8397,7 @@ app.get("/api/customers", async (req, res) => {
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const [{ data: orders, error: ordersError }, { data: inboxOrders, error: inboxError }] = await Promise.all([
-      supabase
-        .from("orders")
-        .select("*")
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("social_inbox_orders")
-        .select("*")
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false }),
-    ]);
-
-    if (ordersError) throw ordersError;
-    if (inboxError) throw inboxError;
-
-    const customers = buildCustomers({ orders: orders || [], inboxOrders: inboxOrders || [] });
+    const customers = await loadWorkspaceCustomers(supabase, orgId);
     return res.json({ customers, summary: summarizeCustomers(customers) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
@@ -8439,6 +8456,54 @@ app.post("/api/customers/ai-insight", rateLimitAI, async (req, res) => {
     return res.json({ insight: { ...fallback, ...parsed }, source: "ai" });
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// Sends one personalised SMS per selected customer. Recipients are resolved from this
+// workspace's own orders, so the client can only message existing customers.
+app.post("/api/customers/send-sms", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const message = req.body?.message;
+    if (typeof message !== "string" || !message.trim()) {
+      return res.status(422).json({ error: "Message cannot be empty" });
+    }
+    if ([...message].length > MAX_MANUAL_SMS_LENGTH) {
+      return res.status(422).json({ error: `Message cannot exceed ${MAX_MANUAL_SMS_LENGTH} characters` });
+    }
+    if (/\{\{(?!\s*customer_name\s*\}\})/.test(message)) {
+      return res.status(422).json({ error: "Fill in every template placeholder before sending" });
+    }
+    const customerIds = Array.isArray(req.body?.customerIds)
+      ? req.body.customerIds.filter((id) => typeof id === "string" && id)
+      : [];
+    if (!customerIds.length) return res.status(422).json({ error: "Select at least one customer" });
+    if (customerIds.length > MAX_CUSTOMER_SMS_RECIPIENTS) {
+      return res.status(422).json({ error: `You can message up to ${MAX_CUSTOMER_SMS_RECIPIENTS} customers at a time` });
+    }
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const { apiKey, senderId } = await getManualBulkSmsCredentials(orgId);
+
+    const customers = await loadWorkspaceCustomers(supabase, orgId);
+    const { recipients, skipped } = planCustomerSms({ customers, customerIds, message, normalizePhone: normalizeBdPhone });
+    if (!recipients.length) {
+      return res.status(422).json({ error: "None of the selected customers have a valid phone number" });
+    }
+
+    const results = await mapWithConcurrency(recipients, 5, (recipient) =>
+      submitBulkSmsMessage({ apiKey, senderId, phone: recipient.phone, message: recipient.message }));
+    const sent = results.filter((result) => result.accepted).length;
+    const failed = results.length - sent;
+    const firstError = results.find((result) => !result.accepted)?.errorMessage || null;
+    console.log(`[BulkSMS] Customer campaign by ${user.id}: ${sent} sent, ${failed} failed, ${skipped} skipped`);
+
+    return res.json({ sent, failed, skipped, error: firstError });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 

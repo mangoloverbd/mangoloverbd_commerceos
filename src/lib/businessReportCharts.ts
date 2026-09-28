@@ -1,5 +1,5 @@
 import type { EChartsCoreOption } from "@/lib/echarts";
-import { CHART, OUTCOME_COLORS, OUTCOME_KEYS, OUTCOME_LABELS } from "@/components/business-report/chartTheme";
+import { CHART, OUTCOME_COLORS, OUTCOME_KEYS, OUTCOME_LABELS, categoricalColor } from "@/components/business-report/chartTheme";
 import type { BusinessReportSource, ProductWeight, SeriesBucket } from "@/components/business-report/types";
 import type { MixSlice } from "@/lib/businessReportMetrics";
 import { maxIndex } from "@/lib/businessReportMetrics";
@@ -80,7 +80,7 @@ export function intakeGridOption(profile: SeriesBucket[]): { option: EChartsCore
           symbolRepeat: GRID_ROWS,
           symbolClip: true,
           z: 2,
-          data: counts.map((value, index) => ({ value, itemStyle: { color: index === peakIndex ? CHART.ink : CHART.greys[2] } })),
+          data: counts.map((value, index) => ({ value, itemStyle: { color: index === peakIndex ? CHART.ramp[3] : CHART.ramp[Math.min(2, Math.floor((value / Math.max(peak, 1)) * 3))] } })),
         },
       ],
     },
@@ -104,7 +104,7 @@ export function outcomeSankeyOption(sources: BusinessReportSource[]): EChartsCor
   const { active, outcomes } = sankeyParticipants(sources);
   const total = active.reduce((sum, source) => sum + source.order_value, 0);
   const nodes = [
-    ...active.map((source, index) => ({ name: source.label, depth: 0, itemStyle: { color: CHART.greys[Math.min(index, CHART.greys.length - 1)] } })),
+    ...active.map((source, index) => ({ name: source.label, depth: 0, itemStyle: { color: categoricalColor(index) } })),
     ...outcomes.map((key) => ({ name: OUTCOME_LABELS[key], depth: 1, itemStyle: { color: OUTCOME_COLORS[key] } })),
   ];
   const links = active.flatMap((source) => outcomes
@@ -163,8 +163,8 @@ export function sourceMixOption(slices: MixSlice[]): EChartsCoreOption {
       data: slices.map((slice, index) => ({
         name: slice.label,
         value: slice.value,
-        itemStyle: { color: CHART.greys[Math.min(index, CHART.greys.length - 1)] },
-        label: { color: index < 2 ? CHART.bg : CHART.ink },
+        itemStyle: { color: categoricalColor(index) },
+        label: { color: index < CHART.categorical.length - 1 ? CHART.bg : CHART.ink },
       })),
     }],
   };
@@ -217,7 +217,8 @@ export function approvalGaugeOption(approvalRate: number): EChartsCoreOption {
 export function bestDayOption(buckets: SeriesBucket[], bestIndex: number): EChartsCoreOption {
   const spacer = Math.max(0, ...buckets.map((bucket) => bucket.order_value)) * 0.018;
   const style = (index: number, highlight: string) => ({
-    color: index === bestIndex ? highlight : CHART.track,
+    color: highlight,
+    opacity: index === bestIndex ? 1 : 0.28,
     borderRadius: 5,
     ...(index === bestIndex ? { shadowBlur: 14, shadowColor: CHART.ink3 } : {}),
   });
@@ -245,7 +246,7 @@ export function bestDayOption(buckets: SeriesBucket[], bestIndex: number): EChar
         type: "bar",
         stack: "day",
         barWidth: "62%",
-        data: buckets.map((bucket, index) => ({ value: bucket.website_value, itemStyle: style(index, CHART.greys[2]) })),
+        data: buckets.map((bucket, index) => ({ value: bucket.website_value, itemStyle: style(index, CHART.categorical[1]) })),
       },
       {
         name: "gap",
@@ -260,7 +261,7 @@ export function bestDayOption(buckets: SeriesBucket[], bestIndex: number): EChar
         name: "Social & manual",
         type: "bar",
         stack: "day",
-        data: buckets.map((bucket, index) => ({ value: bucket.order_value - bucket.website_value, itemStyle: style(index, CHART.ink) })),
+        data: buckets.map((bucket, index) => ({ value: bucket.order_value - bucket.website_value, itemStyle: style(index, index === bestIndex ? CHART.highlight : CHART.categorical[0]) })),
       },
     ],
   };
@@ -282,7 +283,7 @@ export function productRingsOption(products: ProductWeight[]): EChartsCoreOption
       label: { show: false },
       emphasis: { scale: false },
       data: [
-        { name: product.product_name, value: product.kg, itemStyle: { color: CHART.greys[Math.min(index, 3)] } },
+        { name: product.product_name, value: product.kg, itemStyle: { color: categoricalColor(index) } },
         { name: "rest", value: Math.max(total - product.kg, 0), itemStyle: { color: CHART.track }, tooltip: { show: false } },
       ],
     })),
