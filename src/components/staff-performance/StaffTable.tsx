@@ -59,17 +59,18 @@ function Detail({ item }: { item: StaffTableRow }) {
   const totalKg = m.products.reduce((sum, product) => sum + product.kg, 0);
   const totalPacks = m.products.reduce((sum, product) => sum + product.packs, 0);
   const maxKg = Math.max(0, ...m.products.map((product) => product.kg));
-  const max = Math.max(m.assigned_count, m.confirmed_count);
   return (
     <section aria-label={`${item.name} details`} className="flex flex-col gap-3 px-3.5 pb-4 pt-3.5">
       <div className="grid gap-2.5 md:grid-cols-3">
         <div className="flex flex-col gap-2 rounded-xl bg-white px-3.5 py-3">
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Order funnel</p>
-          <MiniBar label="Assigned" value={m.assigned_count} max={max} color="#0B0B0A" />
-          <MiniBar label="Confirmed" value={m.confirmed_count} max={max} color="#0B0B0A" />
-          <MiniBar label="Delivered" value={m.delivered_count} max={max} color={YIELD_COLORS.delivered} />
-          <MiniBar label="Cancelled" value={m.cancelled_count} max={max} color={YIELD_COLORS.cancelled} />
-          <MiniBar label="RTO" value={m.returned_count} max={max} color={YIELD_COLORS.returned} />
+          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Assigned orders</p>
+          <MiniBar label="Assigned" value={item.assigned} max={item.assigned} color="#0B0B0A" />
+          <MiniBar label="Confirmed" value={item.yield.delivered + item.yield.inTransit + item.yield.returned} max={item.assigned} color="#0B0B0A" />
+          <MiniBar label="Delivered" value={item.yield.delivered} max={item.assigned} color={YIELD_COLORS.delivered} />
+          <MiniBar label="In transit" value={item.yield.inTransit} max={item.assigned} color={YIELD_COLORS.inTransit} />
+          <MiniBar label="RTO" value={item.yield.returned} max={item.assigned} color={YIELD_COLORS.returned} />
+          <MiniBar label="Cancelled" value={item.yield.cancelled} max={item.assigned} color={YIELD_COLORS.cancelled} />
+          <MiniBar label="Not confirmed" value={item.yield.notConfirmed} max={item.assigned} color={YIELD_COLORS.notConfirmed} />
         </div>
         <div className="flex flex-col gap-2 rounded-xl bg-white px-3.5 py-3 text-[12px] tabular-nums">
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black/60">Extra revenue</p>

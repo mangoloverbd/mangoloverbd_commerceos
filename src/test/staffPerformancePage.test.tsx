@@ -256,18 +256,55 @@ describe("StaffPerformance", () => {
 
   it("sorts the table when a column header is clicked and expands everyone at once", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse()));
+    // Distinct values so the default order (Rafi first by confirmed value) differs from the name sort (Nadia first).
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [
+        reportRow({ orders: metrics({ confirmed_value: 1800 }) }),
+        reportRow({ user_id: NadiaId, display_name: "Nadia", is_active: false, orders: metrics({ confirmed_value: 900, products: [] }) }),
+      ],
+    })));
 
     renderPage();
 
     const table = await screen.findByRole("table", { name: "Team performance" });
-    await user.click(within(table).getByRole("button", { name: /^Staff/ }));
+    expect(within(table).getAllByTestId(/^staff-performance-row-/)[0]).toHaveAttribute("data-testid", `staff-performance-row-${RafiId}`);
+    const staffHeader = within(table).getByRole("button", { name: /^Staff/ });
+    await user.click(staffHeader);
     expect(within(table).getAllByTestId(/^staff-performance-row-/)[0]).toHaveAttribute("data-testid", `staff-performance-row-${NadiaId}`);
+    expect(staffHeader.closest("th")).toHaveAttribute("aria-sort", "ascending");
 
     await user.click(screen.getByRole("button", { name: "Expand all" }));
     expect(within(table).getByRole("button", { name: "Hide details for Rafi" })).toBeInTheDocument();
     expect(within(table).getByRole("button", { name: "Hide details for Nadia" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Collapse all" })).toBeInTheDocument();
+  });
+
+  it("builds the detail's assigned-orders card from the assigned population, matching the outcome mix", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [reportRow({
+        orders: metrics({
+          assigned_count: 10,
+          confirmed_assigned_count: 6,
+          confirmed_assigned_cancelled_count: 1,
+          cancelled_assigned_count: 3,
+          confirmed_assigned_delivered_count: 3,
+          confirmed_assigned_returned_count: 1,
+          cancelled_count: 7, // any order Rafi cancelled — must not leak into the assigned card
+        }),
+      })],
+    })));
+
+    renderPage();
+
+    const row = await screen.findByTestId(`staff-performance-row-${RafiId}`);
+    await user.click(within(row).getByRole("button", { name: "Show details for Rafi" }));
+    const card = within(screen.getByRole("region", { name: "Rafi details" })).getByText("Assigned orders").parentElement;
+    if (!card) throw new Error("Assigned orders card is missing");
+    // Confirmed = delivered 3 + in transit (6 - 1 - 3 - 1 = 1) + RTO 1 = 5
+    expect(within(card).getByText("Confirmed").closest("p")).toHaveTextContent(/^Confirmed5$/);
+    expect(within(card).getByText("Cancelled").closest("p")).toHaveTextContent(/^Cancelled3$/);
+    expect(within(card).getByText("Not confirmed").closest("p")).toHaveTextContent(/^Not confirmed2$/);
   });
 
   it("starts the page header directly with Staff Performance", async () => {
