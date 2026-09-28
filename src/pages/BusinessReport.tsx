@@ -6,6 +6,14 @@ import type { DateRange } from "react-day-picker";
 import { CaretDown, CaretRight, WarningCircle } from "@phosphor-icons/react";
 import { Link } from "react-router-dom";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import {
+  ApprovalGaugePanel,
+  BestDayPanel,
+  IntakeRhythmPanel,
+  OutcomeSankeyPanel,
+  ProductWeightPanel,
+  SourceMixPanel,
+} from "@/components/business-report/ReportCharts";
 import { SummaryTiles } from "@/components/business-report/SummaryTiles";
 import { Chip } from "@/components/base/badges/chip";
 import { Button } from "@/components/ui/button";
@@ -54,47 +62,6 @@ function DetailGroup({
         ))}
       </dl>
     </div>
-  );
-}
-
-function IntakeSeries({ series }: { series: BusinessReportResponse["series"] }) {
-  const maximum = Math.max(1, ...series.buckets.map((bucket) => bucket.intake_count));
-  const stretch = series.granularity === "day";
-
-  return (
-    <section aria-label={series.label} className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5">
-      <div className="flex items-baseline justify-between gap-3">
-        <div>
-          <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">{series.label}</p>
-          <p className="mt-1 text-[11px] text-black/60">Orders created in the selected range</p>
-        </div>
-        <span className="shrink-0 text-[11px] tabular-nums text-black/55">{formatNumber(series.buckets.reduce((sum, bucket) => sum + bucket.intake_count, 0))} orders</span>
-      </div>
-      <div className="mt-4 overflow-x-auto pb-1">
-        <ul className={`flex items-end gap-1.5 ${stretch ? "w-full" : "min-w-max"}`} aria-label={`${series.label} buckets`}>
-          {series.buckets.map((bucket) => {
-            const height = bucket.intake_count > 0
-              ? Math.max(8, (bucket.intake_count / maximum) * 84)
-              : 1;
-            return (
-              <li
-                key={bucket.key}
-                aria-label={`${bucket.label}: ${bucket.intake_count} orders`}
-                className={`flex flex-col items-center gap-1 ${stretch ? "min-w-9 flex-1" : "w-6"}`}
-              >
-                <span className="flex h-[88px] w-full items-end rounded-sm bg-black/[0.05]" aria-hidden="true">
-                  <span
-                    className="w-full rounded-sm bg-black/70 transition-[height] duration-300"
-                    style={{ height: `${height}px` }}
-                  />
-                </span>
-                <span className="whitespace-nowrap text-center text-[9px] tabular-nums text-black/55">{bucket.label}</span>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </section>
   );
 }
 
@@ -381,7 +348,13 @@ export default function BusinessReport() {
           <>
             <SummaryTiles report={data} reduceMotion={reduceMotion} />
 
-            <section className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]" aria-label="Business report operations">
+            <section className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
+              <IntakeRhythmPanel report={data} reduceMotion={reduceMotion} />
+              <OutcomeSankeyPanel report={data} reduceMotion={reduceMotion} />
+            </section>
+            <section className="grid gap-3 lg:grid-cols-3">
+              <SourceMixPanel report={data} reduceMotion={reduceMotion} />
+              <ApprovalGaugePanel report={data} reduceMotion={reduceMotion} />
               <div className="rounded-2xl bg-black/[0.04] px-4 py-4 sm:px-5">
                 <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Delivery economics</p>
                 <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4">
@@ -402,25 +375,9 @@ export default function BusinessReport() {
                   Courier fee coverage: {formatNumber(summary.courier_fee_order_count)} of {formatNumber(summary.intake_count)} orders
                 </p>
               </div>
-              <IntakeSeries series={data.series} />
             </section>
-
-            {data.products.length > 0 && (
-              <motion.section
-                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: reduceMotion ? 0 : 0.08, duration: 0.4 }}
-                aria-labelledby="product-weight-heading"
-              >
-                <div className="flex items-center gap-2.5 py-3">
-                  <h2 id="product-weight-heading" className="font-sf-display text-[15px] font-semibold tracking-normal text-black">Product weight</h2>
-                  <div className="h-3.5 w-px bg-black/10" />
-                  <span className="text-[13px] tabular-nums text-black/60">{formatNumber(data.products.length)} products</span>
-                  <span className="hidden text-[11px] text-black/45 sm:inline">All sources · ranked by kg</span>
-                </div>
-                <ProductWeightList products={data.products} className="grid gap-2 rounded-2xl bg-black/[0.04] p-2 sm:grid-cols-2 lg:grid-cols-3" />
-              </motion.section>
-            )}
+            <BestDayPanel report={data} reduceMotion={reduceMotion} />
+            <ProductWeightPanel report={data} reduceMotion={reduceMotion} />
 
             <motion.section
               initial={reduceMotion ? false : { opacity: 0, y: 8 }}

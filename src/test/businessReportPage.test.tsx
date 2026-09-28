@@ -18,6 +18,8 @@ import { apiFetch } from "@/lib/api";
 import type { BusinessReportResponse, Metrics, ProductWeight, SeriesBucket } from "@/components/business-report/types";
 import BusinessReport from "@/pages/BusinessReport";
 
+const apiFetchMock = vi.mocked(apiFetch);
+
 function metrics(overrides: Partial<Metrics> = {}): Metrics {
   return {
     intake_count: 0,
@@ -166,7 +168,7 @@ function reportResponse(overrides: Partial<BusinessReportResponse> = {}): Busine
 }
 
 function jsonResponse(body: BusinessReportResponse) {
-  return { ok: true, json: async () => body };
+  return { ok: true, json: async () => body } as unknown as Response;
 }
 
 function renderPage(): ReturnType<typeof render> {
@@ -183,7 +185,7 @@ function renderPage(): ReturnType<typeof render> {
 describe("BusinessReport", () => {
   beforeEach(() => {
     vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-20T06:00:00.000Z"));
-    apiFetch.mockReset();
+    apiFetchMock.mockReset();
   });
 
   afterEach(() => {
@@ -191,15 +193,15 @@ describe("BusinessReport", () => {
   });
 
   it("shows a centered loading state while the report is pending", () => {
-    apiFetch.mockReturnValue(new Promise(() => {}));
+    apiFetchMock.mockReturnValue(new Promise(() => {}));
 
     renderPage();
 
     expect(screen.getByText("Loading business report")).toBeInTheDocument();
   });
 
-  it("loads today by default and renders operational totals with an accessible intake chart", async () => {
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse()));
+  it("loads today by default and renders operational totals", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
 
     renderPage();
 
@@ -216,13 +218,61 @@ describe("BusinessReport", () => {
     expect(screen.getByText("Courier fees recorded")).toBeInTheDocument();
     expect(screen.getByText("Net delivery position")).toBeInTheDocument();
     expect(screen.getByText("Courier fee coverage: 3 of 4 orders")).toBeInTheDocument();
+  });
 
-    const chart = screen.getByRole("region", { name: "Intake by hour" });
-    expect(within(chart).getByLabelText("9a: 2 orders")).toBeInTheDocument();
+  it("renders the intake rhythm with its peak hour and the outcome panels", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
+
+    renderPage();
+
+    const rhythm = await screen.findByRole("region", { name: "When orders arrive" });
+    expect(within(rhythm).getByText("9a")).toBeInTheDocument(); // peak label
+    expect(within(rhythm).getByRole("img", { name: /Orders by hour of day, peak 9a with 2 orders/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Where each channel's orders end up" })).toBeInTheDocument();
+    const mix = screen.getByRole("region", { name: "Order value by channel" });
+    expect(within(mix).getByText("Website")).toBeInTheDocument();
+    expect(within(mix).getByText("৳1,400")).toBeInTheDocument();
+    const gauge = screen.getByRole("region", { name: "Approval rate" });
+    expect(within(gauge).getByText("25%")).toBeInTheDocument();
+    expect(within(gauge).getByText("Needs attention")).toBeInTheDocument();
+  });
+
+  it("hides Best day for a single-day range and shows it with the best day for a multi-day range", async () => {
+    apiFetchMock.mockResolvedValueOnce(jsonResponse(reportResponse()));
+    const first = renderPage();
+    await screen.findByRole("region", { name: "When orders arrive" });
+    expect(screen.queryByRole("region", { name: "Best day" })).not.toBeInTheDocument();
+    first.unmount();
+
+    const days = dailyBuckets().map((bucket, index) => ({ ...bucket, website_value: index === 6 ? 5000 : 0 }));
+    apiFetchMock.mockResolvedValueOnce(jsonResponse(reportResponse({
+      range: { from: "2026-09-14", to: "2026-09-20" },
+      series: { granularity: "day", label: "Intake by day", buckets: days },
+    })));
+    renderPage();
+
+    const best = await screen.findByRole("region", { name: "Best day" });
+    expect(within(best).getByText("৳11,000")).toBeInTheDocument(); // Sep 20: (80 + 6*5) * 100
+    expect(within(best).getByText(/Sep 20/)).toBeInTheDocument();
+    expect(within(best).getByText(/45% website/)).toBeInTheDocument();
+  });
+
+  it("lists overall product weight with approved kg and packs", async () => {
+    const outcomeDefaults = { cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0 };
+    const himsagar = { ...outcomeDefaults, product_id: "p-1", product_name: "Himsagar", packs: 4, kg: 25, approved_packs: 3, approved_kg: 20, cancelled_packs: 1, cancelled_kg: 5, order_count: 2 };
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse({ products: [himsagar], missing_weight_products: [{ id: "p-2", name: "Langra" }] })));
+
+    renderPage();
+
+    const overall = await screen.findByRole("region", { name: "Product weight" });
+    expect(within(overall).getByText("Himsagar")).toBeInTheDocument();
+    expect(within(overall).getByText("25 kg")).toBeInTheDocument();
+    expect(within(overall).getByText("20 kg approved · 4 packs")).toBeInTheDocument();
+    expect(screen.getByText(/1 product is missing a catalog weight: Langra/)).toBeInTheDocument();
   });
 
   it("shows previous-period changes on the summary tiles for a bounded range", async () => {
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse({
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse({
       previous: {
         range: { from: "2026-09-19", to: "2026-09-19" },
         summary: metrics({ intake_count: 2, order_value: 2000, approved_count: 1, cancelled_count: 0 }),
@@ -240,7 +290,7 @@ describe("BusinessReport", () => {
   });
 
   it("omits previous-period changes when the previous period had no orders", async () => {
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse({
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse({
       previous: {
         range: { from: "2026-09-19", to: "2026-09-19" },
         summary: metrics({ intake_count: 0 }),
@@ -255,7 +305,7 @@ describe("BusinessReport", () => {
   });
 
   it("omits previous-period changes when there is no previous period", async () => {
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse()));
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
 
     renderPage();
 
@@ -264,7 +314,7 @@ describe("BusinessReport", () => {
 
   it("keeps source outcomes and fee coverage visible, then expands Website landing pages", async () => {
     const user = userEvent.setup();
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse()));
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
 
     renderPage();
 
@@ -293,7 +343,7 @@ describe("BusinessReport", () => {
     const user = userEvent.setup();
     const base = reportResponse();
     const website = base.sources[0];
-    apiFetch.mockResolvedValue(jsonResponse({
+    apiFetchMock.mockResolvedValue(jsonResponse({
       ...base,
       summary: { ...base.summary, order_kg: 12.5, approved_kg: 5, cancelled_kg: 2.5, weight_order_count: 3 },
       sources: [
@@ -327,13 +377,13 @@ describe("BusinessReport", () => {
     expect(within(card).getByText("1 orders · ৳1,000 · 5 kg")).toBeInTheDocument();
   });
 
-  it("shows product packs and kg overall and inside each source", async () => {
+  it("shows product packs and kg inside each source", async () => {
     const user = userEvent.setup();
     const outcomeDefaults = { cancelled_packs: 0, cancelled_kg: 0, returned_packs: 0, returned_kg: 0, pending_packs: 0, pending_kg: 0 };
     const himsagar = { ...outcomeDefaults, product_id: "p-1", product_name: "Himsagar", packs: 4, kg: 25, approved_packs: 3, approved_kg: 20, cancelled_packs: 1, cancelled_kg: 5, order_count: 2 };
     const langra = { ...outcomeDefaults, product_id: "p-2", product_name: "Langra", packs: 3, kg: 0, approved_packs: 3, approved_kg: 0, order_count: 1 };
     const base = reportResponse();
-    apiFetch.mockResolvedValue(jsonResponse({
+    apiFetchMock.mockResolvedValue(jsonResponse({
       ...base,
       products: [himsagar, langra],
       missing_weight_products: [{ id: "p-2", name: "Langra" }],
@@ -342,15 +392,7 @@ describe("BusinessReport", () => {
 
     renderPage();
 
-    const overall = await screen.findByRole("region", { name: "Product weight" });
-    expect(within(overall).getByText("Himsagar")).toBeInTheDocument();
-    expect(within(overall).getByText("4 packs · 25 kg")).toBeInTheDocument();
-    expect(within(overall).getByText("Approved 20 kg")).toBeInTheDocument();
-    expect(within(overall).getByText("Cancelled 5 kg")).toBeInTheDocument();
-    expect(within(overall).queryByText(/RTO/)).not.toBeInTheDocument();
-    expect(screen.getByText(/1 product is missing a catalog weight: Langra/)).toBeInTheDocument();
-
-    const website = screen.getByTestId("business-report-source-website");
+    const website = await screen.findByTestId("business-report-source-website");
     expect(within(website).queryByText("Himsagar")).not.toBeInTheDocument();
     await user.click(within(website).getByRole("button", { name: "Show details for Website" }));
     expect(within(website).getByText("Himsagar")).toBeInTheDocument();
@@ -359,7 +401,7 @@ describe("BusinessReport", () => {
 
   it("removes date parameters when the user chooses All Time", async () => {
     const user = userEvent.setup();
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse()));
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse()));
 
     renderPage();
 
@@ -372,7 +414,7 @@ describe("BusinessReport", () => {
   });
 
   it("keeps controls available and explains when no regular orders exist in the selected range", async () => {
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse({
+    apiFetchMock.mockResolvedValue(jsonResponse(reportResponse({
       summary: metrics(),
       sources: [],
       series: { granularity: "hour", label: "Intake by hour", buckets: hourlyBuckets().map((bucket) => ({ ...bucket, intake_count: 0, order_value: 0 })) },
@@ -387,24 +429,9 @@ describe("BusinessReport", () => {
     expect(screen.queryByTestId("business-report-source-website")).not.toBeInTheDocument();
   });
 
-  it("stretches day-granularity bars full width with single-line labels", async () => {
-    apiFetch.mockResolvedValue(jsonResponse(reportResponse({
-      range: { from: "2026-09-14", to: "2026-09-20" },
-      series: { granularity: "day", label: "Intake by day", buckets: dailyBuckets() },
-    })));
-
-    renderPage();
-
-    const chart = await screen.findByRole("region", { name: "Intake by day" });
-    const bucket = within(chart).getByLabelText("Sep 14: 80 orders");
-    expect(bucket.tagName).toBe("LI");
-    expect(bucket).toHaveClass("flex-1");
-    expect(within(bucket).getByText("Sep 14")).toHaveClass("whitespace-nowrap");
-  });
-
   it("offers a retry after a report request fails", async () => {
     const user = userEvent.setup();
-    apiFetch
+    apiFetchMock
       .mockRejectedValueOnce(new Error("Network down"))
       .mockResolvedValueOnce(jsonResponse(reportResponse()));
 
