@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { StaffTableRow } from "@/lib/staffPerformanceMetrics";
-import { LEADERBOARD_HIGHLIGHT, LEADERBOARD_LIMIT, leaderboardOption, yieldChartHeight, yieldOption } from "@/lib/staffPerformanceCharts";
+import { LEADERBOARD_HIGHLIGHT, LEADERBOARD_LIMIT, leaderboardOption } from "@/lib/staffPerformanceCharts";
 
-type Series = { name?: string; type: string; data: Array<{ value: number; itemStyle?: { color?: string } } | number>; markLine?: { data: Array<{ xAxis: number }> } };
+type Series = { name?: string; type: string; data: Array<{ value: number; itemStyle?: { color?: string } } | number> };
 const seriesOf = (option: unknown) => (option as { series: Series[] }).series;
 const axisData = (option: unknown, axis: "xAxis" | "yAxis") => ((option as Record<string, { data: string[] }>)[axis]).data;
 type TooltipFormatter = (params: Array<{ dataIndex: number }>) => string;
@@ -47,27 +47,7 @@ describe("leaderboardOption", () => {
   });
 });
 
-describe("yieldOption", () => {
-  it("stacks four outcome segments as percentages of handled, sorted so the best share is on top", () => {
-    const option = yieldOption([row("Low", 1, 40), row("High", 1, 80), row("None", 1, null)], 60);
-    const series = seriesOf(option);
-
-    expect(series).toHaveLength(4);
-    expect(series.map((item) => item.name)).toEqual(["Delivered", "Open / in transit", "RTO", "Cancelled"]);
-    expect(series[3].data).toEqual([10, 10]); // 10 cancelled of 100 handled
-    expect(axisData(option, "yAxis")).toEqual(["Low", "High"]); // category axis draws bottom-up
-    expect(series[0].data).toEqual([40, 80]);
-    expect(series[0].markLine?.data).toEqual([{ xAxis: 60 }]);
-    expect(tooltipOf(option)([{ dataIndex: 0 }])).toContain("100 handled");
-  });
-});
-
-describe("layout helpers", () => {
-  it("grows the yield chart with the number of members, with a floor", () => {
-    expect(yieldChartHeight(2)).toBe(220);
-    expect(yieldChartHeight(12)).toBe(12 * 34 + 36);
-  });
-
+describe("leaderboardOption value label", () => {
   it("keeps the leaderboard value label short: value plus order count only", () => {
     const option = leaderboardOption([row("A", 139410, 50)]);
     const label = (option as { series: Array<{ label: { formatter: (p: { dataIndex: number }) => string } }> }).series[0].label.formatter({ dataIndex: 0 });

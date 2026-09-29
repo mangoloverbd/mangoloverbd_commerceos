@@ -2,8 +2,8 @@ import { useId, useMemo, type ReactNode } from "react";
 import { EChart } from "@/components/business-report/EChart";
 import { CHART, OUTCOME_COLORS, categoricalColor } from "@/components/business-report/chartTheme";
 import { sourceMixOption } from "@/lib/businessReportCharts";
-import { leaderboardOption, YIELD_COLORS, YIELD_KEYS, YIELD_LABELS, yieldChartHeight, yieldOption } from "@/lib/staffPerformanceCharts";
-import { buildStaffTableRows, buildTeamFunnel, extraRevenue, groupStaffShare } from "@/lib/staffPerformanceMetrics";
+import { leaderboardOption, YIELD_COLORS, YIELD_KEYS, YIELD_LABELS } from "@/lib/staffPerformanceCharts";
+import { buildStaffTableRows, buildTeamFunnel, extraRevenue, groupStaffShare, STAFF_FLAG_POINTS, type StaffTableRow, type YieldKey } from "@/lib/staffPerformanceMetrics";
 import type { StaffRow } from "@/lib/staffPerformancePresentation";
 
 type PanelProps = { rows: StaffRow[]; reduceMotion: boolean | null };
@@ -58,12 +58,20 @@ export function LeaderboardPanel({ rows, reduceMotion }: PanelProps) {
   );
 }
 
-export function OrderYieldPanel({ rows, reduceMotion }: PanelProps) {
-  const tableRows = useMemo(() => buildStaffTableRows(rows), [rows]);
+const YIELD_ROW = "grid grid-cols-[92px_minmax(0,1fr)_52px] items-center gap-3";
+
+export function OrderYieldPanel({ rows }: PanelProps) {
   const funnel = useMemo(() => buildTeamFunnel(rows), [rows]);
   const teamShare = funnel.handled > 0 ? (funnel.delivered / funnel.handled) * 100 : null;
-  const option = useMemo(() => yieldOption(tableRows, teamShare), [tableRows, teamShare]);
-  const yieldCount = tableRows.filter((item) => item.deliveredShare !== null).length;
+  const members = useMemo(
+    () => buildStaffTableRows(rows)
+      .filter((item): item is StaffTableRow & { deliveredShare: number } => item.deliveredShare !== null)
+      .sort((a, b) => b.deliveredShare - a.deliveredShare),
+    [rows],
+  );
+  const share = (item: StaffTableRow & { deliveredShare: number }, key: YieldKey) => (
+    key === "delivered" ? item.deliveredShare : (item.yield[key] / item.handled) * 100
+  );
   return (
     <Panel
       eyebrow="Order yield"
@@ -72,8 +80,48 @@ export function OrderYieldPanel({ rows, reduceMotion }: PanelProps) {
     >
       {teamShare !== null
         ? (
-          <div style={{ height: yieldChartHeight(yieldCount) }}>
-            <EChart option={option} ariaLabel="Share of each member's handled orders that were delivered, open or in transit, returned or cancelled" className="h-full w-full" animate={!reduceMotion} />
+          <div className="grid gap-2.5">
+            <ul aria-label="Order yield by staff" className="grid gap-2.5">
+              {members.map((item) => {
+                const summary = `${item.name}: ${YIELD_KEYS.map((key) => `${YIELD_LABELS[key]} ${formatPct(share(item, key))}`).join(", ")} of ${formatNumber(item.handled)} handled`;
+                // Mirrors flagFor's strict rule (more than STAFF_FLAG_POINTS below the team), without its 1e-9 float tolerance.
+                const flagged = item.deliveredShare < teamShare - STAFF_FLAG_POINTS;
+                const segments = YIELD_KEYS.filter((key) => share(item, key) > 0);
+                return (
+                  <li key={item.key} data-testid={`staff-yield-row-${item.key}`} className={`${YIELD_ROW} text-[12px]`}>
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-black">{item.name}</span>
+                      <span className="block text-[10px] tabular-nums text-black/50">{formatNumber(item.handled)} handled</span>
+                    </span>
+                    {/* Exact % widths with no flex gap or borders, so every bar and the team tick share one scale. The gap between
+                        segments is painted inside each later segment's background (left 4px left blank, but at least 2px of colour). */}
+                    <div role="img" aria-label={summary} title={summary} className="relative flex h-[18px]">
+                      {segments.map((key, index) => (
+                        <span
+                          key={key}
+                          data-segment={key}
+                          className="h-full shrink-0 bg-no-repeat"
+                          style={{
+                            width: `${share(item, key)}%`,
+                            backgroundImage: `repeating-linear-gradient(90deg, ${YIELD_COLORS[key]} 0 3px, transparent 3px 5px)`,
+                            ...(index > 0 ? { backgroundSize: "max(2px, calc(100% - 4px)) 100%", backgroundPosition: "right" } : {}),
+                          }}
+                        />
+                      ))}
+                      <span aria-hidden="true" data-testid="staff-yield-team-tick" className="absolute -bottom-1 -top-1 border-l-[1.5px] border-dashed border-black opacity-[0.55]" style={{ left: `${teamShare}%` }} />
+                    </div>
+                    <span className={`text-right text-[16px] font-medium tabular-nums ${flagged ? "text-[#B4473A]" : "text-black"}`}>{formatPct(item.deliveredShare)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className={YIELD_ROW} aria-hidden="true">
+              <span />
+              <span className="relative h-3">
+                <span className="absolute -translate-x-1/2 whitespace-nowrap text-[10px] tabular-nums text-black/60" style={{ left: `${teamShare}%` }}>Team {formatPct(teamShare)}</span>
+              </span>
+              <span />
+            </div>
           </div>
         )
         : <p className="py-10 text-center text-[12px] text-black/55">No handled orders in this range.</p>}

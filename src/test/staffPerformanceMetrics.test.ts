@@ -6,6 +6,7 @@ import {
   extraRevenue,
   groupStaffShare,
   sortStaffTableRows,
+  staffTeamAverages,
 } from "@/lib/staffPerformanceMetrics";
 
 function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
@@ -98,6 +99,52 @@ describe("buildStaffTableRows", () => {
   it("never marks anyone best when fewer than two members have handled orders", () => {
     const [s] = buildStaffTableRows([sadia, idle]);
     expect(s.flags).toEqual({ confRate: null, cancelRate: null, delRate: null });
+  });
+
+  it("never marks anyone best when every compared value ties", () => {
+    // Both members confirmed everything and delivered nothing: all rates tie, so no one leads.
+    const a = row("a", "A", { handled_count: 10, handled_confirmed_count: 10 });
+    const b = row("b", "B", { handled_count: 20, handled_confirmed_count: 20 });
+    const rows = buildStaffTableRows([a, b]);
+    for (const item of rows) expect(item.flags).toEqual({ confRate: null, cancelRate: null, delRate: null });
+  });
+
+  it("still marks a real leader best when others are strictly lower", () => {
+    const leader = row("l", "Leader", { handled_count: 10, handled_confirmed_count: 10, handled_delivered_count: 9 });
+    const tied = row("t", "Tied", { handled_count: 10, handled_confirmed_count: 10, handled_delivered_count: 8 });
+    const [l, t] = buildStaffTableRows([leader, tied]);
+    // conf and cancel tie at 100% / 0%, so only the delivered rate has a leader.
+    expect(l.flags).toEqual({ confRate: null, cancelRate: null, delRate: "best" });
+    expect(t.flags).toEqual({ confRate: null, cancelRate: null, delRate: null });
+  });
+});
+
+describe("worse flag tolerance", () => {
+  it("does not flag a gap that is exactly 5 points once float noise is ignored", () => {
+    // 11 / 20 * 100 = 55.00000000000001 in floating point; team = 20 / 40 = 50%.
+    const high = row("h", "High", { handled_count: 20, handled_confirmed_count: 9, handled_cancelled_count: 11 });
+    const low = row("l", "Low", { handled_count: 20, handled_confirmed_count: 11, handled_cancelled_count: 9 });
+    const [h] = buildStaffTableRows([high, low]);
+    expect(h.cancelRate).toBeGreaterThan(55);
+    expect(h.flags.cancelRate).toBeNull();
+    expect(h.flags.confRate).toBeNull(); // 45% confirmed vs 50% team, exactly 5 below
+  });
+
+  it("still flags a gap just over 5 points", () => {
+    // 40% vs team 34.96% = 5.04 points above.
+    const high = row("h", "High", { handled_count: 2500, handled_confirmed_count: 1500, handled_cancelled_count: 1000 });
+    const low = row("l", "Low", { handled_count: 2500, handled_confirmed_count: 1752, handled_cancelled_count: 748 });
+    const [h] = buildStaffTableRows([high, low]);
+    expect(h.flags.cancelRate).toBe("worse");
+    expect(h.flags.confRate).toBe("worse");
+  });
+});
+
+describe("staffTeamAverages", () => {
+  it("returns the team rates the flags are measured against", () => {
+    const averages = staffTeamAverages([sadia, rahim, idle]);
+    expect(averages).toEqual({ confRate: 80, cancelRate: 20, delRate: 80 });
+    expect(staffTeamAverages([idle])).toEqual({ confRate: null, cancelRate: null, delRate: null });
   });
 });
 

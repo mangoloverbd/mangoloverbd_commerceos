@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.40] - 2026-09-29
+
+### Changed
+
+- Staff Performance: Team performance is now a roster and profile. The left list ranks each person with their confirmed value, an outcome bar and a "High cancels" tag; selecting someone opens their profile with confirmation and cancel rates against the team, delivered rate, average order value, weight, extra revenue, where their orders ended up, extra revenue and abandoned carts, and products by outcome. A Team total card sits under the roster, and a Sort by menu covers every metric. Members with no orders collapse into one line, and anyone who only worked abandoned carts stays in the list.
+- Staff Performance: the Order yield chart is now tick-mark bars, one row per person, with a dashed team-average line and a red delivered rate for anyone well below the team.
+
+### Fixed
+
+- Delivered and rate columns no longer show a green "best" on every row when all members tie, for example everyone at 0% delivered.
+- A member exactly 5 points off the team average is no longer flagged because of floating-point rounding.
+
 ## [0.1.0.39] - 2026-09-29
 
 ### Added

@@ -54,22 +54,28 @@ function staffYield(row: StaffRow): StaffYield {
 function flagFor(value: number | null, average: number | null, best: number | null, higherIsBetter: boolean, allowBest: boolean): RateFlag {
   if (value === null || average === null) return null;
   if (allowBest && best !== null && value === best) return "best";
-  const worse = higherIsBetter ? value < average - STAFF_FLAG_POINTS : value > average + STAFF_FLAG_POINTS;
+  // The 1e-9 tolerance ignores float noise (11 / 20 * 100 = 55.00000000000001), so a gap of exactly 5 points is never flagged.
+  const worse = higherIsBetter ? value < average - STAFF_FLAG_POINTS - 1e-9 : value > average + STAFF_FLAG_POINTS + 1e-9;
   return worse ? "worse" : null;
 }
 
-export function buildStaffTableRows(rows: StaffRow[]): StaffTableRow[] {
+// Team rates over every row; the table flags compare each member against these.
+export function staffTeamAverages(rows: StaffRow[]) {
   const totals = rows.reduce((sum, row) => ({
     handled: sum.handled + (row.orders.handled_count || 0),
     cancelled: sum.cancelled + (row.orders.handled_cancelled_count || 0),
     confirmed: sum.confirmed + (row.orders.handled_confirmed_count || 0),
     delivered: sum.delivered + (row.orders.handled_delivered_count || 0),
   }), { handled: 0, cancelled: 0, confirmed: 0, delivered: 0 });
-  const averages = {
+  return {
     confRate: pct(totals.confirmed, totals.handled),
     cancelRate: pct(totals.cancelled, totals.handled),
     delRate: pct(totals.delivered, totals.confirmed),
   };
+}
+
+export function buildStaffTableRows(rows: StaffRow[]): StaffTableRow[] {
+  const averages = staffTeamAverages(rows);
   const base = rows.map((row) => {
     const m = row.orders;
     const segments = staffYield(row);
@@ -95,9 +101,11 @@ export function buildStaffTableRows(rows: StaffRow[]): StaffTableRow[] {
   });
   const withHandled = base.filter((item) => item.handled > 0);
   const allowBest = withHandled.length >= 2;
+  // No leader when every compared value ties (e.g. everyone at 0% delivered).
   const bestOf = (values: Array<number | null>, pick: (a: number, b: number) => number) => {
     const present = values.filter((value): value is number => value !== null);
-    return present.length ? present.reduce((a, b) => pick(a, b)) : null;
+    if (present.length === 0 || present.every((value) => value === present[0])) return null;
+    return present.reduce((a, b) => pick(a, b));
   };
   const best = {
     confRate: bestOf(withHandled.map((item) => item.confRate), Math.max),
