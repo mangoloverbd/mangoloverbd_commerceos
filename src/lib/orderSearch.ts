@@ -6,12 +6,16 @@ export interface OrderSearchRecord {
   tracking_code: string | null | undefined;
 }
 
+// Order numbers are shown as "#ML-152172" but stored as "ML-152172", so a
+// leading "#" is ignored on both the query and the stored number.
+const stripLeadingHash = (value: string) => value.replace(/^#+/, "");
+
 export function matchesOrderSearch(order: OrderSearchRecord, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = stripLeadingHash(query.trim().toLowerCase()).trim();
   if (!normalizedQuery) return true;
 
   return [
-    order.order_number,
+    stripLeadingHash(String(order.order_number ?? "")),
     order.customer_name,
     order.phone,
     order.consignment_id,

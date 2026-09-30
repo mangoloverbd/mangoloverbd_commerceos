@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.42] - 2026-09-30
+
+### Fixed
+
+- Order search now finds an order when you type its number the way it is shown, with a leading "#" (for example #ML-152172). Before, only ML-152172 or 152172 matched.
+
 ## [0.1.0.41] - 2026-09-30
 
 ### Added
