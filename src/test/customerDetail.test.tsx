@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "@/lib/api";
 import CustomerDetail from "@/pages/CustomerDetail";
 import { buildCustomerProfile } from "../../server/customerProfile.js";
+import { getBangladeshDateKey } from "../../shared/orderHold.js";
 
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }));
 const phone = "01712345678";
@@ -52,10 +53,12 @@ describe("customer detail workflow", () => {
   it("adds an authored note and keeps manual tags separate from calculated segments", async () => {
     const user = userEvent.setup(); renderPage();
     await screen.findByRole("heading", { name: "Rina" });
-    await user.type(screen.getByLabelText("Internal note"), "Call after 6 pm");
+    await user.click(screen.getByRole("tab", { name: /Notes/ }));
+    const panel = screen.getByRole("tabpanel");
+    await user.type(within(panel).getByLabelText("Internal note"), "Call after 6 pm");
     await user.click(screen.getByRole("button", { name: "Add note" }));
-    expect(await screen.findByText("Call after 6 pm")).toBeInTheDocument();
-    expect(screen.getByText(/Support/)).toBeInTheDocument();
+    expect(await within(panel).findByText("Call after 6 pm")).toBeInTheDocument();
+    expect(within(panel).getByText(/Support/)).toBeInTheDocument();
     expect(screen.getByLabelText("Internal note")).toHaveValue("");
     await user.type(screen.getByLabelText("Manual tags"), "Honey buyer, VIP");
     await user.click(screen.getByRole("button", { name: "Save customer context" }));
@@ -67,6 +70,7 @@ describe("customer detail workflow", () => {
     await screen.findByRole("heading", { name: "Rina" });
     const original = vi.mocked(apiFetch).getMockImplementation()!;
     vi.mocked(apiFetch).mockImplementation((url, options) => options?.method === "POST" ? response({ error: "Could not save note" }, 500) : original(url, options));
+    await user.click(screen.getByRole("tab", { name: /Notes/ }));
     await user.type(screen.getByLabelText("Internal note"), "Call tomorrow");
     await user.click(screen.getByRole("button", { name: "Add note" }));
     expect(await screen.findByText("Could not save note")).toBeInTheDocument();
@@ -77,11 +81,31 @@ describe("customer detail workflow", () => {
     await screen.findByRole("heading", { name: "Rina" });
     const original = vi.mocked(apiFetch).getMockImplementation()!;
     vi.mocked(apiFetch).mockImplementation((url, options) => options?.method === "PATCH" ? response({ error: "Another staff member changed this profile" }, 409) : original(url, options));
+    await user.click(screen.getByRole("tab", { name: /Notes/ }));
     await user.type(screen.getByLabelText("Manual tags"), "Honey buyer");
     await user.click(screen.getByRole("button", { name: "Save customer context" }));
     expect(await screen.findByText("Another staff member changed this profile")).toBeInTheDocument();
     expect(screen.getByLabelText("Manual tags")).toHaveValue("Honey buyer");
     expect(screen.getByRole("button", { name: "Reload saved context" })).toBeInTheDocument();
+  });
+  it("keeps a note draft when switching between tabs", async () => {
+    const user = userEvent.setup(); renderPage();
+    await screen.findByRole("heading", { name: "Rina" });
+    await user.click(screen.getByRole("tab", { name: /Notes/ }));
+    await user.type(screen.getByLabelText("Internal note"), "Half typed");
+    await user.click(screen.getByRole("tab", { name: /Overview/ }));
+    expect(screen.getByRole("tab", { name: /Overview/ })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: /Notes/ }));
+    expect(screen.getByLabelText("Internal note")).toHaveValue("Half typed");
+  });
+  it("sets the follow-up date with the Merchant Suite date picker", async () => {
+    const user = userEvent.setup(); renderPage();
+    await screen.findByRole("heading", { name: "Rina" });
+    await user.click(screen.getByRole("tab", { name: /Notes/ }));
+    await user.click(screen.getByRole("button", { name: "Follow-up date: not set" }));
+    await user.click(await screen.findByRole("button", { name: "Today" }));
+    await user.click(screen.getByRole("button", { name: "Save customer context" }));
+    await waitFor(() => expect(saved.context.followUpOn).toBe(getBangladeshDateKey()));
   });
   it("creates a new order with the persisted customer identity and latest address", async () => {
     const user = userEvent.setup(); renderPage();
