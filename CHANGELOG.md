@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.43] - 2026-09-30
+
+### Added
+
+- Abandoned tab: when a checkout's phone matches an order in the Pending tab, the row is tinted and shows an "Already ordered · #1234" badge (or "Already ordered · 2 pending") that links to the order.
+- Abandoned editor: a banner says "Already ordered — #1234 is waiting in Pending", with a link to each order. It follows the phone field as you edit.
+
 ## [0.1.0.42] - 2026-09-30
 
 ### Fixed

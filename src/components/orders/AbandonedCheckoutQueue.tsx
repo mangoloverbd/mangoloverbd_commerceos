@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   CaretDown,
@@ -37,6 +38,11 @@ import {
   abandonedCheckoutWhatsAppHref,
   type AbandonedCheckout,
 } from "@/lib/abandonedCheckouts";
+import {
+  pendingOrderLabel,
+  pendingOrdersForPhone,
+  type PendingOrderMatch,
+} from "@/lib/abandonedPendingMatch";
 import { cn } from "@/lib/utils";
 
 type AbandonedCheckoutAction = "contacted" | "dismissed" | "open";
@@ -104,7 +110,10 @@ export type AbandonedCheckoutQueueProps = {
   onToggleSelect?: (id: string) => void;
   onSelectAll?: () => void;
   onOpenCheckout?: (id: string) => void;
+  pendingOrdersByPhone?: Map<string, PendingOrderMatch[]>;
 };
+
+const NO_PENDING_MATCHES = new Map<string, PendingOrderMatch[]>();
 
 function formatEstimatedTotal(total: number | null) {
   return typeof total === "number" && Number.isFinite(total)
@@ -128,6 +137,7 @@ export function AbandonedCheckoutQueue({
   onToggleSelect = () => {},
   onSelectAll = () => {},
   onOpenCheckout = () => {},
+  pendingOrdersByPhone = NO_PENDING_MATCHES,
 }: AbandonedCheckoutQueueProps) {
   const [dismissTarget, setDismissTarget] = useState<AbandonedCheckout | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
@@ -258,6 +268,8 @@ export function AbandonedCheckoutQueue({
           const isUpdating = actionInFlightId === checkout.id;
           const isNew = checkout.status === "open";
           const selected = selectedIds.has(checkout.id);
+          const pendingMatches = pendingOrdersForPhone(pendingOrdersByPhone, checkout.phone);
+          const firstPendingMatch = pendingMatches[0];
 
           return (
             <article
@@ -277,7 +289,11 @@ export function AbandonedCheckoutQueue({
                 event.preventDefault();
                 onOpenCheckout(checkout.id);
               }}
-              className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center"
+              data-pending-match={firstPendingMatch ? "true" : undefined}
+              className={cn(
+                "grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center",
+                firstPendingMatch && "bg-status-rose-background/40 shadow-[inset_2px_0_0_var(--color-status-rose-text)]"
+              )}
             >
               <div
                 data-testid={`checkbox-abandoned-${checkout.id}`}
@@ -328,6 +344,20 @@ export function AbandonedCheckoutQueue({
                     >
                       Held in Order Protection
                     </a>
+                  )}
+                  {firstPendingMatch && (
+                    <Link
+                      to={`/orders/${firstPendingMatch.id}`}
+                      onClick={(event) => event.stopPropagation()}
+                      title={pendingMatches.length === 1
+                        ? `Order ${pendingOrderLabel(firstPendingMatch)} is waiting in Pending. Check it before contacting this customer.`
+                        : `${pendingMatches.length} orders from this customer are waiting in Pending. Check them before contacting.`}
+                      className="inline-flex items-center rounded-md bg-status-rose-background px-1.5 py-0.5 text-[10.5px] font-medium text-status-rose-text transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                    >
+                      {pendingMatches.length === 1
+                        ? `Already ordered · ${pendingOrderLabel(firstPendingMatch)}`
+                        : `Already ordered · ${pendingMatches.length} pending`}
+                    </Link>
                   )}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black">

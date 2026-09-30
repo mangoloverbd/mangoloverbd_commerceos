@@ -13,6 +13,7 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
 import { detectDistrict, DISTRICT_UNKNOWN_SENTINEL } from "@/lib/bdDistricts";
 import { matchesOrderSearch } from "@/lib/orderSearch";
+import { buildPendingOrdersByPhone } from "@/lib/abandonedPendingMatch";
 import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
 import { OrdersTable } from "@/components/OrdersTable";
 import {
@@ -1219,6 +1220,8 @@ export default function Dashboard() {
     [abandonedCheckouts, debouncedSearch],
   );
 
+  const pendingOrdersByPhone = useMemo(() => buildPendingOrdersByPhone(orders), [orders]);
+
   const handlePackingSummary = async () => {
     if (filteredOrders.length === 0) return;
     try {
@@ -1846,6 +1849,7 @@ export default function Dashboard() {
             actionInFlightId={abandonedActionInFlightId}
             onAction={updateAbandonedCheckout}
             onRetry={() => void fetchAbandonedCheckouts()}
+            pendingOrdersByPhone={pendingOrdersByPhone}
             selectedIds={selectedAbandonedIds}
             onToggleSelect={(checkoutId) => setSelectedAbandonedIds((prev) => {
               const next = new Set(prev);

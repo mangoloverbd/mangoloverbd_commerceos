@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "@phosphor-icons/react";
+import { ArrowLeft, Warning } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { Button as BuiButton } from "@/components/base/buttons/button";
 import { Spinner } from "@/components/ui/ios-spinner";
@@ -25,6 +25,9 @@ import { OrderEditorTabPanels, OrderEditorTabSwitch } from "@/components/order-e
 import { useOrderEditorTab } from "@/hooks/useOrderEditorTab";
 import { createActivityGroupId, orderItemActivityKey, type AdditionReason } from "@/lib/orderActivity";
 import { prefetchOrderActivity, refreshOrderActivity } from "@/lib/orderActivityQuery";
+import { syncOrders, type SyncableOrder } from "@/lib/ordersSync";
+import type { StatusFilterOrder } from "@/lib/orderStatusFilters";
+import { buildPendingOrdersByPhone, pendingOrderLabel, pendingOrdersForPhone } from "@/lib/abandonedPendingMatch";
 import type {
   AbandonedCheckout,
   AbandonedCheckoutResponse,
@@ -40,6 +43,9 @@ import {
 import { validateOrderHoldDetails } from "../../shared/orderHold.js";
 
 type ProductsResponse = { products: CatalogProduct[] };
+
+// Only the fields the Pending-match needs from the shared ["/api/orders"] cache.
+type PendingMatchOrder = SyncableOrder & StatusFilterOrder & { order_number?: string | null; phone?: string | null };
 
 type MoveTarget = "keep" | "pending" | "on_hold" | "approved";
 
@@ -141,6 +147,16 @@ export default function AbandonedDetail() {
       return json as ProductsResponse;
     },
   });
+
+  const ordersQuery = useQuery<PendingMatchOrder[]>({
+    queryKey: ["/api/orders"],
+    staleTime: 60_000,
+    enabled: Boolean(checkout),
+    queryFn: () => syncOrders<PendingMatchOrder>(queryClient),
+  });
+
+  const pendingOrdersByPhone = useMemo(() => buildPendingOrdersByPhone(ordersQuery.data ?? []), [ordersQuery.data]);
+  const pendingMatches = checkout ? pendingOrdersForPhone(pendingOrdersByPhone, customer.phone) : [];
 
   useEffect(() => {
     if (!checkout) return;
@@ -480,6 +496,33 @@ export default function AbandonedDetail() {
         </div>
         {checkout && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} className="sm:ml-auto" />}
       </div>
+
+      {pendingMatches.length > 0 && (
+        <div role="status" className="flex items-start gap-2 rounded-[6px] bg-status-rose-background/60 px-3 py-2 text-[13px] text-status-rose-text">
+          <Warning weight="light" size={16} aria-hidden className="mt-0.5 shrink-0" />
+          <p>
+            <strong className="font-medium">Already ordered</strong>
+            {pendingMatches.length === 1 ? (
+              <>
+                {" — "}
+                <Link to={`/orders/${pendingMatches[0].id}`} className="rounded-[6px] underline underline-offset-2">{pendingOrderLabel(pendingMatches[0])}</Link>
+                {" is waiting in Pending. Check it before contacting or moving this checkout."}
+              </>
+            ) : (
+              <>
+                {` — ${pendingMatches.length} orders are waiting in Pending: `}
+                {pendingMatches.map((match, index) => (
+                  <span key={match.id}>
+                    {index > 0 && ", "}
+                    <Link to={`/orders/${match.id}`} className="rounded-[6px] underline underline-offset-2">{pendingOrderLabel(match)}</Link>
+                  </span>
+                ))}
+                .
+              </>
+            )}
+          </p>
+        </div>
+      )}
 
       {!checkout ? (
         listQuery.isLoading ? (
