@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { AbandonedCheckoutQueue } from "@/components/orders/AbandonedCheckoutQueue";
 import type { AbandonedCheckout } from "@/lib/abandonedCheckouts";
 
@@ -264,5 +265,71 @@ describe("AbandonedCheckoutQueue", () => {
     expect(tags).toHaveLength(1);
     expect(tags[0]).toHaveAttribute("href", "/order-protection");
     expect(tags[0]).toHaveClass("bg-status-yellow-background");
+  });
+
+  it("flags a checkout whose customer already has an order in Pending", async () => {
+    const user = userEvent.setup();
+    const onOpenCheckout = vi.fn();
+    const other = { ...checkout, id: "other-checkout", customer_name: "No Match", phone: "01899999999" };
+    render(
+      <MemoryRouter>
+        <AbandonedCheckoutQueue
+          checkouts={[checkout, other]}
+          loading={false}
+          error={null}
+          actionInFlightId={null}
+          onAction={vi.fn()}
+          onOpenCheckout={onOpenCheckout}
+          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "1009" }]]])}
+        />
+      </MemoryRouter>,
+    );
+
+    const badge = screen.getByRole("link", { name: "Already ordered · #1009" });
+    expect(badge).toHaveAttribute("href", "/orders/order-9");
+    expect(badge).toHaveAttribute("title", "Order #1009 is waiting in Pending. Check it before contacting this customer.");
+    expect(screen.getAllByRole("link", { name: /Already ordered/ })).toHaveLength(1);
+    expect(screen.getByText("Farzana Akter").closest("article")).toHaveAttribute("data-pending-match", "true");
+    expect(screen.getByText("No Match").closest("article")).not.toHaveAttribute("data-pending-match");
+
+    await user.click(badge);
+    expect(onOpenCheckout).not.toHaveBeenCalled();
+  });
+
+  it("summarises several pending orders on one badge", () => {
+    render(
+      <MemoryRouter>
+        <AbandonedCheckoutQueue
+          checkouts={[checkout]}
+          loading={false}
+          error={null}
+          actionInFlightId={null}
+          onAction={vi.fn()}
+          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "1009" }, { id: "order-10", order_number: "1010" }]]])}
+        />
+      </MemoryRouter>,
+    );
+
+    const badge = screen.getByRole("link", { name: "Already ordered · 2 pending" });
+    expect(badge).toHaveAttribute("href", "/orders/order-9");
+    expect(badge).toHaveAttribute("title", "2 orders from this customer are waiting in Pending. Check them before contacting.");
+  });
+
+  it("does not double the # when the order number already has one", () => {
+    render(
+      <MemoryRouter>
+        <AbandonedCheckoutQueue
+          checkouts={[checkout]}
+          loading={false}
+          error={null}
+          actionInFlightId={null}
+          onAction={vi.fn()}
+          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "#1009" }]]])}
+        />
+      </MemoryRouter>,
+    );
+
+    const badge = screen.getByRole("link", { name: "Already ordered · #1009" });
+    expect(badge).toHaveAttribute("title", "Order #1009 is waiting in Pending. Check it before contacting this customer.");
   });
 });

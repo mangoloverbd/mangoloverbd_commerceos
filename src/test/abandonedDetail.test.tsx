@@ -418,3 +418,62 @@ describe("AbandonedDetail", () => {
     expect(within(cart).queryByRole("button", { name: /order status/i })).not.toBeInTheDocument();
   });
 });
+
+describe("AbandonedDetail pending-order banner", () => {
+  const order = (status: string) => ({
+    id: "order-9", order_number: "1009", phone: "+8801712345678", status,
+    fulfillment_status: null, created_at: "2026-09-10T12:00:00.000Z",
+  });
+  const mockOrders = (orders: unknown[]) => {
+    apiFetch.mockReset();
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [draft], activeCount: 1 });
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url.startsWith("/api/orders")) return jsonResponse({ orders, totalCount: orders.length, syncedAt: null });
+      return jsonResponse({});
+    });
+  };
+
+  it("links to the customer's order that is already in Pending", async () => {
+    mockOrders([order("pending")]);
+    renderDetail();
+
+    const link = await screen.findByRole("link", { name: "#1009" });
+    expect(link).toHaveAttribute("href", "/orders/order-9");
+    const banner = link.closest("[role='status']");
+    expect(banner).toHaveTextContent("Already ordered — #1009 is waiting in Pending. Check it before contacting or moving this checkout.");
+  });
+
+  it("lists every pending order when there are several", async () => {
+    mockOrders([order("pending"), { ...order("pending"), id: "order-10", order_number: "#1010" }]);
+    renderDetail();
+
+    const second = await screen.findByRole("link", { name: "#1010" });
+    expect(second).toHaveAttribute("href", "/orders/order-10");
+    expect(screen.getByRole("link", { name: "#1009" })).toHaveAttribute("href", "/orders/order-9");
+    expect(second.closest("[role='status']")).toHaveTextContent("Already ordered — 2 orders are waiting in Pending: #1009, #1010.");
+  });
+
+  it("shows no banner when the matching order is in another tab", async () => {
+    mockOrders([order("approved")]);
+    const client = renderDetail();
+
+    expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(client.getQueryState(["/api/orders"])?.status).toBe("success"));
+    expect(client.getQueryData(["/api/orders"])).toHaveLength(1);
+    expect(screen.queryByText("Already ordered")).not.toBeInTheDocument();
+  });
+
+  it("follows the live phone draft and hides the banner when the phone is cleared", async () => {
+    mockOrders([order("pending")]);
+    const user = userEvent.setup();
+    renderDetail();
+
+    expect(await screen.findByRole("link", { name: "#1009" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /edit customer/i }));
+    await user.clear(screen.getByLabelText("Phone"));
+    await user.click(screen.getByRole("button", { name: "Apply customer changes" }));
+
+    await waitFor(() => expect(screen.queryByText("Already ordered")).not.toBeInTheDocument());
+  });
+});

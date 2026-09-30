@@ -259,6 +259,37 @@ describe("dashboard order status filter", () => {
     expect(apiFetch).toHaveBeenCalledWith("/api/abandoned-checkouts");
   });
 
+  it("flags an abandoned checkout whose customer already has an order in Pending", async () => {
+    const matchingCheckout = { ...abandonedCheckouts[0], phone: "+8801700000001" };
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders") return jsonResponse({ orders });
+      if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [matchingCheckout], activeCount: 1 });
+      if (url === "/api/products") return jsonResponse({ products: [] });
+      if (url.startsWith("/api/analytics")) {
+        return jsonResponse({
+          revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+          profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+        });
+      }
+      return jsonResponse({ updated: 0 });
+    });
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("radio", { name: /All Orders.*3/ })).toBeInTheDocument();
+    await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
+
+    const badge = await screen.findByRole("link", { name: "Already ordered · #101" });
+    expect(badge).toHaveAttribute("href", "/orders/pending");
+  });
+
   it("updates the independent checkout cache through the scoped staff action route", async () => {
     const user = userEvent.setup();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
