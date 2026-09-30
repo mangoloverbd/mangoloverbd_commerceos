@@ -30,6 +30,14 @@ describe("matchesOrderSearch", () => {
     ).toBe(false);
   });
 
+  it("matches an order number typed the way it is displayed, with a leading #", () => {
+    expect(matchesOrderSearch(order, "#ML-150000")).toBe(true);
+    expect(matchesOrderSearch(order, " #ml-150000 ")).toBe(true);
+    expect(matchesOrderSearch({ ...order, order_number: "#1042" }, "1042")).toBe(true);
+    expect(matchesOrderSearch({ ...order, order_number: "#1042" }, "#1042")).toBe(true);
+    expect(matchesOrderSearch(order, "#ML-999999")).toBe(false);
+  });
+
   it("matches every order when the query is empty", () => {
     expect(matchesOrderSearch(order, "")).toBe(true);
     expect(matchesOrderSearch(order, "   ")).toBe(true);
