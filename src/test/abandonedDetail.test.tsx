@@ -220,6 +220,197 @@ describe("AbandonedDetail", () => {
     expect(await screen.findByTestId("dashboard-home")).toBeInTheDocument();
   });
 
+  describe("move-to action bar", () => {
+    type Call = [string, { method?: string; body?: string } | undefined];
+    const mutationCalls = () => (apiFetch.mock.calls as Call[]).filter(([url, init]) =>
+      (url === "/api/abandoned-checkouts/draft-1" && init?.method === "PATCH")
+      || url === "/api/abandoned-checkouts/draft-1/convert");
+
+    function mockMutations(convert: () => ReturnType<typeof jsonResponse> = () => jsonResponse({ order: { order_number: "1042" } })) {
+      apiFetch.mockImplementation(async (url: string, init?: { method?: string }) => {
+        if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [draft], activeCount: 1 });
+        if (url === "/api/products") return jsonResponse({ products: [] });
+        if (url === "/api/abandoned-checkouts/draft-1" && init?.method === "PATCH") {
+          return jsonResponse({ checkout: { ...draft, customer_name: "Edited Name", updated_at: "2026-09-11T13:00:00.000Z" } });
+        }
+        if (url === "/api/abandoned-checkouts/draft-1/convert") return convert();
+        return jsonResponse({});
+      });
+    }
+
+    async function editName(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: /edit customer/i }));
+      await user.clear(screen.getByLabelText("Customer name"));
+      await user.type(screen.getByLabelText("Customer name"), "Edited Name");
+      await user.click(screen.getByRole("button", { name: /apply customer changes/i }));
+    }
+
+    it("defaults to Abandoned and saves in place", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      const bar = screen.getByTestId("abandoned-action-bar");
+      expect(within(bar).getByRole("button", { name: "Abandoned" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(bar).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+
+      await editName(user);
+      await user.click(within(bar).getByRole("button", { name: "Save changes" }));
+
+      await waitFor(() => expect(mutationCalls().length).toBe(1));
+      expect(mutationCalls()[0][0]).toBe("/api/abandoned-checkouts/draft-1");
+      expect(screen.queryByTestId("dashboard-home")).not.toBeInTheDocument();
+    });
+
+    it("moves to Approved without a PATCH when nothing was edited", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole("button", { name: "Approved" }));
+      expect(screen.getByRole("button", { name: "Approved" })).toHaveAttribute("aria-pressed", "true");
+      await user.click(screen.getByRole("button", { name: "Save & move to Approved" }));
+
+      expect(await screen.findByTestId("dashboard-home")).toBeInTheDocument();
+      const calls = mutationCalls();
+      expect(calls.length).toBe(1);
+      expect(calls[0][0]).toBe("/api/abandoned-checkouts/draft-1/convert");
+      expect(calls[0][1]?.method).toBe("POST");
+      expect(JSON.parse(calls[0][1]?.body ?? "{}").status).toBe("approved");
+    });
+
+    it("saves edits then converts to Pending, in that order", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await editName(user);
+      await user.click(screen.getByRole("button", { name: "Pending" }));
+      await user.click(screen.getByRole("button", { name: "Save & move to Pending" }));
+
+      expect(await screen.findByTestId("dashboard-home")).toBeInTheDocument();
+      const calls = mutationCalls();
+      expect(calls.map(([url]) => url)).toEqual([
+        "/api/abandoned-checkouts/draft-1",
+        "/api/abandoned-checkouts/draft-1/convert",
+      ]);
+      const body = JSON.parse(calls[1][1]?.body ?? "{}");
+      expect(body.status).toBe("pending");
+      expect(body.customer_name).toBe("Edited Name");
+    });
+
+    it("blocks On hold without a reason and sends nothing", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole("button", { name: "On hold" }));
+      await user.click(screen.getByRole("button", { name: "Save & move to On hold" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Choose a hold reason");
+      expect(mutationCalls().length).toBe(0);
+    });
+
+    it("stays on the page and says edits were saved when the move fails", async () => {
+      mockMutations(() => jsonResponse({ error: "Boom" }, { ok: false, status: 400 }));
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await editName(user);
+      await user.click(screen.getByRole("button", { name: "Pending" }));
+      await user.click(screen.getByRole("button", { name: "Save & move to Pending" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Your edits were saved");
+      expect(screen.queryByTestId("dashboard-home")).not.toBeInTheDocument();
+    });
+
+    it("does not submit on Ctrl+Enter while typing in the customer form", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole("button", { name: "Pending" }));
+      await user.click(screen.getByRole("button", { name: /edit customer/i }));
+      await user.type(screen.getByLabelText("Customer name"), " Jr");
+      await user.keyboard("{Control>}{Enter}{/Control}");
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(mutationCalls().length).toBe(0);
+      expect(screen.queryByTestId("dashboard-home")).not.toBeInTheDocument();
+    });
+
+    it("keeps the page open and shows the server error when convert returns 409", async () => {
+      mockMutations(() => jsonResponse({ error: "Checkout phone is no longer valid" }, { ok: false, status: 409 }));
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole("button", { name: "Pending" }));
+      await user.click(screen.getByRole("button", { name: "Save & move to Pending" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Checkout phone is no longer valid");
+      expect(screen.queryByTestId("dashboard-home")).not.toBeInTheDocument();
+    });
+
+    it("sends the chosen hold reason for On hold", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole("button", { name: "On hold" }));
+      await user.click(screen.getByRole("button", { name: /Hold reason/ }));
+      await user.click(await screen.findByRole("option", { name: "Customer asked to be contacted later" }));
+      await user.click(screen.getByRole("button", { name: "Save & move to On hold" }));
+
+      expect(await screen.findByTestId("dashboard-home")).toBeInTheDocument();
+      const body = JSON.parse(mutationCalls()[0][1]?.body ?? "{}");
+      expect(body.status).toBe("on_hold");
+      expect(body.hold_reason_code).toBe("contact_later");
+    });
+
+    it("sends null hold fields for Pending", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole("button", { name: "Pending" }));
+      await user.click(screen.getByRole("button", { name: "Save & move to Pending" }));
+
+      expect(await screen.findByTestId("dashboard-home")).toBeInTheDocument();
+      const body = JSON.parse(mutationCalls()[0][1]?.body ?? "{}");
+      expect(body.hold_reason_code).toBeNull();
+      expect(body.hold_reason_detail).toBeNull();
+      expect(body.hold_until_date).toBeNull();
+    });
+
+    it("dismisses after confirmation and warns about unsaved changes", async () => {
+      mockMutations();
+      const user = userEvent.setup();
+      renderDetail();
+      expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);
+
+      await editName(user);
+      await user.click(screen.getByRole("button", { name: "Dismiss" }));
+      expect(await screen.findByText(/unsaved changes will be lost/i)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Dismiss checkout" }));
+
+      expect(await screen.findByTestId("dashboard-home")).toBeInTheDocument();
+      const calls = mutationCalls();
+      expect(calls.length).toBe(1);
+      const body = JSON.parse(calls[0][1]?.body ?? "{}");
+      expect(body.action).toBe("dismissed");
+      expect(Object.keys(body).every((key) => key === "action" || key === "activity_group_id")).toBe(true);
+    });
+  });
+
   it("exposes the cart region without the empty status-select grid cell breaking layout", async () => {
     renderDetail();
     expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);

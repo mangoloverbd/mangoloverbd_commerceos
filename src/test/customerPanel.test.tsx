@@ -114,3 +114,15 @@ describe("CustomerPanel messaging actions", () => {
     expect(screen.queryByRole("link", { name: /open whatsapp chat/i })).not.toBeInTheDocument();
   });
 });
+
+describe("CustomerPanel order source label", () => {
+  it("labels a website order converted from an abandoned checkout as Abandoned", () => {
+    render(<CustomerPanel order={baseOrder} customer={baseCustomer} onApply={vi.fn()} source="website" originSource="abandoned_checkout" />);
+    expect(screen.getByTestId("order-source-control")).toHaveTextContent("Abandoned");
+  });
+
+  it("keeps the Website label without an abandoned origin", () => {
+    render(<CustomerPanel order={baseOrder} customer={baseCustomer} onApply={vi.fn()} source="website" />);
+    expect(screen.getByTestId("order-source-control")).toHaveTextContent("Website");
+  });
+});

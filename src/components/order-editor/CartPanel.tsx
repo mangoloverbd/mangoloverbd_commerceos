@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Minus, Package, Plus, Trash } from "@phosphor-icons/react";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { Button as BuiButton } from "@/components/base/buttons/button";
@@ -39,6 +40,7 @@ type CartPanelProps = {
   onSave: () => void;
   onCancel: () => void;
   hideOrderSections?: boolean;
+  actions?: ReactNode;
   requiredAdditionReasonKeys?: string[];
   additionReasons?: Record<string, AdditionReason | "">;
   onAdditionReasonChange?: (itemKey: string, reason: AdditionReason) => void;
@@ -49,7 +51,7 @@ type CartPanelProps = {
   onCancellationReasonNoteChange?: (note: string) => void;
 };
 
-export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, advance, onAdvanceChange, status, onStatusChange, holdDetails, onHoldDetailsChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false, requiredAdditionReasonKeys = [], additionReasons = {}, onAdditionReasonChange, cancellationRequired = false, cancellationReasonCode = "", cancellationReasonNote = "", onCancellationReasonChange, onCancellationReasonNoteChange }: CartPanelProps) {
+export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled = false, error, overallDiscountType, overallDiscountValue, deliveryOn, advance, onAdvanceChange, status, onStatusChange, holdDetails, onHoldDetailsChange, onToggleDelivery, onOverallDiscount, onRemoveOverallDiscount, onQuantity, onRemove, onDiscount, onSave, onCancel, hideOrderSections = false, actions, requiredAdditionReasonKeys = [], additionReasons = {}, onAdditionReasonChange, cancellationRequired = false, cancellationReasonCode = "", cancellationReasonNote = "", onCancellationReasonChange, onCancellationReasonNoteChange }: CartPanelProps) {
   const overallBase = roundTaka(totals.grossSubtotal - totals.itemDiscount);
   return (
     <section aria-label="Order cart" className="flex min-h-0 flex-col overflow-hidden bg-[#FAFAF8] px-5 py-4 xl:h-full">
@@ -85,7 +87,7 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
         {!hideOrderSections && <div className="mb-1"><CartDiscountEditor base={overallBase} discountType={overallDiscountType} discountValue={overallDiscountValue} disabled={!canEdit} onApply={onOverallDiscount} onRemove={onRemoveOverallDiscount} /></div>}
         <dl className="space-y-1 text-[12px] leading-snug"><div className="flex justify-between"><dt className="text-black">Subtotal</dt><dd className="font-mono tabular-nums">{formatTaka(totals.grossSubtotal)}</dd></div>{totals.itemDiscount > 0 && <div className="flex justify-between"><dt className="text-black">Item discounts</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</dd></div>}{totals.legacyDiscount > 0 && <div className="flex justify-between"><dt className="text-black">Order discount</dt><dd className="font-mono tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</dd></div>}<div className="flex items-center justify-between"><dt className="text-black">Delivery</dt><dd className="flex items-center gap-2"><span className="font-mono tabular-nums">{totals.deliveryFee > 0 ? formatTaka(totals.deliveryFee) : "Free"}</span><Switch size="sm" aria-label="Toggle delivery charge" isSelected={deliveryOn} onChange={onToggleDelivery} isDisabled={!canEdit} /></dd></div><div className="flex items-center justify-between gap-2"><dt className="text-black">Advance / partial</dt><dd className="flex items-center gap-1.5"><span className="flex items-center gap-1 rounded-lg bg-black/[0.04] py-1 pl-2.5 pr-1 ring-1 ring-inset ring-black/[0.06] transition focus-within:bg-white focus-within:ring-black/20"><span className="font-mono text-[12px] text-black/40">৳</span><input aria-label="Advance payment" type="number" onWheel={blurOnWheel} min={0} max={totals.finalTotal} value={advance > 0 ? advance : ""} placeholder="0" onChange={(event) => onAdvanceChange(Math.min(totals.finalTotal, Math.max(0, Number(event.target.value) || 0)))} disabled={!canEdit} className="w-20 bg-transparent text-right font-mono text-[12px] font-medium tabular-nums outline-none placeholder:text-black/30 disabled:opacity-40" /></span></dd></div><div className="flex items-baseline justify-between border-t border-black/[0.07] pt-2"><dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-black">Final total</dt><dd className="font-mono text-[17px] tabular-nums">{formatTaka(totals.finalTotal)}</dd></div>{advance > 0 && <div className="flex items-baseline justify-between"><dt className="text-[11px] text-black">Due after advance</dt><dd>{advance < totals.finalTotal ? <Chip variant="subtle" color="lime" className="font-mono tabular-nums">{formatTaka(totals.finalTotal - advance)}</Chip> : <Chip variant="subtle" color="lime" className="font-medium">Paid</Chip>}</dd></div>}</dl>
         {error && <p role="alert" className="mt-1.5 text-[12px] text-red-600">{error}</p>}
-        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
+        {actions ?? <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5">
           {!hideOrderSections && (
           <BuiSelect
             aria-label="Order status"
@@ -105,7 +107,7 @@ export function CartPanel({ items, totals, canEdit, locked, saving, saveDisabled
              <OrderHoldFields value={holdDetails} onChange={(details) => onHoldDetailsChange?.(details)} disabled={saving || saveDisabled} />
            )}
             {!hideOrderSections && cancellationRequired && <div className="col-span-3 mt-1 grid gap-2 rounded-lg bg-red-50/70 p-3 sm:grid-cols-2"><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Cancellation reason</span><BuiSelect aria-label="Cancellation reason" placeholder="Select a reason" selectedKey={cancellationReasonCode || null} onSelectionChange={(key) => { if (key != null) onCancellationReasonChange?.(String(key) as CancellationReason); }} className="w-full" triggerClassName="h-9 w-full rounded-lg bg-white px-3 text-[12px]" popoverClassName="w-[var(--trigger-width)]" popoverPlacement="top" popoverShouldFlip={false}>{CANCELLATION_DIALOG_REASON_OPTIONS.map((option) => <BuiSelectItem key={option.value} id={option.value} textValue={option.label}>{option.label}</BuiSelectItem>)}</BuiSelect></label><label><span className="mb-1.5 block text-[8px] font-medium uppercase tracking-[0.22em] text-red-800">Optional note</span><input aria-label="Cancellation note" value={cancellationReasonNote} onChange={(event) => onCancellationReasonNoteChange?.(event.target.value)} placeholder={cancellationReasonCode === "other" ? "Required for Other" : "Add context"} className="h-9 w-full rounded-lg bg-white px-3 text-[12px]" /></label></div>}
-        </div>
+        </div>}
       </div>
     </section>
   );

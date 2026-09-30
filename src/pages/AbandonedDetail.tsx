@@ -9,6 +9,17 @@ import { toast } from "@/components/ui/sonner";
 import { CustomerPanel, type CustomerDraft } from "@/components/order-editor/CustomerPanel";
 import { CatalogPanel } from "@/components/order-editor/CatalogPanel";
 import { CartPanel } from "@/components/order-editor/CartPanel";
+import { OrderHoldFields, type OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
 import { OrderEditorTabPanels, OrderEditorTabSwitch } from "@/components/order-editor/OrderEditorTabs";
 import { useOrderEditorTab } from "@/hooks/useOrderEditorTab";
@@ -26,8 +37,26 @@ import {
   type CatalogVariant,
   type OrderEditorItem,
 } from "@/lib/orderEditor";
+import { validateOrderHoldDetails } from "../../shared/orderHold.js";
 
 type ProductsResponse = { products: CatalogProduct[] };
+
+type MoveTarget = "keep" | "pending" | "on_hold" | "approved";
+
+const MOVE_OPTIONS: { value: MoveTarget; label: string }[] = [
+  { value: "keep", label: "Abandoned" },
+  { value: "pending", label: "Pending" },
+  { value: "on_hold", label: "On hold" },
+  { value: "approved", label: "Approved" },
+];
+
+const MOVE_TARGET_LABELS: Record<Exclude<MoveTarget, "keep">, string> = {
+  pending: "Pending",
+  on_hold: "On Hold",
+  approved: "Approved",
+};
+
+const EMPTY_HOLD_DETAILS: OrderHoldMetadata = { hold_reason_code: null, hold_reason_detail: null, hold_until_date: null };
 
 function customerFromDraft(draft: AbandonedCheckout): CustomerDraft {
   return {
@@ -75,6 +104,11 @@ export default function AbandonedDetail() {
   const [deliveryOn, setDeliveryOn] = useState(true);
   const [deliveryRate, setDeliveryRate] = useState(100);
   const [additionReasons, setAdditionReasons] = useState<Record<string, AdditionReason | "">>({});
+  const [target, setTarget] = useState<MoveTarget>("keep");
+  const [holdDetails, setHoldDetails] = useState<OrderHoldMetadata>(EMPTY_HOLD_DETAILS);
+  const [dismissOpen, setDismissOpen] = useState(false);
+  const customerPanelRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(false);
   const initializedDraftKey = useRef<string | null>(null);
   const viewedDraftId = useRef<string | null>(null);
 
@@ -171,6 +205,21 @@ export default function AbandonedDetail() {
     const initial = new Map(checkout.cart.map((line) => [`${line.productName}:${line.variantName || ""}`, Number(line.quantity) || 0]));
     return draft.filter((item) => Number(item.quantity) > (initial.get(`${item.product_name || ""}:${item.variant_name || ""}`) || 0)).map(orderItemActivityKey);
   }, [checkout, draft]);
+  const isDirty = useMemo(() => {
+    if (!checkout) return false;
+    if (customer.customerName.trim() !== (checkout.customer_name || "").trim()) return true;
+    if (customer.address.trim() !== (checkout.address || "").trim()) return true;
+    if (customer.phone.replace(/\D/g, "") !== (checkout.phone || "").replace(/\D/g, "")) return true;
+    if ((deliveryOn ? deliveryRate : 0) !== (Number(checkout.delivery_rate) || 0)) return true;
+    if (draft.length !== checkout.cart.length) return true;
+    return draft.some((item, index) => {
+      const line = checkout.cart[index];
+      return (item.product_name || "") !== (line.productName || "")
+        || (item.variant_name || "") !== (line.variantName || "")
+        || item.quantity !== Number(line.quantity)
+        || item.unit_price !== (Number(line.unitPrice) || 0);
+    });
+  }, [checkout, customer, draft, deliveryOn, deliveryRate]);
 
   function addCatalogItem(product: CatalogProduct, variant?: CatalogVariant) {
     setDraft((items) => upsertCartItem(items, product, variant));
@@ -184,32 +233,43 @@ export default function AbandonedDetail() {
     navigate("/", { state: { fulfillmentTab: "abandoned" } });
   }
 
-  async function save() {
-    if (!checkout || !draftId || saving) return;
+  function removeFromAbandonedCache() {
+    queryClient.setQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"], (current) => {
+      if (!current) return current;
+      const existed = current.checkouts.some((item) => item.id === draftId);
+      return {
+        checkouts: current.checkouts.filter((item) => item.id !== draftId),
+        activeCount: existed ? Math.max(0, current.activeCount - 1) : current.activeCount,
+      };
+    });
+  }
+
+  // Validates and PATCHes the staff edits. Returns true only when the edits were saved.
+  async function persistEdits(): Promise<boolean> {
+    if (!checkout || !draftId) return false;
     const phone = customer.phone.replace(/\D/g, "");
     if (!/^01\d{9}$/.test(phone)) {
       setSaveError("Enter a valid 11-digit phone number starting with 01");
-      return;
+      return false;
     }
     if (draft.length === 0) {
       setSaveError("Add at least one item before saving");
-      return;
+      return false;
     }
     const invalidLine = draft.some((item) => !(item.product_name || "").trim()
       || !Number.isInteger(item.quantity) || item.quantity < 1
       || !Number.isFinite(item.unit_price) || item.unit_price < 0);
     if (invalidLine) {
       setSaveError("Each line needs a name, a quantity of at least 1, and a valid price");
-      return;
+      return false;
     }
     const rate = deliveryOn ? deliveryRate : 0;
     if (!Number.isFinite(rate) || rate < 0) {
       setSaveError("Delivery rate must be a valid amount");
-      return;
+      return false;
     }
-    if (requiredAdditionReasonKeys.some((key) => !additionReasons[key])) { setSaveError("Choose a reason for every added product or quantity increase"); return; }
+    if (requiredAdditionReasonKeys.some((key) => !additionReasons[key])) { setSaveError("Choose a reason for every added product or quantity increase"); return false; }
 
-    setSaving(true);
     setSaveError("");
     try {
       const activityGroupId = createActivityGroupId();
@@ -237,7 +297,7 @@ export default function AbandonedDetail() {
         if (res.status === 404 || res.status === 409) {
           toast.error("Checkout is no longer active");
           goBack();
-          return;
+          return false;
         }
         throw new Error(data.error || "Could not save checkout edits");
       }
@@ -250,13 +310,161 @@ export default function AbandonedDetail() {
       setDraft(updated.cart.map((line, index) => draftLineToItem(line, index, updated.id)));
       setAdditionReasons({});
       void refreshOrderActivity(queryClient, `/api/abandoned-checkouts/${draftId}/activity`);
-      toast.success("Checkout updated");
+      return true;
     } catch (error: unknown) {
       setSaveError(error instanceof Error ? error.message : "Could not save checkout edits");
+      return false;
+    }
+  }
+
+  async function submit() {
+    if (!checkout || !draftId || saving || busyRef.current) return;
+    if (target === "keep") {
+      busyRef.current = true;
+      setSaving(true);
+      try {
+        if (await persistEdits()) toast.success("Checkout updated");
+      } finally {
+        busyRef.current = false;
+        setSaving(false);
+      }
+      return;
+    }
+
+    const customerName = customer.customerName.trim();
+    const address = customer.address.trim();
+    if (target === "on_hold") {
+      const holdError = validateOrderHoldDetails({
+        reasonCode: holdDetails.hold_reason_code,
+        reasonDetail: holdDetails.hold_reason_detail ?? "",
+        holdUntilDate: holdDetails.hold_until_date,
+      });
+      if (holdError) { setSaveError(holdError.error); return; }
+    }
+    if (target === "approved" && (!customerName || !address)) {
+      setSaveError("Add the customer name and address before approving");
+      return;
+    }
+
+    busyRef.current = true;
+    setSaving(true);
+    try {
+      const editsSaved = isDirty;
+      if (isDirty && !(await persistEdits())) return;
+      setSaveError("");
+      const onHold = target === "on_hold";
+      const res = await apiFetch(`/api/abandoned-checkouts/${draftId}/convert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: target,
+          customer_name: customerName,
+          address,
+          hold_reason_code: onHold ? holdDetails.hold_reason_code : null,
+          hold_reason_detail: onHold ? holdDetails.hold_reason_detail : null,
+          hold_until_date: onHold ? holdDetails.hold_until_date : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.order) {
+        if (res.status === 404) {
+          toast.error("Checkout is no longer active");
+          goBack();
+          return;
+        }
+        const message = typeof data.error === "string" && data.error ? data.error : "Could not move checkout";
+        setSaveError(editsSaved ? `${message} Your edits were saved.` : message);
+        return;
+      }
+      removeFromAbandonedCache();
+      toast.success(`Order #${(data.order as { order_number: string }).order_number} moved to ${MOVE_TARGET_LABELS[target]}`);
+      goBack();
+    } catch {
+      setSaveError("Could not move checkout");
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   }
+
+  async function dismiss() {
+    if (!draftId || saving || busyRef.current) return;
+    busyRef.current = true;
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/api/abandoned-checkouts/${draftId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismissed", activity_group_id: createActivityGroupId() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.checkout) {
+        if (res.status === 404 || res.status === 409) {
+          toast.error("Checkout is no longer active");
+          goBack();
+          return;
+        }
+        toast.error("Could not dismiss checkout");
+        return;
+      }
+      removeFromAbandonedCache();
+      toast.success("Checkout dismissed");
+      goBack();
+    } catch {
+      toast.error("Could not dismiss checkout");
+    } finally {
+      busyRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  const submitRef = useRef(submit);
+  useEffect(() => { submitRef.current = submit; });
+  useEffect(() => {
+    if (!checkout || saving || dismissOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.repeat || customerPanelRef.current?.contains(event.target as Node)) return;
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        void submitRef.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [checkout, saving, dismissOpen]);
+
+  const primaryLabel = target === "keep" ? "Save changes" : `Save & move to ${MOVE_OPTIONS.find((option) => option.value === target)?.label}`;
+
+  const actionBlock = (
+    <div data-testid="abandoned-action-bar" className="mt-2 flex flex-col gap-2">
+      <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Status after save</p>
+      <div role="group" aria-label="Move checkout to" className="grid grid-cols-4 gap-1 rounded-[10px] bg-black/[0.04] p-1">
+        {MOVE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={target === option.value}
+            disabled={saving}
+            onClick={() => { setTarget(option.value); setSaveError(""); }}
+            className={`h-8 truncate rounded-[6px] text-[12px] disabled:cursor-not-allowed disabled:opacity-35 ${target === option.value ? "bg-white font-medium text-black ring-1 ring-inset ring-black/[0.08]" : "text-black/60 hover:text-black"}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {target === "on_hold" && (
+        <div>
+          <OrderHoldFields value={holdDetails} onChange={setHoldDetails} disabled={saving} />
+        </div>
+      )}
+      {saveError && <p role="alert" className="text-[12px] text-red-600">{saveError}</p>}
+      <div className="flex items-center gap-1.5">
+        <BuiButton variant="danger" size="medium" onClick={() => setDismissOpen(true)} disabled={saving} className="rounded-[6px]">Dismiss</BuiButton>
+        <BuiButton variant="ghost" size="medium" onClick={goBack} disabled={saving} className="ml-auto rounded-[6px]">Cancel</BuiButton>
+        <button type="button" onClick={() => { void submit(); }} disabled={saving} className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] bg-black px-4 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-35">{saving && <Spinner size="sm" />}{saving ? "Saving…" : primaryLabel}</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-0 flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
@@ -294,15 +502,36 @@ export default function AbandonedDetail() {
           }
           details={
             <div className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
-              <CustomerPanel order={{}} customer={customer} disabled={saving} onApply={setCustomer} />
+              <div ref={customerPanelRef}>
+                <CustomerPanel order={{}} customer={customer} disabled={saving} onApply={setCustomer} />
+              </div>
               <div data-testid="abandoned-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
                 <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit locked={false} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
-                <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={saveError} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} advance={0} onAdvanceChange={() => {}} status={null} onStatusChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => { void save(); }} onCancel={goBack} hideOrderSections requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} />
+                <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={undefined} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} advance={0} onAdvanceChange={() => {}} status={null} onStatusChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => {}} onCancel={goBack} hideOrderSections actions={actionBlock} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} />
               </div>
             </div>
           }
         />
       )}
+      <AlertDialog open={dismissOpen} onOpenChange={setDismissOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dismiss checkout?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dismiss this checkout from the recovery queue? This cannot be undone.{isDirty ? " Your unsaved changes will be lost." : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-[6px]">Keep checkout</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { void dismiss(); }}
+              className="rounded-[6px] bg-red-600 text-white hover:bg-red-700"
+            >
+              Dismiss checkout
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

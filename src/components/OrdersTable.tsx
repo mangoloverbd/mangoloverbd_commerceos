@@ -55,7 +55,7 @@ import { PopButton } from "@/components/ui/pop-button";
 import { Select as BuiSelect, SelectItem as BuiSelectItem } from "@/components/base/select/select";
 import { useWarehouses } from "@/hooks/useWarehouses";
 import { downloadOrderExcel } from "@/lib/orderExcelExport";
-import { normalizeOrderSource, orderSourceLabel, type OrderSource } from "@/lib/orderSource";
+import { isAbandonedCheckoutOrder, normalizeOrderSource, orderSourceDisplayLabel, type OrderSource } from "@/lib/orderSource";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileOrderCards } from "@/components/MobileOrderCards";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
@@ -280,6 +280,7 @@ export interface Order {
   fulfillment_status?: string | null;
   landing_page_path?: string | null;
   source?: string | null;
+  origin_source?: string | null;
   items?: OrderItemSummary[];
 }
 
@@ -1458,8 +1459,8 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                         )}
                       </div>
                       {order.source && (
-                        <Chip data-testid="order-source-chip" variant="caption" color={ORDER_SOURCE_CHIP_COLORS[normalizeOrderSource(order.source)] ?? "yellow"} className="mt-1 self-start rounded-[4px] py-0.5">
-                          {orderSourceLabel(order.source)}
+                        <Chip data-testid="order-source-chip" variant="caption" color={isAbandonedCheckoutOrder(order.source, order.origin_source) ? "rose" : ORDER_SOURCE_CHIP_COLORS[normalizeOrderSource(order.source)] ?? "yellow"} className="mt-1 self-start rounded-[4px] py-0.5">
+                          {orderSourceDisplayLabel(order.source, order.origin_source)}
                         </Chip>
                       )}
                     </div>

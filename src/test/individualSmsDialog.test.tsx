@@ -97,4 +97,19 @@ describe("IndividualSmsDialog", () => {
       "প্রিয় Ayesha Rahman, কুরিয়ার আপনার অর্ডার #ML-1001 নিয়ে আপনাকে পাচ্ছে না। অনুগ্রহ করে কলটি রিসিভ করুন অথবা +8801301636461-এ কল করুন।",
     );
   });
+  it("labels the amount as Amount due when an advance was paid", async () => {
+    const user = userEvent.setup();
+    render(<IndividualSmsDialog {...props} price={600} advancePaid={200} />);
+
+    expect(screen.queryByRole("button", { name: /insert order total/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /insert amount due/i }));
+    expect(screen.getByRole("textbox", { name: /message/i })).toHaveValue("৳600");
+  });
+
+  it("keeps the Order total label without an advance", () => {
+    render(<IndividualSmsDialog {...props} advancePaid={0} />);
+
+    expect(screen.getByRole("button", { name: /insert order total/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /insert amount due/i })).not.toBeInTheDocument();
+  });
 });

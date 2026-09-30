@@ -19,6 +19,7 @@ type IndividualSmsDialogProps = {
   customerName: string;
   phone: string;
   price?: number | null;
+  advancePaid?: number | null;
   address: string;
 };
 
@@ -119,6 +120,7 @@ export function IndividualSmsDialog({
   customerName,
   phone,
   price,
+  advancePaid,
   address,
 }: IndividualSmsDialogProps) {
   const reduceMotion = useReducedMotion();
@@ -215,7 +217,7 @@ export function IndividualSmsDialog({
   const quickValues = [
     ["Customer name", customerName || "Customer"],
     ["Order number", orderLabel(orderNumber)],
-    ["Order total", formatTaka(price)],
+    [(advancePaid ?? 0) > 0 ? "Amount due" : "Order total", formatTaka(price)],
     ["Delivery address", address || "the delivery address"],
   ] as const;
 

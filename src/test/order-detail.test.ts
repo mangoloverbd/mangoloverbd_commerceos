@@ -887,3 +887,47 @@ describe("OrderDetail", () => {
     expect(screen.getByText("Honey Jar")).toBeInTheDocument();
   });
 });
+
+describe("OrderDetail SMS amount", () => {
+  function mockOrder(advancedPayment: number) {
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url === "/api/orders/order-1") {
+        return response({
+          ...detail,
+          order: { ...order, price: 700, delivery_rate: 100, advanced_payment: advancedPayment },
+          items: [{ ...detail.items[0], unit_price: 700 }],
+        });
+      }
+      if (url === "/api/products") return response(products);
+      return response({});
+    });
+  }
+
+  it("fills {{total}} with the final total including delivery minus the advance", async () => {
+    mockOrder(200);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /send sms/i }));
+    expect(screen.getByRole("button", { name: /insert amount due/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /please receive/i }));
+
+    expect(screen.getByRole("textbox", { name: /message/i })).toHaveValue(
+      "Dear Ayesha Rahman, your Mango Lover BD order #ML-1001 is ready for delivery. Please receive the product and pay ৳600 upon delivery. Thank you.",
+    );
+  });
+
+  it("uses the full final total and Order total label without an advance", async () => {
+    mockOrder(0);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /send sms/i }));
+    expect(screen.getByRole("button", { name: /insert order total/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /please receive/i }));
+
+    expect(screen.getByRole("textbox", { name: /message/i })).toHaveValue(
+      "Dear Ayesha Rahman, your Mango Lover BD order #ML-1001 is ready for delivery. Please receive the product and pay ৳800 upon delivery. Thank you.",
+    );
+  });
+});
