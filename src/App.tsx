@@ -22,6 +22,7 @@ const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const NewOrder = lazy(() => import("./pages/NewOrder"));
 const AbandonedDetail = lazy(() => import("./pages/AbandonedDetail"));
 const Customers = lazy(() => import("./pages/Customers"));
+const CustomerDetail = lazy(() => import("./pages/CustomerDetail"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const FacebookInbox = lazy(() => import("./pages/FacebookInbox"));
@@ -131,6 +132,7 @@ const AppRoutes = () => (
       <Route path="/orders/:id" element={<OrderDetail />} />
       <Route path="/abandoned/:id" element={<AbandonedDetail />} />
       <Route path="/customers" element={<Customers />} />
+      <Route path="/customers/:id" element={<CustomerDetail />} />
       <Route path="/inbox/facebook" element={<FacebookInbox />} />
       <Route path="/inbox/instagram" element={<InstagramInbox />} />
       <Route path="/inbox/whatsapp" element={<WhatsappInbox />} />

@@ -52,11 +52,12 @@ describe("Customers page routing", () => {
     expect(tabsSource).toContain('layoutRoot');
   });
 
-  it("selects customers on row click instead of opening a profile popup", () => {
+  it("opens a dedicated customer page and retains checkbox selection without a popup", () => {
     const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
 
     expect(pageSource).not.toContain("CustomerBloomPopover");
     expect(pageSource).toContain("onSelectedIdsChange={setSelectedIds}");
+    expect(pageSource).toContain("onOpenCustomer=");
   });
 
   it("uses compact dashboard-style summary cards", () => {

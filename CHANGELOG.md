@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0.44] - 2026-09-30
+
+### Added
+
+- Customer profiles: click a customer (or "View customer profile" in the order editor) to open a full profile. The top card shows name, phone, Call / SMS / Create order, follow-up, the order that needs handling, address, channels, segments, next step, latest note and FraudShield.
+- Tabs below it: Overview (delivered value, order outcomes, recent orders, top products), Orders (all orders with paging), Notes (team notes, manual tags and follow-up date) and Activity (saved order events).
+- Follow-up dates use the Merchant Suite date picker, with Clear and Today.
+- Order editor: "View customer profile" sits in the top bar next to the order number.
+
 ## [0.1.0.43] - 2026-09-30
 
 ### Added

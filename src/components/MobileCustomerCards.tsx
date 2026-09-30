@@ -9,6 +9,7 @@ type MobileCustomerCardsProps = {
   customers: Customer[];
   selectedIds: Set<string>;
   onToggle: (id: string, checked: boolean) => void;
+  onOpenCustomer?: (customer: Customer) => void;
 };
 
 function money(value: number) {
@@ -19,7 +20,7 @@ function initials(name: string) {
   return name.trim().split(/\s+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
 }
 
-export function MobileCustomerCards({ customers, selectedIds, onToggle }: MobileCustomerCardsProps) {
+export function MobileCustomerCards({ customers, selectedIds, onToggle, onOpenCustomer }: MobileCustomerCardsProps) {
   if (!customers.length) return <div className="px-5 py-20 text-center text-sm text-black/45">No customers match your filters.</div>;
 
   return (
@@ -28,8 +29,9 @@ export function MobileCustomerCards({ customers, selectedIds, onToggle }: Mobile
         <article
           key={customer.id}
           onClick={(event) => {
-            // The checkbox and copy button handle their own clicks.
-            if ((event.target as HTMLElement).closest("label, button")) return;
+            // Selection and phone copy remain separate from opening a profile.
+            if ((event.target as HTMLElement).closest("label, button, a")) return;
+            if (onOpenCustomer) { onOpenCustomer(customer); return; }
             onToggle(customer.id, !selectedIds.has(customer.id));
           }}
           className={cn(
@@ -47,7 +49,10 @@ export function MobileCustomerCards({ customers, selectedIds, onToggle }: Mobile
             />
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-xs font-semibold text-black/60">{initials(customer.name)}</span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-black">{customer.name}</p>
+              <a href={`/customers/${encodeURIComponent(customer.id)}`} className="block min-h-6 truncate text-sm font-semibold text-black underline decoration-transparent underline-offset-4 hover:decoration-current focus-visible:outline focus-visible:outline-2" onClick={(event) => {
+                event.stopPropagation();
+                if (onOpenCustomer && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) { event.preventDefault(); onOpenCustomer(customer); }
+              }}>{customer.name}</a>
               <div className="mt-1 flex min-w-0 items-center gap-1">
                 <p className="truncate text-xs text-black/45">{customer.phone || "No phone"}</p>
                 {customer.phone && (

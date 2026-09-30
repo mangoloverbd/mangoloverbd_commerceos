@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { Link, useNavigate, useParams, useLocation } from "react-router-dom";
+import { customerProfileHref } from "@/lib/customerProfile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowLeft, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowUpRight, CaretLeft, CaretRight, UserCircle } from "@phosphor-icons/react";
 import { apiFetch } from "@/lib/api";
 import { syncOrders } from "@/lib/ordersSync";
 import { readTabOrderQueue, type NavigableQueueTab } from "@/lib/pendingOrderQueue";
@@ -152,6 +153,10 @@ export default function OrderDetail() {
   const returnTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
   const backState = typeof returnTab === "string" && returnTab ? { fulfillmentTab: returnTab } : undefined;
   function goBack() {
+    if (typeof location.state?.from === "string" && location.state.from.startsWith("/customers/")) {
+      navigate(location.state.from, { state: location.state.profileNavigationState });
+      return;
+    }
     navigate("/", backState ? { state: backState } : undefined);
   }
   const rawPendingOrderIds = (location.state as { pendingOrderIds?: unknown } | null)?.pendingOrderIds;
@@ -505,6 +510,14 @@ export default function OrderDetail() {
       <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span>{cancellationReasonLabel && <Chip data-testid="order-editor-cancellation-reason" color="yellow" className="max-w-[min(28rem,60vw)] self-center truncate" title={`Cancelled: ${cancellationReasonLabel}`}>Cancelled: {cancellationReasonLabel}</Chip>}</div>
+        {order?.id && (
+          <Link to={customerProfileHref(order)} aria-label="View customer profile" className="inline-flex h-8 min-w-0 items-center gap-2 rounded-full bg-black/[0.04] px-3 text-[12px] text-black transition-colors hover:bg-black/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25">
+            <UserCircle weight="light" size={14} aria-hidden="true" className="shrink-0" />
+            <span className="shrink-0 text-[8px] font-medium uppercase tracking-[0.3em] text-black">Customer profile</span>
+            <span className="font-medium">View</span>
+            <ArrowUpRight weight="light" size={12} aria-hidden="true" className="shrink-0" />
+          </Link>
+        )}
         {order?.id && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} showRisk={order.source === "website"} className="sm:ml-auto" />}
       </div>
 
