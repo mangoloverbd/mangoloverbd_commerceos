@@ -57,6 +57,8 @@ const riskColor: Record<Customer["riskLevel"], "green" | "yellow" | "rose"> = {
 const COLUMN_CHIP_CLASS = "w-[128px] justify-center";
 const CUSTOMER_PAGE_SIZE = 50;
 
+export type CustomerTableView = { page: number; sortDescriptor: SortDescriptor };
+
 function initialsOf(name: string) {
   return (
     name
@@ -118,21 +120,27 @@ export function CustomerDataTable({
   loading,
   selectedIds,
   onSelectedIdsChange,
+  onOpenCustomer,
+  initialView,
 }: {
   customers: Customer[];
   loading: boolean;
   selectedIds: Set<string>;
   onSelectedIdsChange: (ids: Set<string>) => void;
+  onOpenCustomer?: (customer: Customer, view: CustomerTableView) => void;
+  initialView?: CustomerTableView;
 }) {
-  const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>({
+  const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>(initialView?.sortDescriptor || {
     column: "lastOrder",
     direction: "descending",
   });
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialView?.page || 1);
   const tableTopRef = useRef<HTMLDivElement>(null);
+  const previousCustomers = useRef(customers);
 
   useEffect(() => {
-    setPage(1);
+    if (previousCustomers.current !== customers && previousCustomers.current.length > 0) setPage(1);
+    previousCustomers.current = customers;
   }, [customers]);
 
   function toggleSort(column: SortColumn) {
@@ -196,7 +204,7 @@ export function CustomerDataTable({
     <>
       <div ref={tableTopRef} className="scroll-mt-24" aria-hidden="true" />
       <div className="md:hidden">
-        <MobileCustomerCards customers={visible} selectedIds={selectedIds} onToggle={toggleOne} />
+        <MobileCustomerCards customers={visible} selectedIds={selectedIds} onToggle={toggleOne} onOpenCustomer={onOpenCustomer ? (customer) => onOpenCustomer(customer, { page: currentPage, sortDescriptor }) : undefined} />
       </div>
       <div className="hidden md:block">
     <Table
@@ -205,6 +213,11 @@ export function CustomerDataTable({
       size="sm"
       onRowAction={(key) => {
         const id = String(key);
+        const customer = sorted.find((entry) => entry.id === id);
+        if (customer && onOpenCustomer) {
+          onOpenCustomer(customer, { page: currentPage, sortDescriptor });
+          return;
+        }
         toggleOne(id, !selectedIds.has(id));
       }}
       className="min-w-[1120px]"
@@ -275,7 +288,10 @@ export function CustomerDataTable({
                   <div className="flex min-w-0 items-center gap-2.5">
                     <Avatar size="sm" color="neutral" initials={initialsOf(customer.name)} />
                     <div className="min-w-0">
-                      <p className="truncate text-body-medium text-text-primary">{customer.name}</p>
+                      <a href={`/customers/${encodeURIComponent(customer.id)}`} className="block truncate text-body-medium text-text-primary underline decoration-transparent underline-offset-4 hover:decoration-current focus-visible:outline focus-visible:outline-2" onClick={(event) => {
+                        event.stopPropagation();
+                        if (onOpenCustomer && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) { event.preventDefault(); onOpenCustomer(customer, { page: currentPage, sortDescriptor }); }
+                      }}>{customer.name}</a>
                       <div className="flex min-w-0 items-center gap-1">
                         <p className="truncate text-[11px] text-text-tertiary">{customer.phone || "No phone"}</p>
                         {customer.phone && (

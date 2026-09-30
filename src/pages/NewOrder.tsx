@@ -33,6 +33,7 @@ import { StaffSelect } from "@/components/order-editor/StaffSelect";
 import { useAuth } from "@/hooks/useAuth";
 import type { OrderSource } from "@/lib/orderSource";
 import { blurOnWheel } from "@/lib/numberInput";
+import { customerPrefillFromState } from "@/lib/customerProfile";
 
 type Line = OrderEditorItem;
 
@@ -101,10 +102,11 @@ export default function NewOrder() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const returnTo = typeof location.state?.from === "string" ? location.state.from : "/";
+  const customerPrefill = customerPrefillFromState(location.state);
   const [creating, setCreating] = useState(false);
-  const [customerName, setCustomerName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+  const [customerName, setCustomerName] = useState(customerPrefill.customerName);
+  const [phone, setPhone] = useState(customerPrefill.phone);
+  const [address, setAddress] = useState(customerPrefill.address);
   const [matchedCustomerPhone, setMatchedCustomerPhone] = useState<string | null>(null);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
@@ -350,7 +352,7 @@ export default function NewOrder() {
 
       await queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       toast.custom(() => <DarkToast className="flex items-center gap-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15"><CheckCircle weight="light" size={20} className="text-emerald-400" /></div><div><span className="block text-[10px] font-semibold uppercase tracking-widest text-white/50">Order created</span><span className="text-sm font-semibold text-white">{customerName || "Order"}</span></div></DarkToast>, { fit: true });
-      navigate(returnTo, { replace: true });
+      navigate(returnTo, { replace: true, state: location.state?.profileNavigationState });
     } catch (error) {
       console.error("Error creating order:", error);
       toast.error(error instanceof Error ? error.message : "Failed to create order");
@@ -362,7 +364,7 @@ export default function NewOrder() {
   return (
     <div className="flex min-h-full min-w-0 flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
       <div data-testid="new-order-toolbar" className="sticky top-0 z-30 flex shrink-0 items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
-        <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={() => navigate(returnTo)} />
+        <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={() => navigate(returnTo, { state: location.state?.profileNavigationState })} />
         <div className="min-w-0">
           <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">New order</p>
           <h1 className="truncate text-[28px] font-medium tracking-tight text-black">Order editor</h1>
@@ -491,7 +493,7 @@ export default function NewOrder() {
                       <div className="mt-3 flex items-center gap-2"><button type="button" onClick={() => setNoteOpen(false)} className="h-9 rounded-lg px-3 text-[12px] text-black hover:bg-black/[0.05]">Cancel</button><button type="button" aria-label="Save note" onClick={() => { setNotes(noteDraft); setNoteOpen(false); }} className="h-9 flex-1 rounded-lg bg-black px-3 text-[12px] text-white">Save</button></div>
                     </PopoverContent>
                   </Popover>
-                  <div className="ml-auto flex items-center gap-1.5"><BuiButton variant="ghost" size="medium" onClick={() => navigate(returnTo)} disabled={creating}>Cancel</BuiButton><button type="button" onClick={() => void createOrder()} disabled={creating} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-black px-3.5 text-[12px] font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-40">{creating ? <Spinner size="sm" /> : <Plus weight="light" size={15} />}{creating ? "Creating…" : "Create order"}</button></div>
+                   <div className="ml-auto flex items-center gap-1.5"><BuiButton variant="ghost" size="medium" onClick={() => navigate(returnTo, { state: location.state?.profileNavigationState })} disabled={creating}>Cancel</BuiButton><button type="button" onClick={() => void createOrder()} disabled={creating} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-black px-3.5 text-[12px] font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-40">{creating ? <Spinner size="sm" /> : <Plus weight="light" size={15} />}{creating ? "Creating…" : "Create order"}</button></div>
                 </div>
               </div>
             </div>

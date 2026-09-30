@@ -37,11 +37,13 @@ Routes remain in `server/index.js`. Pure profile logic and validation have a foc
 
 ## Interface
 
-Warm off-white, Geist, borderless sections, Phosphor light icons. Header identity/actions, operational and purchase metrics, main history/activity, and a staff-context column. Responsive stacking on mobile. Customer name links open profiles; checkboxes continue bulk selection and phone-copy does neither. Search/filter/sort/page state survives returning to the customer queue.
+Warm off-white, Geist, borderless sections, Phosphor light icons. Header identity/actions, operational and purchase metrics, main history/activity, and a staff-context column. Responsive stacking on mobile. Customer rows/cards and name links open profiles; checkboxes continue bulk selection and phone-copy does neither. Search/filter/sort/page state survives returning to the customer queue. Row/card opening replaces selection-on-row-click at the user's request during testing.
 
 ## Excluded
 
-Automatic campaigns, AI scoring, merges, preferred-address editing, communication history not already recorded, and inferred conversation matching. No production database mutation or deployment is authorized by this implementation request.
+Automatic campaigns, AI scoring, merges, preferred-address editing, communication history not already recorded, and inferred conversation matching. Changing an order's phone never migrates notes or context: records remain attached to the original key. If that key has no matching orders, recovery needs an explicitly reviewed data-repair operation, not an implicit merge.
+
+Production application deployment is not authorized. After testing locally, the user explicitly approved applying the customer-profile migration to the shared Mango Lover BD database. Migration `20260930155613_customer_profiles.sql` was applied on 2026-09-30; its local version matches Supabase's recorded version. Existing 2,205 orders and zero inbox orders were preserved. Browser QA was explicitly skipped by the user; automated component/handler tests and a live scoped read-only profile-handler check replace it, not a claim of browser verification.
 
 ## Verification
 

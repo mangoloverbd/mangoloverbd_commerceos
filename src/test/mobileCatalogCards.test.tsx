@@ -50,10 +50,10 @@ describe("mobile catalog cards", () => {
     const customer = makeCustomer({ name: "Nusrat Jahan", totalOrders: 3, totalSpent: 2400 });
     const onToggle = vi.fn();
     const { rerender } = render(<MobileCustomerCards customers={[customer]} selectedIds={new Set()} onToggle={onToggle} />);
-    await user.click(screen.getByText("Nusrat Jahan"));
+    await user.click(screen.getByText("Nusrat Jahan").closest("article")!);
     expect(onToggle).toHaveBeenLastCalledWith(customer.id, true);
     rerender(<MobileCustomerCards customers={[customer]} selectedIds={new Set([customer.id])} onToggle={onToggle} />);
-    await user.click(screen.getByText("Nusrat Jahan"));
+    await user.click(screen.getByText("Nusrat Jahan").closest("article")!);
     expect(onToggle).toHaveBeenLastCalledWith(customer.id, false);
     expect(screen.queryByRole("button", { name: /open customer/i })).not.toBeInTheDocument();
   });

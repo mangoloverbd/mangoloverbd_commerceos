@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { Link, useNavigate, useParams, useLocation } from "react-router-dom";
+import { customerProfileHref } from "@/lib/customerProfile";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowLeft, CaretLeft, CaretRight } from "@phosphor-icons/react";
@@ -152,6 +153,10 @@ export default function OrderDetail() {
   const returnTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
   const backState = typeof returnTab === "string" && returnTab ? { fulfillmentTab: returnTab } : undefined;
   function goBack() {
+    if (typeof location.state?.from === "string" && location.state.from.startsWith("/customers/")) {
+      navigate(location.state.from, { state: location.state.profileNavigationState });
+      return;
+    }
     navigate("/", backState ? { state: backState } : undefined);
   }
   const rawPendingOrderIds = (location.state as { pendingOrderIds?: unknown } | null)?.pendingOrderIds;
@@ -527,6 +532,7 @@ export default function OrderDetail() {
             }
             details={
               <div className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
+                <Link to={customerProfileHref(order)} className="mb-3 inline-flex min-h-9 items-center text-sm underline underline-offset-4">View customer profile</Link>
                 <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={normalizeOrderSource(order.source)} originSource={order.origin_source} smsAmount={amountDue} smsAdvancePaid={clampedAdvance} />
                 <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
                   <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />

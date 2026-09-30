@@ -12,7 +12,7 @@
 
 - All frontend API calls use `apiFetch()`; route handlers validate auth and scope every relevant query by resolved `org_id`.
 - Phosphor icons use `weight="light"`; warm off-white, Geist, borderless panels and ৳ amounts.
-- No production migration/deployment, no customer-name-only matching, no fabricated collected revenue or message history.
+- No customer-name-only matching, no fabricated collected revenue or message history. Production migration initially deferred, then explicitly approved and applied during testing; application deployment remains out of scope.
 - Keep the current 45-day lifecycle rule unchanged and label it as a rule, not an automatic action.
 
 ### Task 1: Identity, profile aggregation and validation
@@ -104,6 +104,20 @@ Performance: indexed phone/order lookup, chunked structured-item/event reads, bo
 |---|---|---|
 | Architecture, code quality, tests, performance | Reviewed | Identity and lookup decisions confirmed by user; coverage included above |
 
-VERDICT: Ready for test-first implementation; independent review pending.
+VERDICT: Implemented and independently reviewed. Automated checks passed; browser QA explicitly waived by the user. Existing unrelated TypeScript errors remain.
 
 NO UNRESOLVED DECISIONS
+
+## Execution record
+
+- Task 1 complete: phone-less identities stay separate; shared browser/server identity rules; latest nonempty names; list/profile outcome alignment; complete returns and partial deliveries excluded from purchase values.
+- Task 2 complete: registered-handler tests cover authentication, workspace guards, invalid input/pages, >1,000 matching rows, initial and existing-row conflicts, trusted note authors, retry idempotency, cross-workspace collisions, and explicit legacy-activity deduplication.
+- Task 3 complete: responsive detail page, saved fraud-check display, notes, manual tags and follow-up date/reason, draft-preserving save failures and explicit conflict reload.
+- Task 4 complete: user requested whole-row/card opening rather than name-only opening. Name links, row/card actions and checkboxes tested independently. Customer queue state travels through profile/order routes; prefill is limited to text fields. Inbox-order links target the selected existing inbox row.
+- Schema verification: two fresh local resets passed, including generated phone parity with Unicode whitespace, private grants, append-only notes and competing writes blocked behind an uncommitted transaction.
+- Deployment: user explicitly approved migration `20260930155613_customer_profiles.sql` on shared project `ldiktvcavyabivpxfwpn`; confirmed no order loss (2,205 orders, zero inbox orders), both new phone columns present, private tables with RLS and browser privileges revoked. The actual GET handler returned 200 against real scoped database reads without writing customer data.
+- Browser QA: user chose to skip the one-time headless tool build because the desktop browser was disconnected. No browser-success claim; component tests and user testing covered entry-point behavior.
+- Independent reviews resolved: complete-return precedence, explicit linked-event deduplication, string-only note IDs, SQL/JS whitespace parity, NULL-safe assertions, per-privilege checks, stale-version coverage and deterministic transaction overlap.
+- Final checks: 252 test files and 1,758 tests passed; production build passed; focused lint has no errors and no new warnings; TypeScript reports no new errors relative to the original checkout. Local customers page returns HTTP 200.
+- Existing unrelated Supabase warnings remain: publicly executable `rls_auto_enable` and disabled leaked-password protection. See [function-exposure guidance](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable) and [password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). RLS-without-policy notices on the new tables are expected because access is server-only.
+- Local app: `http://localhost:24678/customers`; startup write/background jobs disabled. Application code remains on the feature branch, without push or production app deployment.

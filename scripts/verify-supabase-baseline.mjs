@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import {
   existsSync,
   mkdtempSync,
@@ -49,6 +50,8 @@ const runtimeTables = Object.freeze([
   "order_status_events",
   "fraud_checks",
   "order_activity_events",
+  "customer_profiles",
+  "customer_notes",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
@@ -123,6 +126,28 @@ declare
   runtime_table_count integer;
   rls_table_count integer;
 begin
+  if to_regclass('public.customer_profiles') is null or to_regclass('public.customer_notes') is null then
+    raise exception 'Customer profile persistence is missing';
+  end if;
+  if public.normalize_customer_phone('+880 1712-345678') is distinct from '01712345678'
+     or public.normalize_customer_phone('1712345678') is distinct from '01712345678'
+     or public.normalize_customer_phone('invalid') is not null
+     or public.normalize_customer_phone('88001712345678') is not null then
+    raise exception 'Customer phone normalization differs from the application';
+  end if;
+  if has_table_privilege('authenticated', 'public.customer_profiles', 'select,insert,update,delete')
+     or has_table_privilege('authenticated', 'public.customer_notes', 'select,insert,update,delete')
+     or has_table_privilege('service_role', 'public.customer_notes', 'update,delete,truncate')
+     or has_table_privilege('service_role', 'public.customer_profiles', 'delete,truncate') then
+    raise exception 'Customer context or append-only notes expose excess privileges';
+  end if;
+  if not has_table_privilege('service_role', 'public.customer_notes', 'select')
+     or not has_table_privilege('service_role', 'public.customer_notes', 'insert')
+     or not has_table_privilege('service_role', 'public.customer_profiles', 'select')
+     or not has_table_privilege('service_role', 'public.customer_profiles', 'insert')
+     or not has_table_privilege('service_role', 'public.customer_profiles', 'update') then
+    raise exception 'Customer profile server privileges are missing';
+  end if;
   select count(*) into runtime_table_count
   from pg_class
   where relnamespace = 'public'::regnamespace and relkind = 'r';
@@ -430,7 +455,100 @@ $$;
 rollback;
 `;
 
-function verifyFreshDatabase(runNumber) {
+const customerProfileBehaviorSql = `
+begin;
+insert into public.orders (org_id, order_number, phone) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'PROFILE-TEST', '+880 1712-345678');
+insert into public.social_inbox_orders (org_id, platform, notes) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'facebook', E'Phone: +880 1712-345678\\nAddress: Dhaka');
+do $$ begin
+  if (select customer_phone_key from public.orders where order_number = 'PROFILE-TEST') is distinct from '01712345678'
+     or (select customer_phone_key from public.social_inbox_orders where org_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') is distinct from '01712345678' then
+    raise exception 'Generated phone keys differ from application parsing';
+  end if;
+end $$;
+update public.social_inbox_orders set notes = 'Phone:' || chr(160) || chr(10) || '01712345678'
+  where org_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+do $$ begin
+  if (select customer_phone_key from public.social_inbox_orders where org_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') is distinct from '01712345678' then
+    raise exception 'Unicode whitespace differs from JavaScript inbox phone parsing';
+  end if;
+end $$;
+update public.social_inbox_orders set notes = 'Phone: invalid, Phone: 01712345678'
+  where org_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+do $$ begin
+  if (select customer_phone_key from public.social_inbox_orders where org_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') is not null then
+    raise exception 'Multiple phone labels must use first-match parsing';
+  end if;
+end $$;
+set local role service_role;
+insert into public.customer_notes (id, org_id, customer_key, body, author_id, author_name)
+values ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '01712345678', 'Private note', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'Staff');
+do $$ begin
+  begin
+    update public.customer_notes set body = 'Changed';
+    raise exception 'Append-only note update was allowed';
+  exception when insufficient_privilege then null; end;
+  begin
+    delete from public.customer_notes;
+    raise exception 'Append-only note delete was allowed';
+  exception when insufficient_privilege then null; end;
+end $$;
+rollback;
+`;
+
+async function verifyCustomerContextConcurrency(connection) {
+  const execute = promisify(execFile);
+  async function raceWrite(sql) {
+    // Keep the winning transaction open, then prove the competitor is waiting
+    // on its lock before committing. Merely launching two processes at once
+    // could accidentally test only sequential writes.
+    const winner = spawn(psql, [...connection, "-qAt"], { stdio: ["pipe", "pipe", "pipe"] });
+    let winnerError = "";
+    winner.stderr.on("data", (chunk) => { winnerError += String(chunk); });
+    const exited = new Promise((resolve) => winner.once("exit", resolve));
+    const held = new Promise((resolve, reject) => {
+      let output = "";
+      winner.stdout.on("data", (chunk) => { output += String(chunk); if (output.includes("PROFILE_LOCK_HELD")) resolve(); });
+      winner.once("error", reject);
+      winner.once("exit", (code) => { if (code !== 0) reject(new Error(winnerError)); });
+    });
+    winner.stdin.write(`begin; ${sql}\n\\echo PROFILE_LOCK_HELD\n`);
+    await held;
+    const competing = execute(psql, [...connection, "-qAt", "-c", sql], { env: { ...process.env, PGAPPNAME: "customer-profile-concurrency-test" } })
+      .then((result) => ({ status: "fulfilled", stdout: result.stdout }), (error) => ({ status: "rejected", stderr: String(error.stderr) }));
+    try {
+      run(psql, [...connection, "-c", `do $$ begin
+        for attempt in 1..500 loop
+          if exists (select 1 from pg_stat_activity where application_name = 'customer-profile-concurrency-test' and wait_event_type = 'Lock') then return; end if;
+          perform pg_sleep(0.01);
+        end loop;
+        raise exception 'Competing customer context write never waited on the held transaction';
+      end $$;`], { stdio: "pipe" });
+    } finally {
+      winner.stdin.end("commit;\n");
+      await exited;
+    }
+    if (winnerError) throw new Error(winnerError);
+    return competing;
+  }
+  const firstSave = `set role service_role;
+    insert into public.customer_profiles (org_id, customer_key, updated_by, updated_by_name)
+    values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '01712345678', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'Staff') returning version;`;
+  const first = await raceWrite(firstSave);
+  if (first.status !== "rejected" || !first.stderr.includes("duplicate key")) {
+    throw new Error("Concurrent initial context saves did not produce one success and one uniqueness conflict");
+  }
+  const update = `set role service_role;
+    update public.customer_profiles set version = 2, tags = array['VIP']
+    where org_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and customer_key = '01712345678' and version = 1 returning version;`;
+  const updateResult = await raceWrite(update);
+  if (updateResult.status !== "fulfilled" || updateResult.stdout.split(/\s+/).includes("2")) {
+    throw new Error("Concurrent context updates did not produce one success and one version conflict");
+  }
+}
+
+async function verifyFreshDatabase(runNumber) {
   const workDirectory = mkdtempSync(join(tmpdir(), "mangoloverbd-baseline-"));
   const dataDirectory = join(workDirectory, "data");
   const socketDirectory = join(workDirectory, "socket");
@@ -466,6 +584,8 @@ function verifyFreshDatabase(runNumber) {
     run(psql, [...connection, "-c", assertionSql], { stdio: "pipe" });
     run(psql, [...connection, "-c", rlsBehaviorSql], { stdio: "pipe" });
     run(psql, [...connection, "-c", warehouseBehaviorSql], { stdio: "pipe" });
+    run(psql, [...connection, "-c", customerProfileBehaviorSql], { stdio: "pipe" });
+    await verifyCustomerContextConcurrency(connection);
     process.stdout.write(`Baseline reset ${runNumber}: passed\n`);
   } finally {
     if (started) {
@@ -475,5 +595,5 @@ function verifyFreshDatabase(runNumber) {
   }
 }
 
-verifyFreshDatabase(1);
-verifyFreshDatabase(2);
+await verifyFreshDatabase(1);
+await verifyFreshDatabase(2);

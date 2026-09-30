@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { customerInboxTarget } from "@/lib/customerProfile";
 import { apiFetch } from "@/lib/api";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
@@ -495,6 +497,9 @@ function InboxEditableTotalCell({ order, onOrderUpdate }: { order: InboxOrder; o
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function InboxOrders() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const targetOrderId = searchParams.get("order");
   const queryClient = useQueryClient();
   const { orgName } = useOrgName();
   const [search, setSearch] = useState("");
@@ -538,7 +543,7 @@ export default function InboxOrders() {
   };
 
   const filtered = useMemo(() => {
-    let list = allOrders;
+    let list = customerInboxTarget(allOrders, targetOrderId);
     if (statusFilter !== "all") list = list.filter((o) => o.status === statusFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -551,7 +556,7 @@ export default function InboxOrders() {
       );
     }
     return list;
-  }, [allOrders, statusFilter, search]);
+  }, [allOrders, statusFilter, search, targetOrderId]);
 
   const counts = useMemo(() => ({
     all: allOrders.length,
@@ -816,6 +821,11 @@ export default function InboxOrders() {
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-full space-y-3 bg-white p-1 lg:p-2 pb-4 lg:pb-6">
+      {targetOrderId && <div className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
+        {typeof location.state?.from === "string" && location.state.from.startsWith("/customers/") && <Link className="min-h-9 py-2 underline underline-offset-4" to={location.state.from} state={location.state.profileNavigationState}>Back to customer profile</Link>}
+        <span>Showing the selected inbox order</span>
+        <Button variant="ghost" onClick={() => { const next = new URLSearchParams(searchParams); next.delete("order"); setSearchParams(next); }}>Show all inbox orders</Button>
+      </div>}
       {/* ─ Board card ───────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}

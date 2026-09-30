@@ -32,6 +32,7 @@ import {
   parseLegacyProductLines,
 } from "./orderItemParsing.js";
 import { buildCustomers, customerPhoneCandidates, findCustomerOrderByPhone, summarizeCustomers } from "./customers.js";
+import { buildCustomerProfile, parseCustomerId, validateCustomerContext, validateCustomerNote } from "./customerProfile.js";
 import { MAX_CUSTOMER_SMS_RECIPIENTS, mapWithConcurrency, planCustomerSms } from "./customerSms.js";
 import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
 import {
@@ -8505,6 +8506,175 @@ app.post("/api/customers/send-sms", async (req, res) => {
   } catch (error) {
     return sendError(res, error);
   }
+});
+
+// ── Customer profile endpoints ──────────────────────────────────────────────
+
+const CUSTOMER_PROFILE_PAGE_SIZE = 25;
+
+function customerProfilePage(value) {
+  if (value == null) return 1;
+  if (typeof value !== "string" || !/^[1-9]\d{0,5}$/.test(value)) {
+    const error = new Error("Page must be a positive integer");
+    error.status = 422;
+    throw error;
+  }
+  return Number(value);
+}
+
+function sendCustomerProfileError(res, error) {
+  if (["42703", "42P01", "PGRST204", "PGRST205"].includes(error.code)) {
+    return res.status(503).json({ code: "customer_profile_schema_required", error: "Customer profiles require the customer_profiles database migration. Apply the reviewed migration before using this page." });
+  }
+  return res.status(error.status || 500).json({ error: error.status ? error.message : "Could not load or save the customer profile. Please try again." });
+}
+
+function profileContext(row) {
+  return { tags: row?.tags || [], followUpOn: row?.follow_up_on || null, followUpReason: row?.follow_up_reason || "", version: row?.version || 0, updatedAt: row?.updated_at || null, updatedByName: row?.updated_by_name || null };
+}
+
+function profileNote(row) {
+  return { id: row.id, body: row.body, authorId: row.author_id, authorName: row.author_name, createdAt: row.created_at };
+}
+
+async function allProfileRows(queryFactory) {
+  const rows = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await queryFactory().range(offset, offset + 999);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) return rows;
+  }
+}
+
+async function loadProfileOrderRows(supabase, orgId, customerId) {
+  const identity = parseCustomerId(customerId);
+  if (!identity) {
+    const error = new Error("Invalid customer identity"); error.status = 422; throw error;
+  }
+  const load = (table, kind) => {
+    if (!identity.phone && identity.kind !== kind) return Promise.resolve([]);
+    return allProfileRows(() => {
+      let query = supabase.from(table).select("*").eq("org_id", orgId);
+      query = identity.phone ? query.eq("customer_phone_key", identity.phone) : query.eq("id", identity.rowId);
+      return query.order("created_at", { ascending: false }).order("id", { ascending: true });
+    });
+  };
+  const [orders, inboxOrders] = await Promise.all([load("orders", "order"), load("social_inbox_orders", "social")]);
+  return { orders, inboxOrders };
+}
+
+async function requireProfileCustomer(supabase, orgId, id) {
+  const rows = await loadProfileOrderRows(supabase, orgId, id);
+  if (!buildCustomerProfile({ customerId: id, ...rows })) {
+    const error = new Error("Customer not found"); error.status = 404; throw error;
+  }
+  return rows;
+}
+
+async function profileRowsByOrderIds(supabase, orgId, table, ids, orderTable) {
+  const rows = [];
+  // Bound URL sizes while still reading every PostgREST page of matched rows.
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    rows.push(...await allProfileRows(() => {
+      let query = supabase.from(table).select("*").eq("org_id", orgId).in("order_id", ids.slice(offset, offset + 100));
+      if (orderTable) query = query.eq("order_table", orderTable);
+      if (table === "order_activity_events") query = query.neq("category", "view");
+      return query.order("created_at", { ascending: false }).order("id", { ascending: false });
+    }));
+  }
+  return rows;
+}
+
+function profilePageEnvelope(items, requestedPage) {
+  const totalPages = Math.max(1, Math.ceil(items.length / CUSTOMER_PROFILE_PAGE_SIZE));
+  const page = Math.min(requestedPage, totalPages);
+  return { items: items.slice((page - 1) * CUSTOMER_PROFILE_PAGE_SIZE, page * CUSTOMER_PROFILE_PAGE_SIZE), page, total: items.length, totalPages };
+}
+
+async function customerProfileActor(supabase, orgId, userId) {
+  const { data, error } = await supabase.from("user_roles").select("display_name").eq("org_id", orgId).eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data?.display_name || "Unnamed member";
+}
+
+app.get("/api/customers/:id", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    res.set("Cache-Control", "private, no-store");
+    const ordersPage = customerProfilePage(req.query.ordersPage);
+    const activityPage = customerProfilePage(req.query.activityPage);
+    const notesPage = customerProfilePage(req.query.notesPage);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const customerId = req.params.id;
+    const { orders, inboxOrders } = await requireProfileCustomer(supabase, orgId, customerId);
+    const orderIds = orders.map((row) => row.id);
+    const inboxIds = inboxOrders.map((row) => row.id);
+    const [orderItems, contextResult, notes, detailedOrder, detailedInbox, legacyOrder, legacyInbox] = await Promise.all([
+      profileRowsByOrderIds(supabase, orgId, "order_items", orderIds),
+      supabase.from("customer_profiles").select("*").eq("org_id", orgId).eq("customer_key", customerId).maybeSingle(),
+      allProfileRows(() => supabase.from("customer_notes").select("*").eq("org_id", orgId).eq("customer_key", customerId).order("created_at", { ascending: false }).order("id", { ascending: false })),
+      profileRowsByOrderIds(supabase, orgId, "order_activity_events", orderIds, "orders"),
+      profileRowsByOrderIds(supabase, orgId, "order_activity_events", inboxIds, "social_inbox_orders"),
+      profileRowsByOrderIds(supabase, orgId, "order_status_events", orderIds, "orders"),
+      profileRowsByOrderIds(supabase, orgId, "order_status_events", inboxIds, "social_inbox_orders"),
+    ]);
+    if (contextResult.error) throw contextResult.error;
+    const profile = buildCustomerProfile({ customerId, orders, inboxOrders, orderItems });
+    const history = profile.history;
+    const detailed = [...detailedOrder, ...detailedInbox];
+    const legacy = filterLegacyActivityEvents(detailed, [...legacyOrder, ...legacyInbox]);
+    const activity = [...detailed.map((event) => ({ id: event.id, orderId: event.order_id, kind: event.order_table === "orders" ? "order" : "social_order", summary: event.summary, actorName: event.actor_display_name || event.actor_kind || "Unknown", createdAt: event.created_at })), ...legacy.map((event) => ({ id: `legacy:${event.id}`, orderId: event.order_id, kind: event.order_table === "orders" ? "order" : "social_order", summary: `Recorded status: ${event.to_status}`, actorName: event.actor_kind || "Unknown", createdAt: event.created_at }))].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.id.localeCompare(b.id));
+    // The bounded response omits the full internal aggregation history.
+    const { history: _history, ...publicProfile } = profile;
+    return res.json({ profile: publicProfile, context: profileContext(contextResult.data), orders: profilePageEnvelope(history, ordersPage), activeOrders: history.filter((row) => row.outcome === "active").slice(0, 5), activity: profilePageEnvelope(activity, activityPage), notes: profilePageEnvelope(notes.map(profileNote), notesPage) });
+  } catch (error) { return sendCustomerProfileError(res, error); }
+});
+
+app.patch("/api/customers/:id/context", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const input = validateCustomerContext(req.body);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    await requireProfileCustomer(supabase, orgId, req.params.id);
+    const actorName = await customerProfileActor(supabase, orgId, user.id);
+    const row = { tags: input.tags, follow_up_on: input.followUpOn, follow_up_reason: input.followUpReason, version: input.expectedVersion + 1, updated_by: user.id, updated_by_name: actorName };
+    const query = input.expectedVersion === 0
+      ? supabase.from("customer_profiles").insert({ ...row, org_id: orgId, customer_key: req.params.id })
+      : supabase.from("customer_profiles").update(row).eq("org_id", orgId).eq("customer_key", req.params.id).eq("version", input.expectedVersion);
+    const { data, error } = await query.select("*").maybeSingle();
+    if (error?.code === "23505" || (!error && !data)) return res.status(409).json({ error: "Another staff member changed this profile. Reload the saved context before applying your edits." });
+    if (error) throw error;
+    return res.json({ context: profileContext(data) });
+  } catch (error) { return sendCustomerProfileError(res, error); }
+});
+
+app.post("/api/customers/:id/notes", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const input = validateCustomerNote(req.body);
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    await requireProfileCustomer(supabase, orgId, req.params.id);
+    const actorName = await customerProfileActor(supabase, orgId, user.id);
+    const result = await supabase.from("customer_notes").insert({ id: input.id, org_id: orgId, customer_key: req.params.id, body: input.body, author_id: user.id, author_name: actorName }).select("*").maybeSingle();
+    if (result.error?.code === "23505") {
+      const { data, error } = await supabase.from("customer_notes").select("*").eq("org_id", orgId).eq("customer_key", req.params.id).eq("id", input.id).maybeSingle();
+      if (error) throw error;
+      if (data?.body === input.body && data.author_id === user.id) return res.json({ note: profileNote(data) });
+      return res.status(409).json({ error: "This note id has already been used. Reload before trying again." });
+    }
+    if (result.error) throw result.error;
+    return res.status(201).json({ note: profileNote(result.data) });
+  } catch (error) { return sendCustomerProfileError(res, error); }
 });
 
 // ── Order attribution ────────────────────────────────────────────────────────

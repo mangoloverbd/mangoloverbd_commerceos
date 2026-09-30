@@ -1,9 +1,6 @@
-export function normalizeCustomerPhone(phone) {
-  let clean = String(phone || "").replace(/\D/g, "");
-  if (clean.startsWith("880")) clean = `0${clean.slice(3)}`;
-  if (clean.length === 10 && clean.startsWith("1")) clean = `0${clean}`;
-  return /^01\d{9}$/.test(clean) ? clean : "";
-}
+import { customerKeyFor, normalizeCustomerPhone, parseInboxPhone } from "../shared/customerIdentity.js";
+import { customerOrderOutcome } from "./customerOutcomes.js";
+export { customerKeyFor, normalizeCustomerPhone, parseInboxPhone } from "../shared/customerIdentity.js";
 
 export function customerPhoneCandidates(phone) {
   const normalized = normalizeCustomerPhone(phone);
@@ -36,13 +33,6 @@ export function detectCustomerOrderSource(row, tableKind) {
 function toNumber(value) {
   const n = Number(String(value ?? "0").replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) ? n : 0;
-}
-
-function parseInboxPhone(order) {
-  const direct = normalizeCustomerPhone(order?.phone);
-  if (direct) return direct;
-  const match = String(order?.notes || "").match(/Phone:\s*([^\n,]+)/i);
-  return normalizeCustomerPhone(match?.[1]);
 }
 
 function formatInboxItems(items) {
@@ -105,12 +95,18 @@ function primarySourceFor(timeline) {
 
 function addTimeline(customer, entry) {
   customer.timeline.push(entry);
-  customer.timeline.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  customer.lastOrderAt = customer.timeline[0]?.createdAt || customer.lastOrderAt;
 }
 
 export function buildCustomers({ orders = [], inboxOrders = [], now = new Date() } = {}) {
   const byKey = new Map();
+  const nameDates = new Map();
+  const updateName = (customer, name, createdAt) => {
+    const date = Number.isFinite(Date.parse(createdAt)) ? Date.parse(createdAt) : 0;
+    if (name && (!nameDates.has(customer.id) || date > nameDates.get(customer.id))) {
+      customer.name = name;
+      nameDates.set(customer.id, date);
+    }
+  };
 
   const getCustomer = (key, name, phone, source) => {
     if (!byKey.has(key)) {
@@ -139,16 +135,16 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
   for (const order of orders) {
     const phone = normalizeCustomerPhone(order?.phone);
     const name = String(order?.customer_name || "").trim();
-    const key = phone || `name:${name.toLowerCase() || order?.id || order?.order_number}`;
+    const key = customerKeyFor(order, "order");
     const source = detectCustomerOrderSource(order, "order");
     const customer = getCustomer(key, name, phone, source);
-    if (name) customer.name = name;
+    updateName(customer, name, order?.created_at);
     if (phone) customer.phone = phone;
     if (!customer.sources.includes(source)) customer.sources.push(source);
     customer.totalOrders += 1;
     customer.totalSpent += toNumber(order?.price);
-    if (String(order?.status || "").toLowerCase() === "cancelled") customer.cancelledOrders += 1;
-    if (String(order?.return_status || "").toLowerCase() && String(order?.return_status || "").toLowerCase() !== "none") customer.returnedOrders += 1;
+    if (customerOrderOutcome(order) === "cancelled") customer.cancelledOrders += 1;
+    if (customerOrderOutcome(order) === "returned") customer.returnedOrders += 1;
     addTimeline(customer, {
       id: order?.id,
       kind: "order",
@@ -164,16 +160,16 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
   for (const order of inboxOrders) {
     const phone = parseInboxPhone(order);
     const name = String(order?.contact_name || order?.customer_name || "").trim();
-    const key = phone || `social:${name.toLowerCase() || order?.id}`;
+    const key = customerKeyFor(order, "social");
     const source = detectCustomerOrderSource(order, "social");
     const customer = getCustomer(key, name, phone, source);
-    if (name) customer.name = name;
+    updateName(customer, name, order?.created_at);
     if (phone) customer.phone = phone;
     if (!customer.sources.includes(source)) customer.sources.push(source);
     customer.totalOrders += 1;
     customer.totalSpent += toNumber(order?.total_price);
-    if (String(order?.status || "").toLowerCase() === "cancelled") customer.cancelledOrders += 1;
-    if (String(order?.return_status || "").toLowerCase() && String(order?.return_status || "").toLowerCase() !== "none") customer.returnedOrders += 1;
+    if (customerOrderOutcome(order) === "cancelled") customer.cancelledOrders += 1;
+    if (customerOrderOutcome(order) === "returned") customer.returnedOrders += 1;
     addTimeline(customer, {
       id: order?.id,
       kind: "social_order",
@@ -188,6 +184,8 @@ export function buildCustomers({ orders = [], inboxOrders = [], now = new Date()
 
   const nowTime = now instanceof Date ? now.getTime() : new Date(now).getTime();
   return Array.from(byKey.values()).map((customer) => {
+    customer.timeline.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    customer.lastOrderAt = customer.timeline[0]?.createdAt || null;
     customer.primarySource = primarySourceFor(customer.timeline) || customer.primarySource;
     customer.averageOrderValue = customer.totalOrders ? Math.round(customer.totalSpent / customer.totalOrders) : 0;
     customer.riskLevel = riskLevelFor(customer);

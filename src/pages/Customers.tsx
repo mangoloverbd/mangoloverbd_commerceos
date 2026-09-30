@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "@/lib/api";
 import { buildCustomerExportCsv } from "@/lib/customerExport";
 import { MagnifyingGlass, Package, X } from "@phosphor-icons/react";
@@ -7,7 +8,7 @@ import { toast } from "@/components/ui/sonner";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { Button } from "@/components/base/buttons/button";
 import { RiDownloadLine } from "@remixicon/react";
-import { CustomerDataTable } from "@/components/CustomerDataTable";
+import { CustomerDataTable, type CustomerTableView } from "@/components/CustomerDataTable";
 import { CustomerSmsDialog } from "@/components/CustomerSmsDialog";
 import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { DateRangePicker } from "@/components/DateRangePicker";
@@ -116,16 +117,19 @@ function ProductThumb({ imageUrl }: { imageUrl: string | null }) {
 }
 
 export default function Customers() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const restored = location.state?.customerListState as { query?: string; source?: Source | "all"; campaignFilter?: (typeof campaignOptions)[number]; productFilter?: string; dateRange?: DateRange | null; tableView?: CustomerTableView; selectedIds?: string[] } | undefined;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [summary, setSummary] = useState<CustomerSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [source, setSource] = useState<Source | "all">("all");
-  const [campaignFilter, setCampaignFilter] = useState<(typeof campaignOptions)[number]>("all");
-  const [productFilter, setProductFilter] = useState("all");
+  const [query, setQuery] = useState(restored?.query || "");
+  const [source, setSource] = useState<Source | "all">(restored?.source || "all");
+  const [campaignFilter, setCampaignFilter] = useState<(typeof campaignOptions)[number]>(restored?.campaignFilter || "all");
+  const [productFilter, setProductFilter] = useState(restored?.productFilter || "all");
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
-  const [dateRange, setDateRange] = useState<DateRange | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [dateRange, setDateRange] = useState<DateRange | null>(restored?.dateRange || null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(restored?.selectedIds || []));
   const [smsOpen, setSmsOpen] = useState(false);
 
   useEffect(() => {
@@ -227,7 +231,7 @@ export default function Customers() {
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Customer Intelligence</h1>
-            <p className="mt-1 text-[13px] text-black sm:truncate">One profile per phone number, built from every order across website, Facebook, telesales, phone and manual entry.</p>
+            <p className="mt-1 text-[13px] text-black">Click a customer to view their profile. Use the checkboxes to select an SMS audience.</p>
           </div>
           <Button variant="ghost" size="medium" leadingIcon={RiDownloadLine} onClick={exportFilteredCustomers}>
             Export Audience
@@ -343,6 +347,14 @@ export default function Customers() {
             loading={loading}
             selectedIds={selectedIds}
             onSelectedIdsChange={setSelectedIds}
+            initialView={restored?.tableView}
+            onOpenCustomer={(customer, tableView) => {
+              const customerListState = { query, source, campaignFilter, productFilter, dateRange, tableView, selectedIds: [...selectedIds] };
+              // Also replace the current entry's state so browser Back restores
+              // the queue, not only the profile's explicit Customers link.
+              navigate(location.pathname, { replace: true, state: { customerListState } });
+              navigate(`/customers/${encodeURIComponent(customer.id)}`, { state: { customerListState } });
+            }}
           />
         </div>
       </motion.div>
