@@ -42,6 +42,7 @@ type Order = {
   phone?: string | null;
   address?: string | null;
   source?: string | null;
+  origin_source?: string | null;
   landing_page_path?: string | null;
   notes?: string | null;
   hold_reason_code?: string | null;
@@ -307,6 +308,7 @@ export default function OrderDetail() {
   );
   const overallChanged = overallAmount !== legacyDiscount;
   const clampedAdvance = Math.min(Math.max(0, advanceDraft), totals.finalTotal);
+  const amountDue = Math.max(0, roundTaka(totals.finalTotal - clampedAdvance));
   const advanceChanged = clampedAdvance !== Math.max(0, Number(order?.advanced_payment) || 0);
   const deliveryChanged = deliveryFee !== (Number(order?.delivery_rate) || 0);
   const statusChanged = statusDraft !== (order?.status ?? null);
@@ -525,7 +527,7 @@ export default function OrderDetail() {
             }
             details={
               <div className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
-                <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={normalizeOrderSource(order.source)} />
+                <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={normalizeOrderSource(order.source)} originSource={order.origin_source} smsAmount={amountDue} smsAdvancePaid={clampedAdvance} />
                 <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
                   <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
                   <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} advance={clampedAdvance} onAdvanceChange={setAdvanceDraft} status={statusDraft} onStatusChange={setStatusDraft} holdDetails={holdDetailsDraft} onHoldDetailsChange={setHoldDetailsDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} cancellationRequired={cancellationRequired} cancellationReasonCode={cancellationReasonCode} cancellationReasonNote={cancellationReasonNote} onCancellationReasonChange={setCancellationReasonCode} onCancellationReasonNoteChange={setCancellationReasonNote} />

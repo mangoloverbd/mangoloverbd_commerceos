@@ -71,6 +71,20 @@ describe("OrdersTable order source chip", () => {
     expect(within(row).getByTestId("order-source-chip")).toHaveTextContent("Website");
   });
 
+  it("labels website orders converted from an abandoned checkout as Abandoned in rose", () => {
+    const row = renderRow({ ...order, source: "website", origin_source: "abandoned_checkout" });
+    const chip = within(row).getByTestId("order-source-chip");
+    expect(chip).toHaveTextContent("Abandoned");
+    expect(chip).toHaveClass("bg-status-rose-background");
+  });
+
+  it("keeps a staff-changed source on converted abandoned orders", () => {
+    const row = renderRow({ ...order, source: "facebook", origin_source: "abandoned_checkout" });
+    const chip = within(row).getByTestId("order-source-chip");
+    expect(chip).toHaveTextContent("Facebook");
+    expect(chip).toHaveClass("bg-status-blue-background");
+  });
+
   it("hides the chip when the order has no recorded source", () => {
     const row = renderRow({ ...order, source: null });
     expect(within(row).queryByTestId("order-source-chip")).not.toBeInTheDocument();

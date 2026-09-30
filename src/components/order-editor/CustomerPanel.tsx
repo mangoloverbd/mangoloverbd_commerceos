@@ -24,7 +24,7 @@ import WhatsappLogo from "@/components/WhatsappLogo";
 import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
-import { normalizeOrderSource, orderSourceLabel, type OrderSource } from "@/lib/orderSource";
+import { normalizeOrderSource, orderSourceDisplayLabel, type OrderSource } from "@/lib/orderSource";
 
 export type CustomerDraft = {
   customerName: string;
@@ -69,6 +69,9 @@ type CustomerPanelProps = {
   onOpenOrder?: (orderId: string) => void;
   onApply: (customer: CustomerDraft) => void;
   source?: OrderSource;
+  originSource?: string | null;
+  smsAmount?: number | null;
+  smsAdvancePaid?: number | null;
 };
 
 function DetailField({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -202,7 +205,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
   }
 }
 
-export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source }: CustomerPanelProps) {
+export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source, originSource, smsAmount, smsAdvancePaid }: CustomerPanelProps) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
   const [copied, setCopied] = useState(false);
@@ -278,7 +281,7 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
             <div data-testid="order-source-control" className={`flex ${metaChipClass}`}>
               <SourceIcon weight="light" size={14} aria-hidden="true" className="shrink-0" />
               <p className={metaChipLabelClass}>Order source</p>
-              <span className="min-w-0 truncate font-medium" title={orderSourceLabel(source)}>{orderSourceLabel(source)}</span>
+              <span className="min-w-0 truncate font-medium" title={orderSourceDisplayLabel(source, originSource)}>{orderSourceDisplayLabel(source, originSource)}</span>
             </div>
           )}
         </div>
@@ -430,7 +433,8 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
           orderNumber={order.order_number}
           customerName={customer.customerName}
           phone={customer.phone}
-          price={order.price}
+          price={smsAmount ?? order.price}
+          advancePaid={smsAdvancePaid}
           address={customer.address}
         />
       )}

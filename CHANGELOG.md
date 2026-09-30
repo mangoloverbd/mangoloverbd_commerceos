@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0.41] - 2026-09-30
+
+### Added
+
+- Abandoned editor: pick Abandoned, Pending, On hold or Approved under Final total, then one button saves your edits, moves the checkout into that order tab and returns you to the Abandoned tab. On hold asks for a hold reason first, and Approved checks the name and address. Dismiss sits on the left with a confirmation. Ctrl/Cmd+Enter submits.
+
+### Changed
+
+- Orders created from an abandoned checkout now show "Abandoned" as their source in the orders list and on the order page, in a rose badge. The stored source stays "website", so reports and filters are unchanged.
+
+### Fixed
+
+- The order page's Send message templates now use the final total including delivery, minus any advance payment. The dialog labels it "Amount due" when an advance was paid.
+
 ## [0.1.0.40] - 2026-09-29
 
 ### Changed

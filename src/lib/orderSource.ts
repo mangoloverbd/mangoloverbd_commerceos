@@ -25,3 +25,13 @@ export function normalizeOrderSource(value: string | null | undefined): OrderSou
 export function orderSourceLabel(value: string | null | undefined): string {
   return SOURCE_LABELS[normalizeOrderSource(value)];
 }
+
+// Display-only: website orders converted from an abandoned checkout read as "Abandoned".
+// The stored source stays "website" so reports and filters are unchanged.
+export function isAbandonedCheckoutOrder(source: string | null | undefined, originSource: string | null | undefined): boolean {
+  return originSource === "abandoned_checkout" && normalizeOrderSource(source) === "website";
+}
+
+export function orderSourceDisplayLabel(source: string | null | undefined, originSource: string | null | undefined): string {
+  return isAbandonedCheckoutOrder(source, originSource) ? "Abandoned" : orderSourceLabel(source);
+}
