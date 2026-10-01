@@ -444,6 +444,24 @@ function selectActivities(activities, orders, action) {
   return activities.filter((activity) => activity?.action === action);
 }
 
+// An order approved more than once in range (moved back and re-approved, even by
+// another member) counts once, credited to its latest approval by a listed member.
+// Approvals with no order id cannot be matched, so each still counts.
+function countedConfirmations(activities, rowsByUserId, since, until) {
+  const latestByOrder = new Map();
+  for (const activity of activities) {
+    const order = activityOrder(activity);
+    const orderId = activityOrderId(activity, order);
+    const occurredAt = activityTimestamp(activity, "confirmed", order);
+    if (!orderId || !rowsByUserId.has(activityActorId(activity, "confirmed", order)) || !isInInterval(occurredAt, since, until)) continue;
+    const at = new Date(occurredAt).getTime();
+    const previous = latestByOrder.get(orderId);
+    if (!previous || at >= previous.at) latestByOrder.set(orderId, { activity, at });
+  }
+  const counted = new Set([...latestByOrder.values()].map((entry) => entry.activity));
+  return (activity) => !activityOrderId(activity, activityOrder(activity)) || counted.has(activity);
+}
+
 export function createProductLookups(products, variants) {
   const variantsById = new Map((variants || []).filter((variant) => variant?.id).map((variant) => [variant.id, variant]));
   const productsById = new Map((products || []).filter((product) => product?.id).map((product) => [product.id, product]));
@@ -650,12 +668,19 @@ export function buildStaffReport(
     }
   }
 
-  for (const activity of selectActivities(regularActivities, orders, "confirmed")) {
+  const regularConfirmations = selectActivities(regularActivities, orders, "confirmed");
+  const isCountedRegularConfirmation = countedConfirmations(regularConfirmations, rowsByUserId, since, until);
+  for (const activity of regularConfirmations) {
     const order = activityOrder(activity);
     const actorId = activityActorId(activity, "confirmed", order);
     const occurredAt = activityTimestamp(activity, "confirmed", order);
     const confirmedRow = rowsByUserId.get(actorId);
     if (!confirmedRow || !isInInterval(occurredAt, since, until)) continue;
+    if (!isCountedRegularConfirmation(activity)) {
+      // A superseded approval still shows the member handled the order.
+      recordHandled(actorId, "confirmed", activityOrderId(activity, order), order, occurredAt);
+      continue;
+    }
 
     const metrics = confirmedRow.orders;
     const value = toNumber(order.price);
@@ -755,12 +780,14 @@ export function buildStaffReport(
     metrics.cancelled_value += toNumber(order.total_price);
   }
 
-  for (const activity of selectActivities(socialActivities, inboxOrders, "confirmed")) {
+  const socialConfirmations = selectActivities(socialActivities, inboxOrders, "confirmed");
+  const isCountedSocialConfirmation = countedConfirmations(socialConfirmations, rowsByUserId, since, until);
+  for (const activity of socialConfirmations) {
     const order = activityOrder(activity);
     const actorId = activityActorId(activity, "confirmed", order);
     const occurredAt = activityTimestamp(activity, "confirmed", order);
     const confirmedRow = rowsByUserId.get(actorId);
-    if (!confirmedRow || !isInInterval(occurredAt, since, until)) continue;
+    if (!confirmedRow || !isInInterval(occurredAt, since, until) || !isCountedSocialConfirmation(activity)) continue;
 
     const metrics = confirmedRow.social_inbox_orders;
     const value = toNumber(order.total_price);

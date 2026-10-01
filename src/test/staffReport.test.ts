@@ -1147,7 +1147,8 @@ describe("buildStaffReport handled orders and product outcomes", () => {
       handled_cancelled_value: 300,
       handled_delivered_count: 1,
       handled_delivered_value: 500,
-      confirmed_count: 2,
+      confirmed_count: 1,
+      confirmed_value: 500,
       cancelled_count: 3,
     });
     expect(report.rows[0].orders.products).toEqual([
@@ -1160,6 +1161,22 @@ describe("buildStaffReport handled orders and product outcomes", () => {
         delivered_packs: 0, delivered_kg: 0, returned_packs: 0, returned_kg: 0, cancelled_packs: 1, cancelled_kg: 0.5,
       },
     ]);
+  });
+
+  it("credits an order re-approved by another member once, to its latest approval", () => {
+    const order = { id: "R", price: 400, weight_kg: 1, source: "telesales", courier_status: "delivered" };
+    const report = buildStaffReport([], [], [], [], [...staff, { user_id: ADMIN_ID, display_name: "Nadia" }], {
+      ...interval,
+      regularActivities: [
+        { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: "2026-09-18T01:00:00.000Z", order_id: "R", order },
+        { action: "confirmed", actor_id: ADMIN_ID, occurred_at: "2026-09-18T02:00:00.000Z", order_id: "R", order },
+      ],
+    });
+    const byId = new Map(report.rows.map((row) => [row.user_id, row.orders]));
+
+    expect(byId.get(TEAM_MEMBER_ID)).toMatchObject({ confirmed_count: 0, confirmed_value: 0, telesales_confirmed_value: 0, delivered_count: 0, handled_confirmed_count: 1 });
+    expect(byId.get(ADMIN_ID)).toMatchObject({ confirmed_count: 1, confirmed_value: 400, telesales_confirmed_value: 400, delivered_count: 1, handled_confirmed_count: 1 });
+    expect(report.series.buckets.reduce((sum, bucket) => sum + bucket.confirmed_value, 0)).toBe(400);
   });
 
   it("classifies an order as cancelled when the member's confirm and cancel share a timestamp", () => {
