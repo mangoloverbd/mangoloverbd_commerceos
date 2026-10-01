@@ -62,6 +62,7 @@ import { OrderIdLink } from "@/components/orders/OrderIdLink";
 import { OrderHoldDialog } from "@/components/orders/OrderHoldDialog";
 import type { OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
 import { CopyButton } from "@/components/ui/copy-button";
+import { CancellationReasonCell, CancelledAtCell } from "@/components/orders/CancellationReasonCell";
 
 function copyTextValue(value: string) {
   if (navigator.clipboard?.writeText) {
@@ -277,6 +278,9 @@ export interface Order {
   hold_reason_code?: string | null;
   hold_reason_detail?: string | null;
   hold_until_date?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason_code?: string | null;
+  cancellation_reason_note?: string | null;
   fulfillment_status?: string | null;
   landing_page_path?: string | null;
   source?: string | null;
@@ -298,6 +302,8 @@ interface OrdersTableProps {
   onOrderUpdate?: (updatedOrder: Order) => void;
   isPrintView?: boolean;
   showRiskColumn?: boolean;
+  /** Cancelled tab: show the reason and cancel time in place of warehouse, shipping, state and fulfillment. */
+  showCancellationReason?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
   orderLinkState?: Record<string, unknown>;
@@ -652,7 +658,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   );
 }
 
-export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, selectedIds: controlledSelectedIds, onSelectionChange, orderLinkState, enableOrderIdLinks = false }: OrdersTableProps) {
+export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, showCancellationReason = false, selectedIds: controlledSelectedIds, onSelectionChange, orderLinkState, enableOrderIdLinks = false }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -1277,6 +1283,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
         onToggleSelectAll={toggleSelectAll}
         onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, orderLinkState ? { state: orderLinkState } : undefined)}
         enableOrderIdLinks={enableOrderIdLinks}
+        showCancellationReason={showCancellationReason}
         orderLinkSearch={((tab) => (tab === "pending" || tab === "print" ? `?fulfillmentTab=${tab}` : undefined))((orderLinkState as { fulfillmentTab?: unknown } | undefined)?.fulfillmentTab)}
         renderActions={(order) => (
           <div className="flex flex-wrap gap-2">
@@ -1325,13 +1332,15 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
             </TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Order ID</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Customer</TableHead>
+            {showCancellationReason && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Reason</TableHead>}
             {showRiskColumn && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Risk</TableHead>}
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Warehouse</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Ship To</TableHead>
+            {showCancellationReason && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto">Cancelled</TableHead>}
+            {!showCancellationReason && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Warehouse</TableHead>}
+            {!showCancellationReason && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Ship To</TableHead>}
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Items</TableHead>
             <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-right pr-4">Total</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Order State</TableHead>
-            <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center pr-4">Fulfillment</TableHead>
+            {!showCancellationReason && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center">Order State</TableHead>}
+            {!showCancellationReason && <TableHead className="text-[10px] font-bold uppercase tracking-[0.15em] text-black py-3 h-auto text-center pr-4">Fulfillment</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1465,6 +1474,16 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       )}
                     </div>
                   </TableCell>
+                  {showCancellationReason && (
+                    <TableCell className="max-w-[260px] py-3">
+                      <CancellationReasonCell order={order} />
+                    </TableCell>
+                  )}
+                  {showCancellationReason && (
+                    <TableCell className="py-3">
+                      <CancelledAtCell order={order} />
+                    </TableCell>
+                  )}
                   {showRiskColumn && (
                     <TableCell className="text-center py-3">
                       <div className="flex items-center justify-center">
@@ -1476,6 +1495,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       </div>
                     </TableCell>
                   )}
+                  {!showCancellationReason && (<>
                   <TableCell className="py-3 text-center" onClick={(event) => event.stopPropagation()}>
                     <BuiSelect aria-label={`Warehouse for ${order.order_number}`} placeholder="Select warehouse" selectedKey={order.warehouse_id || null} onSelectionChange={(key) => handleWarehouseChange(order, String(key))} className="items-center" triggerClassName={`h-8 w-auto max-w-full border-transparent ${order.warehouse_id ? "bg-status-lime-background text-status-lime-text hover:bg-status-lime-background" : "bg-status-yellow-background text-status-yellow-text hover:bg-status-yellow-background"}`} popoverClassName="w-[var(--trigger-width)]">
                       {warehouses.map((warehouse) => <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>)}
@@ -1509,6 +1529,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       )}
                     </Tooltip>
                   </TableCell>
+                  </>)}
                   <TableCell className="max-w-[160px] py-3">
                     <Tooltip delayDuration={0}>
                       <TooltipTrigger asChild>
@@ -1549,6 +1570,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                   <TableCell className="text-right py-3 pr-4 tabular-nums">
                     <EditableTotalCell order={order} onOrderUpdate={onOrderUpdate} />
                   </TableCell>
+                  {!showCancellationReason && (<>
                   <TableCell className="text-center py-3">
                     <div className="flex items-center justify-center gap-2">
                       <Popover>
@@ -1668,6 +1690,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       )}
                     </div>
                   </TableCell>
+                  </>)}
                 </TableRow>
               );
             })}

@@ -7,6 +7,7 @@ import { canShowConsignmentCopy } from "@/lib/orderStatusFilters";
 import type { Order } from "@/components/OrdersTable";
 import { OrderIdLink } from "@/components/orders/OrderIdLink";
 import { CopyButton } from "@/components/ui/copy-button";
+import { CancellationReasonCell } from "@/components/orders/CancellationReasonCell";
 
 type MobileOrderCardsProps = {
   orders: Order[];
@@ -18,6 +19,7 @@ type MobileOrderCardsProps = {
   renderActions: (order: Order) => ReactNode;
   enableOrderIdLinks?: boolean;
   orderLinkSearch?: string;
+  showCancellationReason?: boolean;
 };
 
 function money(value: number | null) {
@@ -69,6 +71,7 @@ export function MobileOrderCards({
   renderActions,
   enableOrderIdLinks = false,
   orderLinkSearch,
+  showCancellationReason = false,
 }: MobileOrderCardsProps) {
   if (loading) {
     return (
@@ -143,6 +146,7 @@ export function MobileOrderCards({
               )}</div>
               <div className="flex min-w-0 items-center gap-2"><MapPin weight="light" size={14} className="shrink-0 text-black/35" /><span className="truncate">{order.address || "Digital delivery"}</span></div>
               <p className="truncate rounded-xl bg-black/[0.035] px-3 py-2 text-[11px] text-black">{productLabel(order)}</p>
+              {showCancellationReason && <CancellationReasonCell order={order} />}
             </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] pt-3">

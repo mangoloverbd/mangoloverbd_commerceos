@@ -67,6 +67,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DATE_FILTER_TABS, filterOrdersByDateRange, orderDateRangeBounds } from "@/lib/orderDateFilter";
+import { CancellationInsights } from "@/components/orders/CancellationInsights";
+import {
+  cancellationDate,
+  filterCancelledByDate,
+  filterCancelledByReasons,
+  presetRange,
+  type CancellationDateBasis,
+  type CancellationPreset,
+  type CancellationReasonKey,
+} from "@/lib/cancellationInsights";
 import GlyphMatrix from "@/components/ui/glyph-matrix";
 import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import {
@@ -1106,6 +1116,12 @@ export default function Dashboard() {
   const isAbandonedQueue = fulfillmentTab === "abandoned";
   const activeOrderStatusFilter: OrderStatusFilter = isAbandonedQueue ? "all" : fulfillmentTab;
   const [districtFilter, setDistrictFilter] = useState("all");
+  // Cancelled tab: date range, which date it applies to, and the reasons picked in the breakdown.
+  const isCancelledTab = activeOrderStatusFilter === "cancelled";
+  const [cancelPreset, setCancelPreset] = useState<CancellationPreset>("30d");
+  const [cancelCustomRange, setCancelCustomRange] = useState<DateRange | null>(null);
+  const [cancelBasis, setCancelBasis] = useState<CancellationDateBasis>("cancelled");
+  const [cancelReasons, setCancelReasons] = useState<ReadonlySet<CancellationReasonKey>>(new Set());
   // Each of the Processing and Delivered tabs keeps its own order-date range; both clear when leaving them.
   const [ordersDateRanges, setOrdersDateRanges] = useState<Partial<Record<OrderStatusFilter, DateRange | null>>>({});
   const showOrdersDateFilter = DATE_FILTER_TABS.includes(activeOrderStatusFilter);
@@ -1186,6 +1202,25 @@ export default function Dashboard() {
     );
   }, [activeOrderStatusFilter, debouncedSearch, listOrders]);
 
+  const cancelledRangeOrders = useMemo(() => {
+    if (!isCancelledTab) return [];
+    const inRange = filterCancelledByDate(filteredOrders, cancelCustomRange ?? presetRange(cancelPreset), cancelBasis);
+    // Most recently cancelled (or ordered) first.
+    return [...inRange].sort((a, b) => Date.parse(cancellationDate(b, cancelBasis)) - Date.parse(cancellationDate(a, cancelBasis)));
+  }, [cancelBasis, cancelCustomRange, cancelPreset, filteredOrders, isCancelledTab]);
+  const cancelledListOrders = useMemo(
+    () => filterCancelledByReasons(cancelledRangeOrders, cancelReasons),
+    [cancelReasons, cancelledRangeOrders],
+  );
+  const allCancelledOrders = useMemo(
+    () => (isCancelledTab ? filterOrdersByStatus(orders, "cancelled") : []),
+    [isCancelledTab, orders],
+  );
+  const selectedCancelledOrders = useMemo(
+    () => cancelledListOrders.filter((order) => selectedOrderIds.has(order.id)),
+    [cancelledListOrders, selectedOrderIds],
+  );
+
   const districtOf = (order: Order) => detectDistrict(order.address);
 
   const districtCounts = useMemo(() => {
@@ -1202,10 +1237,10 @@ export default function Dashboard() {
     return { ranked, unknown };
   }, [filteredOrders]);
 
-  const dateFilteredOrders = useMemo(
-    () => (showOrdersDateFilter ? filterOrdersByDateRange(filteredOrders, ordersDateRange) : filteredOrders),
-    [filteredOrders, ordersDateRange, showOrdersDateFilter],
-  );
+  const dateFilteredOrders = useMemo(() => {
+    if (isCancelledTab) return cancelledListOrders;
+    return showOrdersDateFilter ? filterOrdersByDateRange(filteredOrders, ordersDateRange) : filteredOrders;
+  }, [cancelledListOrders, filteredOrders, isCancelledTab, ordersDateRange, showOrdersDateFilter]);
 
   const districtFilteredOrders = useMemo(() => {
     if (activeOrderStatusFilter !== "approved" || districtFilter === "all") return dateFilteredOrders;
@@ -1836,6 +1871,7 @@ export default function Dashboard() {
             setOrderPage(0);
             setDistrictFilter("all");
             if (nextTab === "abandoned" || !DATE_FILTER_TABS.includes(nextTab)) setOrdersDateRanges({});
+            if (nextTab !== "cancelled") setCancelReasons(new Set());
             setSelectedAbandonedIds(new Set());
             if (nextTab === "abandoned") setSelectedOrderIds(new Set());
           }}
@@ -1866,6 +1902,31 @@ export default function Dashboard() {
           />
         ) : (
           <>
+            {isCancelledTab && (
+              <CancellationInsights
+                rangeOrders={cancelledRangeOrders}
+                allCancelled={allCancelledOrders}
+                listOrders={cancelledListOrders}
+                selectedOrders={selectedCancelledOrders}
+                preset={cancelPreset}
+                onPresetChange={(preset) => { setCancelPreset(preset); setCancelCustomRange(null); setOrderPage(0); }}
+                customRange={cancelCustomRange}
+                onCustomRangeChange={(range) => { setCancelCustomRange(range); setOrderPage(0); }}
+                basis={cancelBasis}
+                onBasisChange={(basis) => { setCancelBasis(basis); setOrderPage(0); }}
+                reasons={cancelReasons}
+                onToggleReason={(reason) => {
+                  setCancelReasons((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(reason)) next.delete(reason);
+                    else next.add(reason);
+                    return next;
+                  });
+                  setOrderPage(0);
+                }}
+                onClearReasons={() => { setCancelReasons(new Set()); setOrderPage(0); }}
+              />
+            )}
             <OrdersTable
               orders={visibleOrders}
               selectionOrders={orders}
@@ -1874,6 +1935,7 @@ export default function Dashboard() {
               onOrderUpdate={handleOrderUpdate}
               isPrintView={activeOrderStatusFilter === "print"}
               showRiskColumn={false}
+              showCancellationReason={isCancelledTab}
               selectedIds={selectedOrderIds}
               onSelectionChange={setSelectedOrderIds}
               enableOrderIdLinks
