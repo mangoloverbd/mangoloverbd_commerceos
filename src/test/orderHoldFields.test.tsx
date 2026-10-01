@@ -44,7 +44,8 @@ describe("OrderHoldFields", () => {
     await user.click(date);
     const nextMonth = await screen.findByRole("button", { name: "Go to next month" });
     await user.click(nextMonth);
-    await user.click(await screen.findByText("2", { exact: true }));
+    // Trailing days from the following month can also render a "2"; the first is always in-month.
+    await user.click((await screen.findAllByText("2", { exact: true }))[0]);
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ hold_until_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }));
   });
 
