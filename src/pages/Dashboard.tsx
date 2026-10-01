@@ -1400,7 +1400,7 @@ export default function Dashboard() {
           <div data-testid="desktop-pnl" className="hidden md:block">
           <div className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3">
             <FinanceMetric
-              label="Revenue"
+              label="Revenue incl. delivery"
               loading={analyticsLoading}
               amount={analytics?.revenue ?? 0}
               data={metricSparklines.revenue}
@@ -1445,7 +1445,7 @@ export default function Dashboard() {
 
           <MobilePnlLayout
             metrics={[
-              { key: "revenue", label: "Revenue" },
+              { key: "revenue", label: "Revenue incl. delivery" },
               { key: "net-profit", label: "Net Profit" },
               { key: "ad-spend", label: "Ad Spend" },
               { key: "shipping", label: "Shipping" },

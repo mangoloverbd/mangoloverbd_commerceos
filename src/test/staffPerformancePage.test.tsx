@@ -172,6 +172,7 @@ describe("StaffPerformance", () => {
     expect(await screen.findByTestId("staff-performance-summary-confirmed-value")).toBeInTheDocument();
     expect(screen.queryByTestId("staff-performance-summary-locked")).not.toBeInTheDocument();
     expect(screen.getByTestId("staff-performance-summary-confirmed-value").parentElement).not.toHaveClass("blur-[8px]");
+    expect(screen.getByTestId("staff-performance-summary-confirmed-value")).toHaveTextContent("Approved in this period, each order once");
   });
 
   it("shows the extra revenue tile and a sparkline on every summary tile", async () => {

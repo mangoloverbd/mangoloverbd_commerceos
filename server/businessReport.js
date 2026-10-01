@@ -270,6 +270,7 @@ function createSeriesBucket(key, label) {
     order_kg: 0,
     approved_count: 0,
     cancelled_count: 0,
+    cancelled_value: 0,
   };
 }
 
@@ -279,7 +280,10 @@ function addToSeriesBucket(bucket, row) {
   bucket.order_kg += row.kg;
   if (row.source === "website") bucket.website_value += row.value;
   if (row.outcome === "approved") bucket.approved_count += 1;
-  else if (row.outcome === "cancelled") bucket.cancelled_count += 1;
+  else if (row.outcome === "cancelled") {
+    bucket.cancelled_count += 1;
+    bucket.cancelled_value += row.value;
+  }
 }
 
 function buildSeries(seriesRows, request) {

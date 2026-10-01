@@ -351,8 +351,8 @@ describe("buildBusinessReport", () => {
     ], request);
 
     expect(report.series.buckets).toEqual([
-      { key: "2026-09-18", label: expect.any(String), intake_count: 2, order_value: 1600, website_value: 1000, order_kg: 7.5, approved_count: 1, cancelled_count: 1 },
-      { key: "2026-09-19", label: expect.any(String), intake_count: 1, order_value: 400, website_value: 0, order_kg: 0, approved_count: 0, cancelled_count: 0 },
+      { key: "2026-09-18", label: expect.any(String), intake_count: 2, order_value: 1600, website_value: 1000, order_kg: 7.5, approved_count: 1, cancelled_count: 1, cancelled_value: 600 },
+      { key: "2026-09-19", label: expect.any(String), intake_count: 1, order_value: 400, website_value: 0, order_kg: 0, approved_count: 0, cancelled_count: 0, cancelled_value: 0 },
     ]);
   });
 
