@@ -24,6 +24,8 @@ describe("GET /api/analytics caching wiring", () => {
     expect(route).toContain("const cacheKey = `${orgId}:${since || \"\"}:${until || \"\"}`;");
     expect(route).toContain("until && until < todayDhaka() ? 10 * 60 * 1000 : 60 * 1000");
     expect(route).toContain("analyticsCache.get(cacheKey, ttlMs, async () => {");
+    // Cancelled orders are not sales, so they stay out of revenue and the whole P&L.
+    expect(route).toContain('.neq("status", "cancelled")');
     expect(route).toContain("return { value: response, cacheable: !fbError && !degraded };");
     expect(route).toContain("return res.json(payload);");
     expect(route.indexOf("await getUserOrg(")).toBeLessThan(route.indexOf("analyticsCache.get("));

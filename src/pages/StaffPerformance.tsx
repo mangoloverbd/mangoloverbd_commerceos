@@ -291,7 +291,7 @@ export default function StaffPerformance() {
           <SnapshotCard
             label="Confirmed value"
             value={formatTaka(snapshot.confirmedValue)}
-            description="Regular-order value"
+            description="Approved in this period, each order once"
             testId="staff-performance-summary-confirmed-value"
             delay={0.02}
             reduceMotion={reduceMotion}

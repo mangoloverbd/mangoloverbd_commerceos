@@ -86,8 +86,9 @@ export function SummaryTiles({ report, reduceMotion }: { report: BusinessReportR
       delta: percentDelta(summary.intake_count, prev?.intake_count), spark: pick(buckets, "intake_count"), testId: "business-report-summary-intake",
     },
     {
-      label: "Order value", value: formatTaka(summary.order_value), description: "Before delivery",
-      delta: percentDelta(summary.order_value, prev?.order_value), spark: pick(buckets, "order_value"), testId: "business-report-summary-order-value",
+      label: "Order value", value: formatTaka(summary.order_value - summary.cancelled_value), description: "Excludes cancelled · before delivery",
+      delta: percentDelta(summary.order_value - summary.cancelled_value, prev ? prev.order_value - prev.cancelled_value : undefined),
+      spark: buckets.map((bucket) => bucket.order_value - bucket.cancelled_value), testId: "business-report-summary-order-value",
     },
     {
       label: "Weight", value: formatKg(summary.order_kg), description: `Recorded on ${formatNumber(summary.weight_order_count)} of ${formatNumber(summary.intake_count)} orders`,

@@ -30,6 +30,7 @@ export type SeriesBucket = {
   order_kg: number;
   approved_count: number;
   cancelled_count: number;
+  cancelled_value: number;
 };
 
 export type LandingPage = {

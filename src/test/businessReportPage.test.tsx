@@ -58,6 +58,7 @@ function hourlyBuckets(): SeriesBucket[] {
       order_kg: 0,
       approved_count: 0,
       cancelled_count: 0,
+      cancelled_value: 0,
     };
   });
 }
@@ -72,6 +73,7 @@ function dailyBuckets(): SeriesBucket[] {
     order_kg: 0,
     approved_count: 0,
     cancelled_count: 0,
+    cancelled_value: 0,
   }));
 }
 
@@ -211,7 +213,9 @@ describe("BusinessReport", () => {
 
     expect(await screen.findByRole("heading", { name: "Business Report" })).toBeInTheDocument();
     expect(screen.getByTestId("business-report-summary-intake")).toHaveTextContent("4");
-    expect(screen.getByTestId("business-report-summary-order-value")).toHaveTextContent("৳2,400");
+    // Order value leaves out the ৳400 cancelled order.
+    expect(screen.getByTestId("business-report-summary-order-value")).toHaveTextContent("৳2,000");
+    expect(screen.getByTestId("business-report-summary-order-value")).toHaveTextContent("Excludes cancelled");
     expect(screen.getByTestId("business-report-summary-approved")).toHaveTextContent("1");
     expect(screen.getByTestId("business-report-summary-cancelled")).toHaveTextContent("1");
     expect(screen.getByText("Delivery charged")).toBeInTheDocument();
@@ -319,14 +323,15 @@ describe("BusinessReport", () => {
     apiFetchMock.mockResolvedValue(jsonResponse(reportResponse({
       previous: {
         range: { from: "2026-09-19", to: "2026-09-19" },
-        summary: metrics({ intake_count: 2, order_value: 2000, approved_count: 1, cancelled_count: 0 }),
+        summary: metrics({ intake_count: 2, order_value: 1600, approved_count: 1, cancelled_count: 0 }),
       },
     })));
 
     renderPage();
 
     expect(await screen.findByTestId("business-report-summary-intake")).toHaveTextContent("+100% vs previous period");
-    expect(screen.getByTestId("business-report-summary-order-value")).toHaveTextContent("+20% vs previous period");
+    // order value without cancelled: ৳2,000 now vs ৳1,600 before
+    expect(screen.getByTestId("business-report-summary-order-value")).toHaveTextContent("+25% vs previous period");
     // approved 1 of 4 = 25% now vs 1 of 2 = 50% before
     expect(screen.getByTestId("business-report-summary-approved")).toHaveTextContent("−25 pts");
     // cancelled 1 of 4 = 25% now vs 0% before

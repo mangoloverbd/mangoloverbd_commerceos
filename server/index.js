@@ -4798,7 +4798,8 @@ app.get("/api/analytics", async (req, res) => {
     const payload = await analyticsCache.get(cacheKey, ttlMs, async () => {
       // Set when a best-effort sub-lookup fails; such results are not cached.
       let degraded = false;
-      let ordersQuery = supabase.from("orders").select("id, created_at, price, delivery_rate, product").eq("org_id", orgId);
+      // Cancelled orders are not sales, so they stay out of revenue and the whole P&L.
+      let ordersQuery = supabase.from("orders").select("id, created_at, price, delivery_rate, product").eq("org_id", orgId).neq("status", "cancelled");
       if (since) ordersQuery = ordersQuery.gte("created_at", `${since}T00:00:00+06:00`);
       if (until) ordersQuery = ordersQuery.lte("created_at", `${until}T23:59:59+06:00`);
 
@@ -4877,7 +4878,7 @@ app.get("/api/analytics", async (req, res) => {
 
       // price = total_price from Shopify (subtotal + shipping − discounts) = what the customer pays.
       // delivery_rate = shipping component (kept separately for the Shipping card display).
-      // Revenue = total sales (price + delivery_rate per order)
+      // Revenue = total sales (price + delivery_rate per order), excluding cancelled orders
       let revenue = 0;
       let shipping = 0;
       for (const o of orders || []) {
