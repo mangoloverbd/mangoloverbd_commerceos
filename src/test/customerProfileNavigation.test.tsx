@@ -20,13 +20,13 @@ describe("customer profile entry points", () => {
     await user.click(screen.getAllByRole("checkbox", { name: "Select Rina" })[0]);
     expect(select).toHaveBeenCalledWith(new Set([customer.id]));
   });
-  it("opens a desktop customer by clicking the row instead of selecting it for SMS", async () => {
+  it("selects a desktop customer by clicking the row without opening the profile", async () => {
     const user = userEvent.setup(); const open = vi.fn(); const select = vi.fn();
     render(<CustomerDataTable customers={[customer]} loading={false} selectedIds={new Set()} onSelectedIdsChange={select} onOpenCustomer={open} />);
     const row = screen.getAllByRole("link", { name: "Rina" }).find((element) => element.closest("tr"))!.closest("tr")!;
     await user.click(row);
-    expect(open).toHaveBeenCalledWith(customer, expect.objectContaining({ page: 1 }));
-    expect(select).not.toHaveBeenCalled();
+    expect(select).toHaveBeenCalledWith(new Set([customer.id]));
+    expect(open).not.toHaveBeenCalled();
   });
   it("opens mobile profiles independently of bulk selection", async () => {
     const user = userEvent.setup(); const open = vi.fn(); const select = vi.fn();
@@ -35,15 +35,12 @@ describe("customer profile entry points", () => {
     expect(open).toHaveBeenCalledWith(customer);
     expect(select).not.toHaveBeenCalled();
   });
-  it("opens a mobile customer by tapping the card and keeps selection on its checkbox", async () => {
+  it("selects a mobile customer by tapping the card without opening the profile", async () => {
     const user = userEvent.setup(); const open = vi.fn(); const select = vi.fn();
     render(<MobileCustomerCards customers={[customer]} selectedIds={new Set()} onToggle={select} onOpenCustomer={open} />);
     await user.click(screen.getByRole("link", { name: "Rina" }).closest("article")!);
-    expect(open).toHaveBeenCalledWith(customer);
-    expect(select).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("checkbox", { name: "Select Rina" }));
     expect(select).toHaveBeenCalledWith(customer.id, true);
-    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
   });
   it("restores customer queue page and sorting after navigation", () => {
     const customers = Array.from({ length: 55 }, (_, index) => ({ ...customer, id: `c${index}`, name: `Customer ${String(index).padStart(2, "0")}` }));

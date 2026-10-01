@@ -31,7 +31,6 @@ export function MobileCustomerCards({ customers, selectedIds, onToggle, onOpenCu
           onClick={(event) => {
             // Selection and phone copy remain separate from opening a profile.
             if ((event.target as HTMLElement).closest("label, button, a")) return;
-            if (onOpenCustomer) { onOpenCustomer(customer); return; }
             onToggle(customer.id, !selectedIds.has(customer.id));
           }}
           className={cn(
