@@ -213,11 +213,6 @@ export function CustomerDataTable({
       size="sm"
       onRowAction={(key) => {
         const id = String(key);
-        const customer = sorted.find((entry) => entry.id === id);
-        if (customer && onOpenCustomer) {
-          onOpenCustomer(customer, { page: currentPage, sortDescriptor });
-          return;
-        }
         toggleOne(id, !selectedIds.has(id));
       }}
       className="min-w-[1120px]"
