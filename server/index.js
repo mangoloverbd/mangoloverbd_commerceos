@@ -7103,6 +7103,8 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
     if (status !== "pending" && status !== "on_hold" && status !== "approved") {
       return res.status(400).json({ error: "Invalid target status" });
     }
+    // The editor's "approved" target is stored as the canonical "confirmed" order status.
+    const orderStatus = status === "approved" ? "confirmed" : status;
 
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
@@ -7190,7 +7192,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         quantity: draft.cart.reduce((sum, item) => sum + Number(item.quantity), 0),
         price: subtotal,
         delivery_rate: draft.delivery_rate,
-        status,
+        status: orderStatus,
         hold_reason_code: conversionHoldDetails?.hold_reason_code ?? null,
         hold_reason_detail: conversionHoldDetails?.hold_reason_detail ?? null,
         hold_until_date: conversionHoldDetails?.hold_until_date ?? null,
@@ -7208,7 +7210,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         assigned_to: user.id,
         ...buildAttributionPatch({
           fromStatus: null,
-          toStatus: status,
+          toStatus: orderStatus,
           actorId: user.id,
           actorKind: "user",
           now: conversionAt,
@@ -7263,13 +7265,13 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       orderId: order.id,
       orderTable: "orders",
       fromStatus: null,
-      toStatus: status,
+      toStatus: orderStatus,
       actorId: user.id,
       actorKind: "user",
       occurredAt: conversionAt,
     });
     await recordStatusEvent(supabase, convertedStatusEvent);
-    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "abandoned_queue", summary: "Order created from abandoned checkout", reasonCode: conversionHoldDetails?.hold_reason_code, reasonNote: conversionHoldDetails?.hold_reason_detail, changes: conversionHoldDetails ? [{ type: "field_changed", field: "status", label: "Status", before: null, after: status }] : [], metadata: { origin_source: "abandoned_checkout", ...(convertedStatusEvent?.id ? { legacy_status_event_id: convertedStatusEvent.id } : {}), ...(conversionHoldDetails?.hold_until_date ? { hold_until_date: conversionHoldDetails.hold_until_date } : {}) }, occurredAt: conversionAt }));
+    await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "order.created", category: "lifecycle", actorId: user.id, actorKind: "user", sourceSurface: "abandoned_queue", summary: "Order created from abandoned checkout", reasonCode: conversionHoldDetails?.hold_reason_code, reasonNote: conversionHoldDetails?.hold_reason_detail, changes: conversionHoldDetails ? [{ type: "field_changed", field: "status", label: "Status", before: null, after: orderStatus }] : [], metadata: { origin_source: "abandoned_checkout", ...(convertedStatusEvent?.id ? { legacy_status_event_id: convertedStatusEvent.id } : {}), ...(conversionHoldDetails?.hold_until_date ? { hold_until_date: conversionHoldDetails.hold_until_date } : {}) }, occurredAt: conversionAt }));
     await recordStatusEvent(supabase, buildStatusEvent({
       orgId,
       orderId: draft.id,

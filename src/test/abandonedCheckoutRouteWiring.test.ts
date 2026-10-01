@@ -130,6 +130,18 @@ describe("abandoned checkout route wiring", () => {
     expect(convert).toContain("buildRecoveredPatch");
   });
 
+  it("stores approved conversions with the canonical confirmed order status", () => {
+    const convert = routeSection(
+      'app.post("/api/abandoned-checkouts/:id/convert"',
+      'app.get("/api/orders/recent-notifications"',
+    );
+
+    expect(convert).toContain('const orderStatus = status === "approved" ? "confirmed" : status;');
+    expect(convert).toMatch(/\n\s+status: orderStatus,\n/);
+    expect(convert).not.toMatch(/\n\s+status,\n/);
+    expect(convert).not.toContain("toStatus: status,");
+  });
+
   it("bounds convert overrides like capture and rounds the order subtotal", () => {
     const convert = routeSection(
       'app.post("/api/abandoned-checkouts/:id/convert"',
