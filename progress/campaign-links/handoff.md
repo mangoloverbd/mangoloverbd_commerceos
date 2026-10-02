@@ -16,11 +16,12 @@ shows the campaign; the report counts it and moves it to delivered/cancelled/ret
   **Phase E** (plan §7a), approved by the user to start 2–4 weeks after Campaign Links goes live.
 - UI naming agreed: sidebar section **Marketing**, page **Campaign Links**, route `/marketing/links`.
 - Storefront domain is **www.mangolover.com.bd** (not mangoloverbd.com). Link format `/go/<slug>` on that domain (Option A); a `go.` subdomain can be added later.
-- Earlier the user picked "page shell only", then asked for the full plan instead. Confirm whether to start with the shell or Phase A.
+- **Start with Phase A (database)**, confirmed by the user 2026-10-02.
 
-## Decisions awaiting user confirmation (plan §1)
+## Decisions (all confirmed by the user 2026-10-02, plan §1)
 - D1 last-click attribution, D2 30-day window
-- D4 admin-only page
+- D4 **everyone** can view/create/edit/archive any link; **profit and cost fields are admin-only**
+  (server omits them for team members via `redactCampaignFinancials`)
 - D5 storefront orders + abandoned checkouts only (no Messenger/phone/manual in v1)
 - D6 profit = delivered value − COGS − courier fees (returns still cost a courier fee)
 - D7 no ad spend in the first build; it is Phase E (plan §7a)
@@ -60,7 +61,7 @@ Created this session (both uncommitted):
 Pre-existing uncommitted changes, not from this session (leave alone): `skills-lock.json`, `harness-copy.html`, `src/__harnessCopy.tsx`, other `progress/` folders.
 
 ## Next steps
-1. Get the user's answers on D1–D7 and on "shell first vs Phase A first".
+1. ~~Get the user's answers~~ Done: all decisions confirmed; start with Phase A.
 2. Branch from `main` (e.g. `feat/campaign-links`), ideally in a worktree under `.worktrees/`.
 3. Phase A: invoke `supabase` skill → `npm run verify:supabase-project` → write the migration (plan §3) → `npm run verify:supabase-baseline` → regenerate `src/integrations/supabase/types.ts`.
 4. Phase B: `plan-eng-review` on plan §4, then TDD `server/campaignLinks.js` and `server/campaignReport.js`, then routes and order intake.

@@ -14,14 +14,14 @@ COD commerce where *delivered* revenue is the number that matters.
 
 ---
 
-## 1. Decisions (confirm before building)
+## 1. Decisions (confirmed by the user on 2026-10-02)
 
 | # | Decision | Proposal |
 |---|---|---|
 | D1 | Attribution model | **Last click**: the most recent campaign link click wins. |
 | D2 | Attribution window | **30 days** from click to order. |
 | D3 | Link format | `www.mangolover.com.bd/go/<slug>`; slug is lowercase `a-z0-9-`, 3–60 chars, unique per workspace. |
-| D4 | Who can see it | **Admin only** (matches Online Store / Business Report). |
+| D4 | Who can see it | **Everyone** (admins and team members) can view, create, edit and archive **any** link. **Profit and cost figures are admin-only**: for team members the server omits `delivered_cogs`, `courier_fees`, `delivered_profit` (and Phase E `spend`, `roas_delivered`, `profit_after_ads`); they still see clicks, orders, outcomes and delivered revenue. |
 | D5 | Which orders are attributable | Storefront orders and abandoned checkouts only. Social-inbox, phone and manual orders are out of scope for v1. |
 | D6 | Profit definition | Delivered order value − COGS of delivered orders − courier fees recorded on the link's orders (returns still cost a courier fee). |
 | D7 | Ad spend / ROAS | **Not in the first build.** Added as Phase E (§7a), started 2–4 weeks after Campaign Links goes live. |
@@ -44,7 +44,7 @@ Customer checks out (any checkout component)
       (same org, within 30 days) and stores campaign_link_id + campaign_click_id
 Courier delivers / returns / cancels
   → existing status flow; reports derive outcome from current order state
-Admin opens Marketing › Campaign Links
+Staff open Marketing › Campaign Links
   → per-link funnel and delivered revenue/profit
 ```
 
@@ -162,7 +162,12 @@ pattern; routes stay in `server/index.js`.
 - Plus a `totals` row and an "unattributed website orders" comparison row.
 - Dates use the existing Dhaka-day helpers (`toDhakaInterval`).
 
-### B3. Admin routes (auth → `getUser` → admin role → `org_id` on every query)
+### B3. Staff routes (auth → `getUser` → workspace role → `org_id` on every query)
+All signed-in workspace members (admin or team member) may call these (D4). The role is
+resolved from `user_roles`; for team members the response is passed through
+`redactCampaignFinancials(report)` (pure, in `server/campaignReport.js`) so profit and cost
+fields are **absent from the JSON**, not just hidden in the UI. `created_by` is recorded
+on create; any member may edit or archive any link.
 | Route | Purpose |
 |---|---|
 | `GET /api/campaign-links?from&to&include_archived` | List links with report metrics for the range |
@@ -204,13 +209,15 @@ design language in CLAUDE.md §8 (8px tracked labels, light values, ৳, Phospho
 `weight="light"`, Framer Motion, `apiFetch` only).
 
 1. **Sidebar:** new collapsible **Marketing** section after Reports, with
-   **Campaign Links** → `/marketing/links` (admin-only, two-tone inline SVG
+   **Campaign Links** → `/marketing/links` (visible to everyone, two-tone inline SVG
    icon to match the other sidebar entries).
-2. **Routes** in `src/App.tsx`: `/marketing/links` and `/marketing/links/:id`,
-   both wrapped in `AdminRoute`.
+2. **Routes** in `src/App.tsx`: `/marketing/links` and `/marketing/links/:id`
+   inside the normal `ProtectedRoute` block (no `AdminRoute`).
 3. **`src/pages/CampaignLinks.tsx`** (list):
    - Header with `DateRangePicker` (same defaults as Business Report) and a "New link" button.
-   - Summary tiles: Clicks · Orders · Delivered revenue · Delivered profit · Loss rate.
+   - Summary tiles: Clicks · Orders · Delivered revenue · Delivered profit · Loss rate
+     (the profit tile and Profit column render only when the API returns profit fields,
+     i.e. for admins; use `useUserRole` only for layout, never as the security boundary).
    - Table: Name / channel / creator · Link (copy button) · Clicks · Orders ·
      Delivered · Cancelled + returned · Delivered revenue (৳) · Profit (৳).
      Sortable; row click → detail.
@@ -231,7 +238,9 @@ design language in CLAUDE.md §8 (8px tracked labels, light values, ৳, Phospho
 
 **Verify:** component tests in `src/test/` (list renders metrics and ৳
 formatting, create dialog validation, slug lock after clicks, sidebar entry
-hidden or disabled for team members), then `npm run lint` and `npm run build`.
+visible for team members, profit tile/column absent when the API omits profit), plus
+server tests that a team member's response contains no cost/profit keys and that a
+team member can edit and archive a link someone else created; then `npm run lint` and `npm run build`.
 
 ---
 
@@ -303,7 +312,7 @@ with `convertMetaSpendToBdt` (`server/metaAdCurrency.js`). The Dashboard P&L use
 1. **Schema:** add `meta_ad_id text` (nullable) to `campaign_links`, plus an optional
    `meta_campaign_id text` for links shared by several ads. Run the `supabase` skill and the
    verify scripts as in Phase A.
-2. **Ad picker:** `GET /api/campaign-links/meta-ads` (admin, `org_id`-scoped settings) lists
+2. **Ad picker:** `GET /api/campaign-links/meta-ads` (admin only, `org_id`-scoped settings; team members keep D4's profit redaction) lists
    ads from the connected ad account (`/{ad_account}/ads?fields=id,name,campaign{name},effective_status`).
    The link create/edit dialog gets an optional "Meta ad" select.
 3. **Spend per ad:** extract the existing insights fetch into a shared helper that accepts
