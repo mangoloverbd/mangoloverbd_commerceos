@@ -24,7 +24,7 @@ COD commerce where *delivered* revenue is the number that matters.
 | D4 | Who can see it | **Admin only** (matches Online Store / Business Report). |
 | D5 | Which orders are attributable | Storefront orders and abandoned checkouts only. Social-inbox, phone and manual orders are out of scope for v1. |
 | D6 | Profit definition | Delivered order value − COGS of delivered orders − courier fees recorded on the link's orders (returns still cost a courier fee). |
-| D7 | Ad spend / ROAS | **Out of v1.** Leave room for an optional `spend` field later. |
+| D7 | Ad spend / ROAS | **Not in the first build.** Added as Phase E (§7a), started 2–4 weeks after Campaign Links goes live. |
 
 ---
 
@@ -267,9 +267,52 @@ test order → the order in Merchant-Suite shows the campaign.
    in-app browser, place a test order, confirm attribution, then cancel the
    test order and confirm it moves to "cancelled" in the report.
 6. Create real links for the next campaigns. No backfill; history starts at launch.
+7. After 2–4 weeks of clean data, start Phase E (§7a).
 
 Before each PR: `review` skill (workspace guard, auth, open redirect),
 `verification-before-completion`, then `ship`.
+
+---
+
+## 7a. Phase E — Ad spend and profit per ad (later)
+
+**Start:** 2–4 weeks after Phase D is live and attributed numbers have been checked against real orders.
+
+**Why:** Campaign Links shows what each link *earned*; without spend it can't show whether it made a
+profit. Meta Ads Manager counts every placed order (including fake/cancelled COD orders) as a sale;
+Merchant-Suite knows which orders were actually delivered, so it can show the real return.
+
+**What already exists:** `/api/analytics` (`server/index.js:4764`) already fetches Meta spend with
+`level=account` (`server/index.js:4970`) using the stored Meta token and ad account, and converts it
+with `convertMetaSpendToBdt` (`server/metaAdCurrency.js`). The Dashboard P&L uses it.
+
+**Steps:**
+1. **Schema:** add `meta_ad_id text` (nullable) to `campaign_links`, plus an optional
+   `meta_campaign_id text` for links shared by several ads. Run the `supabase` skill and the
+   verify scripts as in Phase A.
+2. **Ad picker:** `GET /api/campaign-links/meta-ads` (admin, `org_id`-scoped settings) lists
+   ads from the connected ad account (`/{ad_account}/ads?fields=id,name,campaign{name},effective_status`).
+   The link create/edit dialog gets an optional "Meta ad" select.
+3. **Spend per ad:** extract the existing insights fetch into a shared helper that accepts
+   `level` (`account` | `ad` | `campaign`). Call it with `level=ad&fields=ad_id,ad_name,spend`
+   for the report range, convert to BDT with the same helper, and cache it (TTL cache like the
+   Dashboard's) so reports don't multiply Graph API calls. The Dashboard keeps its current behaviour.
+4. **Report:** `server/campaignReport.js` gains `spend`, `roas_delivered` (delivered revenue ÷ spend)
+   and `profit_after_ads` (delivered profit − spend) per link, and in the totals row. Links without an
+   ad show "—", not ৳0.
+5. **UI:** Spend, Delivered return (×) and Profit after ads columns and tiles on Campaign Links and
+   the link detail page; a "Connect Meta ad" prompt on links without one.
+6. **Tests:** level-agnostic insights helper (pagination, currency conversion, error → null spend),
+   report maths (zero spend, missing ad, shared campaign), and admin-only access to the ad picker.
+
+**Caveats to show in the UI:**
+- View-through buyers (saw the ad, didn't tap the link) aren't counted, so the true return is likely somewhat higher.
+- One link per ad gives the clearest numbers; shared links can only be measured per Meta campaign.
+- Ads that send people to Messenger show no revenue until inbox/discount-code attribution exists.
+
+**Out of scope for Phase E:** Google/TikTok ad spend, automatic budget changes, sending delivered
+outcomes back to Meta (separate plan; must go through the GTM-owned Pixel/CAPI setup and dedupe
+on event id).
 
 ---
 
@@ -292,6 +335,5 @@ Before each PR: `review` skill (workspace guard, auth, open redirect),
 
 - QR code generation per link (cheap follow-up on top of this).
 - Influencer/reseller commission reporting (Dub Partners-style).
-- Manual or Meta Ads API spend → ROAS per link.
 - Tracked links inserted by social-inbox agents and the bot.
 - A `go.mangolover.com.bd` subdomain (can point at the same `/go/:slug` route later).

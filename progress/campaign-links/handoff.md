@@ -12,7 +12,8 @@ shows the campaign; the report counts it and moves it to delivered/cancelled/ret
 ## Current state
 - **Plan written, no code yet.** Full plan: `docs/superpowers/plans/2026-10-02-campaign-links.md` (uncommitted).
 - Scope agreed with the user: Dub idea #1 (tracked links) + #2 (revenue per link). QR codes, influencer
-  commissions, ad spend/ROAS and social-inbox attribution are later phases.
+  commissions and social-inbox attribution are later phases. Ad spend / profit per ad is planned as
+  **Phase E** (plan §7a), approved by the user to start 2–4 weeks after Campaign Links goes live.
 - UI naming agreed: sidebar section **Marketing**, page **Campaign Links**, route `/marketing/links`.
 - Storefront domain is **www.mangolover.com.bd** (not mangoloverbd.com). Link format `/go/<slug>` on that domain (Option A); a `go.` subdomain can be added later.
 - Earlier the user picked "page shell only", then asked for the full plan instead. Confirm whether to start with the shell or Phase A.
@@ -22,7 +23,7 @@ shows the campaign; the report counts it and moves it to delivered/cancelled/ret
 - D4 admin-only page
 - D5 storefront orders + abandoned checkouts only (no Messenger/phone/manual in v1)
 - D6 profit = delivered value − COGS − courier fees (returns still cost a courier fee)
-- D7 no ad spend/ROAS in v1
+- D7 no ad spend in the first build; it is Phase E (plan §7a)
 
 ## Architecture in one breath
 `/go/:slug` → storefront `api/go.ts` → `POST /api/public/v1/:handle/campaign-links/:slug/clicks` →
@@ -65,6 +66,8 @@ Pre-existing uncommitted changes, not from this session (leave alone): `skills-l
 6. Phase D: storefront PR (plan §6): `vercel.json` rewrite, `api/go.ts`, cookie forwarding in orders and abandoned carts.
 7. Release in order A → B → C → D, then a production smoke test with a test link in the FB in-app browser (plan §7).
 8. Before each PR: `review`, `verification-before-completion`, `ship`.
+9. Phase E (later): Meta spend per ad → delivered return and profit after ads per link. Reuses the
+   insights fetch at `server/index.js:4970` (currently `level=account`) and `convertMetaSpendToBdt`.
 
 ## Gotchas
 - Facebook/WhatsApp link-preview crawlers hit links as soon as they're posted. Flag bot UAs and exclude them from metrics and attribution.
