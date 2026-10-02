@@ -24,6 +24,8 @@ shows the campaign; the report counts it and moves it to delivered/cancelled/ret
 - D5 storefront orders + abandoned checkouts only (no Messenger/phone/manual in v1)
 - D6 profit = delivered value − COGS − courier fees (returns still cost a courier fee)
 - D7 no ad spend in the first build; it is Phase E (plan §7a)
+- D8 automatic UTM tags in the first build: `/go/<slug>` adds `utm_source=<channel>`, `utm_medium=campaign_link`,
+  `utm_campaign=<slug>` only where the incoming URL lacks them (Meta/hand-written tags win). Plan §1, §4 B1, §6.
 
 ## Architecture in one breath
 `/go/:slug` → storefront `api/go.ts` → `POST /api/public/v1/:handle/campaign-links/:slug/clicks` →
@@ -68,6 +70,9 @@ Pre-existing uncommitted changes, not from this session (leave alone): `skills-l
 8. Before each PR: `review`, `verification-before-completion`, `ship`.
 9. Phase E (later): Meta spend per ad → delivered return and profit after ads per link. Reuses the
    insights fetch at `server/index.js:4970` (currently `level=account`) and `convertMetaSpendToBdt`.
+
+- Related plan: `docs/superpowers/plans/2026-10-02-first-party-analytics.md` (PostHog replacement). Shares `isBotUserAgent`,
+  `buildCampaignUtm` naming, the Marketing sidebar section and the storefront cookie-forwarding PR.
 
 ## Gotchas
 - Facebook/WhatsApp link-preview crawlers hit links as soon as they're posted. Flag bot UAs and exclude them from metrics and attribution.

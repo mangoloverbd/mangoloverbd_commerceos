@@ -25,6 +25,7 @@ COD commerce where *delivered* revenue is the number that matters.
 | D5 | Which orders are attributable | Storefront orders and abandoned checkouts only. Social-inbox, phone and manual orders are out of scope for v1. |
 | D6 | Profit definition | Delivered order value − COGS of delivered orders − courier fees recorded on the link's orders (returns still cost a courier fee). |
 | D7 | Ad spend / ROAS | **Not in the first build.** Added as Phase E (§7a), started 2–4 weeks after Campaign Links goes live. |
+| D8 | Automatic UTM tags | **In the first build.** Every `/go/<slug>` redirect adds `utm_source=<channel>`, `utm_medium=campaign_link`, `utm_campaign=<slug>` to the destination, **only for tags not already on the incoming URL** (Meta Ads "URL parameters" and hand-written tags always win). See §4 B1 and §6. |
 
 ---
 
@@ -133,6 +134,10 @@ pattern; routes stay in `server/index.js`.
 - `normalizeDestinationPath(value)`: must start with `/`, no `//`, no scheme,
   ≤ 200 chars, and no `/go/` path (no redirect loops). Prevents open redirects.
 - `CAMPAIGN_CHANNELS` plus `normalizeCampaignChannel`.
+- `buildCampaignUtm(link)`: returns the default tags for a link:
+  `{ utm_source: link.channel, utm_medium: "campaign_link", utm_campaign: link.slug }`.
+  One place defines the naming so Merchant-Suite, the storefront and the planned
+  first-party analytics (`2026-10-02-first-party-analytics.md`) all agree.
 - `isBotUserAgent(ua)`: flags `facebookexternalhit`, `Facebot`,
   `WhatsApp`, `TelegramBot`, `Twitterbot`, `Slackbot`, `bot|crawler|spider`.
   **Important:** Facebook/WhatsApp fetch link previews the moment a link is
@@ -170,7 +175,7 @@ The client never sends `org_id`; it is always resolved from `user_roles`.
 ### B4. Public routes (storefront-facing)
 | Route | Purpose |
 |---|---|
-| `POST /api/public/v1/:handle/campaign-links/:slug/clicks` | `resolveStorefrontHandle` → orgId; look up a non-archived link; insert a click row (bot-flagged if the UA matches); return `{ clickId, destinationPath }`. Unknown/archived slug → `404 { destinationPath: "/" }`. Uses `rateLimitPublicRead`-style limiting |
+| `POST /api/public/v1/:handle/campaign-links/:slug/clicks` | `resolveStorefrontHandle` → orgId; look up a non-archived link; insert a click row (bot-flagged if the UA matches); return `{ clickId, destinationPath, utm }` where `utm` comes from `buildCampaignUtm`. Unknown/archived slug → `404 { destinationPath: "/" }`. Uses `rateLimitPublicRead`-style limiting |
 
 The storefront serverless function passes the original visitor's UA, referrer
 and IP via headers; Merchant-Suite hashes the IP and never stores it raw.
@@ -240,7 +245,14 @@ Separate branch and PR in the storefront repo.
    - Validate the slug format locally; if invalid, 302 to `/`.
    - Call the Merchant-Suite click endpoint (2s timeout), forwarding UA, referrer and client IP.
    - On success, set `ml_cclick=<clickId>; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`
-     and 302 to `destinationPath`, keeping any incoming `utm_*` query params.
+     and 302 to `destinationPath`.
+   - **UTM tags (D8):** build the final query string as: incoming query params first
+     (all of them, including `utm_*`, `fbclid`, Meta's own parameters), then add each
+     `utm` default from the response **only if that key is missing**. Never overwrite,
+     never duplicate a key. If the upstream call failed, add only `utm_campaign=<slug>`
+     (the slug is already known locally; the channel isn't).
+     Example: `/go/himsagar-reel?utm_source=fb_ads` →
+     `/products/himsagar?utm_source=fb_ads&utm_medium=campaign_link&utm_campaign=himsagar-reel`.
    - On any failure, **still redirect** (to the known destination or `/`). A
      tracking outage must never break the customer's tap.
    - `Cache-Control: no-store` so Vercel/CDN never caches a redirect + cookie.
@@ -249,7 +261,8 @@ Separate branch and PR in the storefront repo.
    (optional uuid).
 4. **`api/abandoned-carts.ts`:** same forwarding.
 5. **Tests:** `api/go.test.ts` (valid slug sets cookie + redirects; failed
-   upstream still redirects; invalid slug → `/`; no-store header),
+   upstream still redirects with `utm_campaign` only; invalid slug → `/`; no-store header;
+   default UTM tags added; incoming `utm_*` and `fbclid` kept and never overwritten),
    `api/orders.test.ts` (cookie forwarded; absent cookie → field omitted).
 
 **Verify:** `vercel dev` locally: `/go/test-link` → cookie set → place a
@@ -328,6 +341,8 @@ on event id).
 | Cookie loss (cleared browser, different device) | Accepted; that order shows as unattributed website traffic |
 | Numbers disagree with Business Report | Reuse the exported outcome classifier and `computeOrderCogs`; add a test asserting totals match the Business Report for the same fixtures |
 | Personal data | No raw IPs stored; visitor hash uses a daily-rotating salt |
+| Our UTM tags clobber Meta's or a hand-written campaign name | Fill-missing-only rule (D8), covered by `api/go.test.ts` |
+| UTM query string breaks landing-page attribution | `normalizeLandingPagePath` (`server/index.js:830`) already strips `?…`; add a test with a UTM-tagged landing URL |
 
 ---
 
