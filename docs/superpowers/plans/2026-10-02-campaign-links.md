@@ -217,7 +217,7 @@ design language in CLAUDE.md §8 (8px tracked labels, light values, ৳, Phospho
    - Empty state explaining the link format.
 4. **Create/edit dialog** (shadcn `Dialog`): name → auto-suggested slug
    (editable until the first click), channel select, destination picker
-   (Home, published products, `/step/*` landing pages from the public catalog)
+   (Home, published product pages `/product/<handle>`, `/step/*` landing pages from the public catalog)
    or a custom path, creator name, post URL, notes. Shows the live preview
    `www.mangolover.com.bd/go/<slug>`.
 5. **`src/pages/CampaignLinkDetail.tsx`**: funnel bar
@@ -252,7 +252,7 @@ Separate branch and PR in the storefront repo.
      never duplicate a key. If the upstream call failed, add only `utm_campaign=<slug>`
      (the slug is already known locally; the channel isn't).
      Example: `/go/himsagar-reel?utm_source=fb_ads` →
-     `/products/himsagar?utm_source=fb_ads&utm_medium=campaign_link&utm_campaign=himsagar-reel`.
+     `/product/himsagar?utm_source=fb_ads&utm_medium=campaign_link&utm_campaign=himsagar-reel`.
    - On any failure, **still redirect** (to the known destination or `/`). A
      tracking outage must never break the customer's tap.
    - `Cache-Control: no-store` so Vercel/CDN never caches a redirect + cookie.

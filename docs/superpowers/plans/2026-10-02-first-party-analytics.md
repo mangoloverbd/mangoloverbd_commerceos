@@ -76,7 +76,7 @@ panel numbers stay the same (it counts distinct visitors, not events).
 ## 3. How it works end to end (Phases A–D)
 
 ```
-Visitor opens www.mangolover.com.bd/products/himsagar?utm_campaign=himsagar-reel
+Visitor opens www.mangolover.com.bd/product/katimon-mango?utm_campaign=katimon-reel
   → tracker.js (served by Merchant-Suite) reads/creates ms_vid + ms_sid cookies
   → POST /api/live-visitor/ping { kind: "pageview", url, referrer, ids }
       → Redis live presence (unchanged)
@@ -131,7 +131,7 @@ create table if not exists public.analytics_events (
   occurred_at timestamptz not null default now(),
   kind text not null,                  -- pageview | cart | checkout | purchased
   path text not null,
-  product_handle text                  -- parsed from /products/<handle>, else null
+  product_handle text                  -- parsed from /product/<handle> (also /products/), else null
 );
 create index on public.analytics_events (org_id, occurred_at desc);
 create index on public.analytics_events (session_id);
@@ -186,7 +186,11 @@ Invoke `plan-eng-review` on this section before coding.
   UTM first, then referrer host, else `direct`. `utm_medium=campaign_link` →
   `campaign_link`. Facebook in-app browser traffic with `fbclid` and no referrer →
   `facebook`.
-- `productHandleFromPath(path)`, `funnelStepFromPath(path)` (keeps today's
+- `productHandleFromPath(path)`: storefront product pages are `/product/<handle>`
+  (e.g. `/product/katimon-mango`); also accept `/products/<handle>` like today's
+  `productNameFromUrl` (`server/index.js:5302`). `/step/<slug>` landing pages are
+  reported as landing pages, not products.
+- `funnelStepFromPath(path)` (keeps today's
   thank-you / cart / checkout regexes from `liveVisitorBucketFromUrl`).
 - `buildDailyRollup({ sessions, events, orders, day })` for the nightly job.
 - Bot filter: reuse `isBotUserAgent` from `server/campaignLinks.js` if it exists,
