@@ -14,6 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
+      abandoned_checkouts: {
+        Row: {
+          address: string | null
+          campaign: NonNullable<Json>
+          campaign_attributed_at: string | null
+          campaign_click_id: string | null
+          campaign_link_id: string | null
+          cart: NonNullable<Json>
+          contacted_at: string | null
+          created_at: string
+          customer_name: string | null
+          delivery_rate: number | null
+          detailed_activity_started_at: string | null
+          draft_key: string
+          expires_at: string
+          id: string
+          org_id: string
+          origin_actor_kind: string | null
+          origin_source: string | null
+          phone: string | null
+          resolution: string | null
+          resolved_at: string | null
+          source: string
+          source_path: string
+          status: string
+          subtotal: number | null
+          total: number | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          campaign?: NonNullable<Json>
+          campaign_attributed_at?: string | null
+          campaign_click_id?: string | null
+          campaign_link_id?: string | null
+          cart?: NonNullable<Json>
+          contacted_at?: string | null
+          created_at?: string
+          customer_name?: string | null
+          delivery_rate?: number | null
+          detailed_activity_started_at?: string | null
+          draft_key: string
+          expires_at?: string
+          id?: string
+          org_id: string
+          origin_actor_kind?: string | null
+          origin_source?: string | null
+          phone?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          source: string
+          source_path: string
+          status?: string
+          subtotal?: number | null
+          total?: number | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          campaign?: NonNullable<Json>
+          campaign_attributed_at?: string | null
+          campaign_click_id?: string | null
+          campaign_link_id?: string | null
+          cart?: NonNullable<Json>
+          contacted_at?: string | null
+          created_at?: string
+          customer_name?: string | null
+          delivery_rate?: number | null
+          detailed_activity_started_at?: string | null
+          draft_key?: string
+          expires_at?: string
+          id?: string
+          org_id?: string
+          origin_actor_kind?: string | null
+          origin_source?: string | null
+          phone?: string | null
+          resolution?: string | null
+          resolved_at?: string | null
+          source?: string
+          source_path?: string
+          status?: string
+          subtotal?: number | null
+          total?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "abandoned_checkouts_campaign_org_link_click_fkey"
+            columns: ["org_id", "campaign_link_id", "campaign_click_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_link_clicks"
+            referencedColumns: ["org_id", "link_id", "id"]
+          },
+        ]
+      }
       ai_action_log: {
         Row: {
           after_snapshot: Json | null
@@ -65,6 +160,98 @@ export type Database = {
           key?: string
           updated_at?: string
           value?: string
+        }
+        Relationships: []
+      }
+      campaign_link_clicks: {
+        Row: {
+          clicked_at: string
+          device: string | null
+          id: string
+          is_bot: boolean
+          link_id: string
+          org_id: string
+          referrer_host: string | null
+          request_id: string
+          visitor_hash: string | null
+        }
+        Insert: {
+          clicked_at?: string
+          device?: string | null
+          id?: string
+          is_bot?: boolean
+          link_id: string
+          org_id: string
+          referrer_host?: string | null
+          request_id: string
+          visitor_hash?: string | null
+        }
+        Update: {
+          clicked_at?: string
+          device?: string | null
+          id?: string
+          is_bot?: boolean
+          link_id?: string
+          org_id?: string
+          referrer_host?: string | null
+          request_id?: string
+          visitor_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_link_clicks_org_link_fkey"
+            columns: ["org_id", "link_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_links"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
+      campaign_links: {
+        Row: {
+          archived_at: string | null
+          channel: string
+          created_at: string
+          created_by: string | null
+          creator_name: string | null
+          destination_path: string
+          id: string
+          name: string
+          notes: string | null
+          org_id: string
+          post_url: string | null
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          creator_name?: string | null
+          destination_path?: string
+          id?: string
+          name: string
+          notes?: string | null
+          org_id: string
+          post_url?: string | null
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          creator_name?: string | null
+          destination_path?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          org_id?: string
+          post_url?: string | null
+          slug?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -449,10 +636,112 @@ export type Database = {
           },
         ]
       }
+      order_protection_reviews: {
+        Row: {
+          abandoned_checkout_id: string | null
+          address: string | null
+          approval_claimed_at: string | null
+          attempt_id: string | null
+          campaign_attributed_at: string | null
+          campaign_click_id: string | null
+          campaign_link_id: string | null
+          contact_status: string
+          created_at: string
+          customer_name: string | null
+          expires_at: string
+          id: string
+          items: NonNullable<Json>
+          notes: string | null
+          org_id: string
+          phone: string | null
+          reason_codes: string[]
+          score: number
+          shipping_zone_id: string | null
+          source_route: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          abandoned_checkout_id?: string | null
+          address?: string | null
+          approval_claimed_at?: string | null
+          attempt_id?: string | null
+          campaign_attributed_at?: string | null
+          campaign_click_id?: string | null
+          campaign_link_id?: string | null
+          contact_status?: string
+          created_at?: string
+          customer_name?: string | null
+          expires_at: string
+          id?: string
+          items?: NonNullable<Json>
+          notes?: string | null
+          org_id: string
+          phone?: string | null
+          reason_codes?: string[]
+          score: number
+          shipping_zone_id?: string | null
+          source_route: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          abandoned_checkout_id?: string | null
+          address?: string | null
+          approval_claimed_at?: string | null
+          attempt_id?: string | null
+          campaign_attributed_at?: string | null
+          campaign_click_id?: string | null
+          campaign_link_id?: string | null
+          contact_status?: string
+          created_at?: string
+          customer_name?: string | null
+          expires_at?: string
+          id?: string
+          items?: NonNullable<Json>
+          notes?: string | null
+          org_id?: string
+          phone?: string | null
+          reason_codes?: string[]
+          score?: number
+          shipping_zone_id?: string | null
+          source_route?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_protection_reviews_abandoned_checkout_id_fkey"
+            columns: ["abandoned_checkout_id"]
+            isOneToOne: false
+            referencedRelation: "abandoned_checkouts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_protection_reviews_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "order_risk_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_protection_reviews_campaign_org_link_click_fkey"
+            columns: ["org_id", "campaign_link_id", "campaign_click_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_link_clicks"
+            referencedColumns: ["org_id", "link_id", "id"]
+          },
+        ]
+      }
       orders: {
         Row: {
+          abandoned_checkout_id: string | null
+          abandoned_draft_key_hash: string | null
           address: string | null
           advanced_payment: number
+          campaign_attributed_at: string | null
+          campaign_click_id: string | null
+          campaign_link_id: string | null
           consignment_id: string | null
           courier_fee: number | null
           courier_message: string | null
@@ -489,8 +778,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          abandoned_checkout_id?: string | null
+          abandoned_draft_key_hash?: string | null
           address?: string | null
           advanced_payment?: number
+          campaign_attributed_at?: string | null
+          campaign_click_id?: string | null
+          campaign_link_id?: string | null
           consignment_id?: string | null
           courier_fee?: number | null
           courier_message?: string | null
@@ -527,8 +821,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          abandoned_checkout_id?: string | null
+          abandoned_draft_key_hash?: string | null
           address?: string | null
           advanced_payment?: number
+          campaign_attributed_at?: string | null
+          campaign_click_id?: string | null
+          campaign_link_id?: string | null
           consignment_id?: string | null
           courier_fee?: number | null
           courier_message?: string | null
@@ -564,7 +863,22 @@ export type Database = {
           tracking_code?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orders_abandoned_checkout_org_fkey"
+            columns: ["abandoned_checkout_id", "org_id"]
+            isOneToOne: false
+            referencedRelation: "abandoned_checkouts"
+            referencedColumns: ["id", "org_id"]
+          },
+          {
+            foreignKeyName: "orders_campaign_org_link_click_fkey"
+            columns: ["org_id", "campaign_link_id", "campaign_click_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_link_clicks"
+            referencedColumns: ["org_id", "link_id", "id"]
+          },
+        ]
       }
       product_images: {
         Row: {
@@ -993,6 +1307,54 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      attribute_campaign_checkout: {
+        Args: {
+          p_checkout_id: string
+          p_click_id: string
+          p_effective_at: string
+          p_org_id: string
+        }
+        Returns: Database["public"]["Tables"]["abandoned_checkouts"]["Row"][]
+        SetofOptions: {
+          from: "*"
+          to: "abandoned_checkouts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      record_campaign_link_click: {
+        Args: {
+          p_device?: string
+          p_is_bot?: boolean
+          p_link_id: string
+          p_org_id: string
+          p_referrer_host?: string
+          p_request_id: string
+          p_slug: string
+          p_visitor_hash?: string
+        }
+        Returns: Database["public"]["Tables"]["campaign_link_clicks"]["Row"][]
+        SetofOptions: {
+          from: "*"
+          to: "campaign_link_clicks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      rename_campaign_link: {
+        Args: {
+          p_link_id: string
+          p_org_id: string
+          p_slug: string
+        }
+        Returns: Database["public"]["Tables"]["campaign_links"]["Row"][]
+        SetofOptions: {
+          from: "*"
+          to: "campaign_links"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       match_products_by_embedding: {
         Args: {
           match_count?: number

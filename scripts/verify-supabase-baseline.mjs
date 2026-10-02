@@ -52,6 +52,8 @@ const runtimeTables = Object.freeze([
   "order_activity_events",
   "customer_profiles",
   "customer_notes",
+  "campaign_links",
+  "campaign_link_clicks",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
@@ -147,6 +149,19 @@ begin
      or not has_table_privilege('service_role', 'public.customer_profiles', 'insert')
      or not has_table_privilege('service_role', 'public.customer_profiles', 'update') then
     raise exception 'Customer profile server privileges are missing';
+  end if;
+  if has_table_privilege('authenticated', 'public.campaign_links', 'select,insert,update,delete')
+     or has_table_privilege('authenticated', 'public.campaign_link_clicks', 'select,insert,update,delete')
+     or has_table_privilege('service_role', 'public.campaign_links', 'delete,truncate')
+     or has_table_privilege('service_role', 'public.campaign_link_clicks', 'update,delete,truncate') then
+    raise exception 'Campaign persistence exposes excess privileges';
+  end if;
+  if not has_table_privilege('service_role', 'public.campaign_links', 'select')
+     or not has_table_privilege('service_role', 'public.campaign_links', 'insert')
+     or not has_table_privilege('service_role', 'public.campaign_links', 'update')
+     or not has_table_privilege('service_role', 'public.campaign_link_clicks', 'select')
+     or not has_table_privilege('service_role', 'public.campaign_link_clicks', 'insert') then
+    raise exception 'Campaign server privileges are missing';
   end if;
   select count(*) into runtime_table_count
   from pg_class
