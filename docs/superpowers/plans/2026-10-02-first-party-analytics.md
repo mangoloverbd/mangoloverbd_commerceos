@@ -80,7 +80,7 @@ Visitor opens www.mangolover.com.bd/product/katimon-mango?utm_campaign=katimon-r
   → tracker.js (served by Merchant-Suite) reads/creates ms_vid + ms_sid cookies
   → POST /api/live-visitor/ping { kind: "pageview", url, referrer, ids }
       → Redis live presence (unchanged)
-      → upsert analytics_sessions (first hit stores landing page, source, UTM, device, city)
+      → upsert analytics_sessions (first hit stores entry page, source, UTM, device, city)
       → insert analytics_events (pageview)
   → later pings: heartbeat → Redis only; cart/checkout steps → analytics_events
 Visitor places an order
@@ -109,7 +109,7 @@ create table if not exists public.analytics_sessions (
   visitor_id uuid not null,            -- ms_vid
   started_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
-  landing_path text,
+  entry_path text,                     -- first page of the visit (product, /step/ landing page, home…); not the /step/ landing-page attribution
   referrer_host text,
   source text not null,                -- facebook | instagram | tiktok | google | youtube | campaign_link | direct | <host>
   utm_source text, utm_medium text, utm_campaign text,
@@ -213,7 +213,7 @@ Invoke `plan-eng-review` on this section before coding.
 - Rate limit per IP (`rateLimitPublicRead` style); drop bot UAs before any write.
 - `heartbeat` → Redis only (as Phase 0).
 - `pageview` / `step` → upsert `analytics_sessions` (insert on first hit with the
-  landing data; afterwards bump `last_seen_at`, `pageviews`, `reached_*`), then
+  entry data; afterwards bump `last_seen_at`, `pageviews`, `reached_*`), then
   insert the `analytics_events` row. One round trip each; failures are logged and
   **never** change the response the tracker sees.
 - PostHog capture stays in place until Phase D.
