@@ -58,6 +58,7 @@ const runtimeTables = Object.freeze([
   "analytics_events",
   "analytics_session_pages",
   "analytics_session_products",
+  "analytics_order_facts",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
@@ -171,12 +172,18 @@ begin
      or has_table_privilege('authenticated', 'public.analytics_sessions', 'select,insert,update,delete')
      or has_table_privilege('authenticated', 'public.analytics_events', 'select,insert,update,delete')
      or has_function_privilege('authenticated', 'public.record_analytics_hit(uuid, uuid, uuid, uuid, text, text, text, integer, timestamptz, jsonb)', 'execute')
-     or has_table_privilege('service_role', 'public.analytics_events', 'update,truncate') then
+     or has_table_privilege('service_role', 'public.analytics_events', 'update,truncate')
+     or has_table_privilege('anon', 'public.analytics_order_facts', 'select,insert,update,delete')
+     or has_table_privilege('authenticated', 'public.analytics_order_facts', 'select,insert,update,delete')
+     or has_function_privilege('authenticated', 'public.record_analytics_order_fact(uuid, uuid, uuid, timestamptz)', 'execute')
+     or has_table_privilege('service_role', 'public.analytics_order_facts', 'update,delete,truncate') then
     raise exception 'Website analytics exposes excess privileges';
   end if;
   if not has_table_privilege('service_role', 'public.analytics_sessions', 'select,insert,update')
      or not has_table_privilege('service_role', 'public.analytics_events', 'select,insert')
-     or not has_function_privilege('service_role', 'public.record_analytics_hit(uuid, uuid, uuid, uuid, text, text, text, integer, timestamptz, jsonb)', 'execute') then
+     or not has_function_privilege('service_role', 'public.record_analytics_hit(uuid, uuid, uuid, uuid, text, text, text, integer, timestamptz, jsonb)', 'execute')
+     or not has_table_privilege('service_role', 'public.analytics_order_facts', 'select,insert')
+     or not has_function_privilege('service_role', 'public.record_analytics_order_fact(uuid, uuid, uuid, timestamptz)', 'execute') then
     raise exception 'Website analytics server privileges are missing';
   end if;
   select count(*) into runtime_table_count
@@ -326,6 +333,7 @@ begin
       ('orders', 'risk_attempt_id'),
       ('order_protection_reviews', 'attempt_id'),
       ('order_protection_reviews', 'abandoned_draft_key_hash'),
+      ('order_protection_reviews', 'analytics_session_id'),
       ('abandoned_checkouts', 'draft_key'),
       ('abandoned_checkouts', 'expires_at'),
       ('abandoned_checkouts', 'origin_source'),

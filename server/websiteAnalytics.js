@@ -138,3 +138,13 @@ export function parseTrackerAnalyticsHit(body, { kind, bucket, userAgent, countr
     },
   };
 }
+
+// The storefront order proxy forwards the shopper's ms_sid visit cookie in this
+// header. It is unsigned evidence: the database only links it to an order when
+// the visit exists in the same workspace and was live at submission.
+export const ANALYTICS_SESSION_HEADER = "x-mlbd-analytics-session-id";
+
+export function analyticsSessionFromHeaders(headers) {
+  const value = headers?.[ANALYTICS_SESSION_HEADER];
+  return isAnalyticsId(value) ? value.toLowerCase() : null;
+}

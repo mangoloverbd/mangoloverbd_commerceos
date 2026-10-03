@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  classifyTrafficSource, deviceFromUserAgent, isAnalyticsId, normalizeAnalyticsPath, parseTrackerAnalyticsHit, productSlugFromPath,
+  analyticsSessionFromHeaders, classifyTrafficSource, deviceFromUserAgent, isAnalyticsId, normalizeAnalyticsPath, parseTrackerAnalyticsHit, productSlugFromPath,
 } from "../../server/websiteAnalytics.js";
 
 const ids = {
@@ -77,5 +77,14 @@ describe("tracker hit parsing", () => {
     expect(deviceFromUserAgent("Mozilla/5.0 (Windows NT 10.0)")).toBe("desktop");
     expect(deviceFromUserAgent("Mozilla/5.0 (iPad; CPU OS 17)")).toBe("tablet");
     expect(isAnalyticsId(ids.event_id)).toBe(true);
+  });
+});
+
+describe("order visit header", () => {
+  it("accepts only one well-formed visit id from the storefront proxy", () => {
+    expect(analyticsSessionFromHeaders({ "x-mlbd-analytics-session-id": ids.session_id.toUpperCase() })).toBe(ids.session_id);
+    expect(analyticsSessionFromHeaders({ "x-mlbd-analytics-session-id": "not-a-visit" })).toBeNull();
+    expect(analyticsSessionFromHeaders({ "x-mlbd-analytics-session-id": [ids.session_id, ids.session_id] })).toBeNull();
+    expect(analyticsSessionFromHeaders({})).toBeNull();
   });
 });

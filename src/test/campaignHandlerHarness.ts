@@ -88,6 +88,7 @@ export function database(seed: Record<string, Record<string, unknown>[]> = {}) {
       if (row && ["open", "contacted"].includes(String(row.status)) && (!saved || String(click?.clicked_at) >= String(saved.clicked_at))) Object.assign(row, attribution);
       return { data: row ? [row] : [], error: null };
     }
+    if (name === "record_analytics_order_fact") return { data: "recorded", error: null };
     throw new Error(`Unexpected RPC ${name}`);
   };
   return { from, rpc: (name: string, args: Record<string, unknown>) => {
@@ -101,6 +102,8 @@ export function handlers(db: ReturnType<typeof database>, extras: Record<string,
   const app = express(); app.use(express.json());
   const context = createContext({ app, process, console, crypto, Date, URL, AbortController, setTimeout, clearTimeout,
     ...campaignLinks, ...campaignReport, ...abandoned, ...clientContext, normalizeBusinessReportSource,
+    // jsdom's AbortSignal lacks Node's timeout(); handlers use it for bounded optional lookups.
+    AbortSignal: { timeout: (ms: number) => { const controller = new AbortController(); setTimeout(() => controller.abort(), ms); return controller.signal; } },
     getServiceSupabase: () => db,
     getToken: (req: express.Request) => req.headers.authorization,
     getUser: async (token: string) => ({ user: token ? { id: uuid(1) } : null }),
