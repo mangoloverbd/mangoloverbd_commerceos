@@ -1,9 +1,10 @@
 import { apiFetch } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, type KeyboardEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Area, AreaChart, Bar, BarChart, Cell, PolarAngleAxis, PolarGrid, Radar, RadarChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import ReactMarkdown from "react-markdown";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Warning, ChartBar, Cube, CheckCircle, Package, TrendDown, TrendUp } from "@phosphor-icons/react";
 import { Button } from "@/components/base/buttons/button";
 import { Chip } from "@/components/base/badges/chip";
@@ -15,6 +16,8 @@ import { AnimatedText } from "@/components/ui/animated-text";
 import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-calendar";
 import { KpiCard } from "@/components/overview/KpiCard";
 import { FunnelChart, type FunnelStage } from "@/components/ui/funnel-chart";
+import { useLiveVisitors } from "@/hooks/useLiveVisitors";
+import { ANALYTICS_TABS, resolveAnalyticsTab, type AnalyticsTab } from "@/lib/analyticsTabs";
 
 const FIVE_HOURS_IN_MS = 5 * 60 * 60 * 1000;
 const WEBSITE_BEHAVIOR_REFETCH_MS = 30 * 1000;
@@ -138,8 +141,25 @@ function priorityIcon(priority: ForecastAction["priority"]) {
   return <TrendDown weight="light" size={16} className="text-amber-600" />;
 }
 
-export default function OrderAnalysis() {
-  const { data, isLoading, isFetching, refetch, error } = useQuery<ForecastResponse>({
+export default function Analytics() {
+  const [params, setParams] = useSearchParams();
+  const tab = resolveAnalyticsTab(params.get("tab"));
+  const reduceMotion = useReducedMotion();
+  const liveVisitors = useLiveVisitors();
+  const selectTab = (next: AnalyticsTab) => {
+    const nextParams = new URLSearchParams(params);
+    if (next === "overview") nextParams.delete("tab"); else nextParams.set("tab", next);
+    setParams(nextParams, { replace: true });
+  };
+  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const next = ANALYTICS_TABS[(index + (event.key === "ArrowRight" ? 1 : ANALYTICS_TABS.length - 1)) % ANALYTICS_TABS.length];
+    selectTab(next.id);
+    document.getElementById(`analytics-tab-${next.id}`)?.focus();
+  };
+
+  const { data, isLoading, isFetching: forecastFetching, refetch, error } = useQuery<ForecastResponse>({
     queryKey: ["/api/business-forecast"],
     queryFn: async () => {
       const res = await apiFetch("/api/business-forecast");
@@ -148,9 +168,10 @@ export default function OrderAnalysis() {
       return json;
     },
     staleTime: FIVE_HOURS_IN_MS,
+    enabled: tab === "forecast",
   });
 
-  const { data: websiteBehavior, isLoading: behaviorLoading, refetch: refetchWebsiteBehavior } = useQuery<WebsiteBehaviorResponse>({
+  const { data: websiteBehavior, isLoading: behaviorLoading, isFetching: behaviorFetching, refetch: refetchWebsiteBehavior } = useQuery<WebsiteBehaviorResponse>({
     queryKey: ["/api/order-analysis/website-behavior"],
     queryFn: async () => {
       const res = await apiFetch("/api/order-analysis/website-behavior");
@@ -160,7 +181,9 @@ export default function OrderAnalysis() {
     },
     staleTime: 0,
     refetchInterval: WEBSITE_BEHAVIOR_REFETCH_MS,
+    enabled: tab === "overview",
   });
+  const isFetching = tab === "forecast" ? forecastFetching : behaviorFetching;
 
   const products = data?.productForecasts ?? [];
   const stockoutRisks = data?.stockoutRisks ?? [];
@@ -176,21 +199,27 @@ export default function OrderAnalysis() {
   }, [data?.salesTrend?.days]);
 
   return (
-    <div className="min-h-full space-y-6 bg-white p-1 lg:p-2">
+    <div className="min-h-full space-y-6 bg-[#FAFAF8] p-1 lg:p-2">
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-start justify-between gap-4 px-2 pt-2"
+          className="flex flex-wrap items-start justify-between gap-4 px-2 pt-2"
         >
           <div>
-            <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">AI Business Forecast</h1>
-            <p className="mt-1 text-[13px] text-black/45">Inventory forecasting, funnel health, and product intelligence.</p>
+            <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Analytics</h1>
+            <p className="mt-1 text-[13px] text-black/45">Website visitors, sources and the AI business forecast.</p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+          {liveVisitors.loaded && (
+            <span className="inline-flex h-8 items-center gap-2 rounded-[10px] bg-[#1F9D63]/10 px-3 text-[13px] font-medium tabular-nums text-[#2F7A55]" title="People on the website in the last minute">
+              <span aria-hidden="true" className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#1F9D63] opacity-60 motion-reduce:animate-none" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#1F9D63]" /></span>
+              {liveVisitors.count.toLocaleString("en-BD")} on the site now
+            </span>
+          )}
           <Button
             variant="ghost"
             onClick={() => {
-              refetch();
-              refetchWebsiteBehavior();
+              if (tab === "forecast") refetch(); else refetchWebsiteBehavior();
             }}
             disabled={isFetching}
             leadingIcon={
@@ -207,7 +236,42 @@ export default function OrderAnalysis() {
           >
             Refresh
           </Button>
+          </div>
         </motion.div>
+
+        <div role="tablist" aria-label="Analytics sections" className="flex gap-1 overflow-x-auto border-b border-black/[0.09] px-2 [scrollbar-width:none]">
+          {ANALYTICS_TABS.map((item, index) => {
+            const selected = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                id={`analytics-tab-${item.id}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`analytics-panel-${item.id}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => selectTab(item.id)}
+                onKeyDown={(event) => onTabKey(event, index)}
+                className={cn("relative shrink-0 px-3 pb-2.5 pt-2 text-[13px] transition-colors duration-150", selected ? "font-medium text-black" : "text-black/55 hover:text-black")}
+              >
+                {item.label}
+                {selected && (
+                  <motion.span layoutId="analytics-tab-underline" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-black" transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 40 }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === "overview" && (
+          <div role="tabpanel" id="analytics-panel-overview" aria-labelledby="analytics-tab-overview">
+            <WebsiteBehaviorPanel data={websiteBehavior} loading={behaviorLoading} />
+          </div>
+        )}
+
+        {tab === "forecast" && (
+        <div role="tabpanel" id="analytics-panel-forecast" aria-labelledby="analytics-tab-forecast" className="space-y-6">
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
@@ -233,8 +297,6 @@ export default function OrderAnalysis() {
             icon="Cube"
           />
         </div>
-
-        <WebsiteBehaviorPanel data={websiteBehavior} loading={behaviorLoading} />
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -473,6 +535,8 @@ export default function OrderAnalysis() {
             )}
           </div>
         </motion.section>
+        </div>
+        )}
     </div>
   );
 }

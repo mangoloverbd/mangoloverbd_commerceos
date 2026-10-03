@@ -25,7 +25,7 @@ describe("DashboardLayout breadcrumb header", () => {
       "/products",
       "/customers",
       "/order-chat",
-      "/order-analysis",
+      "/analytics",
       "/reports/staff",
       "/reports/business",
       "/inbox/facebook",
@@ -47,7 +47,7 @@ describe("DashboardLayout breadcrumb header", () => {
     expect(layoutSource).toContain('"/customers": "Customers"');
     expect(layoutSource).toContain('"/order-extraction": "Extraction"');
     expect(layoutSource).toContain('"/order-chat": "Ask Edith"');
-    expect(layoutSource).toContain('"/order-analysis": "AI Analysis"');
+    expect(layoutSource).toContain('"/analytics": "Analytics"');
     expect(layoutSource).toContain('"/reports/staff": "Staff Performance"');
     expect(layoutSource).toContain('"/reports/business": "Business Report"');
     expect(layoutSource).toContain('"/inbox/facebook": "Facebook"');

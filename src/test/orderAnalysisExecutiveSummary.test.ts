@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("OrderAnalysis executive summary visuals", () => {
-  const source = readFileSync(resolve(process.cwd(), "src/pages/OrderAnalysis.tsx"), "utf8");
+  const source = readFileSync(resolve(process.cwd(), "src/pages/Analytics.tsx"), "utf8");
 
   it("renders the approved Product Mix summary instead of a plain markdown-only block", () => {
     expect(source).toContain("ExecutiveProductMix");
