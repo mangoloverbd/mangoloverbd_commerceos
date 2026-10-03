@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTrackerKind, shouldForwardTrackerHit } from "../../server/trackerHits.js";
+import { countsAsLivePresence, normalizeTrackerKind, shouldForwardTrackerHit } from "../../server/trackerHits.js";
 
 describe("tracker hit forwarding", () => {
   it("never forwards 20-second heartbeats", () => {
@@ -17,5 +17,11 @@ describe("tracker hit forwarding", () => {
     expect(normalizeTrackerKind("HEARTBEAT")).toBeNull();
     expect(normalizeTrackerKind({})).toBeNull();
     expect(shouldForwardTrackerHit("something-else")).toBe(true);
+  });
+  it("keeps time-on-page flushes out of PostHog and out of the live visitor count", () => {
+    expect(shouldForwardTrackerHit("engage")).toBe(false);
+    expect(countsAsLivePresence("engage")).toBe(false);
+    expect(countsAsLivePresence("heartbeat")).toBe(true);
+    expect(countsAsLivePresence(undefined)).toBe(true);
   });
 });
