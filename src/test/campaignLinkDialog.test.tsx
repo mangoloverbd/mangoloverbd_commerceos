@@ -19,15 +19,16 @@ describe('campaign link form', () => {
   it('lets staff select custom destination mode before typing the path', async () => {
     vi.mocked(apiFetch).mockResolvedValue(campaignJson({ products: [] }));
     const user = userEvent.setup(); setup();
-    await user.selectOptions(screen.getByLabelText('Choose destination'), 'custom');
-    expect(screen.getByLabelText('Choose destination')).toHaveValue('custom');
+    await user.selectOptions(screen.getByLabelText('Opens'), 'custom');
+    expect(screen.getByLabelText('Opens')).toHaveValue('custom');
+    expect(screen.getByLabelText('Destination path')).toBeInTheDocument();
   });
   beforeEach(() => { vi.mocked(apiFetch).mockReset(); }); afterEach(cleanup);
   it('suggests an ASCII slug and previews the public URL', async () => {
     vi.mocked(apiFetch).mockResolvedValue(campaignJson({ products: [] }));
     const user = userEvent.setup(); setup();
     await user.type(screen.getByLabelText('Name'), 'Himsagar Reel');
-    expect(screen.getByLabelText('Slug')).toHaveValue('himsagar-reel');
+    expect(screen.getByLabelText('Link')).toHaveValue('himsagar-reel');
     expect(screen.getByText('https://www.mangolover.com.bd/go/himsagar-reel')).toBeInTheDocument();
   });
   it('requires a manual slug for a Bangla-only name', async () => {
@@ -35,8 +36,25 @@ describe('campaign link form', () => {
     const user = userEvent.setup(); setup();
     await user.type(screen.getByLabelText('Name'), 'আম');
     await user.click(screen.getByRole('button', { name: 'Create link' }));
-    expect(await screen.findByText(/enter a slug using/i)).toBeInTheDocument();
-    expect(screen.getByLabelText('Slug')).toHaveAttribute('aria-invalid', 'true');
+    expect(await screen.findByText(/use 3–60 lowercase letters/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Link')).toHaveAttribute('aria-invalid', 'true');
+  });
+  it('keeps only the link ending when staff paste a full campaign URL', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(campaignJson({ products: [] }));
+    const user = userEvent.setup(); setup();
+    await user.click(screen.getByLabelText('Link'));
+    await user.paste('https://www.mangolover.com.bd/go/bori-campaign-1');
+    expect(screen.getByLabelText('Link')).toHaveValue('bori-campaign-1');
+    expect(screen.getByText(/kept only the part after \/go\//i)).toBeInTheDocument();
+    expect(screen.getByText('https://www.mangolover.com.bd/go/bori-campaign-1')).toBeInTheDocument();
+  });
+  it('picks the channel with pressed buttons', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(campaignJson({ products: [] }));
+    const user = userEvent.setup(); setup();
+    expect(screen.getByRole('button', { name: 'Facebook' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Instagram' }));
+    expect(screen.getByRole('button', { name: 'Instagram' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Facebook' })).toHaveAttribute('aria-pressed', 'false');
   });
   it('lets team members save another member’s link and invalidates both views', async () => {
     const user = userEvent.setup(); const link = campaignReportFixture().rows[0];

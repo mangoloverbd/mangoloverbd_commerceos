@@ -48,13 +48,13 @@ export function useCampaignDates() {
   };
   return { from, to, query, dateRange, setRange };
 }
-export function useCampaignLinks(query: string, id?: string, includeArchived = false) {
+export function useCampaignLinks(query: string, id?: string, includeArchived = false, enabled = true) {
   const identity = useCampaignIdentity();
   const suffix = id ? `/${encodeURIComponent(id)}` : '';
   const result = useQuery({
     queryKey: ['campaign-links', identity.userId, identity.role, id ? 'detail' : 'list', id ?? '', query, includeArchived],
     queryFn: ({ signal }) => readCampaign<CampaignReport>(`/api/campaign-links${suffix}?${query}&include_archived=${includeArchived}`, { signal }),
-    enabled: identity.ready, staleTime: 30_000, refetchInterval: 60_000,
+    enabled: identity.ready && enabled, staleTime: 30_000, refetchInterval: 60_000,
     placeholderData: undefined,
   });
   return { ...result, data: identity.ready ? result.data : undefined, role: identity.role };

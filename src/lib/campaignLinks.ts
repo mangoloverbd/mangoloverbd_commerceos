@@ -1,3 +1,5 @@
+import { CHART } from '@/components/business-report/chartTheme';
+
 export const CAMPAIGN_ORIGIN = 'https://www.mangolover.com.bd';
 export const CAMPAIGN_CHANNELS = ['facebook', 'instagram', 'tiktok', 'youtube', 'whatsapp', 'influencer', 'print', 'sms', 'other'] as const;
 export type CampaignChannel = typeof CAMPAIGN_CHANNELS[number];
@@ -43,6 +45,31 @@ export function slugFromName(name: string): string | undefined {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, ''));
 }
 export const campaignUrl = (slug: string) => `${CAMPAIGN_ORIGIN}/go/${slug}`;
+// Staff often paste the whole public link; keep only the part after /go/.
+export function cleanCampaignSlugInput(value: string): { slug: string; fromUrl: boolean } {
+  const match = value.match(/\/go\/([^/?#\s]*)/i);
+  return { slug: (match ? match[1] : value).trim().toLowerCase(), fromUrl: !!match };
+}
+export const CAMPAIGN_CHANNEL_LABELS: Record<string, string> = {
+  facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', whatsapp: 'WhatsApp',
+  influencer: 'Influencer', print: 'Print / QR', sms: 'SMS', other: 'Other',
+};
+export const campaignChannelLabel = (channel: string) => CAMPAIGN_CHANNEL_LABELS[channel] || channel;
+// Channel colours reuse the Business Report categorical slots; the last slot is "other".
+export const CAMPAIGN_CHANNEL_SLOTS = ['facebook', 'whatsapp', 'instagram', 'influencer'] as const;
+export function channelColor(channel: string) {
+  const slot = (CAMPAIGN_CHANNEL_SLOTS as readonly string[]).indexOf(channel);
+  return CHART.categorical[slot === -1 ? CHART.categorical.length - 1 : slot];
+}
+export const hasFinancials = (metrics: CampaignMetrics | undefined) => !!metrics && Object.prototype.hasOwnProperty.call(metrics, 'estimated_delivered_profit');
+// The equal-length period that ends the day before `from`, for "vs previous period" changes.
+export function previousCampaignRange(from: string, to: string): { from: string; to: string } {
+  const day = 86_400_000;
+  const start = Date.parse(`${from}T00:00:00Z`); const end = Date.parse(`${to}T00:00:00Z`);
+  const length = Math.max(0, Math.round((end - start) / day));
+  const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  return { from: iso(start - (length + 1) * day), to: iso(start - day) };
+}
 export const campaignMoney = (amount: number | null | undefined) => amount == null ? '—' : `৳${amount.toLocaleString('en-BD', { maximumFractionDigits: 2 })}`;
 export const campaignRate = (rate: number | null) => rate == null ? '—' : `${(rate * 100).toLocaleString('en-BD', { maximumFractionDigits: 1 })}%`;
 const REASONS: Record<string, string> = {
