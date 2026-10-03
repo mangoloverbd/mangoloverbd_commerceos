@@ -48,11 +48,12 @@ export interface NavSection {
 // text fades as the sidebar widens, so expanding animates instead of snapping.
 const railFade = "transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0";
 const railGroup = "px-1 py-0.5 group-data-[collapsible=icon]:px-1";
-// 5.5px left padding centres the 17px icon in the 28px row the rail leaves.
+// 7.5px left padding centres the 17px icon in the 32px row the rail leaves and
+// lines it up with the search icon above.
 const railRowPad =
-    "!pl-[5.5px] !pr-2 group-data-[collapsible=icon]:!py-0 group-data-[collapsible=icon]:!pl-[5.5px] group-data-[collapsible=icon]:!pr-2 group-data-[collapsible=icon]:!justify-start";
+    "!pl-[7.5px] !pr-2 group-data-[collapsible=icon]:!py-0 group-data-[collapsible=icon]:!pl-[7.5px] group-data-[collapsible=icon]:!pr-2 group-data-[collapsible=icon]:!justify-start";
 const railIndentedRowPad =
-    "!pl-8 !pr-2 group-data-[collapsible=icon]:!py-0 group-data-[collapsible=icon]:!pl-[5.5px] group-data-[collapsible=icon]:!pr-2 group-data-[collapsible=icon]:!justify-start";
+    "!pl-8 !pr-2 group-data-[collapsible=icon]:!py-0 group-data-[collapsible=icon]:!pl-[7.5px] group-data-[collapsible=icon]:!pr-2 group-data-[collapsible=icon]:!justify-start";
 const railActiveRow = "group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:!justify-start";
 
 const activeNavLabelClass = "font-medium text-[#111]";
@@ -103,7 +104,7 @@ function NavBadgeDot({ count }: { count?: number }) {
             <span
                 data-testid="nav-badge-dot"
                 aria-hidden="true"
-                className="pointer-events-none absolute left-[16px] top-[4px] h-[7px] w-[7px] rounded-full bg-amber-500 opacity-0 ring-2 ring-[#f4f3f1] transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-100"
+                className="pointer-events-none absolute left-[18px] top-[4px] h-[7px] w-[7px] rounded-full bg-amber-500 opacity-0 ring-2 ring-[#f4f3f1] transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-100"
             />
             {state === "collapsed" && <span className="sr-only">{count} pending</span>}
         </>
@@ -206,7 +207,7 @@ function TreeSvgLines({ offsets, className }: { offsets: number[]; className?: s
             viewBox={`0 0 12 ${totalHeight}`}
             fill="none"
             className={cn(
-                "pointer-events-none absolute top-0 left-[12.5px] z-10 select-none text-black/20",
+                "pointer-events-none absolute top-0 left-[14.5px] z-10 select-none text-black/20",
                 className
             )}
         >
@@ -308,7 +309,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                             return (
                                 <SidebarMenuItem key={route.id}>
                                     <div
-                                        className="flex h-7 w-full items-center gap-2 rounded-[6px] pl-8 pr-2 text-[#bbb] cursor-not-allowed select-none opacity-50 transition-[padding] duration-200 ease-out group-data-[collapsible=icon]:pl-[5.5px]"
+                                        className="flex h-7 w-full items-center gap-2 rounded-[6px] pl-8 pr-2 text-[#bbb] cursor-not-allowed select-none opacity-50 transition-[padding] duration-200 ease-out group-data-[collapsible=icon]:pl-[7.5px]"
                                         title="Admin only"
                                     >
                                         <span className={cn(navIconFrame)}>{route.icon}</span>
@@ -339,7 +340,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                                             >
                                                                                                 <button className="glass-button flex items-center gap-2 !h-7 w-full !p-0 !justify-start">
                                                     <ActivePill />
-                                                    <div className="flex items-center gap-2 w-full pl-8 pr-2 transition-[padding] duration-200 ease-out group-data-[collapsible=icon]:pl-[5.5px]">
+                                                    <div className="flex items-center gap-2 w-full pl-8 pr-2 transition-[padding] duration-200 ease-out group-data-[collapsible=icon]:pl-[7.5px]">
                                                         <span className={cn(
                                                             navIconFrame,
                                                         )} style={activeIconStyle}>
@@ -441,7 +442,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                     return (
                                         <SidebarMenuItem key={route.id}>
                                             <div
-                                                className="flex h-7 w-full items-center gap-2 rounded-[6px] pl-[5.5px] pr-2 text-[#bbb] cursor-not-allowed select-none opacity-50"
+                                                className="flex h-7 w-full items-center gap-2 rounded-[6px] pl-[7.5px] pr-2 text-[#bbb] cursor-not-allowed select-none opacity-50"
                                                 title="Admin only"
                                             >
                                                 <span className={cn(navIconFrame)}>
@@ -589,7 +590,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                                                                                                                                 <div className="glass-button-wrap w-full">
                                                                     <button className="glass-button flex items-center gap-2 !h-7 w-full !p-0 !justify-start">
                                                                         <ActivePill />
-                                                                        <div className="relative flex items-center gap-2 w-full pl-[5.5px] pr-2">
+                                                                        <div className="relative flex items-center gap-2 w-full pl-[7.5px] pr-2">
                                                                             <span className={cn(navIconFrame)} style={activeIconStyle}>
                                                                                 {route.icon}
                                                                             </span>
