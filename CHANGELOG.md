@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.51] - 2026-10-03
+
+### Added
+
+- Resizable sidebar: drag its right edge to make it wider (192px to 320px), so long labels and your full name fit. The width is remembered in this browser. Double-click the edge to reset it, drag far left to minimise it, or focus the edge and use the arrow keys.
+
 ## [0.1.0.50] - 2026-10-03
 
 ### Fixed

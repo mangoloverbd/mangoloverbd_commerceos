@@ -20,6 +20,34 @@ const SIDEBAR_WIDTH_ICON = "2.75rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 const SIDEBAR_PEEK_OPEN_DELAY_MS = 120;
 const SIDEBAR_PEEK_CLOSE_DELAY_MS = 180;
+// Drag-to-resize: the expanded sidebar can be widened up to 320px and is
+// remembered per browser; dragging well past the minimum snaps it to the rail.
+const SIDEBAR_WIDTH_MIN_PX = parseInt(SIDEBAR_WIDTH, 10);
+const SIDEBAR_WIDTH_MAX_PX = 320;
+const SIDEBAR_WIDTH_STEP_PX = 16;
+const SIDEBAR_COLLAPSE_SNAP_PX = 64;
+const SIDEBAR_WIDTH_STORAGE_KEY = "ml:sidebar-width";
+
+function clampSidebarWidth(width: number) {
+  return Math.round(Math.min(SIDEBAR_WIDTH_MAX_PX, Math.max(SIDEBAR_WIDTH_MIN_PX, width)));
+}
+
+function readSidebarWidthPreference() {
+  try {
+    const stored = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0 ? clampSidebarWidth(stored) : SIDEBAR_WIDTH_MIN_PX;
+  } catch {
+    return SIDEBAR_WIDTH_MIN_PX;
+  }
+}
+
+function writeSidebarWidthPreference(width: number) {
+  try {
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+  } catch {
+    // Private mode or blocked storage: the width still applies for this visit.
+  }
+}
 
 // The last pinned state (written by setOpen), so a collapsed sidebar stays collapsed across reloads.
 function readSidebarOpenPreference(fallback: boolean) {
@@ -40,6 +68,11 @@ type SidebarContext = {
   // `state` reports "expanded" during a peek; `open` keeps the pinned value.
   peeking: boolean;
   requestPeek: (peek: boolean) => void;
+  // Expanded desktop width in px, and whether it is being dragged right now.
+  width: number;
+  setWidth: (width: number) => void;
+  resizing: boolean;
+  setResizing: (resizing: boolean) => void;
 };
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
@@ -130,6 +163,14 @@ const SidebarProvider = React.forwardRef<
   // This makes it easier to style the sidebar with Tailwind classes.
   const state = open || peeking ? "expanded" : "collapsed";
 
+  const [width, setWidthState] = React.useState(readSidebarWidthPreference);
+  const [resizing, setResizing] = React.useState(false);
+  const setWidth = React.useCallback((next: number) => setWidthState(clampSidebarWidth(next)), []);
+  // Save once the drag ends, not on every pointer move.
+  React.useEffect(() => {
+    if (!resizing) writeSidebarWidthPreference(width);
+  }, [width, resizing]);
+
   const contextValue = React.useMemo<SidebarContext>(
     () => ({
       state,
@@ -141,8 +182,12 @@ const SidebarProvider = React.forwardRef<
       toggleSidebar,
       peeking,
       requestPeek,
+      width,
+      setWidth,
+      resizing,
+      setResizing,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, peeking, requestPeek],
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, peeking, requestPeek, width, setWidth, resizing],
   );
 
   return (
@@ -151,7 +196,7 @@ const SidebarProvider = React.forwardRef<
         <div
           style={
             {
-              "--sidebar-width": SIDEBAR_WIDTH,
+              "--sidebar-width": `${width}px`,
               "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
               ...style,
             } as React.CSSProperties
@@ -167,6 +212,80 @@ const SidebarProvider = React.forwardRef<
   );
 });
 SidebarProvider.displayName = "SidebarProvider";
+
+// The drag edge on the right of the expanded desktop sidebar. Drag to resize,
+// drag far left to minimise, double-click to reset, or use the arrow keys.
+function SidebarResizeHandle() {
+  const { width, setWidth, resizing, setResizing, setOpen } = useSidebar();
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button > 0) return; // primary button only
+    event.preventDefault();
+    const panelLeft = event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0;
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    setResizing(true);
+
+    const stop = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+      setResizing(false);
+    };
+    const onMove = (move: PointerEvent) => {
+      const next = move.clientX - panelLeft;
+      if (next < SIDEBAR_WIDTH_MIN_PX - SIDEBAR_COLLAPSE_SNAP_PX) {
+        stop();
+        setOpen(false);
+        return;
+      }
+      setWidth(next);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const next = {
+      ArrowLeft: width - SIDEBAR_WIDTH_STEP_PX,
+      ArrowRight: width + SIDEBAR_WIDTH_STEP_PX,
+      Home: SIDEBAR_WIDTH_MIN_PX,
+      End: SIDEBAR_WIDTH_MAX_PX,
+    }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    setWidth(next);
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-valuemin={SIDEBAR_WIDTH_MIN_PX}
+      aria-valuemax={SIDEBAR_WIDTH_MAX_PX}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="Drag to resize · Double-click to reset"
+      data-testid="sidebar-resize-handle"
+      data-resizing={resizing ? "true" : undefined}
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => setWidth(SIDEBAR_WIDTH_MIN_PX)}
+      onKeyDown={onKeyDown}
+      className="group/resize absolute inset-y-0 -right-1.5 z-30 w-3 cursor-col-resize outline-none group-data-[collapsible=icon]:hidden"
+    >
+      <span
+        aria-hidden="true"
+        className="absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 bg-transparent transition-colors duration-150 group-hover/resize:bg-black/15 group-focus-visible/resize:bg-black/25 group-data-[resizing=true]/resize:bg-black/25"
+      />
+    </div>
+  );
+}
 
 function isFocusVisible(element: EventTarget) {
   try {
@@ -184,7 +303,7 @@ const Sidebar = React.forwardRef<
     collapsible?: "offcanvas" | "icon" | "none";
   }
 >(({ side = "left", variant = "sidebar", collapsible = "offcanvas", className, children, ...props }, ref) => {
-  const { isMobile, state, openMobile, setOpenMobile, peeking, requestPeek } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile, peeking, requestPeek, resizing } = useSidebar();
   const isPeeking = collapsible === "icon" && peeking;
 
   if (collapsible === "none") {
@@ -233,6 +352,7 @@ const Sidebar = React.forwardRef<
       <div
         className={cn(
           "relative h-svh w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-out motion-reduce:transition-none",
+          resizing && "transition-none",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -243,6 +363,7 @@ const Sidebar = React.forwardRef<
       <div
         className={cn(
           "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-out motion-reduce:transition-none md:flex",
+          resizing && "transition-none",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -268,6 +389,7 @@ const Sidebar = React.forwardRef<
           >
           {children}
         </div>
+        {collapsible === "icon" && <SidebarResizeHandle />}
       </div>
     </div>
   );
