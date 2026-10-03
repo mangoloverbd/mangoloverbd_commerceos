@@ -14,9 +14,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
-const SIDEBAR_WIDTH = "192px";
+const SIDEBAR_WIDTH = "248px";
 const SIDEBAR_WIDTH_MOBILE = "192px";
-const SIDEBAR_WIDTH_ICON = "2.75rem";
+const SIDEBAR_WIDTH_ICON = "4rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 const SIDEBAR_PEEK_OPEN_DELAY_MS = 120;
 const SIDEBAR_PEEK_CLOSE_DELAY_MS = 180;

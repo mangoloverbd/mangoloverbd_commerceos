@@ -5,25 +5,15 @@ import { HeaderAlerts } from "./HeaderAlerts";
 import { SidebarProvider, SidebarInset, readSidebarOpenPreference } from "@/components/ui/sidebar";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useMe } from "@/hooks/useMe";
-import { useAuth } from "@/hooks/useAuth";
-import { CaretRight, Gear, SignOut } from "@phosphor-icons/react";
+import { CaretRight } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     DropdownMenu,
     DropdownMenuContent,
-    DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MobileBottomNav } from "./MobileBottomNav";
-
-const accountMenuPanelClass =
-    "w-56 overflow-hidden rounded-[16px] border-transparent bg-white/80 p-1.5 text-[#202020] shadow-[0_2px_4px_0_rgba(0,0,0,0.10),0_0_0_1px_rgba(0,0,0,0.16),inset_0_1px_0_0_#FDFDFD] backdrop-blur-xl";
-
-const accountMenuInnerClass =
-    "rounded-[12px] border-b border-black/[0.06]";
-
-const accountMenuItemClass =
-    "flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[12.5px] font-medium text-[#202020]/85 transition-colors hover:bg-black/[0.045] focus:bg-black/[0.045] focus:text-[#202020]";
+import { AccountMenuBody, accountMenuPanelClass, useAccountIdentity } from "./AccountMenu";
 
 const routeBreadcrumbLabels: Record<string, string> = {
     "/": "Home",
@@ -56,18 +46,11 @@ function getBreadcrumbLabel(pathname: string) {
 export function DashboardLayout() {
     const { orgName, isLoading, isError, hasData } = useOrgName();
     const { data: me } = useMe();
-    const { signOut, user } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
-    const displayName = orgName || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Account";
+    const { initials } = useAccountIdentity();
     const mainRef = useRef<HTMLElement>(null);
-    const initials = displayName
-        .split(" ")
-        .map((w: string) => w[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2);
 
     useLayoutEffect(() => {
         window.scrollTo(0, 0);
@@ -110,7 +93,7 @@ export function DashboardLayout() {
 
     return (
         <SidebarProvider defaultOpen={readSidebarOpenPreference(true)}>
-            <div className="flex min-h-screen w-full bg-[#dedede] text-[#202020]">
+            <div className="flex min-h-screen w-full bg-[#f4f3f1] text-[#202020]">
                 <AppSidebar />
                 <SidebarInset className="flex min-w-0 flex-col bg-transparent">
                     <header className="flex h-[44px] shrink-0 items-center justify-between px-5 text-[#202020]">
@@ -128,7 +111,7 @@ export function DashboardLayout() {
 
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <button className="ml-1 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 outline-none" title="Account">
+                                    <button className="ml-1 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5 outline-none md:hidden" title="Account">
                                         <Avatar className="h-6 w-6 rounded-full">
                                             <AvatarFallback className="rounded-full bg-black text-white text-[10px] font-semibold">
                                                 {initials}
@@ -142,26 +125,7 @@ export function DashboardLayout() {
                                     sideOffset={8}
                                     className={accountMenuPanelClass}
                                 >
-                                    <div className={`${accountMenuInnerClass} px-4 pb-3 pt-2`}>
-                                        <p className="truncate text-[10px] font-medium uppercase leading-tight tracking-[0.18em] text-[#7F7F7D]">Account</p>
-                                        <p className="mt-1 truncate text-[13px] font-light leading-tight text-[#202020]">{displayName}</p>
-                                        <p className="mt-0.5 truncate text-[10px] font-normal leading-tight text-black/45">{user?.email ?? ""}</p>
-                                    </div>
-                                    <div className="space-y-0.5 px-1 pb-1 pt-1">
-                                        <DropdownMenuItem asChild>
-                                            <Link to="/settings" className={accountMenuItemClass}>
-                                                <Gear weight="light" size={15} className="shrink-0 text-[#202020]/70" />
-                                                System Settings
-                                            </Link>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                            onClick={() => signOut()}
-                                            className={`${accountMenuItemClass} text-[#9B3D3D] hover:bg-[#9B3D3D]/[0.06] focus:bg-[#9B3D3D]/[0.06] hover:text-[#8E2F2F] focus:text-[#8E2F2F]`}
-                                        >
-                                            <SignOut weight="light" size={15} className="shrink-0" />
-                                            Sign Out
-                                        </DropdownMenuItem>
-                                    </div>
+                                    <AccountMenuBody />
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>

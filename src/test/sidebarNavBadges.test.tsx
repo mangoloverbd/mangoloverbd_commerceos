@@ -90,9 +90,11 @@ describe("collapsible sidebar groups", () => {
     expect(screen.getByRole("link", { name: /Activity Log/ })).toBeInTheDocument();
   });
 
-  it("marks the active page with a side bar", () => {
+  it("marks the active page with the white card and no side bar", () => {
     renderNav(sections(), { path: "/returns" });
-    expect(within(screen.getByRole("link", { name: /Returns/ })).getByTestId("nav-active-bar")).toBeInTheDocument();
+    const returns = screen.getByRole("link", { name: /Returns/ });
+    expect(within(returns).getByTestId("nav-active-pill")).toBeInTheDocument();
+    expect(screen.queryByTestId("nav-active-bar")).not.toBeInTheDocument();
   });
 });
 

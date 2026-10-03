@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
     Sidebar,
     SidebarContent,
@@ -8,15 +8,96 @@ import {
     SidebarHeader,
     useSidebar,
 } from "@/components/ui/sidebar";
+import {
+    CommandDialog,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command";
+import { DialogTitle } from "@/components/ui/dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { Logo } from "./logo";
 import type { NavSection } from "./nav-main";
 import DashboardNavigation from "./nav-main";
+import { AccountMenuBody, accountMenuPanelClass, useAccountIdentity } from "./AccountMenu";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useNavCounts } from "@/hooks/useNavCounts";
-import { Link } from "react-router-dom";
-import { CaretUpDown, LinkSimple } from "@phosphor-icons/react";
+import { Link, useNavigate } from "react-router-dom";
+import { CaretDoubleLeft, CaretUpDown, LinkSimple, MagnifyingGlass } from "@phosphor-icons/react";
+
+// Two-tone gear: the outer ring is the lighter tone, the spokes the darker one.
+function SettingsIcon() {
+    return (
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path style={{ fill: "var(--fillg)", opacity: 0.4 }} d="M 21.6666 11 h -1.3987 c -0.096 -0.796 -0.3 -1.5587 -0.604 -2.2693 l 1.208 -0.6973 c 0.4787 -0.276 0.6413 -0.888 0.3653 -1.3653 -0.276 -0.4787 -0.888 -0.6413 -1.3653 -0.3653 l -1.2173 0.7027 c -0.472 -0.628 -1.0307 -1.1853 -1.6573 -1.6573 l 0.7027 -1.2187 c 0.276 -0.4787 0.112 -1.0893 -0.3653 -1.3653 -0.4773 -0.2773 -1.0893 -0.1133 -1.3653 0.3653 l -0.6973 1.208 c -0.7107 -0.3053 -1.4733 -0.508 -2.2693 -0.604 V 2.3333 c 0 -0.552 -0.448 -1 -1 -1 s -1 0.448 -1 1 v 1.3987 c -0.796 0.096 -1.5587 0.3 -2.2693 0.604 l -0.6973 -1.208 c -0.2773 -0.4787 -0.8893 -0.6427 -1.3653 -0.3653 -0.4787 0.276 -0.6413 0.888 -0.3653 1.3653 l 0.7027 1.2187 c -0.628 0.472 -1.1853 1.0293 -1.6573 1.6573 l -1.2173 -0.7027 c -0.476 -0.276 -1.0893 -0.1133 -1.3653 0.3653 -0.276 0.4787 -0.112 1.0893 0.3653 1.3653 l 1.208 0.6973 c -0.304 0.7107 -0.508 1.4733 -0.604 2.2693 H 2.3333 c -0.552 0 -1 0.448 -1 1 s 0.448 1 1 1 h 1.3987 c 0.096 0.796 0.3 1.5587 0.604 2.2693 l -1.208 0.6973 c -0.4787 0.276 -0.6413 0.888 -0.3653 1.3653 0.1853 0.3213 0.5213 0.5 0.8667 0.5 0.1693 0 0.3413 -0.0427 0.5 -0.1347 l 1.2173 -0.7027 c 0.472 0.628 1.0307 1.1853 1.6573 1.6573 l -0.7027 1.2187 c -0.276 0.4787 -0.112 1.0893 0.3653 1.3653 0.1573 0.0907 0.3293 0.1347 0.5 0.1347 0.3453 0 0.6813 -0.1787 0.8667 -0.5 l 0.6973 -1.208 c 0.7107 0.3053 1.4733 0.508 2.2693 0.604 v 1.3987 c 0 0.552 0.448 1 1 1 s 1 -0.448 1 -1 v -1.3987 c 0.796 -0.096 1.5587 -0.3 2.2693 -0.604 l 0.6973 1.208 c 0.1853 0.3213 0.5213 0.5 0.8667 0.5 0.1693 0 0.3413 -0.0427 0.5 -0.1347 0.4787 -0.276 0.6413 -0.888 0.3653 -1.3653 l -0.7027 -1.2187 c 0.628 -0.472 1.1853 -1.0293 1.6573 -1.6573 l 1.2173 0.7027 c 0.1573 0.0907 0.3293 0.1347 0.5 0.1347 0.3453 0 0.6813 -0.1787 0.8667 -0.5 0.276 -0.4787 0.112 -1.0893 -0.3653 -1.3653 l -1.208 -0.6973 c 0.304 -0.7107 0.508 -1.4733 0.604 -2.2693 h 1.3987 c 0.552 0 1 -0.448 1 -1 s -0.448 -1 -1 -1 Z m -9.6666 7.3333 c -3.492 0 -6.3333 -2.8413 -6.3333 -6.3333 s 2.8413 -6.3333 6.3333 -6.3333 6.3333 2.8413 6.3333 6.3333 -2.8413 6.3333 -6.3333 6.3333 Z" />
+            <path style={{ fill: "var(--fillg)" }} d="M 19.3333 11 h -6.756 L 9.1986 5.1493 c -0.276 -0.4787 -0.8893 -0.6413 -1.3653 -0.3653 -0.4787 0.276 -0.6413 0.888 -0.3653 1.3653 l 3.3787 5.8507 -3.3787 5.852 c -0.276 0.4787 -0.112 1.0893 0.3653 1.3653 0.1573 0.0907 0.3293 0.1347 0.5 0.1347 0.3453 0 0.6813 -0.1787 0.8667 -0.5 l 3.3787 -5.852 h 6.756 c 0.552 0 1 -0.448 1 -1 s -0.448 -1 -1 -1 Z" />
+        </svg>
+    );
+}
+
+// Jump to any page the current user can open. ⌘K / Ctrl+K opens it from anywhere.
+function SidebarSearch({ sections }: { sections: NavSection[] }) {
+    const [open, setOpen] = useState(false);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                setOpen((current) => !current);
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, []);
+
+    return (
+        <>
+            <button
+                type="button"
+                data-testid="sidebar-search"
+                onClick={() => setOpen(true)}
+                className="mt-2.5 flex h-9 w-full shrink-0 items-center gap-2 overflow-hidden rounded-[6px] border border-[#e3e2de] bg-white pl-[11px] pr-1.5 text-left font-sans text-[13.5px] text-[#9a9994] outline-none transition-colors hover:border-[#d3d2cd] focus-visible:ring-2 focus-visible:ring-black/15"
+            >
+                <MagnifyingGlass aria-hidden="true" weight="light" size={16} className="shrink-0" />
+                <span className="flex-1 truncate whitespace-nowrap transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">Search…</span>
+                <kbd className="rounded-[5px] border border-[#e3e2de] bg-white px-1.5 font-sans text-[11px] font-medium leading-[18px] text-[#8d8c87] transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">⌘K</kbd>
+            </button>
+            <CommandDialog open={open} onOpenChange={setOpen}>
+                <DialogTitle className="sr-only">Search pages</DialogTitle>
+                <CommandInput placeholder="Search pages…" />
+                <CommandList>
+                    <CommandEmpty>No pages found.</CommandEmpty>
+                    {sections.map((section) => (
+                        <CommandGroup key={section.label} heading={section.label}>
+                            {section.routes.filter((route) => !route.disabled).map((route) => (
+                                <CommandItem
+                                    key={route.id}
+                                    value={`${route.title} ${section.label}`}
+                                    onSelect={() => {
+                                        setOpen(false);
+                                        navigate(route.link);
+                                    }}
+                                    className="gap-2.5 [--fillg:#5d5c58]"
+                                >
+                                    <span className="flex h-[18px] w-[18px] items-center justify-center [&>svg]:h-[18px] [&>svg]:w-[18px]">{route.icon}</span>
+                                    {route.title}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    ))}
+                </CommandList>
+            </CommandDialog>
+        </>
+    );
+}
 
 export function AppSidebar() {
     const { open, toggleSidebar } = useSidebar();
@@ -25,14 +106,16 @@ export function AppSidebar() {
     const returnsPending = navCounts?.returns_pending ?? 0;
     const protectionHeld = navCounts?.order_protection_held ?? 0;
     const { orgName, isLoading: orgLoading } = useOrgName();
+    const { displayName, initials } = useAccountIdentity();
+    const roleTitle = role === "admin" ? "Admin" : role === "team_member" ? "Team member" : "";
 
     const iconCls = "shrink-0 transition-colors";
     // Header and footer keep one layout; their text fades with the collapsed rail.
     const railFade = "transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0";
 
     const navSections = useMemo((): NavSection[] => {
-        const product: NavSection = {
-            label: "",
+        const mainMenu: NavSection = {
+            label: "Main Menu",
             routes: [
                 {
                     id: "orders",
@@ -46,53 +129,6 @@ export function AppSidebar() {
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path d="M18 8C18 11.3137 15.3137 14 12 14C8.68629 14 6 11.3137 6 8C6 4.68629 8.68629 2 12 2C15.3137 2 18 4.68629 18 8Z" style={{fill: 'var(--fillg)'}}></path><path d="M5.03349 10.7834C3.22163 11.816 2 13.7653 2 16C2 19.3137 4.68629 22 8 22C11.3137 22 14 19.3137 14 16C14 15.7437 13.9839 15.4911 13.9527 15.2432C13.3301 15.4107 12.6755 15.5 12 15.5C8.84139 15.5 6.13882 13.5474 5.03349 10.7834Z" style={{fill: 'var(--fillg)', opacity: 0.4}}></path><path d="M15.3866 14.6936C15.4611 15.1179 15.5 15.5544 15.5 16C15.5 18.0906 14.6446 19.9815 13.2646 21.3416C14.0849 21.7625 15.0147 22 16 22C19.3137 22 22 19.3137 22 16C22 13.7653 20.7783 11.816 18.9665 10.7834C18.2876 12.4811 17.0062 13.8726 15.3866 14.6936Z" style={{fill: 'var(--fillg)', opacity: 0.4}}></path></svg>,
                     link: "/overview",
                 },
-                {
-                    id: "returns",
-                    title: "Returns",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><g clipPath="url(#clip0_655_9411)"><path d="M13.1204 20.02C13.0904 19.71 13.1204 19.4 13.2104 19.12C13.2504 19.01 13.2904 18.9 13.3504 18.79C13.7104 18.06 14.4604 17.56 15.3304 17.56H6.44043V4.22C6.44043 3 7.44043 2 8.67043 2H19.7804M13.1204 20.02C13.1304 20.1 13.1404 20.18 13.1604 20.26C13.1704 20.29 13.1704 20.32 13.1904 20.35M13.1204 20.02C13.1304 20.13 13.1604 20.24 13.1904 20.35M13.1904 20.35C13.2104 20.45 13.2404 20.54 13.2804 20.63C13.3404 20.77 13.4104 20.9 13.4904 21.02C13.5604 21.11 13.6204 21.19 13.6904 21.26C14.0304 21.63 14.5004 21.88 15.0004 21.97C15.1104 21.99 15.2204 22 15.3304 22C15.4204 22 15.5104 22 15.6004 21.99C16.3604 21.91 16.9404 21.49 17.3304 20.89C17.3304 20.78 17.4404 20.78 17.4404 20.67C17.5604 20.44 17.6704 20.11 17.6704 19.78V5.61C17.6704 4.11 18.4704 2.73 19.7804 2M19.7804 2C21.0004 2 22.0004 3 22.0004 4.22C22.0004 5.44 21.0004 6.44 19.7804 6.44" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M16.0802 22C16.0802 22.41 15.7402 22.75 15.3302 22.75H4.22023C3.23023 22.75 2.31023 22.26 1.76023 21.44C1.20023 20.6 1.09023 19.57 1.48023 18.6C1.92023 17.53 3.05023 16.81 4.28023 16.81H15.3302C15.7402 16.81 16.0802 17.15 16.0802 17.56C16.0802 17.97 15.7402 18.31 15.3302 18.31C14.7702 18.31 14.2702 18.62 14.0202 19.12C13.9602 19.22 13.9502 19.28 13.9302 19.33C13.8702 19.53 13.8502 19.74 13.8702 19.95C13.8702 19.98 13.8702 20.02 13.8802 20.07C13.9002 20.11 13.9202 20.16 13.9302 20.21C13.9302 20.25 13.9502 20.28 13.9602 20.32C14.0102 20.43 14.0602 20.52 14.1102 20.6C14.1302 20.62 14.1702 20.68 14.2202 20.73C14.4802 21.02 14.7702 21.18 15.1002 21.23H15.1402C15.2002 21.24 15.2702 21.25 15.3302 21.25C15.7402 21.25 16.0802 21.59 16.0802 22Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_655_9411"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
-                    link: "/returns",
-                    badge: returnsPending,
-                },
-                {
-                    id: "products",
-                    title: "Products",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 14 14" className={iconCls}><g fill="none" fillRule="evenodd" clipRule="evenodd"><path fill="currentColor" style={{fill: 'var(--fillg)'}} d="M3.496 10.511q.027.283.057.56a3.005 3.005 0 0 0 2.644 2.652c.777.086 1.601.164 2.45.164s1.674-.078 2.45-.164a3.005 3.005 0 0 0 2.645-2.653c.083-.773.155-1.59.155-2.433s-.072-1.66-.155-2.433a3.005 3.005 0 0 0-2.645-2.653a42 42 0 0 0-.593-.062c.056.604.098 1.232.098 1.874c0 .842-.072 1.66-.155 2.433a3.005 3.005 0 0 1-2.645 2.653c-.776.087-1.6.164-2.45.164c-.635 0-1.257-.043-1.856-.102"/><path fill="currentColor" style={{fill: 'var(--fillg)', opacity: 0.4}} d="M2.903.277c.776-.086 1.6-.164 2.45-.164c.849 0 1.673.078 2.45.164a3.005 3.005 0 0 1 2.644 2.653c.083.773.155 1.59.155 2.433s-.072 1.66-.155 2.433a3.005 3.005 0 0 1-2.644 2.653c-.777.086-1.601.164-2.45.164s-1.674-.078-2.45-.164A3.005 3.005 0 0 1 .258 7.796a23 23 0 0 1-.155-2.433c0-.842.072-1.66.155-2.433A3.005 3.005 0 0 1 2.903.277"/></g></svg>,
-                    link: "/products",
-                },
-                {
-                    id: "customers",
-                    title: "Customers",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M9 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8" style={{fill: 'var(--fillg)', opacity: 0.4}}/><path fill="currentColor" d="M17 10a3 3 0 1 0 0-6a3 3 0 0 0 0 6M3 19.2C3 15.8 5.686 13 9 13s6 2.8 6 6.2c0 .442-.358.8-.8.8H3.8a.8.8 0 0 1-.8-.8M15.8 19.2c0-1.904-.65-3.66-1.741-5.053A5.4 5.4 0 0 1 17 13.3c2.761 0 5 2.149 5 4.8c0 .497-.403.9-.9.9z" style={{fill: 'var(--fillg)'}}/></svg>,
-                    link: "/customers",
-                },
-                {
-                    id: "online-store",
-                    title: "Online Store",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill-rule="evenodd" clip-rule="evenodd" d="M8.25012 7.01346C8.25004 7.00898 8.25 7.00449 8.25 7V6C8.25 3.92893 9.92893 2.25 12 2.25C14.0711 2.25 15.75 3.92893 15.75 6V7C15.75 7.0045 15.75 7.00898 15.7499 7.01346C17.0472 7.04975 17.8375 7.18393 18.4425 7.67997C19.272 8.35995 19.5029 9.5144 19.9646 11.8233L20.5646 14.8233C21.2287 18.1437 21.5608 19.8039 20.6606 20.902C19.7604 22 18.0673 22 14.6812 22H9.3188C5.93262 22 4.23954 22 3.33936 20.902C2.43919 19.8039 2.77123 18.1437 3.43532 14.8233L4.03532 11.8233C4.4971 9.5144 4.72799 8.35995 5.55742 7.67997C6.16251 7.18392 6.95273 7.04975 8.25012 7.01346ZM9.75 6C9.75 4.75736 10.7574 3.75 12 3.75C13.2426 3.75 14.25 4.75736 14.25 6V7C14.25 7 14.25 7 14.25 7C14.1944 6.99999 14.1381 7 14.0812 7H9.9188C9.86185 7 9.80559 7 9.75 7.00001C9.75 7.00001 9.75 7.00001 9.75 7.00001V6ZM12.0004 17.25C11.0219 17.25 10.1874 16.625 9.87821 15.7501C9.74018 15.3595 9.31168 15.1548 8.92115 15.2929C8.53061 15.4309 8.32592 15.8594 8.46395 16.2499C8.97839 17.7054 10.3664 18.75 12.0004 18.75C13.6343 18.75 15.0224 17.7054 15.5368 16.2499C15.6748 15.8594 15.4701 15.4309 15.0796 15.2929C14.6891 15.1548 14.2606 15.3595 14.1225 15.7501C13.8133 16.625 12.9789 17.25 12.0004 17.25Z" style={{fill: 'var(--fillg)'}}></path></svg>,
-                    link: "/online-store",
-                    disabled: !isAdmin,
-                },
-                {
-                    id: "warehouses",
-                    title: "Warehouses",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><g transform="translate(12 12) scale(1.12) translate(-12 -12)"><path fill="currentColor" d="M6.72 16.64a1 1 0 1 1 .56 1.92c-.5.146-.86.3-1.091.44c.238.143.614.303 1.136.452C8.48 19.782 10.133 20 12 20s3.52-.218 4.675-.548c.523-.149.898-.309 1.136-.452c-.23-.14-.59-.294-1.09-.44a1 1 0 0 1 .559-1.92c.668.195 1.28.445 1.75.766c.435.299.97.82.97 1.594c0 .783-.548 1.308-.99 1.607c-.478.322-1.103.573-1.786.768C15.846 21.77 14 22 12 22s-3.846-.23-5.224-.625c-.683-.195-1.308-.446-1.786-.768c-.442-.3-.99-.824-.99-1.607c0-.774.535-1.295.97-1.594c.47-.321 1.082-.571 1.75-.766M12 7.5c-1.54 0-2.502 1.667-1.732 3c.357.619 1.017 1 1.732 1c1.54 0 2.502-1.667 1.732-3A2 2 0 0 0 12 7.5" style={{fill: 'var(--fillg)'}}/><path fill="currentColor" d="M12 2a7.5 7.5 0 0 1 7.5 7.5c0 2.568-1.4 4.656-2.85 6.14a16.4 16.4 0 0 1-1.853 1.615c-.594.446-1.952 1.282-1.952 1.282a1.71 1.71 0 0 1-1.69 0a21 21 0 0 1-1.952-1.282A16.4 16.4 0 0 1 7.35 15.64C5.9 14.156 4.5 12.068 4.5 9.5A7.5 7.5 0 0 1 12 2" style={{fill: 'var(--fillg)'}} opacity=".4"/></g></svg>,
-                    link: "/warehouses",
-                },
-                {
-                    id: "order-protection",
-                    title: "Order Protection",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path d="M3 11.9914C3 17.6294 7.23896 20.3655 9.89856 21.5273C10.62 21.8424 10.9807 22 12 22V8L3 11V11.9914Z" style={{fill: 'var(--fillg)'}}/><path d="M14.1014 21.5273C16.761 20.3655 21 17.6294 21 11.9914V11L12 8V22C13.0193 22 13.38 21.8424 14.1014 21.5273Z" style={{fill: 'var(--fillg)', opacity: 0.5}}/><path d="M8.83772 2.80472L8.26491 3.00079C5.25832 4.02996 3.75503 4.54454 3.37752 5.08241C3 5.62028 3 7.21907 3 10.4167V11L12 8V2C11.1886 2 10.405 2.26824 8.83772 2.80472Z" style={{fill: 'var(--fillg)', opacity: 0.5}}/><path d="M15.7351 3.00079L15.1623 2.80472C13.595 2.26824 12.8114 2 12 2V8L21 11V10.4167C21 7.21907 21 5.62028 20.6225 5.08241C20.245 4.54454 18.7417 4.02996 15.7351 3.00079Z" style={{fill: 'var(--fillg)'}}/></svg>,
-                    link: "/order-protection",
-                    disabled: !isAdmin,
-                    badge: isAdmin ? protectionHeld : 0,
-                },
-            ],
-        };
-
-        const workspace: NavSection = {
-            label: "Intelligence",
-            collapsible: true,
-            routes: [
                 {
                     id: "order-chat",
                     title: "Ask Edith",
@@ -108,7 +144,66 @@ export function AppSidebar() {
                 },
             ],
         };
-
+        const orders: NavSection = {
+            label: "Orders",
+            collapsible: true,
+            routes: [
+                {
+                    id: "returns",
+                    title: "Returns",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><g clipPath="url(#clip0_655_9411)"><path d="M13.1204 20.02C13.0904 19.71 13.1204 19.4 13.2104 19.12C13.2504 19.01 13.2904 18.9 13.3504 18.79C13.7104 18.06 14.4604 17.56 15.3304 17.56H6.44043V4.22C6.44043 3 7.44043 2 8.67043 2H19.7804M13.1204 20.02C13.1304 20.1 13.1404 20.18 13.1604 20.26C13.1704 20.29 13.1704 20.32 13.1904 20.35M13.1204 20.02C13.1304 20.13 13.1604 20.24 13.1904 20.35M13.1904 20.35C13.2104 20.45 13.2404 20.54 13.2804 20.63C13.3404 20.77 13.4104 20.9 13.4904 21.02C13.5604 21.11 13.6204 21.19 13.6904 21.26C14.0304 21.63 14.5004 21.88 15.0004 21.97C15.1104 21.99 15.2204 22 15.3304 22C15.4204 22 15.5104 22 15.6004 21.99C16.3604 21.91 16.9404 21.49 17.3304 20.89C17.3304 20.78 17.4404 20.78 17.4404 20.67C17.5604 20.44 17.6704 20.11 17.6704 19.78V5.61C17.6704 4.11 18.4704 2.73 19.7804 2M19.7804 2C21.0004 2 22.0004 3 22.0004 4.22C22.0004 5.44 21.0004 6.44 19.7804 6.44" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M16.0802 22C16.0802 22.41 15.7402 22.75 15.3302 22.75H4.22023C3.23023 22.75 2.31023 22.26 1.76023 21.44C1.20023 20.6 1.09023 19.57 1.48023 18.6C1.92023 17.53 3.05023 16.81 4.28023 16.81H15.3302C15.7402 16.81 16.0802 17.15 16.0802 17.56C16.0802 17.97 15.7402 18.31 15.3302 18.31C14.7702 18.31 14.2702 18.62 14.0202 19.12C13.9602 19.22 13.9502 19.28 13.9302 19.33C13.8702 19.53 13.8502 19.74 13.8702 19.95C13.8702 19.98 13.8702 20.02 13.8802 20.07C13.9002 20.11 13.9202 20.16 13.9302 20.21C13.9302 20.25 13.9502 20.28 13.9602 20.32C14.0102 20.43 14.0602 20.52 14.1102 20.6C14.1302 20.62 14.1702 20.68 14.2202 20.73C14.4802 21.02 14.7702 21.18 15.1002 21.23H15.1402C15.2002 21.24 15.2702 21.25 15.3302 21.25C15.7402 21.25 16.0802 21.59 16.0802 22Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/></g><defs><clipPath id="clip0_655_9411"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
+                    link: "/returns",
+                    badge: returnsPending,
+                },
+                {
+                    id: "customers",
+                    title: "Customer List",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M9 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8" style={{fill: 'var(--fillg)', opacity: 0.4}}/><path fill="currentColor" d="M17 10a3 3 0 1 0 0-6a3 3 0 0 0 0 6M3 19.2C3 15.8 5.686 13 9 13s6 2.8 6 6.2c0 .442-.358.8-.8.8H3.8a.8.8 0 0 1-.8-.8M15.8 19.2c0-1.904-.65-3.66-1.741-5.053A5.4 5.4 0 0 1 17 13.3c2.761 0 5 2.149 5 4.8c0 .497-.403.9-.9.9z" style={{fill: 'var(--fillg)'}}/></svg>,
+                    link: "/customers",
+                },
+                {
+                    id: "order-protection",
+                    title: "Order Protection",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path d="M3 11.9914C3 17.6294 7.23896 20.3655 9.89856 21.5273C10.62 21.8424 10.9807 22 12 22V8L3 11V11.9914Z" style={{fill: 'var(--fillg)'}}/><path d="M14.1014 21.5273C16.761 20.3655 21 17.6294 21 11.9914V11L12 8V22C13.0193 22 13.38 21.8424 14.1014 21.5273Z" style={{fill: 'var(--fillg)', opacity: 0.5}}/><path d="M8.83772 2.80472L8.26491 3.00079C5.25832 4.02996 3.75503 4.54454 3.37752 5.08241C3 5.62028 3 7.21907 3 10.4167V11L12 8V2C11.1886 2 10.405 2.26824 8.83772 2.80472Z" style={{fill: 'var(--fillg)', opacity: 0.5}}/><path d="M15.7351 3.00079L15.1623 2.80472C13.595 2.26824 12.8114 2 12 2V8L21 11V10.4167C21 7.21907 21 5.62028 20.6225 5.08241C20.245 4.54454 18.7417 4.02996 15.7351 3.00079Z" style={{fill: 'var(--fillg)'}}/></svg>,
+                    link: "/order-protection",
+                    disabled: !isAdmin,
+                    badge: isAdmin ? protectionHeld : 0,
+                },
+            ],
+        };
+        const catalog: NavSection = {
+            label: "Catalog",
+            collapsible: true,
+            routes: [
+                {
+                    id: "products",
+                    title: "Products",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 14 14" className={iconCls}><g fill="none" fillRule="evenodd" clipRule="evenodd"><path fill="currentColor" style={{fill: 'var(--fillg)'}} d="M3.496 10.511q.027.283.057.56a3.005 3.005 0 0 0 2.644 2.652c.777.086 1.601.164 2.45.164s1.674-.078 2.45-.164a3.005 3.005 0 0 0 2.645-2.653c.083-.773.155-1.59.155-2.433s-.072-1.66-.155-2.433a3.005 3.005 0 0 0-2.645-2.653a42 42 0 0 0-.593-.062c.056.604.098 1.232.098 1.874c0 .842-.072 1.66-.155 2.433a3.005 3.005 0 0 1-2.645 2.653c-.776.087-1.6.164-2.45.164c-.635 0-1.257-.043-1.856-.102"/><path fill="currentColor" style={{fill: 'var(--fillg)', opacity: 0.4}} d="M2.903.277c.776-.086 1.6-.164 2.45-.164c.849 0 1.673.078 2.45.164a3.005 3.005 0 0 1 2.644 2.653c.083.773.155 1.59.155 2.433s-.072 1.66-.155 2.433a3.005 3.005 0 0 1-2.644 2.653c-.777.086-1.601.164-2.45.164s-1.674-.078-2.45-.164A3.005 3.005 0 0 1 .258 7.796a23 23 0 0 1-.155-2.433c0-.842.072-1.66.155-2.433A3.005 3.005 0 0 1 2.903.277"/></g></svg>,
+                    link: "/products",
+                },
+                {
+                    id: "warehouses",
+                    title: "Warehouses",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><g transform="translate(12 12) scale(1.12) translate(-12 -12)"><path fill="currentColor" d="M6.72 16.64a1 1 0 1 1 .56 1.92c-.5.146-.86.3-1.091.44c.238.143.614.303 1.136.452C8.48 19.782 10.133 20 12 20s3.52-.218 4.675-.548c.523-.149.898-.309 1.136-.452c-.23-.14-.59-.294-1.09-.44a1 1 0 0 1 .559-1.92c.668.195 1.28.445 1.75.766c.435.299.97.82.97 1.594c0 .783-.548 1.308-.99 1.607c-.478.322-1.103.573-1.786.768C15.846 21.77 14 22 12 22s-3.846-.23-5.224-.625c-.683-.195-1.308-.446-1.786-.768c-.442-.3-.99-.824-.99-1.607c0-.774.535-1.295.97-1.594c.47-.321 1.082-.571 1.75-.766M12 7.5c-1.54 0-2.502 1.667-1.732 3c.357.619 1.017 1 1.732 1c1.54 0 2.502-1.667 1.732-3A2 2 0 0 0 12 7.5" style={{fill: 'var(--fillg)'}}/><path fill="currentColor" d="M12 2a7.5 7.5 0 0 1 7.5 7.5c0 2.568-1.4 4.656-2.85 6.14a16.4 16.4 0 0 1-1.853 1.615c-.594.446-1.952 1.282-1.952 1.282a1.71 1.71 0 0 1-1.69 0a21 21 0 0 1-1.952-1.282A16.4 16.4 0 0 1 7.35 15.64C5.9 14.156 4.5 12.068 4.5 9.5A7.5 7.5 0 0 1 12 2" style={{fill: 'var(--fillg)'}} opacity=".4"/></g></svg>,
+                    link: "/warehouses",
+                },
+                {
+                    id: "online-store",
+                    title: "Online Store",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill-rule="evenodd" clip-rule="evenodd" d="M8.25012 7.01346C8.25004 7.00898 8.25 7.00449 8.25 7V6C8.25 3.92893 9.92893 2.25 12 2.25C14.0711 2.25 15.75 3.92893 15.75 6V7C15.75 7.0045 15.75 7.00898 15.7499 7.01346C17.0472 7.04975 17.8375 7.18393 18.4425 7.67997C19.272 8.35995 19.5029 9.5144 19.9646 11.8233L20.5646 14.8233C21.2287 18.1437 21.5608 19.8039 20.6606 20.902C19.7604 22 18.0673 22 14.6812 22H9.3188C5.93262 22 4.23954 22 3.33936 20.902C2.43919 19.8039 2.77123 18.1437 3.43532 14.8233L4.03532 11.8233C4.4971 9.5144 4.72799 8.35995 5.55742 7.67997C6.16251 7.18392 6.95273 7.04975 8.25012 7.01346ZM9.75 6C9.75 4.75736 10.7574 3.75 12 3.75C13.2426 3.75 14.25 4.75736 14.25 6V7C14.25 7 14.25 7 14.25 7C14.1944 6.99999 14.1381 7 14.0812 7H9.9188C9.86185 7 9.80559 7 9.75 7.00001C9.75 7.00001 9.75 7.00001 9.75 7.00001V6ZM12.0004 17.25C11.0219 17.25 10.1874 16.625 9.87821 15.7501C9.74018 15.3595 9.31168 15.1548 8.92115 15.2929C8.53061 15.4309 8.32592 15.8594 8.46395 16.2499C8.97839 17.7054 10.3664 18.75 12.0004 18.75C13.6343 18.75 15.0224 17.7054 15.5368 16.2499C15.6748 15.8594 15.4701 15.4309 15.0796 15.2929C14.6891 15.1548 14.2606 15.3595 14.1225 15.7501C13.8133 16.625 12.9789 17.25 12.0004 17.25Z" style={{fill: 'var(--fillg)'}}></path></svg>,
+                    link: "/online-store",
+                    disabled: !isAdmin,
+                },
+            ],
+        };
+        const marketing: NavSection = {
+            label: "Marketing",
+            collapsible: true,
+            routes: [{
+                id: "campaign-links", title: "Campaign Links", link: "/campaign-links",
+                icon: <LinkSimple weight="light" size={15} className={iconCls} />,
+            }],
+        };
         const socialInbox: NavSection = {
             label: "Social Inbox",
             collapsible: true,
@@ -139,11 +234,17 @@ export function AppSidebar() {
                 },
             ],
         };
-
         const reports: NavSection = {
             label: "Reports",
             collapsible: true,
             routes: [
+                {
+                    id: "business-report",
+                    title: "Business Report",
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path fillRule="evenodd" clipRule="evenodd" d="M14 20.5V4.25C14 3.52169 13.9984 3.05091 13.9518 2.70403C13.908 2.37872 13.8374 2.27676 13.7803 2.21967C13.7232 2.16258 13.6213 2.09197 13.296 2.04823C12.9491 2.00159 12.4783 2 11.75 2C11.0217 2 10.5509 2.00159 10.204 2.04823C9.87872 2.09197 9.77676 2.16258 9.71967 2.21967C9.66258 2.27676 9.59197 2.37872 9.54823 2.70403C9.50159 3.05091 9.5 3.52169 9.5 4.25V20.5H14Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.7" d="M8 8.75C8 8.33579 7.66421 8 7.25 8H4.25C3.83579 8 3.5 8.33579 3.5 8.75V20.5H8V8.75Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.7" d="M20 13.75C20 13.3358 19.6642 13 19.25 13H16.25C15.8358 13 15.5 13.3358 15.5 13.75V20.5H20V13.75Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.5" d="M1.75 20.5C1.33579 20.5 1 20.8358 1 21.25C1 21.6642 1.33579 22 1.75 22H21.75C22.1642 22 22.5 21.6642 22.5 21.25C22.5 20.8358 22.1642 20.5 21.75 20.5H21.5H20H15.5H14H9.5H8H3.5H2H1.75Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/></svg>,
+                    link: "/reports/business",
+                    disabled: !isAdmin,
+                },
                 {
                     id: "staff-performance",
                     title: "Staff",
@@ -156,45 +257,74 @@ export function AppSidebar() {
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path fill="currentColor" style={{fill: 'var(--fillg)'}} d="M20.3116 12.6473L20.8293 10.7154C21.4335 8.46034 21.7356 7.3328 21.5081 6.35703C21.3285 5.58657 20.9244 4.88668 20.347 4.34587C19.6157 3.66095 18.4881 3.35883 16.2331 2.75458C13.978 2.15033 12.8504 1.84821 11.8747 2.07573C11.1042 2.25537 10.4043 2.65945 9.86351 3.23687C9.27709 3.86298 8.97128 4.77957 8.51621 6.44561C8.43979 6.7254 8.35915 7.02633 8.27227 7.35057L8.27222 7.35077L7.75458 9.28263C7.15033 11.5377 6.84821 12.6652 7.07573 13.641C7.25537 14.4115 7.65945 15.1114 8.23687 15.6522C8.96815 16.3371 10.0957 16.6392 12.3508 17.2435L12.3508 17.2435C14.3834 17.7881 15.4999 18.0873 16.415 17.9744C16.5152 17.9621 16.6129 17.9448 16.7092 17.9223C17.4796 17.7427 18.1795 17.3386 18.7203 16.7612C19.4052 16.0299 19.7074 14.9024 20.3116 12.6473Z"/><path opacity="0.5" fill="currentColor" style={{fill: 'var(--fillg)'}} d="M16.4149 17.9745C16.2064 18.6128 15.8398 19.1903 15.347 19.6519C14.6157 20.3368 13.4881 20.6389 11.2331 21.2432C8.97798 21.8474 7.85044 22.1496 6.87466 21.922C6.10421 21.7424 5.40432 21.3383 4.86351 20.7609C4.17859 20.0296 3.87647 18.9021 3.27222 16.647L2.75458 14.7152C2.15033 12.4601 1.84821 11.3325 2.07573 10.3568C2.25537 9.5863 2.65945 8.88641 3.23687 8.3456C3.96815 7.66068 5.09569 7.35856 7.35077 6.75431C7.7774 6.64 8.16369 6.53649 8.51621 6.44534C8.51618 6.44545 8.51624 6.44524 8.51621 6.44534C8.43979 6.72513 8.3591 7.02657 8.27222 7.35081L7.75458 9.28266C7.15033 11.5377 6.84821 12.6653 7.07573 13.6411C7.25537 14.4115 7.65945 15.1114 8.23687 15.6522C8.96815 16.3371 10.0957 16.6393 12.3508 17.2435C14.3833 17.7881 15.4999 18.0873 16.4149 17.9745Z"/></svg>,
                     link: "/reports/activity",
                 },
-                {
-                    id: "business-report",
-                    title: "Business Report",
-                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" className={iconCls}><path fillRule="evenodd" clipRule="evenodd" d="M14 20.5V4.25C14 3.52169 13.9984 3.05091 13.9518 2.70403C13.908 2.37872 13.8374 2.27676 13.7803 2.21967C13.7232 2.16258 13.6213 2.09197 13.296 2.04823C12.9491 2.00159 12.4783 2 11.75 2C11.0217 2 10.5509 2.00159 10.204 2.04823C9.87872 2.09197 9.77676 2.16258 9.71967 2.21967C9.66258 2.27676 9.59197 2.37872 9.54823 2.70403C9.50159 3.05091 9.5 3.52169 9.5 4.25V20.5H14Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.7" d="M8 8.75C8 8.33579 7.66421 8 7.25 8H4.25C3.83579 8 3.5 8.33579 3.5 8.75V20.5H8V8.75Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.7" d="M20 13.75C20 13.3358 19.6642 13 19.25 13H16.25C15.8358 13 15.5 13.3358 15.5 13.75V20.5H20V13.75Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/><path opacity="0.5" d="M1.75 20.5C1.33579 20.5 1 20.8358 1 21.25C1 21.6642 1.33579 22 1.75 22H21.75C22.1642 22 22.5 21.6642 22.5 21.25C22.5 20.8358 22.1642 20.5 21.75 20.5H21.5H20H15.5H14H9.5H8H3.5H2H1.75Z" fill="currentColor" style={{fill: 'var(--fillg)'}}/></svg>,
-                    link: "/reports/business",
-                    disabled: !isAdmin,
-                },
             ],
         };
-
-        const sections = [product];
-        sections.push(reports);
-        sections.push({ label: "Marketing", collapsible: true, routes: [{
-            id: "campaign-links", title: "Campaign Links", link: "/campaign-links",
-            icon: <LinkSimple weight="light" size={15} className={iconCls} />,
-        }] });
-        sections.push(workspace);
-        sections.push(socialInbox);
-        return sections;
+        return [mainMenu, orders, catalog, marketing, socialInbox, reports];
     }, [isAdmin, returnsPending, protectionHeld]);
 
-
     return (
-        <Sidebar collapsible="icon" className="border-r-0 bg-[#dedede]" style={{ fontFamily: "'Suisse Intl', 'Geist Sans', system-ui, sans-serif" }}>
-            {/* ── Brand header: logo tile + shop name ─────── */}
-            <SidebarHeader className="h-[44px] justify-center overflow-hidden px-1.5 py-0">
-                <div data-testid="sidebar-brand" className="flex items-center gap-2">
-                    <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-[6px] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/20">
-                        <span data-testid="sidebar-brand-logo" className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+        <Sidebar collapsible="icon" className="border-r border-[#e6e5e1] bg-[#f4f3f1]" style={{ fontFamily: "'Geist Sans', system-ui, sans-serif" }}>
+            {/* ── Brand card, then search ──────────────────── */}
+            <SidebarHeader className="overflow-hidden px-3 pb-0 pt-3.5">
+                <div data-testid="sidebar-brand">
+                    <Link
+                        to="/"
+                        className="flex h-12 w-full items-center gap-2.5 overflow-hidden rounded-[6px] border border-[#dcdbd7] bg-[#f9f8f6] p-px pr-2.5 shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-black/15"
+                    >
+                        <span data-testid="sidebar-brand-logo" className="flex h-[38px] w-[38px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
                             <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
                         </span>
-                        <span className={cn("min-w-0", railFade)}>
+                        <span className={cn("min-w-0 flex-1", railFade)}>
+                            <span className="block truncate whitespace-nowrap font-sans text-[11.5px] leading-tight text-[#8d8c87]">Merchant Suite</span>
                             {orgLoading ? (
-                                <span className="block h-3 w-24 animate-pulse rounded bg-black/10" />
+                                <span className="mt-1 block h-3 w-24 animate-pulse rounded bg-black/10" />
                             ) : (
-                                <span className="block truncate whitespace-nowrap font-sans text-[13.5px] font-semibold leading-tight tracking-tight text-black">{orgName || "Mango Lover BD"}</span>
+                                <span className="mt-[3px] block truncate whitespace-nowrap font-sans text-[14px] font-medium leading-tight text-[#1b1b19]">{orgName || "Mango Lover BD"}</span>
                             )}
-                            <span className="mt-0.5 block truncate whitespace-nowrap font-sans text-[10.5px] leading-tight text-black/45">Merchant Suite</span>
                         </span>
+                        <CaretUpDown aria-hidden="true" weight="light" size={14} className={cn("shrink-0 text-[#a3a29d]", railFade)} />
+                    </Link>
+                </div>
+                <SidebarSearch sections={navSections} />
+            </SidebarHeader>
+
+            {/* ── Navigation ──────────────────────────────── */}
+            <SidebarContent className="gap-0 overflow-x-hidden px-3 pb-1.5 pt-3">
+                <DashboardNavigation sections={navSections} />
+            </SidebarContent>
+
+            {/* ── Footer: profile, settings, minimise ─────── */}
+            <SidebarFooter className="overflow-hidden px-3 pb-3 pt-2.5">
+                <div data-testid="sidebar-footer" className="-mr-[7px] flex items-center gap-0.5 group-data-[collapsible=icon]:mr-0 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1.5">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                type="button"
+                                data-testid="sidebar-profile"
+                                title="Account"
+                                className="flex h-10 min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-[6px] px-2 text-left outline-none transition-colors hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:flex-none"
+                            >
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#d6d5d1] bg-white font-sans text-[10px] font-medium text-[#5d5c58]">
+                                    {initials}
+                                </span>
+                                <span className={cn("flex min-w-0 flex-1 items-baseline gap-1 whitespace-nowrap", railFade)}>
+                                    <span className="min-w-0 truncate font-sans text-[13px] leading-4 text-[#1b1b19]">{displayName}</span>
+                                    {roleTitle && <span className="shrink-0 font-sans text-[11.5px] leading-[14px] text-[#8d8c87]">· {roleTitle}</span>}
+                                </span>
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="top" align="start" sideOffset={8} className={accountMenuPanelClass}>
+                            <AccountMenuBody />
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Link
+                        to="/settings"
+                        title="System Settings"
+                        aria-label="System Settings"
+                        data-testid="sidebar-settings"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] outline-none transition-colors [--fillg:#8d8c87] hover:bg-black/5 hover:[--fillg:#1b1b19] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:hidden"
+                    >
+                        <SettingsIcon />
                     </Link>
                     <button
                         type="button"
@@ -202,47 +332,13 @@ export function AppSidebar() {
                         aria-label={open ? "Collapse sidebar" : "Expand sidebar"}
                         title={open ? "Collapse sidebar" : "Expand sidebar"}
                         className={cn(
-                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-black/40 transition-[color,background-color,opacity,transform] duration-200 hover:bg-black/5 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20",
-                            railFade,
+                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[#8d8c87] outline-none transition-[color,background-color,transform] duration-200 hover:bg-black/5 hover:text-[#1b1b19] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:w-10",
                             !open && "rotate-180",
                         )}
                     >
-                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none"><path opacity="0.5" d="M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22Z" fill="currentColor"/><path d="M12.9697 8.46967C13.2626 8.17678 13.7374 8.17678 14.0303 8.46967C14.3232 8.76256 14.3232 9.23744 14.0303 9.53033L11.5607 12L14.0303 14.4697C14.3232 14.7626 14.3232 15.2374 14.0303 15.5303C13.7374 15.8232 13.2626 15.8232 12.9697 15.5303L9.96967 12.5303C9.67678 12.2374 9.67678 11.7626 9.96967 11.4697L12.9697 8.46967Z" fill="currentColor"/></svg>
+                        <CaretDoubleLeft aria-hidden="true" weight="light" size={18} />
                     </button>
                 </div>
-            </SidebarHeader>
-
-            {/* ── Navigation ──────────────────────────────── */}
-            <SidebarContent className="gap-0 overflow-x-hidden px-1 pb-1.5 pt-4">
-                <DashboardNavigation sections={navSections} />
-            </SidebarContent>
-
-            {/* ── Footer: workspace card (opens settings) ─── */}
-            <SidebarFooter className="overflow-hidden p-1.5">
-                <Link
-                    to="/settings"
-                    data-testid="sidebar-workspace-card"
-                    title="System Settings"
-                    className="group/workspace flex items-center gap-2 rounded-[6px] border border-black/[0.06] bg-white/40 p-px pr-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.06)] transition-colors hover:bg-white/60"
-                >
-                    <span
-                        data-testid="sidebar-workspace-logo"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border border-black/[0.05] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                    >
-                        <Logo className="h-[15px] w-auto" />
-                    </span>
-                    <div className={cn("min-w-0 flex-1 whitespace-nowrap", railFade)}>
-                        <p className="truncate font-sans text-[10.5px] leading-tight text-black/45">
-                            {role === "admin" ? "Admin" : role === "team_member" ? "Staff" : "Workspace"}
-                        </p>
-                        {orgLoading ? (
-                            <div className="mt-0.5 h-2.5 w-24 animate-pulse rounded bg-black/10" />
-                        ) : (
-                            <p className="truncate font-sans text-[12.5px] font-medium leading-tight text-black">{orgName || "My workspace"}</p>
-                        )}
-                    </div>
-                    <CaretUpDown aria-hidden="true" weight="bold" size={12} className={cn("shrink-0 text-black/30 transition-colors group-hover/workspace:text-black/55", railFade)} />
-                </Link>
             </SidebarFooter>
         </Sidebar>
     );
