@@ -15,6 +15,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
 import { normalizeCampaignSlug, normalizeCampaignChannel, normalizeDestinationPath, buildCampaignUtm, isBotUserAgent, resolveCampaignAttribution, buildCampaignVisitorHash } from "./campaignLinks.js";
+import { verifyCampaignReceipt, persistCampaignEvent } from "./campaignEvents.js";
 import { buildCampaignReport, resolveCampaignReportRequest, redactCampaignFinancials } from "./campaignReport.js";
 import { buildOverviewData } from "./overview.js";
 import { HISTORY_DAYS as STOCK_FORECAST_HISTORY_DAYS, buildStockForecast } from "./stockForecast.js";
@@ -6851,6 +6852,7 @@ const CAMPAIGN_LINK_FIELDS = "id, org_id, slug, name, channel, destination_path,
 const CAMPAIGN_ORDER_FIELDS = "id, org_id, order_number, created_at, source, status, courier_status, fulfillment_status, return_status, product, price, courier_fee, campaign_link_id, campaign_click_id, campaign_attributed_at, abandoned_checkout_id, abandoned_draft_key_hash";
 const CAMPAIGN_CLICK_HEADER = "x-mlbd-campaign-click-id";
 const CAMPAIGN_REQUEST_HEADER = "x-mlbd-campaign-request-id";
+const CAMPAIGN_RECEIPT_HEADER = "x-mlbd-campaign-receipt";
 const CAMPAIGN_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CAMPAIGN_PAGE_SIZE = 500;
 const CAMPAIGN_BATCH_SIZE = 200;
@@ -6919,6 +6921,28 @@ async function campaignBudget(work, timeoutMs = 10_000) {
       new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error("campaign_read_timeout")); }, timeoutMs); }),
     ]);
   } finally { clearTimeout(timer); controller.abort(); }
+}
+
+async function purgeCampaignRouteCache(slugs) {
+  const secret = process.env.CAMPAIGN_EDGE_SECRET;
+  const unique = [...new Set(slugs.map(normalizeCampaignSlug).filter(Boolean))].slice(0, 20);
+  if (!secret || secret.length < 32 || !unique.length) return;
+  const timestamp = String(Date.now());
+  const body = JSON.stringify({ slugs: unique });
+  const signature = crypto.createHmac("sha256", secret).update(`campaign-purge-v1:${timestamp}:${body}`).digest("hex");
+  const controller = new AbortController();
+  let timer;
+  try {
+    const response = await Promise.race([
+      fetch("https://www.mangolover.com.bd/go/_refresh", { method: "POST", headers: {
+        "Content-Type": "application/json", "x-mlbd-campaign-purge-ts": timestamp,
+        "x-mlbd-campaign-purge-signature": signature,
+      }, body, signal: controller.signal }),
+      new Promise(resolve => { timer = setTimeout(resolve, 700); }),
+    ]);
+    if (response && !response.ok) console.warn(`[Campaign] route cache purge rejected (${response.status})`);
+  } catch { /* Storefront route cache expires within 5 minutes; invalidation is best effort. */ }
+  finally { clearTimeout(timer); controller.abort(); }
 }
 
 async function campaignPages(query, signal) {
@@ -7015,6 +7039,7 @@ async function handleCampaignCreate(req, res) {
     const { data, error } = await staff.supabase.from("campaign_links").insert({ ...patch, org_id: staff.orgId, created_by: staff.user.id })
       .select(CAMPAIGN_LINK_FIELDS).single();
     if (error) throw error;
+    await purgeCampaignRouteCache([data.slug]);
     return res.status(201).json(campaignSerialize({ link: campaignLinkMetadata(data) }, staff.role));
   } catch (error) { return campaignRouteError(res, error); }
 }
@@ -7038,6 +7063,7 @@ async function handleCampaignEdit(req, res) {
       const { data, error } = await staff.supabase.from("campaign_links").update(patch).eq("org_id", staff.orgId).eq("id", existing.id).select(CAMPAIGN_LINK_FIELDS).single();
       if (error) throw error; link = data;
     }
+    await purgeCampaignRouteCache([existing.slug, link.slug]);
     return res.json(campaignSerialize({ link: campaignLinkMetadata(link) }, staff.role));
   } catch (error) { return campaignRouteError(res, error); }
 }
@@ -7062,7 +7088,7 @@ async function handlePublicCampaignClick(req, res) {
   const destinationPath = normalizeDestinationPath(link.destination_path);
   if (!destinationPath) return res.status(503).json(fallback);
   const result = { clickId: null, destinationPath, utm: buildCampaignUtm(link) };
-  if (req.method !== 'POST') return res.json(result);
+  if (req.method !== 'POST') return res.json({ ...result, linkId: link.id });
   const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
   const requestId = req.headers[CAMPAIGN_REQUEST_HEADER];
   if (!verified.ok || typeof requestId !== "string" || !CAMPAIGN_UUID_RE.test(requestId)) return res.json(result);
@@ -7074,7 +7100,7 @@ async function handlePublicCampaignClick(req, res) {
     const saved = await campaignBudget(async signal => {
       const { data, error } = await supabase.rpc("record_campaign_link_click", {
         p_org_id: orgId, p_link_id: link.id, p_slug: slug, p_request_id: requestId,
-        p_visitor_hash: buildCampaignVisitorHash({ ip: verified.context.ip, userAgent, dhakaDay: getBangladeshDateKey(new Date()), secret: process.env.STOREFRONT_CONTEXT_SECRET }) || null,
+        p_visitor_hash: buildCampaignVisitorHash({ ip: verified.context.ip, userAgent, dhakaDay: getBangladeshDateKey(new Date()), secret: process.env.CAMPAIGN_EDGE_SECRET || process.env.STOREFRONT_CONTEXT_SECRET }) || null,
         p_referrer_host: referrerHost, p_device: /iPad|Tablet/i.test(userAgent) ? "tablet" : /Mobile|Android|iPhone/i.test(userAgent) ? "mobile" : userAgent ? "desktop" : "unknown", p_is_bot: isBot,
       }).abortSignal(signal);
       if (error) throw error; return data?.[0];
@@ -7082,6 +7108,30 @@ async function handlePublicCampaignClick(req, res) {
     if (saved && !isBot && saved.is_bot === false) result.clickId = saved.id;
   } catch { console.warn("[Campaign] click write unavailable"); }
   return res.json(result);
+}
+
+async function handleCampaignClickEvent(req, res) {
+  res.setHeader("Cache-Control", "no-store");
+  const event = verifyCampaignReceipt(req.headers[CAMPAIGN_RECEIPT_HEADER], process.env.CAMPAIGN_EDGE_SECRET);
+  if (!event || event.handle !== req.params.handle) return res.status(401).json({ error: "Invalid campaign receipt" });
+  const orgId = await resolveStorefrontHandle(req.params.handle);
+  if (!orgId) return res.status(404).json({ error: "Unknown storefront" });
+  try {
+    const supabase = getServiceSupabase();
+    await campaignBudget(async signal => {
+      const { data: link, error } = await supabase.from("campaign_links").select("id, org_id")
+        .eq("org_id", orgId).eq("id", event.linkId).abortSignal(signal).maybeSingle();
+      if (error) throw error;
+      if (!link) { const missing = new Error("Campaign link not found"); missing.statusCode = 404; throw missing; }
+      await persistCampaignEvent(supabase, orgId, event, signal);
+    }, 1800);
+    return res.status(202).json({ ok: true });
+  } catch (error) {
+    if (error.statusCode === 404) return res.status(404).json({ error: "Campaign link not found" });
+    if (error.message === "campaign_event_conflict") return res.status(409).json({ error: "Campaign event conflict" });
+    console.warn("[Campaign] event persistence unavailable");
+    return res.status(503).json({ error: "Campaign event unavailable", retryable: true });
+  }
 }
 
 // Optional tracking gets one small independent budget. An expired explicitly
@@ -7095,6 +7145,16 @@ async function resolveSubmissionCampaign(req, supabase, orgId, effectiveAt, veri
   try {
     return await campaignBudget(async signal => {
       let clickId = currentId;
+      const receipt = verifyCampaignReceipt(req.headers[CAMPAIGN_RECEIPT_HEADER], process.env.CAMPAIGN_EDGE_SECRET);
+      if (receipt && !receipt.isBot && receipt.handle === "mangoloverbd" && receipt.clickId === currentId) {
+        const workspace = await resolveStorefrontHandle(receipt.handle);
+        if (workspace === orgId) {
+          const { data: link, error: linkError } = await supabase.from("campaign_links").select("id, org_id")
+            .eq("org_id", orgId).eq("id", receipt.linkId).abortSignal(signal).maybeSingle();
+          if (linkError) throw linkError;
+          if (link) await persistCampaignEvent(supabase, orgId, receipt, signal);
+        }
+      }
       if (!supplied) {
         const draftKey = req.body?.abandonedCheckoutDraftKey || req.body?.abandoned_checkout_draft_key;
         if (!isAbandonedCheckoutDraftKey(draftKey)) return {};
@@ -7118,6 +7178,14 @@ async function attributeCapturedCampaign(req, supabase, orgId, checkout, effecti
   if (!verified.ok || typeof clickId !== "string" || !isAbandonedCheckoutDraftKey(clickId)) return;
   try {
     await campaignBudget(async signal => {
+      const receipt = verifyCampaignReceipt(req.headers[CAMPAIGN_RECEIPT_HEADER], process.env.CAMPAIGN_EDGE_SECRET);
+      if (receipt && !receipt.isBot && receipt.clickId === clickId && receipt.handle === "mangoloverbd"
+        && await resolveStorefrontHandle(receipt.handle) === orgId) {
+        const { data: link, error: linkError } = await supabase.from("campaign_links").select("id, org_id")
+          .eq("org_id", orgId).eq("id", receipt.linkId).abortSignal(signal).maybeSingle();
+        if (linkError) throw linkError;
+        if (link) await persistCampaignEvent(supabase, orgId, receipt, signal);
+      }
       const { error } = await supabase.rpc("attribute_campaign_checkout", { p_org_id: orgId, p_checkout_id: checkout.id, p_click_id: clickId, p_effective_at: effectiveAt }).abortSignal(signal);
       if (error) throw error;
     }, 500);
@@ -7130,6 +7198,7 @@ app.patch("/api/campaign-links/:id", handleCampaignEdit);
 app.get("/api/campaign-links/:id", handleCampaignDetail);
 app.post("/api/public/v1/:handle/campaign-links/:slug/clicks", rateLimitPublicRead, handlePublicCampaignClick);
 app.get("/api/public/v1/:handle/campaign-links/:slug/clicks", rateLimitPublicRead, handlePublicCampaignClick);
+app.post("/api/public/v1/:handle/campaign-click-events", handleCampaignClickEvent);
 
 const ABANDONED_CHECKOUT_DASHBOARD_FIELDS = [
   "id",

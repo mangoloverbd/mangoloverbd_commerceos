@@ -6,6 +6,7 @@ import * as campaignLinks from "../../server/campaignLinks.js";
 import * as campaignReport from "../../server/campaignReport.js";
 import * as abandoned from "../../server/abandonedCheckouts.js";
 import * as clientContext from "../../server/clientContext.js";
+import * as campaignEvents from "../../server/campaignEvents.js";
 import { normalizeBusinessReportSource } from "../../server/businessReport.js";
 import crypto from "node:crypto";
 
@@ -51,6 +52,7 @@ export function database(seed: Record<string, Record<string, unknown>[]> = {}) {
           if (operation === "insert") {
             const inputs = Array.isArray(payload) ? payload : [payload];
             if (table === "campaign_links" && inputs.some(input => rows().some(row => row.org_id === input.org_id && row.slug === input.slug))) return resolve({ data: null, error: { code: "23505" } });
+            if (table === "campaign_link_clicks" && inputs.some(input => rows().some(row => row.org_id === input.org_id && row.request_id === input.request_id))) return resolve({ data: null, error: { code: "23505" } });
             result = inputs.map(input => ({ id: uuid(sequence++), created_at: new Date().toISOString(), ...input }));
             tables[table] = [...rows(), ...result];
           } else if (operation === "update") result.forEach(row => Object.assign(row, payload));
@@ -101,14 +103,14 @@ const source = readFileSync("server/index.js", "utf8");
 export function handlers(db: ReturnType<typeof database>, extras: Record<string, unknown> = {}) {
   const app = express(); app.use(express.json());
   const context = createContext({ app, process, console, crypto, Date, URL, AbortController, setTimeout, clearTimeout,
-    ...campaignLinks, ...campaignReport, ...abandoned, ...clientContext, normalizeBusinessReportSource,
+    ...campaignLinks, ...campaignReport, ...abandoned, ...clientContext, ...campaignEvents, normalizeBusinessReportSource,
     // jsdom's AbortSignal lacks Node's timeout(); handlers use it for bounded optional lookups.
     AbortSignal: { timeout: (ms: number) => { const controller = new AbortController(); setTimeout(() => controller.abort(), ms); return controller.signal; } },
     getServiceSupabase: () => db,
     getToken: (req: express.Request) => req.headers.authorization,
     getUser: async (token: string) => ({ user: token ? { id: uuid(1) } : null }),
     getUserOrg: async () => ({ orgId }),
-    resolveStorefrontHandle: async (handle: string) => handle === "mangolover" ? orgId : null,
+    resolveStorefrontHandle: async (handle: string) => handle === "mangoloverbd" ? orgId : null,
     rateLimitPublicRead: (_req: unknown, _res: unknown, next: () => void) => next(),
     getBangladeshDateKey: (date: Date) => date.toISOString().slice(0, 10),
     ...extras,

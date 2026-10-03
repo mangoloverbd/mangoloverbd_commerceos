@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import { database, handlers, http, link, orgId, foreignOrg, signedHeaders, uuid } from "./campaignHandlerHarness";
 
 const seed = (role = "admin") => ({ campaign_links: [link, { ...link, id: uuid(3), org_id: foreignOrg }], user_roles: [{ user_id: uuid(1), org_id: orgId, role, deleted_at: null }] });
@@ -43,6 +44,27 @@ describe("campaign staff HTTP handlers", () => {
     db.tables.campaign_link_clicks = [{ id: uuid(4), org_id: orgId, link_id: link.id }];
     expect((await http(app, "PATCH", `/api/campaign-links/${link.id}`, { slug: "renamed" })).status).toBe(409);
     expect(db.calls.some(call => call.table === "rename_campaign_link")).toBe(true);
+  });
+  it("signs best-effort cache invalidation for create and both old/new edit slugs", async () => {
+    const secret = "test-campaign-edge-secret-0123456789abcdef";
+    process.env.CAMPAIGN_EDGE_SECRET = secret;
+    const requests: { url: string; init: RequestInit }[] = [];
+    const db = database(seed());
+    const { app } = handlers(db, { fetch: async (url: string, init: RequestInit) => { requests.push({ url, init }); return new Response(null, { status: 202 }); } });
+    const created = await http(app, "POST", "/api/campaign-links", { name: "New campaign", slug: "new-campaign", channel: "sms", destination_path: "/" });
+    const edited = await http(app, "PATCH", `/api/campaign-links/${link.id}`, { slug: "mango-renamed", destination_path: "/step/bori" });
+    delete process.env.CAMPAIGN_EDGE_SECRET;
+    expect(created.status).toBe(201); expect(edited.status).toBe(200);
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.url).toBe("https://www.mangolover.com.bd/go/_refresh");
+      const body = String(request.init.body);
+      const timestamp = new Headers(request.init.headers).get("x-mlbd-campaign-purge-ts")!;
+      expect(new Headers(request.init.headers).get("x-mlbd-campaign-purge-signature")).toBe(createHmac("sha256", secret)
+        .update(`campaign-purge-v1:${timestamp}:${body}`).digest("hex"));
+    }
+    expect(JSON.parse(String(requests[0].init.body))).toEqual({ slugs: ["new-campaign"] });
+    expect(JSON.parse(String(requests[1].init.body))).toEqual({ slugs: [link.slug, "mango-renamed"] });
   });
   it("loads more than 1000 clicks/orders and outside-range draft linkage in batches", async () => {
     const clicks = Array.from({ length: 1005 }, (_, n) => ({ id: uuid(n + 100), org_id: orgId, link_id: link.id, is_bot: false, clicked_at: "2026-10-01T03:00:00Z" }));
@@ -99,39 +121,41 @@ describe("campaign staff HTTP handlers", () => {
 describe("campaign public HTTP click handler", () => {
   it('read-only GET lookup returns destination/defaults without recording a click', async () => {
     const db = database({ campaign_links: [link] }); const { app } = handlers(db);
-    const result = await http(app, 'GET', `/api/public/v1/mangolover/campaign-links/${link.slug}/clicks`);
+    const result = await http(app, 'GET', `/api/public/v1/mangoloverbd/campaign-links/${link.slug}/clicks`);
     expect(result.status).toBe(200); expect(result.body.destinationPath).toBe(link.destination_path);
+    expect(result.body.linkId).toBe(link.id);
     expect(result.body.clickId).toBe(null); expect(db.calls.filter(call => call.method === 'rpc')).toHaveLength(0);
   });
   it("requires verified context and trusted request UUID, retries idempotently, keeps archived destinations", async () => {
     const db = database({ ...seed(), campaign_links: [{ ...link, archived_at: "2026-10-01" }] }); const { app } = handlers(db);
-    const path = `/api/public/v1/mangolover/campaign-links/${link.slug}/clicks`;
+    const path = `/api/public/v1/mangoloverbd/campaign-links/${link.slug}/clicks`;
     expect((await http(app, "POST", path, {}, {})).body).toEqual({ clickId: null, destinationPath: link.destination_path, utm: { utm_source: "facebook", utm_medium: "campaign_link", utm_campaign: link.slug } });
     const headers = { ...signedHeaders(), "x-mlbd-campaign-request-id": uuid(99) };
     const first = await http(app, "POST", path, {}, headers); const retry = await http(app, "POST", path, {}, headers);
     expect(first.status).toBe(200); expect(first.body.clickId).toBeTruthy(); expect(retry.body.clickId).toBe(first.body.clickId);
+    expect(first.body).not.toHaveProperty("linkId");
     expect(db.tables.campaign_link_clicks).toHaveLength(1);
     expect(db.tables.campaign_link_clicks[0].visitor_hash).toMatch(/^[a-f0-9]{64}$/);
   });
   it("persists bots but returns no cookie ID; insert outages retain destination/defaults; unknown slug falls back", async () => {
-    const db = database(seed()); const { app } = handlers(db); const path = `/api/public/v1/mangolover/campaign-links/${link.slug}/clicks`;
+    const db = database(seed()); const { app } = handlers(db); const path = `/api/public/v1/mangoloverbd/campaign-links/${link.slug}/clicks`;
     const bot = await http(app, "POST", path, {}, { ...signedHeaders("facebookexternalhit/1.1"), "x-mlbd-campaign-request-id": uuid(99) });
     expect(bot.body.clickId).toBeNull(); expect(db.tables.campaign_link_clicks[0].is_bot).toBe(true);
     db.failures.record_campaign_link_click = { message: "write unavailable" };
     const outage = await http(app, "POST", path, {}, { ...signedHeaders(), "x-mlbd-campaign-request-id": uuid(98) });
     expect(outage.status).toBe(200); expect(outage.body.destinationPath).toBe(link.destination_path); expect(outage.body.utm.utm_source).toBe("facebook");
-    const unknown = await http(app, "POST", "/api/public/v1/mangolover/campaign-links/unknown/clicks", {}, {});
+    const unknown = await http(app, "POST", "/api/public/v1/mangoloverbd/campaign-links/unknown/clicks", {}, {});
     expect(unknown.status).toBe(404); expect(unknown.body.destinationPath).toBe("/");
     expect((await http(app, "POST", "/api/public/v1/foreign/campaign-links/mango-reel/clicks", {}, {})).status).toBe(404);
   });
   it("lookup timeouts fall back independently; malformed request IDs/forged context and malformed slugs never write", async () => {
     const db = database(seed()); const { app } = handlers(db);
-    const path = `/api/public/v1/mangolover/campaign-links/${link.slug}/clicks`;
+    const path = `/api/public/v1/mangoloverbd/campaign-links/${link.slug}/clicks`;
     for (const headers of [{ ...signedHeaders(), "x-mlbd-campaign-request-id": "bad" }, { ...signedHeaders(), "x-mlbd-campaign-request-id": uuid(9), "x-mlbd-client-context": "forged" }]) {
       expect((await http(app, "POST", path, { requestId: uuid(9) }, headers)).body.clickId).toBeNull();
     }
     expect(db.tables.campaign_link_clicks).toBeUndefined();
-    expect((await http(app, "POST", "/api/public/v1/mangolover/campaign-links/invalid_slug/clicks", {}, signedHeaders())).status).toBe(404);
+    expect((await http(app, "POST", "/api/public/v1/mangoloverbd/campaign-links/invalid_slug/clicks", {}, signedHeaders())).status).toBe(404);
     db.hanging.add("campaign_links");
     const timeout = await http(app, "POST", path, {}, signedHeaders());
     expect(timeout.status).toBe(503); expect(timeout.body).toMatchObject({ destinationPath: "/", clickId: null, utm: {} });

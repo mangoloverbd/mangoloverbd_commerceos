@@ -5,6 +5,7 @@ import { createProtectionReview } from "../../server/orderProtectionStore.js";
 import { buildPersonalDataScrubPatch, parseAbandonedCheckoutCapture, hashAbandonedCheckoutDraftKey } from "../../server/abandonedCheckouts.js";
 import { storefrontVisibleVariants } from "../../server/publicCatalog.js";
 import { analyticsSessionFromHeaders, isAnalyticsId } from "../../server/websiteAnalytics.js";
+import { signCampaignReceipt } from "../../server/campaignEvents.js";
 
 const body = { customerName: "Customer", phone: "01712345678", address: "House 12, Road 8, Dhaka", items: [{ variantId: uuid(20), quantity: 2 }], abandonedCheckoutDraftKey: uuid(30), campaign_link_id: uuid(999), campaign_attributed_at: "2000-01-01T00:00:00Z" };
 const captureBody = { draftKey: uuid(30), source: "storefront", sourcePath: "/checkout", customerName: "Customer", phone: "01712345678", address: "Dhaka", items: [{ productName: "Honey", variantName: null, quantity: 2, unitPrice: 100 }], subtotal: 200, deliveryRate: 0, total: 200 };
@@ -35,11 +36,47 @@ function fixture(extra: Record<string, unknown> = {}, seed: Record<string, Recor
   return { ...harness, db, risk };
 }
 describe("campaign attribution through actual purchase HTTP handlers", () => {
+  it("materializes a valid edge receipt before the order attribution FK lookup", async () => {
+    const { app, db } = fixture({});
+    const clickId = uuid(77);
+    const event = { v: 1, handle: "mangoloverbd", linkId: link.id, clickId,
+      clickedAt: new Date(Date.now() - 500).toISOString(), isBot: false, visitorHash: null,
+      referrerHost: "facebook.com", device: "mobile" };
+    process.env.CAMPAIGN_EDGE_SECRET = "test-secret-that-is-at-least-32-characters-long";
+    const receipt = signCampaignReceipt(event, process.env.CAMPAIGN_EDGE_SECRET);
+    const result = await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, {
+      ...signedHeaders(), "x-mlbd-campaign-click-id": clickId, "x-mlbd-campaign-receipt": receipt,
+    });
+    delete process.env.CAMPAIGN_EDGE_SECRET;
+    expect(result.status).toBe(200);
+    expect(db.tables.campaign_link_clicks.find(row => row.id === clickId)).toMatchObject({
+      org_id: orgId, link_id: link.id, clicked_at: event.clickedAt, is_bot: false,
+    });
+    expect(db.tables.orders[0]).toMatchObject({ campaign_link_id: link.id, campaign_click_id: clickId });
+  });
+
+  it("materializes the same receipt before abandoned-checkout attribution runs", async () => {
+    const { app, db } = fixture({});
+    const clickId = uuid(78);
+    const event = { v: 1, handle: "mangoloverbd", linkId: link.id, clickId,
+      clickedAt: new Date(Date.now() - 500).toISOString(), isBot: false, visitorHash: null,
+      referrerHost: null, device: "unknown" };
+    process.env.CAMPAIGN_EDGE_SECRET = "test-secret-that-is-at-least-32-characters-long";
+    const receipt = signCampaignReceipt(event, process.env.CAMPAIGN_EDGE_SECRET);
+    const result = await http(app, "POST", "/api/custom-orders/abandoned-checkouts", captureBody, {
+      ...signedHeaders(), "x-mlbd-campaign-click-id": clickId, "x-mlbd-campaign-receipt": receipt,
+    });
+    delete process.env.CAMPAIGN_EDGE_SECRET;
+    expect(result.status).toBe(201);
+    expect(db.tables.campaign_link_clicks.find(row => row.id === clickId)).toMatchObject({ link_id: link.id, clicked_at: event.clickedAt });
+    expect(db.tables.abandoned_checkouts[0]).toMatchObject({ campaign_link_id: link.id, campaign_click_id: clickId });
+  });
+
   it("clicks then orders locally with verified context, server time and separate risk argument", async () => {
     const { app, db, risk } = fixture();
     const headers = { ...signedHeaders(), "x-mlbd-campaign-request-id": uuid(45) };
-    const clicked = await http(app, "POST", `/api/public/v1/mangolover/campaign-links/${link.slug}/clicks`, {}, headers);
-    const result = await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-campaign-click-id": clicked.body.clickId });
+    const clicked = await http(app, "POST", `/api/public/v1/mangoloverbd/campaign-links/${link.slug}/clicks`, {}, headers);
+    const result = await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, { ...signedHeaders(), "x-mlbd-campaign-click-id": clicked.body.clickId });
     expect(result.status).toBe(200);
     const order = db.tables.orders[0];
     expect(order).toMatchObject({ campaign_link_id: link.id, campaign_click_id: clicked.body.clickId, source: "website", abandoned_draft_key_hash: hashAbandonedCheckoutDraftKey(uuid(30)) });
@@ -51,7 +88,7 @@ describe("campaign attribution through actual purchase HTTP handlers", () => {
       const old = click(uuid(41), new Date(Date.now() - 31 * 86400000).toISOString());
       const { app, db } = fixture({}, { campaign_link_clicks: [click(), old], abandoned_checkouts: [{ id: uuid(31), org_id: orgId, draft_key: uuid(30), status: "open", expires_at: new Date(Date.now() + 86400000).toISOString(), campaign_click_id: uuid(40) }] });
       const headers = { ...signedHeaders(), ...(supplied ? { "x-mlbd-campaign-click-id": old.id } : {}) };
-      expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, headers)).status).toBe(200);
+      expect((await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, headers)).status).toBe(200);
       expect(db.tables.orders[0].campaign_click_id).toBe(supplied ? undefined : uuid(40));
     }
   });
@@ -64,7 +101,7 @@ describe("campaign attribution through actual purchase HTTP handlers", () => {
       if (scenario === "timeout") db.hanging.add("campaign_link_clicks");
       const headers = { ...(scenario === "untrusted" ? {} : signedHeaders()), "x-mlbd-campaign-click-id": scenario === "malformed" ? "invalid" : uuid(40) };
       const started = Date.now();
-      expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, headers)).status).toBe(200);
+      expect((await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, headers)).status).toBe(200);
       expect(Date.now() - started).toBeLessThan(1200);
       expect(db.tables.orders[0]).not.toHaveProperty("campaign_click_id"); expect(risk).toHaveBeenCalledOnce();
     }
@@ -97,7 +134,7 @@ describe("campaign attribution through actual purchase HTTP handlers", () => {
       return { enforced: true, decision: "HOLD", reviewId: db.tables.order_protection_reviews[0].id };
     });
     const { app, db } = fixture({ assessOrderRisk: held }, { abandoned_checkouts: [{ id: uuid(31), org_id: orgId, draft_key: uuid(30), status: "open", expires_at: new Date(Date.now() + 86400000).toISOString() }] });
-    expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-campaign-click-id": uuid(40) })).status).toBe(202);
+    expect((await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, { ...signedHeaders(), "x-mlbd-campaign-click-id": uuid(40) })).status).toBe(202);
     expect(db.tables.orders).toBeUndefined();
     const review = db.tables.order_protection_reviews[0];
     expect(review.campaign_click_id).toBe(uuid(40)); expect(review.abandoned_checkout_id).toBe(uuid(31));
@@ -108,7 +145,7 @@ describe("campaign attribution through actual purchase HTTP handlers", () => {
   });
   it("late capture links by durable draft hash without changing frozen attribution; order detail exposes only campaign summary", async () => {
     const { app, db } = fixture();
-    await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-campaign-click-id": uuid(40) });
+    await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, { ...signedHeaders(), "x-mlbd-campaign-click-id": uuid(40) });
     const original = { ...db.tables.orders[0] };
     await http(app, "POST", "/api/custom-orders/abandoned-checkouts", captureBody, signedHeaders());
     expect(db.tables.orders[0].abandoned_checkout_id).toBe(db.tables.abandoned_checkouts[0].id);
@@ -119,7 +156,7 @@ describe("campaign attribution through actual purchase HTTP handlers", () => {
   it("rejects a Merchant-Suite-only variant at public checkout without creating an order or touching stock", async () => {
     const hidden = { id: uuid(20), org_id: orgId, product_id: uuid(21), stock_quantity: 100, attributes: { size: "500g" }, price_adjustment: 0, storefront_visible: false };
     const { app, db } = fixture({}, { product_variants: [hidden] });
-    const result = await http(app, "POST", "/api/public/v1/mangolover/orders", body, signedHeaders());
+    const result = await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, signedHeaders());
     expect(result.status).toBe(400);
     expect(db.tables.orders ?? []).toHaveLength(0);
     expect(db.tables.product_variants[0].stock_quantity).toBe(100);
@@ -149,24 +186,24 @@ describe("website visit linkage through actual purchase HTTP handlers", () => {
   const factCalls = (db: ReturnType<typeof fixture>["db"]) => db.calls.filter(call => call.table === "record_analytics_order_fact").map(call => call.args[0]);
   it("links an accepted order to the forwarded visit at submission time", async () => {
     const { app, db } = fixture();
-    expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId.toUpperCase() })).status).toBe(200);
+    expect((await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId.toUpperCase() })).status).toBe(200);
     expect(factCalls(db)).toEqual([expect.objectContaining({ p_org_id: orgId, p_order_id: db.tables.orders[0].id, p_session_id: visitId })]);
   });
   it("skips missing or malformed visits and never fails the order when linkage is down", async () => {
     for (const header of [undefined, "not-a-visit"]) {
       const { app, db } = fixture();
-      expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), ...(header ? { "x-mlbd-analytics-session-id": header } : {}) })).status).toBe(200);
+      expect((await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, { ...signedHeaders(), ...(header ? { "x-mlbd-analytics-session-id": header } : {}) })).status).toBe(200);
       expect(factCalls(db)).toHaveLength(0);
     }
     const { app, db } = fixture();
     db.failures.record_analytics_order_fact = { message: "offline" };
-    expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId })).status).toBe(200);
+    expect((await http(app, "POST", "/api/public/v1/mangoloverbd/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId })).status).toBe(200);
     expect(db.tables.orders).toHaveLength(1);
   });
   it("keeps a held order's visit and links it at approval with the original submission time", async () => {
     const held = fixture({ assessOrderRisk: async () => ({ enforced: true, decision: "HOLD", reviewId: uuid(51), attemptId: null }) },
       { order_protection_reviews: [{ id: uuid(51), org_id: orgId, status: "on_hold" }] });
-    expect((await http(held.app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId })).status).toBe(202);
+    expect((await http(held.app, "POST", "/api/public/v1/mangoloverbd/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId })).status).toBe(202);
     expect(held.db.tables.order_protection_reviews[0].analytics_session_id).toBe(visitId);
     const submittedAt = "2026-10-03T08:00:00.000Z";
     const { app, db } = fixture({}, { order_protection_reviews: [{ id: uuid(50), org_id: orgId, status: "on_hold", source_route: "public_v1", created_at: submittedAt,
