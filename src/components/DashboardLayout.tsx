@@ -93,9 +93,9 @@ export function DashboardLayout() {
 
     return (
         <SidebarProvider defaultOpen={readSidebarOpenPreference(true)}>
-            <div className="flex min-h-screen w-full bg-[#f4f3f1] text-[#202020]">
+            <div className="flex h-svh w-full overflow-hidden bg-[#f4f3f1] text-[#202020]">
                 <AppSidebar />
-                <SidebarInset className="flex min-w-0 flex-col bg-transparent">
+                <SidebarInset className="flex h-svh min-h-0 min-w-0 flex-col overflow-hidden bg-transparent">
                     <header className="flex h-[44px] shrink-0 items-center justify-between px-5 text-[#202020]">
                         <nav aria-label="Breadcrumb" className="flex min-w-0 items-center">
                             <div className="flex min-w-0 items-center gap-2 text-[13px] leading-none">
@@ -130,7 +130,7 @@ export function DashboardLayout() {
                             </DropdownMenu>
                         </div>
                     </header>
-                    <main ref={mainRef} className="mx-3 mb-3 min-w-0 flex-1 overflow-auto rounded-[18px] border border-black/10 bg-[#f3f3f3] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] max-md:pb-16">
+                    <main ref={mainRef} className="mx-3 mb-3 min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain rounded-[18px] border border-black/10 bg-[#f3f3f3] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] max-md:pb-16">
                         <Outlet />
                     </main>
                 </SidebarInset>

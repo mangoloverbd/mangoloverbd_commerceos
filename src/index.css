@@ -304,6 +304,8 @@
 
   html {
     background-color: #dedede;
+    /* No rubber-band bounce past the top or bottom of the page. */
+    overscroll-behavior: none;
   }
 
   /* Swiss Typography — strict hierarchy */

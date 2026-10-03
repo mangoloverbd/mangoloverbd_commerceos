@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.50] - 2026-10-03
+
+### Fixed
+
+- Pages no longer bounce or slide past the top and bottom. The dashboard fills the screen, only the content panel scrolls, and the header stays in place.
+
 ## [0.1.0.49] - 2026-10-03
 
 ### Fixed
