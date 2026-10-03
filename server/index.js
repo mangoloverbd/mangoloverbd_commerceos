@@ -449,7 +449,10 @@ import { isWarmRequest } from "./warmToken.js";
 const rateLimitPublicRead = (req, res, next) => {
   if (isWarmRequest(req)) return next();
   if (!rlPublicRead) return next();
-  const ip = getTrustedRequestIp(req) || "unknown";
+  // Server-proxied campaign navigation shares Vercel egress addresses. Only
+  // a verified first-party context may replace that transport identity.
+  const signed = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+  const ip = (signed.ok ? signed.context.ip : getTrustedRequestIp(req)) || "unknown";
   const handle = req.params.handle || req.params.storefrontId || "*";
   return makeRateLimitMiddleware(rlPublicRead, "ip")({ ...req, __forceId: `${ip}:${handle}` }, res, next);
 };
