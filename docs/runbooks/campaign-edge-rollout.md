@@ -66,6 +66,19 @@ On 2026-10-03, four HEAD requests to `/go/bori-campaign-1` returned 302 in
 `bom1::iad1`: the redirect function ran in Virginia while the Suite runs in
 Singapore. The Suite's link lookup alone took ~250 ms from the same machine.
 
+## After (2026-10-04, production, same machine and method)
+
+Middleware live (`x-vercel-id: bom1::...`, no function hop). Eight HEAD requests:
+total 0.147–0.251 s, of which TLS connection 0.084–0.165 s and server time
+0.063–0.164 s (typically ~70 ms; a static asset measured ~50 ms). The first
+request after deploy took 0.88 s while the route cache filled. Redirect URLs no
+longer carry the internal `__campaign_slug`/`slug` values.
+
+One functional GET click, labelled with referrer `claude-rollout-check.invalid`,
+was saved once in the background (id `03b8aadc-106b-4642-ade4-af42f041f00f`);
+HEAD checks created no clicks. Not yet exercised in production: link-edit cache
+purge (needs a staff edit) and a fast checkout using the receipt cookie.
+
 ## Rollback
 
 Revert the storefront PR (or delete `middleware.ts` and redeploy). `/go/*` then
