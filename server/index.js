@@ -119,6 +119,7 @@ import {
 } from "./orderAttribution.js";
 import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
 import { buildBusinessReport, normalizeBusinessReportSource, resolveBusinessReportRequest, resolvePreviousBusinessReportRequest } from "./businessReport.js";
+import { buildDataHealth, normalizeWebsiteReport, resolveAnalyticsReportRequest } from "./analyticsReport.js";
 import {
   ACTIVITY_LOG_PAGE_SIZE,
   activityFetchLimit,
@@ -3076,6 +3077,49 @@ app.get("/api/internal/abandoned-checkouts-maintenance", async (req, res) => {
   }
 });
 
+// Nightly website analytics maintenance: rebuilds daily summaries for a rolling
+// window and deletes raw events after 90 days and visits after 25 months, in
+// bounded batches. Failures are recorded for the Data health tab.
+const ANALYTICS_MAINTENANCE_MAX_PASSES = 5;
+app.get("/api/internal/analytics-rollup", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.headers.authorization, process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const supabase = getServiceSupabase();
+  let orgId = null;
+  try {
+    const { data: workspaceRows, error: workspaceError } = await supabase
+      .from("user_roles")
+      .select("org_id")
+      .is("deleted_at", null)
+      .not("org_id", "is", null);
+    if (workspaceError) throw workspaceError;
+    const workspaceIds = [...new Set((workspaceRows || []).map((row) => row.org_id).filter(Boolean))];
+    if (workspaceIds.length > 1) throw new Error("Analytics maintenance expected one Mango Lover BD workspace");
+    orgId = workspaceIds[0] || null;
+    if (!orgId) return res.json({ ok: true, skipped: "no_workspace" });
+    let result = null;
+    for (let pass = 0; pass < ANALYTICS_MAINTENANCE_MAX_PASSES; pass++) {
+      const { data, error } = await supabase.rpc("run_analytics_maintenance", { p_org_id: orgId, p_now: new Date().toISOString() });
+      if (error) throw error;
+      result = data;
+      if (!data?.more) break;
+    }
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    console.warn("[Analytics] maintenance failed:", err?.code || err?.message || err);
+    if (orgId) {
+      try {
+        await supabase.from("analytics_job_state").upsert({
+          org_id: orgId, job: "rollup", last_failed_at: new Date().toISOString(),
+          last_error: String(err?.code || err?.message || "failed").slice(0, 300),
+        }, { onConflict: "org_id,job" });
+      } catch { console.warn("[Analytics] maintenance failure not recorded"); }
+    }
+    return res.status(500).json({ error: "Could not maintain website analytics" });
+  }
+});
+
 // Pre-fetches risk data for phones on recent orders so the order editor is
 // already populated when an operator opens it. Holds back FRAUD_QUOTA_RESERVE
 // requests for interactive re-checks.
@@ -5463,6 +5507,44 @@ async function buildWebsiteBehaviorDropOffBullets(dropOff, funnel) {
     return fallback;
   }
 }
+
+// First-party website report for the Analytics page (admin only). Traffic uses
+// visits started in the range; acquisition uses orders placed in the range.
+app.get("/api/analytics/website", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin" || !orgId) return res.status(403).json({ error: "Admin only" });
+
+    const now = new Date();
+    const { request, previousRequest } = resolveAnalyticsReportRequest({ from: req.query.from, to: req.query.to }, now);
+    const report = (range) => supabase.rpc("analytics_website_report", { p_org_id: orgId, p_since: range.since, p_until: range.until });
+    const [currentResult, previousResult, latestResult, jobResult] = await Promise.all([
+      report(request),
+      previousRequest ? report(previousRequest) : Promise.resolve({ data: null, error: null }),
+      supabase.from("analytics_events").select("received_at").eq("org_id", orgId).order("received_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("analytics_job_state").select("last_succeeded_at, last_failed_at").eq("org_id", orgId).eq("job", "rollup").maybeSingle(),
+    ]);
+    const missing = [currentResult, previousResult, latestResult, jobResult].find((result) => ["PGRST202", "PGRST205", "42883", "42P01"].includes(result.error?.code));
+    if (missing) return res.status(503).json({ error: "Website analytics is not set up yet", code: "analytics_not_ready" });
+    for (const result of [currentResult, previousResult, latestResult, jobResult]) if (result.error) throw result.error;
+
+    const current = normalizeWebsiteReport(currentResult.data, request.range);
+    const previous = previousRequest ? normalizeWebsiteReport(previousResult.data, previousRequest.range) : null;
+    return res.json({
+      range: request.range,
+      previous_range: previousRequest?.range ?? null,
+      generated_at: now.toISOString(),
+      current,
+      previous,
+      health: buildDataHealth({ latestEventAt: latestResult.data?.received_at, job: jobResult.data, current }, now),
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
 
 app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) => {
   try {
