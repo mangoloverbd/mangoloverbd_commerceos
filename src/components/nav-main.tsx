@@ -47,7 +47,7 @@ export interface NavSection {
 // One layout for both sidebar states: icons stay put in the collapsed rail and
 // text fades as the sidebar widens, so expanding animates instead of snapping.
 const railFade = "transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0";
-const railGroup = "px-1 py-0.5 group-data-[collapsible=icon]:px-1";
+const railGroup = "px-1 pt-0 pb-0.5 group-data-[collapsible=icon]:px-1";
 // 7.5px left padding centres the 17px icon in the 32px row the rail leaves and
 // lines it up with the search icon above.
 const railRowPad =
@@ -300,7 +300,7 @@ function CollapsibleSection({ section }: { section: NavSection }) {
                 exit={reduceMotion ? { opacity: 0 } : "closed"}
             >
             <SidebarGroupContent>
-                <div ref={containerRef} className="relative flex flex-col gap-0.5 list-none">
+                <div ref={containerRef} className="relative flex flex-col gap-px list-none">
                     <TreeSvgLines offsets={offsets} className={railFade} />
                     {routes.map((route, i) => {
                         const isActive = location.pathname === route.link;
@@ -432,7 +432,7 @@ export default function DashboardNavigation({ sections }: { sections: NavSection
                     )}
 
                     <SidebarGroupContent>
-                        <SidebarMenu className="gap-0.5">
+                        <SidebarMenu className="gap-px">
                             {section.routes.map((route) => {
                                 const isActive = location.pathname === route.link;
                                 const hasSubs = route.subs && route.subs.length > 0;
