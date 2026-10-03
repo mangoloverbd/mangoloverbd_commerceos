@@ -17,6 +17,7 @@ export type ProductVariant = {
   stock_quantity: number;
   price_adjustment: number;
   weight_kg: number | null;
+  storefront_visible?: boolean;
   org_id: string | null;
   created_at: string;
 };

@@ -3,6 +3,7 @@ import { database, handlers, http, link, orgId, signedHeaders, uuid, foreignOrg 
 import { assessOrderRisk } from "../../server/risk/pipeline.js";
 import { createProtectionReview } from "../../server/orderProtectionStore.js";
 import { buildPersonalDataScrubPatch, parseAbandonedCheckoutCapture, hashAbandonedCheckoutDraftKey } from "../../server/abandonedCheckouts.js";
+import { storefrontVisibleVariants } from "../../server/publicCatalog.js";
 
 const body = { customerName: "Customer", phone: "01712345678", address: "House 12, Road 8, Dhaka", items: [{ variantId: uuid(20), quantity: 2 }], abandonedCheckoutDraftKey: uuid(30), campaign_link_id: uuid(999), campaign_attributed_at: "2000-01-01T00:00:00Z" };
 const captureBody = { draftKey: uuid(30), source: "storefront", sourcePath: "/checkout", customerName: "Customer", phone: "01712345678", address: "Dhaka", items: [{ productName: "Honey", variantName: null, quantity: 2, unitPrice: 100 }], subtotal: 200, deliveryRate: 0, total: 200 };
@@ -13,7 +14,7 @@ function fixture(extra: Record<string, unknown> = {}, seed: Record<string, Recor
   const harness = handlers(db, {
     PROTECTION_MODE_SETTING_SUFFIX: "order_protection_mode", getSettings: async () => ({}), resolveProtectionMode: () => "active", allowOrderSubmission: async () => true,
     redisClient: null, getTrustedRequestIp: () => "203.0.113.5", normalizeLandingPagePath: () => null,
-    assessOrderRisk: risk, finalizeOrderRisk: async () => {}, resolveOrderRouting: async () => ({ warehouseId: null, weightKg: null, resolvedItems: [{}, {}] }),
+    assessOrderRisk: risk, finalizeOrderRisk: async () => {}, storefrontVisibleVariants, resolveOrderRouting: async () => ({ warehouseId: null, weightKg: null, resolvedItems: [{}, {}] }),
     calculateStorefrontShippingCost: () => ({ cost: 0 }), cartHasFreeDeliveryProduct: () => false,
     getNextManualOrderNumber: async () => 1001, purgeProductCache: async () => {}, checkStorefrontOrderFraud: () => {},
     recordOrderActivity: async () => {}, buildDetailedActivityEvent: () => ({}), sendBulkSms: async () => {},
@@ -112,6 +113,14 @@ describe("campaign attribution through actual purchase HTTP handlers", () => {
     expect(db.tables.orders[0].campaign_click_id).toBe(original.campaign_click_id);
     const detail = await http(app, "GET", `/api/orders/${original.id}`);
     expect(detail.status).toBe(200); expect(detail.body.campaign).toEqual({ name: link.name, slug: link.slug, channel: link.channel });
+  });
+  it("rejects a Merchant-Suite-only variant at public checkout without creating an order or touching stock", async () => {
+    const hidden = { id: uuid(20), org_id: orgId, product_id: uuid(21), stock_quantity: 100, attributes: { size: "500g" }, price_adjustment: 0, storefront_visible: false };
+    const { app, db } = fixture({}, { product_variants: [hidden] });
+    const result = await http(app, "POST", "/api/public/v1/mangolover/orders", body, signedHeaders());
+    expect(result.status).toBe(400);
+    expect(db.tables.orders ?? []).toHaveLength(0);
+    expect(db.tables.product_variants[0].stock_quantity).toBe(100);
   });
 });
 

@@ -36,6 +36,7 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
   const [cog, setCog] = useState(String(variant.cog));
   const [priceAdj, setPriceAdj] = useState(String(variant.price_adjustment ?? 0));
   const [weight, setWeight] = useState(variant.weight_kg == null ? "" : String(variant.weight_kg));
+  const [onWebsite, setOnWebsite] = useState(variant.storefront_visible !== false);
   const [saving, setSaving] = useState(false);
 
   async function saveVariant() {
@@ -49,6 +50,7 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
           cog: parseFloat(cog) || 0,
           price_adjustment: parseFloat(priceAdj) || 0,
           weight_kg: weight === "" ? null : Number(weight),
+          storefront_visible: onWebsite,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -78,10 +80,13 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
   }
 
   return (
-    <div className="grid gap-3 rounded-[14px] border border-black/[0.08] bg-white p-3 md:grid-cols-[1fr_100px_100px_110px_110px_110px_auto] md:items-end">
+    <div className="grid gap-3 rounded-[14px] border border-black/[0.08] bg-white p-3 md:grid-cols-[1fr_100px_100px_110px_110px_110px_110px_auto] md:items-end">
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-widest text-black">Variant</p>
         <p className="mt-1 text-[14px] font-medium text-black">{attrLabel(variant.attributes)}</p>
+        {variant.storefront_visible === false && (
+          <p className="mt-0.5 text-[11px] text-black/50">Merchant Suite only</p>
+        )}
       </div>
       <div>
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-black">Price</p>
@@ -103,6 +108,9 @@ function VariantEditorRow({ product, variant }: { product: Product; variant: Pro
         <label htmlFor={`variant-weight-${variant.id}`} className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-black">Weight</label>
         <input id={`variant-weight-${variant.id}`} aria-label={`Weight for ${attrLabel(variant.attributes)}`} type="number" min={0} step="0.001" value={weight} onChange={(e) => setWeight(e.target.value)} className={EDIT_INPUT_CLS} />
       </div>
+      <div className="flex h-9 items-center">
+        <BuiCheckbox aria-label={`Show ${attrLabel(variant.attributes)} on website`} isSelected={onWebsite} onChange={setOnWebsite}>On website</BuiCheckbox>
+      </div>
       <div className="flex gap-2">
         <RichButton aria-label={`Save variant ${attrLabel(variant.attributes)}`} color="default" size="default" type="button" onClick={saveVariant} disabled={saving} className="h-9 rounded-[8px] px-3">
           {saving ? <Spinner size="sm" /> : "Save"}
@@ -122,6 +130,7 @@ function AddVariantForm({ product }: { product: Product }) {
   const [cog, setCog] = useState("0");
   const [priceAdj, setPriceAdj] = useState("0");
   const [weight, setWeight] = useState("");
+  const [onWebsite, setOnWebsite] = useState(true);
   const [saving, setSaving] = useState(false);
 
   function setRow(index: number, field: "key" | "value", value: string) {
@@ -151,6 +160,7 @@ function AddVariantForm({ product }: { product: Product }) {
           cog: parseFloat(cog) || 0,
           price_adjustment: parseFloat(priceAdj) || 0,
           weight_kg: weight === "" ? null : Number(weight),
+          storefront_visible: onWebsite,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -161,6 +171,7 @@ function AddVariantForm({ product }: { product: Product }) {
       setCog("0");
       setPriceAdj("0");
       setWeight("");
+      setOnWebsite(true);
       toast.success("Variant added");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to add variant");
@@ -189,11 +200,14 @@ function AddVariantForm({ product }: { product: Product }) {
       <button type="button" onClick={() => setRows((current) => [...current, { key: "", value: "" }])} className="mt-2 flex items-center gap-1.5 text-[12px] text-black hover:text-black">
         <Plus className="h-3 w-3" /> Add attribute
       </button>
-      <div className="mt-3 grid gap-3 md:grid-cols-[100px_100px_110px_120px_auto] md:items-end">
+      <div className="mt-3 grid gap-3 md:grid-cols-[100px_100px_110px_120px_110px_auto] md:items-end">
         <BuiInput label="Stock" type="number" value={stock} onChange={setStock} placeholder="0" />
         <BuiInput label="COG (৳)" type="number" value={cog} onChange={setCog} placeholder="0" />
         <BuiInput label="Price ±" type="number" value={priceAdj} onChange={setPriceAdj} placeholder="0" />
         <BuiInput label="New variant weight (kg)" type="number" min={0} value={weight} onChange={setWeight} placeholder="0" />
+        <div className="flex h-9 items-center">
+          <BuiCheckbox isSelected={onWebsite} onChange={setOnWebsite}>On website</BuiCheckbox>
+        </div>
         <RichButton color="default" size="default" type="button" onClick={addVariant} disabled={saving} className="h-9 rounded-[8px]">
           <span className="flex items-center gap-2">{saving ? <Spinner size="sm" /> : <Plus className="h-4 w-4" />}Add variant</span>
         </RichButton>

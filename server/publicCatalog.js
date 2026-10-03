@@ -6,6 +6,12 @@ function toNumber(value, fallback = null) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+// Merchant-Suite-only variants (storefront_visible = false) never reach the
+// public catalog, inventory or checkout. Missing values count as visible.
+export function storefrontVisibleVariants(variants = []) {
+  return (variants || []).filter((variant) => variant?.storefront_visible !== false);
+}
+
 // ─── Catalog (cacheable, no stock truth) ─────────────────────────────────────
 // `available` here = "sellable at all" (published + has a price). The storefront
 // still has to check the inventory endpoint before allowing add-to-cart, but
