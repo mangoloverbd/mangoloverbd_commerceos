@@ -16,7 +16,7 @@ describe("sidebar active item style", () => {
   it("uses calmer typography for active and inactive navigation labels", () => {
     expect(source).toContain("font-sans");
     expect(source).not.toContain("font-sf-text");
-    expect(source).toContain("text-[14px]");
+    expect(source).toContain("text-[13px]");
     expect(source).toContain('const activeNavLabelClass = "font-medium text-[#111]"');
     expect(source).toContain('const inactiveNavLabelClass =');
     expect(source).toContain('"font-normal text-[#5d5c58] group-hover/nav-link:text-[#1b1b19] group-hover/nav-button:text-[#1b1b19]"');
