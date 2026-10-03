@@ -45,6 +45,7 @@ type Order = {
   source?: string | null;
   origin_source?: string | null;
   landing_page_path?: string | null;
+  campaign_link_id?: string | null;
   notes?: string | null;
   hold_reason_code?: string | null;
   hold_reason_detail?: string | null;
@@ -67,6 +68,7 @@ type Order = {
 };
 
 type OrderDetailResponse = {
+  campaign?: { name: string; slug: string; channel: string } | null;
   order: Order;
   items: OrderEditorItem[];
   canEditItems: boolean;
@@ -510,6 +512,7 @@ export default function OrderDetail() {
       <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
         <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
         <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span>{cancellationReasonLabel && <Chip data-testid="order-editor-cancellation-reason" color="yellow" className="max-w-[min(28rem,60vw)] self-center truncate" title={`Cancelled: ${cancellationReasonLabel}`}>Cancelled: {cancellationReasonLabel}</Chip>}</div>
+        {detail?.campaign && order?.campaign_link_id && <Link to={`/campaign-links/${order.campaign_link_id}`} className="inline-flex min-h-8 items-center rounded-lg bg-black/5 px-3 text-xs hover:bg-black/10">Campaign: {detail.campaign.name}</Link>}
         {order?.id && (
           <Link to={customerProfileHref(order)} aria-label="View customer profile" className="inline-flex h-8 min-w-0 items-center gap-2 rounded-full bg-black/[0.04] px-3 text-[12px] text-black transition-colors hover:bg-black/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25">
             <UserCircle weight="light" size={14} aria-hidden="true" className="shrink-0" />
