@@ -19,12 +19,21 @@ describe('campaign detail', () => {
   it('shows click-day chart, honest funnel and partial-delivery orders without financial UI', async () => {
     vi.mocked(apiFetch).mockResolvedValue(campaignJson(campaignReportFixture())); setup();
     expect(await screen.findByRole('heading', { name: 'Himsagar reel' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /orders from these clicks/i })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /clicks by dhaka click day/i })).toBeInTheDocument();
     expect(screen.getByText('Partial delivery')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '#1024' })).toHaveAttribute('href', '/orders/order-1');
-    expect(screen.queryByText('Estimated delivered profit')).not.toBeInTheDocument();
+    expect(screen.getByText('Admins only')).toBeInTheDocument();
+    expect(screen.queryByText(/courier fees recorded/i)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /all campaign links/i })).toHaveAttribute('href', '/campaign-links?from=2026-10-03&to=2026-10-03');
     expect(screen.getByText(/outcomes may change/i)).toBeInTheDocument();
+  });
+  it('switches the daily chart between clicks, orders and revenue', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue(campaignJson(campaignReportFixture())); setup();
+    await user.click(await screen.findByRole('button', { name: 'Orders' }));
+    expect(screen.getByRole('img', { name: /orders from these clicks by dhaka click day/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Revenue' }));
+    expect(screen.getByRole('img', { name: /delivered revenue by dhaka click day/i })).toBeInTheDocument();
   });
   it('lets a team member archive and restore a shared link', async () => {
     const user = userEvent.setup(); const report = campaignReportFixture();
