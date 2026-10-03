@@ -191,6 +191,24 @@ describe("live visitor tracking", () => {
     }
   });
 
+  it("records first-party analytics independently of presence and never fails the ping", () => {
+    const pingStart = serverSource.indexOf('app.post("/api/live-visitor/ping"');
+    const pingRoute = serverSource.slice(pingStart, serverSource.indexOf('app.get("/api/live-visitors"', pingStart));
+    const helper = serverSource.slice(serverSource.indexOf("async function recordWebsiteAnalyticsHit"), pingStart);
+
+    expect(pingRoute).toContain("if (countsAsLivePresence(hitKind))");
+    expect(pingRoute.indexOf("recordWebsiteAnalyticsHit")).toBeGreaterThan(pingRoute.indexOf("} catch (err) {"));
+    expect(pingRoute).toContain("return res.json({ ok: true, ...presence, ...analytics });");
+    // Fixed workspace, bot filter, rate limit and a bounded database call.
+    expect(helper).toContain("isBotUserAgent(userAgent)");
+    expect(helper).toContain("await isAnalyticsWorkspace(orgId)");
+    expect(helper).toContain("rlAnalyticsWrite.limit(");
+    expect(helper).toContain('rpc("record_analytics_hit"');
+    expect(helper).toContain("AbortSignal.timeout(ANALYTICS_RPC_TIMEOUT_MS)");
+    expect(helper).toContain('data === "expired" ? { rotate: true } : {}');
+    expect(helper).toMatch(/catch \(err\) \{[\s\S]*return \{\};/);
+  });
+
   it("serves a tracker script that parses as JavaScript", () => {
     const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
     const bodyStart = serverSource.indexOf("return res.send(`", trackerStart) + "return res.send(`".length;

@@ -54,6 +54,10 @@ const runtimeTables = Object.freeze([
   "customer_notes",
   "campaign_links",
   "campaign_link_clicks",
+  "analytics_sessions",
+  "analytics_events",
+  "analytics_session_pages",
+  "analytics_session_products",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
@@ -162,6 +166,18 @@ begin
      or not has_table_privilege('service_role', 'public.campaign_link_clicks', 'select')
      or not has_table_privilege('service_role', 'public.campaign_link_clicks', 'insert') then
     raise exception 'Campaign server privileges are missing';
+  end if;
+  if has_table_privilege('anon', 'public.analytics_sessions', 'select,insert,update,delete')
+     or has_table_privilege('authenticated', 'public.analytics_sessions', 'select,insert,update,delete')
+     or has_table_privilege('authenticated', 'public.analytics_events', 'select,insert,update,delete')
+     or has_function_privilege('authenticated', 'public.record_analytics_hit(uuid, uuid, uuid, uuid, text, text, text, integer, timestamptz, jsonb)', 'execute')
+     or has_table_privilege('service_role', 'public.analytics_events', 'update,truncate') then
+    raise exception 'Website analytics exposes excess privileges';
+  end if;
+  if not has_table_privilege('service_role', 'public.analytics_sessions', 'select,insert,update')
+     or not has_table_privilege('service_role', 'public.analytics_events', 'select,insert')
+     or not has_function_privilege('service_role', 'public.record_analytics_hit(uuid, uuid, uuid, uuid, text, text, text, integer, timestamptz, jsonb)', 'execute') then
+    raise exception 'Website analytics server privileges are missing';
   end if;
   select count(*) into runtime_table_count
   from pg_class

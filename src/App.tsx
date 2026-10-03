@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import Dashboard from "./pages/Dashboard";
@@ -11,7 +11,7 @@ import Dashboard from "./pages/Dashboard";
 // Auth is split too — unauthenticated visitors only download it on demand.
 const Auth = lazy(() => import("./pages/Auth"));
 const Settings = lazy(() => import("./pages/Settings"));
-const OrderAnalysis = lazy(() => import("./pages/OrderAnalysis"));
+const Analytics = lazy(() => import("./pages/Analytics"));
 const OrderChat = lazy(() => import("./pages/OrderChat"));
 const Products = lazy(() => import("./pages/Products"));
 const Warehouses = lazy(() => import("./pages/Warehouses"));
@@ -52,6 +52,12 @@ function RouteFallback() {
 }
 
 const queryClient = new QueryClient();
+
+// Order Analysis was renamed Analytics; keep old bookmarks and links working.
+function LegacyAnalyticsRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/analytics${search}`} replace />;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -123,7 +129,8 @@ const AppRoutes = () => (
       <Route path="/campaign-links" element={<CampaignLinks />} />
       <Route path="/campaign-links/:id" element={<CampaignLinkDetail />} />
       <Route path="/order-protection" element={<AdminRoute><OrderProtection /></AdminRoute>} />
-      <Route path="/order-analysis" element={<AdminRoute><OrderAnalysis /></AdminRoute>} />
+      <Route path="/analytics" element={<AdminRoute><Analytics /></AdminRoute>} />
+      <Route path="/order-analysis" element={<LegacyAnalyticsRedirect />} />
       <Route path="/order-chat" element={<OrderChat />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/online-store" element={<AdminRoute><OnlineStore /></AdminRoute>} />

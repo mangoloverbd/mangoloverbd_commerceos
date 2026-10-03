@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("OrderAnalysis PostHog behavior intelligence", () => {
   const serverSource = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
-  const pageSource = readFileSync(resolve(process.cwd(), "src/pages/OrderAnalysis.tsx"), "utf8");
+  const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Analytics.tsx"), "utf8");
 
   it("adds an authenticated org-scoped PostHog website behavior endpoint", () => {
     const routeStart = serverSource.indexOf('app.get("/api/order-analysis/website-behavior"');
@@ -40,7 +40,7 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(serverSource).not.toContain("countIf(properties.bucket = 'purchased') AS purchases");
   });
 
-  it("renders the approved Option A website behavior panel on Order Analysis", () => {
+  it("renders the approved Option A website behavior panel on the Analytics overview tab", () => {
     const metricCards = pageSource.indexOf("Projected 30D Revenue");
     const behaviorPanel = pageSource.indexOf("<WebsiteBehaviorPanel");
     const salesCalendar = pageSource.indexOf("<GitHubCalendar", behaviorPanel);
@@ -77,7 +77,12 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("WEBSITE_BEHAVIOR_REFETCH_MS");
     expect(pageSource).toContain("refetchInterval: WEBSITE_BEHAVIOR_REFETCH_MS");
     expect(pageSource).toContain("PostHog query credentials are not configured");
-    expect(behaviorPanel).toBeGreaterThan(metricCards);
-    expect(salesCalendar).toBeGreaterThan(behaviorPanel);
+    // Analytics tabs: website behavior lives on Overview; forecast cards and calendar on AI forecast.
+    const overviewPanel = pageSource.indexOf('id="analytics-panel-overview"');
+    const forecastPanel = pageSource.indexOf('id="analytics-panel-forecast"');
+    expect(behaviorPanel).toBeGreaterThan(overviewPanel);
+    expect(behaviorPanel).toBeLessThan(forecastPanel);
+    expect(metricCards).toBeGreaterThan(forecastPanel);
+    expect(salesCalendar).toBeGreaterThan(metricCards);
   });
 });

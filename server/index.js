@@ -4,7 +4,8 @@ import cors from "cors";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
-import { normalizeTrackerKind, shouldForwardTrackerHit } from "./trackerHits.js";
+import { countsAsLivePresence, normalizeTrackerKind, shouldForwardTrackerHit } from "./trackerHits.js";
+import { parseTrackerAnalyticsHit } from "./websiteAnalytics.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { isIP } from "node:net";
@@ -289,6 +290,7 @@ let rlHandleClaimIp = null;
 let rlPublicRead = null;
 let rlAbandonedCheckoutCapture = null;
 let rlOrderDevice = null;
+let rlAnalyticsWrite = null;
 
 // Cloudflare edge-cache purge + warm-token bypass (Task 1).
 const CLOUDFLARE_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID || "";
@@ -341,6 +343,13 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
       redis: redisClient,
       limiter: Ratelimit.slidingWindow(10, "15 m"),
       prefix: "rl:order-submission:device",
+    });
+    // First-party analytics writes from the public tracker: page views and
+    // steps only (heartbeats never reach the database).
+    rlAnalyticsWrite = new Ratelimit({
+      redis: redisClient,
+      limiter: Ratelimit.slidingWindow(120, "60 s"),
+      prefix: "rl:analytics:write",
     });
     console.log("[RateLimit] Upstash Redis connected.");
   } catch (err) {
@@ -8505,31 +8514,71 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   var org = ${JSON.stringify(orgId)};
   var currentScript = document.currentScript;
   var endpoint = new URL("/api/live-visitor/ping", currentScript && currentScript.src ? currentScript.src : window.location.href).toString();
-  var storageKey = "merchant_suite_live_sid_" + org;
+  var VISITOR_COOKIE = "ms_vid", SESSION_COOKIE = "ms_sid", EXCLUDE_COOKIE = "ms_exclude";
+  var YEAR = 31536000, VISIT_IDLE_SECONDS = 1800;
   function makeId(){
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==="x"?r:(r&3|8);return v.toString(16);});
   }
-  function getSessionId(){
-    try {
-      var existing = sessionStorage.getItem(storageKey);
-      if (existing) return existing;
-      var next = makeId();
-      sessionStorage.setItem(storageKey, next);
-      return next;
-    } catch (_) {
-      return makeId();
-    }
+  // First-party cookies on the storefront's own domain: a random browser id
+  // (1 year) and a random visit id that ends after 30 minutes without activity.
+  function readCookie(name){
+    var match = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+    return match ? decodeURIComponent(match[1]) : "";
   }
-  var sessionId = getSessionId();
-  function ping(bucket, explicit, kind){
-    if (document.hidden) return;
-    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true, kind: kind || "heartbeat" });
+  function writeCookie(name, value, maxAge){
+    try { document.cookie = name + "=" + encodeURIComponent(value) + "; Path=/; Max-Age=" + maxAge + "; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : ""); } catch (_) {}
+  }
+  // Team and test browsers opt out once with ?ms_exclude=1 (undo with ?ms_exclude=0).
+  if (/[?&]ms_exclude=1(&|$)/.test(location.search)) writeCookie(EXCLUDE_COOKIE, "1", YEAR);
+  if (/[?&]ms_exclude=0(&|$)/.test(location.search)) writeCookie(EXCLUDE_COOKIE, "", 0);
+  if (readCookie(EXCLUDE_COOKIE) === "1") return;
+  var visitorId = readCookie(VISITOR_COOKIE) || makeId();
+  writeCookie(VISITOR_COOKIE, visitorId, YEAR);
+  // Meaningful activity (page view, step, time on page) keeps the visit alive;
+  // heartbeats do not, so an idle open tab cannot stretch a visit forever.
+  function touchVisit(startNew){
+    var id = (!startNew && readCookie(SESSION_COOKIE)) || makeId();
+    writeCookie(SESSION_COOKIE, id, VISIT_IDLE_SECONDS);
+    return id;
+  }
+  var sessionId = touchVisit(false);
+  var activeMs = 0, visibleSince = document.hidden ? 0 : Date.now();
+  function send(payload, retried){
     try {
-      fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
+      fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), mode: "cors", keepalive: true, credentials: "omit" })
+        .then(function(res){ return res.json(); })
+        .then(function(result){
+          // The server ended an idle visit: start a new one and resend this hit once.
+          if (result && result.rotate && !retried && payload.kind !== "engage") {
+            sessionId = touchVisit(true);
+            payload.session_id = sessionId;
+            payload.event_id = makeId();
+            send(payload, true);
+          }
+        })
+        .catch(function(){});
     } catch (_) {}
   }
+  function ping(bucket, explicit, kind, extra){
+    if (document.hidden && kind !== "engage") return;
+    if (kind !== "heartbeat") sessionId = touchVisit(false);
+    var payload = { org_id: org, session_id: sessionId, visitor_id: visitorId, event_id: makeId(), url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true, kind: kind || "heartbeat" };
+    if (extra) for (var key in extra) payload[key] = extra[key];
+    send(payload, false);
+  }
+  function flushEngagement(){
+    if (visibleSince) { activeMs += Date.now() - visibleSince; visibleSince = document.hidden ? 0 : Date.now(); }
+    var seconds = Math.round(activeMs / 1000);
+    activeMs = 0;
+    if (seconds >= 1) ping(null, false, "engage", { active_seconds: seconds });
+  }
+  var lastPath = "";
   function pingCurrentLocation(){
+    // Same-path history updates (query or scroll state) are not new page views.
+    if (location.pathname === lastPath) return;
+    if (lastPath) flushEngagement();
+    lastPath = location.pathname;
     ping(null, false, "pageview");
   }
   // Heartbeats only keep the live visitor count fresh; they are not page views.
@@ -8551,10 +8600,57 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   window.addEventListener("locationchange", function(){ setTimeout(pingCurrentLocation, 0); });
   pingCurrentLocation();
   setInterval(heartbeat, 20000);
-  document.addEventListener("visibilitychange", function(){ if (!document.hidden) heartbeat(); });
+  document.addEventListener("visibilitychange", function(){
+    if (document.hidden) { flushEngagement(); visibleSince = 0; }
+    else { visibleSince = Date.now(); heartbeat(); }
+  });
+  window.addEventListener("pagehide", flushEngagement);
   window.addEventListener("focus", heartbeat);
 })();`);
 });
+
+// ─── First-party website analytics (Phase 2a) ───────────────────────────────
+// Only the provisioned storefront workspace may record analytics; a visitor
+// cannot write into an arbitrary org by changing the tracker's org parameter.
+const analyticsWorkspaceCache = createTtlCache({ prefix: "analytics:workspace:", maxEntries: 20 });
+const ANALYTICS_RPC_TIMEOUT_MS = 1500;
+
+async function isAnalyticsWorkspace(orgId) {
+  return analyticsWorkspaceCache.get(orgId, 5 * 60 * 1000, async () => {
+    const handle = await getStorefrontHandle(orgId);
+    return { value: Boolean(handle), cacheable: true };
+  });
+}
+
+async function recordWebsiteAnalyticsHit(req, { orgId, kind, bucket }) {
+  const userAgent = String(req.headers["user-agent"] || "");
+  if (isBotUserAgent(userAgent)) return {};
+  const hit = parseTrackerAnalyticsHit(req.body, {
+    kind, bucket, userAgent,
+    country: req.headers["x-vercel-ip-country"], city: req.headers["x-vercel-ip-city"],
+    now: new Date(),
+  });
+  if (!hit) return {};
+  try {
+    if (!(await isAnalyticsWorkspace(orgId))) return {};
+    if (rlAnalyticsWrite) {
+      const { success } = await rlAnalyticsWrite.limit(`${getTrustedRequestIp(req) || "unknown"}:${orgId}`);
+      if (!success) return {};
+    }
+    const { data, error } = await getServiceSupabase().rpc("record_analytics_hit", {
+      p_org_id: orgId, p_event_id: hit.eventId, p_session_id: hit.sessionId, p_visitor_id: hit.visitorId,
+      p_kind: hit.event, p_path: hit.path, p_product_slug: hit.productSlug, p_active_seconds: hit.activeSeconds,
+      p_received_at: hit.receivedAt, p_entry: hit.entry,
+    }).abortSignal(AbortSignal.timeout(ANALYTICS_RPC_TIMEOUT_MS));
+    if (error) throw error;
+    // The visit went idle for over 30 minutes: ask the tracker to start a new one.
+    return data === "expired" ? { rotate: true } : {};
+  } catch (err) {
+    // Analytics must never break the tracker or the live visitor count.
+    console.warn("[Analytics] hit not recorded:", err?.code || err?.message || err);
+    return {};
+  }
+}
 
 app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
   const { org_id, session_id, url, referrer, bucket, explicit, kind } = req.body || {};
@@ -8562,25 +8658,31 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
     return res.status(400).json({ error: "Invalid live visitor payload" });
   }
 
+  const hitKind = normalizeTrackerKind(kind);
+  const behaviorBucket = validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url);
+  let presence = { tracked: false };
   try {
-    const allKey = `visitors:${org_id}:all`;
-    const behaviorBucket = validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url);
-    const bucketKey = behaviorBucket ? `visitors:${org_id}:${behaviorBucket}` : null;
-    const now = Date.now();
-    await addLiveVisitorPresence(allKey, session_id, now);
-    if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
+    if (countsAsLivePresence(hitKind)) {
+      const allKey = `visitors:${org_id}:all`;
+      const bucketKey = behaviorBucket ? `visitors:${org_id}:${behaviorBucket}` : null;
+      const now = Date.now();
+      await addLiveVisitorPresence(allKey, session_id, now);
+      if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
+    }
     // Heartbeats update live presence only; forwarding every 20-second ping to
     // PostHog made up most of its event volume. Legacy pings without `kind`
     // (tabs still running the old script) keep being forwarded.
-    const hitKind = normalizeTrackerKind(kind);
     if (shouldForwardTrackerHit(hitKind)) {
       await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket, explicit });
     }
-    return res.json({ ok: true, tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" });
+    presence = { tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" };
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);
-    return res.json({ ok: true, tracked: false });
   }
+  // First-party analytics is independent of presence: a Redis failure must not
+  // drop the page view, and an analytics failure never fails the ping.
+  const analytics = await recordWebsiteAnalyticsHit(req, { orgId: org_id, kind: hitKind, bucket: validLiveVisitorBucket(bucket) });
+  return res.json({ ok: true, ...presence, ...analytics });
 });
 
 app.get("/api/live-visitors", async (req, res) => {
