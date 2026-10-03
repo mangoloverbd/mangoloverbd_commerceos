@@ -16,7 +16,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useNavCounts } from "@/hooks/useNavCounts";
 import { Link } from "react-router-dom";
-import { CaretUpDown } from "@phosphor-icons/react";
+import { CaretUpDown, LinkSimple } from "@phosphor-icons/react";
 
 export function AppSidebar() {
     const { open, toggleSidebar } = useSidebar();
@@ -168,6 +168,10 @@ export function AppSidebar() {
 
         const sections = [product];
         sections.push(reports);
+        sections.push({ label: "Marketing", collapsible: true, routes: [{
+            id: "campaign-links", title: "Campaign Links", link: "/campaign-links",
+            icon: <LinkSimple weight="light" size={15} className={iconCls} />,
+        }] });
         sections.push(workspace);
         sections.push(socialInbox);
         return sections;

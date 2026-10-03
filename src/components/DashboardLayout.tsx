@@ -37,6 +37,7 @@ const routeBreadcrumbLabels: Record<string, string> = {
     "/order-analysis": "AI Analysis",
     "/reports/staff": "Staff Performance",
     "/reports/business": "Business Report",
+    "/campaign-links": "Campaign Links",
     "/inbox/facebook": "Facebook",
     "/inbox/instagram": "Instagram",
     "/inbox/whatsapp": "WhatsApp",
@@ -48,6 +49,7 @@ const routeBreadcrumbLabels: Record<string, string> = {
 };
 
 function getBreadcrumbLabel(pathname: string) {
+    if (pathname.startsWith('/campaign-links/')) return 'Campaign Link';
     return routeBreadcrumbLabels[pathname] ?? "Overview";
 }
 

@@ -112,6 +112,14 @@ export async function createProtectionReview({ supabase, review }) {
     score: review.score,
     reason_codes: review.reasonCodes,
     expires_at: expiresAt,
+    ...(typeof review.abandonedDraftKeyHash === 'string' && /^[0-9a-f]{64}$/.test(review.abandonedDraftKeyHash)
+      ? { abandoned_draft_key_hash: review.abandonedDraftKeyHash } : {}),
+    // Separate server-resolved argument, never a spread of the browser body.
+    ...(review.campaignAttribution?.campaign_link_id && review.campaignAttribution?.campaign_click_id && review.campaignAttribution?.campaign_attributed_at ? {
+      campaign_link_id: review.campaignAttribution.campaign_link_id,
+      campaign_click_id: review.campaignAttribution.campaign_click_id,
+      campaign_attributed_at: review.campaignAttribution.campaign_attributed_at,
+    } : {}),
   };
   const { data, error } = await supabase
     .from("order_protection_reviews")

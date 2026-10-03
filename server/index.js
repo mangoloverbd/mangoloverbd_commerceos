@@ -12,6 +12,8 @@ import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 import Stripe from "stripe";
 import { computeOrderCogs } from "./cog.js";
+import { normalizeCampaignSlug, normalizeCampaignChannel, normalizeDestinationPath, buildCampaignUtm, isBotUserAgent, resolveCampaignAttribution, buildCampaignVisitorHash } from "./campaignLinks.js";
+import { buildCampaignReport, resolveCampaignReportRequest, redactCampaignFinancials } from "./campaignReport.js";
 import { buildOverviewData } from "./overview.js";
 import { buildSalesTrend } from "./salesTrend.js";
 import { calculateStorefrontShippingCost, cartHasFreeDeliveryProduct } from "./shippingCalculation.js";
@@ -114,7 +116,7 @@ import {
   isCancelledStatus,
 } from "./orderAttribution.js";
 import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
-import { buildBusinessReport, resolveBusinessReportRequest, resolvePreviousBusinessReportRequest } from "./businessReport.js";
+import { buildBusinessReport, normalizeBusinessReportSource, resolveBusinessReportRequest, resolvePreviousBusinessReportRequest } from "./businessReport.js";
 import {
   ACTIVITY_LOG_PAGE_SIZE,
   activityFetchLimit,
@@ -447,7 +449,10 @@ import { isWarmRequest } from "./warmToken.js";
 const rateLimitPublicRead = (req, res, next) => {
   if (isWarmRequest(req)) return next();
   if (!rlPublicRead) return next();
-  const ip = getTrustedRequestIp(req) || "unknown";
+  // Server-proxied campaign navigation shares Vercel egress addresses. Only
+  // a verified first-party context may replace that transport identity.
+  const signed = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+  const ip = (signed.ok ? signed.context.ip : getTrustedRequestIp(req)) || "unknown";
   const handle = req.params.handle || req.params.storefrontId || "*";
   return makeRateLimitMiddleware(rlPublicRead, "ip")({ ...req, __forceId: `${ip}:${handle}` }, res, next);
 };
@@ -6897,6 +6902,290 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
+const CAMPAIGN_LINK_FIELDS = "id, org_id, slug, name, channel, destination_path, creator_name, post_url, notes, created_by, created_at, updated_at, archived_at";
+const CAMPAIGN_ORDER_FIELDS = "id, org_id, order_number, created_at, source, status, courier_status, fulfillment_status, return_status, product, price, courier_fee, campaign_link_id, campaign_click_id, campaign_attributed_at, abandoned_checkout_id, abandoned_draft_key_hash";
+const CAMPAIGN_CLICK_HEADER = "x-mlbd-campaign-click-id";
+const CAMPAIGN_REQUEST_HEADER = "x-mlbd-campaign-request-id";
+const CAMPAIGN_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CAMPAIGN_PAGE_SIZE = 500;
+const CAMPAIGN_BATCH_SIZE = 200;
+
+// Do not use getUserOrg's cached role to choose financial visibility.
+async function campaignStaff(req, res) {
+  res.setHeader("Cache-Control", "private, no-store");
+  const token = getToken(req);
+  const { user, missingRole } = await getUser(token);
+  if (!user) { res.status(missingRole ? 403 : 401).json({ error: missingRole ? "Workspace access required" : "Unauthorized" }); return null; }
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase.from("user_roles").select("org_id, role")
+    .eq("user_id", user.id).is("deleted_at", null).maybeSingle();
+  if (error) throw error;
+  if (!data?.org_id || !["admin", "team_member"].includes(data.role)) {
+    res.status(403).json({ error: "Workspace access required" }); return null;
+  }
+  return { supabase, orgId: data.org_id, role: data.role, user };
+}
+
+function campaignSerialize(value, role) {
+  return role === "admin" ? value : redactCampaignFinancials(value);
+}
+
+function campaignLinkMetadata(link) {
+  // Never serialize raw RPC/table rows (or future financial mapping fields).
+  return Object.fromEntries(CAMPAIGN_LINK_FIELDS.split(", ").filter(key => key !== "org_id")
+    .filter(key => Object.hasOwn(link, key)).map(key => [key, link[key]]));
+}
+
+function parseCampaignMutation(body, creating = false) {
+  const allowed = new Set(["name", "slug", "channel", "destination_path", "creator_name", "post_url", "notes", "archived"]);
+  const invalid = () => { const error = new Error("Invalid campaign link metadata"); error.statusCode = 400; throw error; };
+  if (!body || typeof body !== "object" || Array.isArray(body) || !Object.keys(body).length || Object.keys(body).some(key => !allowed.has(key))) invalid();
+  const patch = {};
+  for (const [key, normalizer] of [["slug", normalizeCampaignSlug], ["channel", normalizeCampaignChannel], ["destination_path", normalizeDestinationPath]]) {
+    if (body[key] !== undefined || creating) {
+      const value = normalizer(key === "destination_path" && creating && body[key] === undefined ? "/" : body[key]);
+      if (!value) invalid();
+      patch[key] = value;
+    }
+  }
+  for (const [key, max] of [["name", 120], ["creator_name", 120], ["post_url", 2048], ["notes", 2000]]) {
+    if (body[key] === undefined && !(creating && key === "name")) continue;
+    if (key !== "name" && (body[key] === null || body[key] === "")) { patch[key] = null; continue; }
+    if (typeof body[key] !== "string" || body[key].trim().length > max || (key === "name" && !body[key].trim())) invalid();
+    patch[key] = body[key].trim();
+    if (key === "post_url") {
+      try { const url = new URL(patch[key]); if (!/^https?:$/.test(url.protocol) || url.username || url.password || /\s/.test(patch[key])) invalid(); }
+      catch { invalid(); }
+    }
+  }
+  if (body.archived !== undefined) {
+    if (typeof body.archived !== "boolean") invalid();
+    patch.archived_at = body.archived ? new Date().toISOString() : null;
+  }
+  return patch;
+}
+
+async function campaignBudget(work, timeoutMs = 10_000) {
+  const controller = new AbortController();
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => work(controller.signal)),
+      new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error("campaign_read_timeout")); }, timeoutMs); }),
+    ]);
+  } finally { clearTimeout(timer); controller.abort(); }
+}
+
+async function campaignPages(query, signal) {
+  const rows = [];
+  for (let start = 0; ; start += CAMPAIGN_PAGE_SIZE) {
+    if (signal.aborted) throw new Error("campaign_read_timeout");
+    const { data, error } = await query().order("id", { ascending: true }).range(start, start + CAMPAIGN_PAGE_SIZE - 1).abortSignal(signal);
+    if (error) throw error;
+    if (!Array.isArray(data)) throw new Error("campaign_read_incomplete");
+    rows.push(...data);
+    if (data.length < CAMPAIGN_PAGE_SIZE) return rows;
+  }
+}
+
+async function campaignBatches(ids, query, signal) {
+  const rows = [];
+  const unique = [...new Set(ids.filter(Boolean))];
+  for (let start = 0; start < unique.length; start += CAMPAIGN_BATCH_SIZE) {
+    rows.push(...await campaignPages(() => query(unique.slice(start, start + CAMPAIGN_BATCH_SIZE)), signal));
+  }
+  return rows;
+}
+
+async function loadCampaignReport(supabase, orgId, query, linkId) {
+  const request = resolveCampaignReportRequest({ from: query.from, to: query.to });
+  if (query.include_archived !== undefined && !["true", "false", "1", "0"].includes(query.include_archived)) {
+    const error = new Error("Invalid include_archived"); error.statusCode = 400; throw error;
+  }
+  return campaignBudget(async signal => {
+    const links = await campaignPages(() => {
+      let q = supabase.from("campaign_links").select(CAMPAIGN_LINK_FIELDS).eq("org_id", orgId);
+      if (linkId) q = q.eq("id", linkId);
+      else if (!["true", "1"].includes(query.include_archived)) q = q.is("archived_at", null);
+      return q;
+    }, signal);
+    if (linkId && !links.length) { const error = new Error("Campaign link not found"); error.statusCode = 404; throw error; }
+    const clicks = await campaignBatches(links.map(link => link.id), ids => supabase.from("campaign_link_clicks")
+      .select("id, org_id, link_id, clicked_at, is_bot, visitor_hash").eq("org_id", orgId).in("link_id", ids)
+      .eq("is_bot", false).gte("clicked_at", request.since).lt("clicked_at", request.until), signal);
+    const orders = await campaignBatches(clicks.map(click => click.id), ids => supabase.from("orders")
+      .select(CAMPAIGN_ORDER_FIELDS).eq("org_id", orgId).in("campaign_click_id", ids), signal);
+    const checkouts = await campaignBatches(clicks.map(click => click.id), ids => supabase.from("abandoned_checkouts")
+      .select("id, org_id, draft_key, campaign_link_id, campaign_click_id, campaign_attributed_at").eq("org_id", orgId).in("campaign_click_id", ids), signal);
+    const linkageQuery = () => supabase.from("orders").select("id, org_id, abandoned_checkout_id, abandoned_draft_key_hash").eq("org_id", orgId);
+    const checkoutOrderLinks = [
+      ...await campaignBatches(checkouts.map(row => row.id), ids => linkageQuery().in("abandoned_checkout_id", ids), signal),
+      ...await campaignBatches(checkouts.map(row => hashAbandonedCheckoutDraftKey(row.draft_key)), ids => linkageQuery().in("abandoned_draft_key_hash", ids), signal),
+    ];
+    const unattributedOrders = (await campaignPages(() => supabase.from("orders").select(CAMPAIGN_ORDER_FIELDS).eq("org_id", orgId)
+      .is("campaign_link_id", null).is("campaign_click_id", null)
+      .gte("created_at", request.since).lt("created_at", request.until), signal))
+      .filter(order => normalizeBusinessReportSource(order.source) === "website");
+    const orderItems = await campaignBatches([...orders, ...unattributedOrders].map(row => row.id), ids => supabase.from("order_items")
+      .select("id, org_id, order_id, product_id, product_name, quantity").eq("org_id", orgId).in("order_id", ids), signal);
+    const itemOrders = new Set(orderItems.map(item => item.order_id));
+    const needsLegacyCatalog = [...orders, ...unattributedOrders].some(order => !itemOrders.has(order.id)) || orderItems.some(item => !item.product_id);
+    const catalogQuery = () => supabase.from("products").select("id, org_id, name, cog").eq("org_id", orgId);
+    // Canonical orders need only referenced costs. Legacy summaries still use
+    // the shared helper's fuzzy matching against one paginated catalog, never a
+    // full workspace reload for each link row.
+    const products = needsLegacyCatalog
+      ? await campaignPages(catalogQuery, signal)
+      : await campaignBatches(orderItems.map(item => item.product_id), ids => catalogQuery().in("id", ids), signal);
+    const report = buildCampaignReport({ links, clicks, orders, checkouts, checkoutOrderLinks, unattributedOrders, orderItems, products, request: { ...request, orgId } });
+    return linkId ? { ...report, link: report.rows[0] } : report;
+  });
+}
+
+function campaignRouteError(res, error) {
+  const status = error.statusCode || (["23505", "23514"].includes(error.code) ? 409 : error.code === "P0002" ? 404 : 503);
+  if (status === 503) res.setHeader("Retry-After", "5");
+  return res.status(status).json({ error: status === 503 ? "Campaign data unavailable. Please retry." : status === 409 ? "Slug already exists or is locked after its first click" : error.message || "Campaign link not found", ...(status === 503 ? { retryable: true } : {}) });
+}
+
+async function handleCampaignList(req, res) {
+  try {
+    const staff = await campaignStaff(req, res); if (!staff) return;
+    const report = await loadCampaignReport(staff.supabase, staff.orgId, req.query);
+    return res.json(campaignSerialize(report, staff.role));
+  } catch (error) { return campaignRouteError(res, error); }
+}
+async function handleCampaignDetail(req, res) {
+  try {
+    const staff = await campaignStaff(req, res); if (!staff) return;
+    if (!isAbandonedCheckoutDraftKey(req.params.id)) return res.status(404).json({ error: "Campaign link not found" });
+    const report = await loadCampaignReport(staff.supabase, staff.orgId, req.query, req.params.id);
+    return res.json(campaignSerialize(report, staff.role));
+  } catch (error) { return campaignRouteError(res, error); }
+}
+async function handleCampaignCreate(req, res) {
+  try {
+    const staff = await campaignStaff(req, res); if (!staff) return;
+    const patch = parseCampaignMutation(req.body, true);
+    const { data, error } = await staff.supabase.from("campaign_links").insert({ ...patch, org_id: staff.orgId, created_by: staff.user.id })
+      .select(CAMPAIGN_LINK_FIELDS).single();
+    if (error) throw error;
+    return res.status(201).json(campaignSerialize({ link: campaignLinkMetadata(data) }, staff.role));
+  } catch (error) { return campaignRouteError(res, error); }
+}
+async function handleCampaignEdit(req, res) {
+  try {
+    const staff = await campaignStaff(req, res); if (!staff) return;
+    if (!isAbandonedCheckoutDraftKey(req.params.id)) return res.status(404).json({ error: "Campaign link not found" });
+    const patch = parseCampaignMutation(req.body);
+    const { data: existing, error: readError } = await staff.supabase.from("campaign_links").select(CAMPAIGN_LINK_FIELDS)
+      .eq("org_id", staff.orgId).eq("id", req.params.id).maybeSingle();
+    if (readError) throw readError;
+    if (!existing) return res.status(404).json({ error: "Campaign link not found" });
+    let link = existing;
+    if (patch.slug && patch.slug !== existing.slug) {
+      const { data, error } = await staff.supabase.rpc("rename_campaign_link", { p_org_id: staff.orgId, p_link_id: existing.id, p_slug: patch.slug });
+      if (error) throw error;
+      link = data?.[0]; if (!link) return res.status(404).json({ error: "Campaign link not found" });
+    }
+    delete patch.slug;
+    if (Object.keys(patch).length) {
+      const { data, error } = await staff.supabase.from("campaign_links").update(patch).eq("org_id", staff.orgId).eq("id", existing.id).select(CAMPAIGN_LINK_FIELDS).single();
+      if (error) throw error; link = data;
+    }
+    return res.json(campaignSerialize({ link: campaignLinkMetadata(link) }, staff.role));
+  } catch (error) { return campaignRouteError(res, error); }
+}
+
+async function handlePublicCampaignClick(req, res) {
+  res.setHeader("Cache-Control", "no-store");
+  const fallback = { clickId: null, destinationPath: "/", utm: {} };
+  const slug = normalizeCampaignSlug(req.params.slug);
+  if (!slug) return res.status(404).json(fallback);
+  let orgId, supabase, link;
+  try {
+    await campaignBudget(async signal => {
+      orgId = await resolveStorefrontHandle(req.params.handle);
+      if (!orgId) return;
+      supabase = getServiceSupabase();
+      const { data, error } = await supabase.from("campaign_links").select("id, org_id, slug, channel, destination_path")
+        .eq("org_id", orgId).eq("slug", slug).abortSignal(signal).maybeSingle();
+      if (error) throw error; link = data;
+    }, 500);
+  } catch { return res.status(503).json({ ...fallback, retryable: true }); }
+  if (!link) return res.status(404).json(fallback);
+  const destinationPath = normalizeDestinationPath(link.destination_path);
+  if (!destinationPath) return res.status(503).json(fallback);
+  const result = { clickId: null, destinationPath, utm: buildCampaignUtm(link) };
+  if (req.method !== 'POST') return res.json(result);
+  const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+  const requestId = req.headers[CAMPAIGN_REQUEST_HEADER];
+  if (!verified.ok || typeof requestId !== "string" || !CAMPAIGN_UUID_RE.test(requestId)) return res.json(result);
+  const userAgent = verified.context.userAgent || "";
+  const isBot = isBotUserAgent(userAgent);
+  let referrerHost = null;
+  try { const url = new URL(req.body?.referrer || ""); if (/^https?:$/.test(url.protocol) && url.hostname.length <= 253) referrerHost = url.hostname; } catch { /* Optional, untrusted hint. */ }
+  try {
+    const saved = await campaignBudget(async signal => {
+      const { data, error } = await supabase.rpc("record_campaign_link_click", {
+        p_org_id: orgId, p_link_id: link.id, p_slug: slug, p_request_id: requestId,
+        p_visitor_hash: buildCampaignVisitorHash({ ip: verified.context.ip, userAgent, dhakaDay: getBangladeshDateKey(new Date()), secret: process.env.STOREFRONT_CONTEXT_SECRET }) || null,
+        p_referrer_host: referrerHost, p_device: /iPad|Tablet/i.test(userAgent) ? "tablet" : /Mobile|Android|iPhone/i.test(userAgent) ? "mobile" : userAgent ? "desktop" : "unknown", p_is_bot: isBot,
+      }).abortSignal(signal);
+      if (error) throw error; return data?.[0];
+    }, 500);
+    if (saved && !isBot && saved.is_bot === false) result.clickId = saved.id;
+  } catch { console.warn("[Campaign] click write unavailable"); }
+  return res.json(result);
+}
+
+// Optional tracking gets one small independent budget. An expired explicitly
+// supplied click must not resurrect the older draft click; body fields are never
+// a trusted source. The strict signed v1 context remains unchanged.
+async function resolveSubmissionCampaign(req, supabase, orgId, effectiveAt, verified) {
+  if (!verified.ok) return {};
+  const supplied = Object.hasOwn(req.headers, CAMPAIGN_CLICK_HEADER);
+  const currentId = req.headers[CAMPAIGN_CLICK_HEADER];
+  if (supplied && (typeof currentId !== "string" || !isAbandonedCheckoutDraftKey(currentId))) return {};
+  try {
+    return await campaignBudget(async signal => {
+      let clickId = currentId;
+      if (!supplied) {
+        const draftKey = req.body?.abandonedCheckoutDraftKey || req.body?.abandoned_checkout_draft_key;
+        if (!isAbandonedCheckoutDraftKey(draftKey)) return {};
+        const { data: draft, error } = await supabase.from("abandoned_checkouts").select("campaign_click_id")
+          .eq("org_id", orgId).eq("draft_key", draftKey.toLowerCase()).abortSignal(signal).maybeSingle();
+        if (error) throw error; clickId = draft?.campaign_click_id;
+      }
+      if (!clickId) return {};
+      const { data: click, error } = await supabase.from("campaign_link_clicks").select("id, org_id, link_id, clicked_at, is_bot")
+        .eq("org_id", orgId).eq("id", clickId).abortSignal(signal).maybeSingle();
+      if (error) throw error;
+      return resolveCampaignAttribution({ click, orgId, effectiveAt });
+    }, 500);
+  } catch { console.warn("[Campaign] attribution lookup unavailable"); return {}; }
+}
+
+async function attributeCapturedCampaign(req, supabase, orgId, checkout, effectiveAt) {
+  if (!checkout) return;
+  const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
+  const clickId = req.headers[CAMPAIGN_CLICK_HEADER];
+  if (!verified.ok || typeof clickId !== "string" || !isAbandonedCheckoutDraftKey(clickId)) return;
+  try {
+    await campaignBudget(async signal => {
+      const { error } = await supabase.rpc("attribute_campaign_checkout", { p_org_id: orgId, p_checkout_id: checkout.id, p_click_id: clickId, p_effective_at: effectiveAt }).abortSignal(signal);
+      if (error) throw error;
+    }, 500);
+  } catch { console.warn("[Campaign] capture attribution unavailable"); }
+}
+
+app.get("/api/campaign-links", handleCampaignList);
+app.post("/api/campaign-links", handleCampaignCreate);
+app.patch("/api/campaign-links/:id", handleCampaignEdit);
+app.get("/api/campaign-links/:id", handleCampaignDetail);
+app.post("/api/public/v1/:handle/campaign-links/:slug/clicks", rateLimitPublicRead, handlePublicCampaignClick);
+app.get("/api/public/v1/:handle/campaign-links/:slug/clicks", rateLimitPublicRead, handlePublicCampaignClick);
+
 const ABANDONED_CHECKOUT_DASHBOARD_FIELDS = [
   "id",
   "status",
@@ -6913,6 +7202,9 @@ const ABANDONED_CHECKOUT_DASHBOARD_FIELDS = [
   "contacted_at",
   "created_at",
   "updated_at",
+  "campaign_link_id",
+  "campaign_click_id",
+  "campaign_attributed_at",
 ].join(", ");
 
 app.get("/api/abandoned-checkouts", async (req, res) => {
@@ -7112,7 +7404,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
     const now = new Date();
     const { data: draft, error: draftError } = await supabase
       .from("abandoned_checkouts")
-      .select(ABANDONED_CHECKOUT_DASHBOARD_FIELDS)
+      .select(`${ABANDONED_CHECKOUT_DASHBOARD_FIELDS}, draft_key`)
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
@@ -7180,6 +7472,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
     );
 
     const conversionAt = now.toISOString();
+    const campaignAttribution = await resolveSubmissionCampaign({ headers: { [CAMPAIGN_CLICK_HEADER]: draft.campaign_click_id }, body: {} }, supabase, orgId, conversionAt, { ok: true });
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert({
@@ -7203,6 +7496,8 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         warehouse_auto: true,
         weight_kg: routing.weightKg,
         abandoned_checkout_id: draft.id,
+        ...(draft.draft_key ? { abandoned_draft_key_hash: hashAbandonedCheckoutDraftKey(draft.draft_key) } : {}),
+        ...campaignAttribution,
         source: "website",
         origin_source: "abandoned_checkout",
         origin_actor_kind: "user",
@@ -7497,7 +7792,16 @@ app.get("/api/orders/:id", async (req, res) => {
       });
     }
     const enrichedItems = await enrichOrderItems(supabase, orgId, displayItems);
-    return res.json({ order, items: enrichedItems, canEditItems: !isOrderDispatched(order) });
+    let campaign = null;
+    if (order.campaign_link_id) {
+      try {
+        const { data, error } = await supabase.from("campaign_links").select("name, slug, channel")
+          .eq("org_id", orgId).eq("id", order.campaign_link_id).maybeSingle();
+        if (error) throw error;
+        if (data) campaign = { name: data.name, slug: data.slug, channel: data.channel };
+      } catch { console.warn("[Campaign] order summary unavailable"); }
+    }
+    return res.json({ order, items: enrichedItems, canEditItems: !isOrderDispatched(order), campaign });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -7856,6 +8160,7 @@ app.post("/api/custom-orders/abandoned-checkouts", async (req, res) => {
 
     const now = new Date();
     const checkout = await persistAbandonedCheckoutCapture(supabase, orgId, capture, now);
+    await attributeCapturedCampaign(req, supabase, orgId, checkout, now.toISOString());
     const draftKeyHash = hashAbandonedCheckoutDraftKey(capture.draftKey);
     if (checkout && draftKeyHash) {
       const { data: matchingOrder, error: matchingOrderError } = await supabase
@@ -13758,6 +14063,17 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     }
 
     const routing = await resolveOrderRouting(supabase, orgId, orderItems);
+    let heldDraftHash = /^[0-9a-f]{64}$/.test(review.abandoned_draft_key_hash || '') ? review.abandoned_draft_key_hash : null;
+    if (!heldDraftHash && review.abandoned_checkout_id) {
+      try {
+        heldDraftHash = await campaignBudget(async signal => {
+          const { data, error } = await supabase.from("abandoned_checkouts").select("draft_key")
+            .eq("org_id", orgId).eq("id", review.abandoned_checkout_id).abortSignal(signal).maybeSingle();
+          if (error) throw error;
+          return hashAbandonedCheckoutDraftKey(data?.draft_key);
+        }, 500);
+      } catch { console.warn("[Campaign] held checkout linkage lookup unavailable"); }
+    }
     const orderNumber = await getNextManualOrderNumber(orgId);
     const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -13778,6 +14094,13 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
       warehouse_auto: true,
       weight_kg: routing.weightKg,
       notes: review.notes,
+      ...(heldDraftHash ? { abandoned_draft_key_hash: heldDraftHash } : {}),
+      ...(review.abandoned_checkout_id ? { abandoned_checkout_id: review.abandoned_checkout_id } : {}),
+      ...(review.campaign_link_id && review.campaign_click_id && review.campaign_attributed_at ? {
+        campaign_link_id: review.campaign_link_id,
+        campaign_click_id: review.campaign_click_id,
+        campaign_attributed_at: review.campaign_attributed_at,
+      } : {}),
     })
     .select("*")
     .single();
@@ -14130,6 +14453,7 @@ app.get("/api/order-protection/accuracy", async (req, res) => {
 // the storefront is public. Validates stock, calculates shipping from zones,
 // creates the order, and decrements variant stock.
 async function handlePublicHandleOrderSubmit(req, res) {
+  const campaignEffectiveAt = new Date().toISOString();
   try {
     const orgId = await resolveStorefrontHandle(req.params.handle);
     if (!orgId) return res.status(404).json({ error: "not_found" });
@@ -14175,8 +14499,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
       return res.status(400).json({ error: "Each item must have a variantId" });
     }
 
+    const campaignAttribution = await resolveSubmissionCampaign(req, supabase, orgId, campaignEffectiveAt, verified);
     const protection = await assessOrderRisk({
       orgId, route: "public_v1", body: { ...body, customerName, phone: cleanPhone, shippingZoneId },
+      campaignAttribution,
       headers: req.headers, requestIp: getTrustedRequestIp(req),
       deps: { supabase, redis: redisClient, secret: process.env.ORDER_PROTECTION_HASH_SECRET,
         contextSecret: process.env.STOREFRONT_CONTEXT_SECRET, turnstileSecret: process.env.TURNSTILE_SECRET_KEY,
@@ -14375,6 +14701,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
       notes: null,
       ...(abandonedDraftKeyHash ? { abandoned_draft_key_hash: abandonedDraftKeyHash } : {}),
       ...(matchingAbandonedCheckout ? { abandoned_checkout_id: matchingAbandonedCheckout.id } : {}),
+      ...campaignAttribution,
     };
 
     const { data: order, error: orderErr } = await supabase

@@ -234,6 +234,13 @@ describe("pending order prev/next navigation", () => {
 });
 
 describe("order editor cancellation reason", () => {
+  it('links the server campaign summary to its campaign detail', async () => {
+    apiFetch.mockImplementation((url: string) => Promise.resolve(response(url === '/api/orders/order-1'
+      ? { order: { ...orderOne, campaign_link_id: 'link-1' }, items: [], canEditItems: true, campaign: { name: 'Mango reel', slug: 'mango-reel', channel: 'facebook' } }
+      : { products: [] })));
+    renderNewTabOrderDetail('/orders/order-1');
+    expect(await screen.findByRole('link', { name: 'Campaign: Mango reel' })).toHaveAttribute('href', '/campaign-links/link-1');
+  });
   function mockOrder(order: Record<string, unknown>) {
     apiFetch.mockImplementation((url: string) => {
       if (url === "/api/orders/order-1") return Promise.resolve(response({ order, items: [], canEditItems: true }));

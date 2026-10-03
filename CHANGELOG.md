@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.45] - 2026-10-03
+
+### Added
+
+- Campaign Links: admins and team members can create, edit, copy, archive and restore shared links, with click-day reports, daily charts, checkout/order funnels and recent attributed orders. Costs, courier fees and estimated profit remain admin-only.
+- Follow a campaign from its order-detail chip. New orders, captured checkouts and held orders retain validated 30-day attribution; late captures reconcile without changing an order's original campaign.
+- Storefront campaign links preserve incoming URL parameters and fill missing UTMs automatically. Signed first-party cookies forward attribution through existing checkout and abandoned-cart paths; tracking failures never block shopping.
+
+### Fixed
+
+- Held-order approval retains the checkout draft hash even when the checkout capture arrives later, avoiding duplicate campaign funnel counts.
+
 ## [0.1.0.44] - 2026-09-30
 
 ### Added

@@ -1,7 +1,7 @@
 import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "../clientContext.js";
 import { createProtectionReview } from "../orderProtectionStore.js";
 import { verifyTurnstileToken } from "../turnstile.js";
-import { normalizeBdPhone } from "../abandonedCheckouts.js";
+import { normalizeBdPhone, hashAbandonedCheckoutDraftKey } from "../abandonedCheckouts.js";
 import { buildRiskContext } from "./context.js";
 import { decideRisk } from "./decide.js";
 import { detectSignals } from "./detect.js";
@@ -33,7 +33,7 @@ const outcome = (mode, decision, extra = {}) => ({
 
 // A hold is only returned when a staff review row exists. If the review cannot
 // be written, the order proceeds normally rather than being lost.
-async function createHold({ deps, orgId, route, body, customer, items, score, reasonCodes }) {
+async function createHold({ deps, orgId, route, body, customer, items, score, reasonCodes, campaignAttribution }) {
   try {
     const review = {
       orgId, route,
@@ -43,7 +43,8 @@ async function createHold({ deps, orgId, route, body, customer, items, score, re
       notes: customer?.notes ?? text(body?.notes, 500),
       items: items ?? (Array.isArray(body?.items) ? body.items.slice(0, 100) : []),
       shippingZoneId: body?.shippingZoneId || body?.shipping_zone_id,
-      score, reasonCodes,
+      score, reasonCodes, campaignAttribution,
+      abandonedDraftKeyHash: hashAbandonedCheckoutDraftKey(body?.abandonedCheckoutDraftKey),
     };
     const created = typeof deps.createReview === "function"
       ? await deps.createReview(review)
@@ -57,12 +58,12 @@ async function createHold({ deps, orgId, route, body, customer, items, score, re
   }
 }
 
-export async function assessOrderRisk({ orgId, route, body, headers = {}, requestIp, deps = {} }) {
+export async function assessOrderRisk({ orgId, route, body, headers = {}, requestIp, campaignAttribution = {}, deps = {} }) {
   const mode = resolveProtectionMode({ envMode: deps.envMode ?? process.env.ORDER_PROTECTION_MODE, settingMode: await setting(deps, `${orgId}:order_protection_mode`) });
   if (mode === "off") return outcome(mode, "ALLOW", { enforced: false });
 
   try {
-    return await assess({ mode, orgId, route, body, headers, requestIp, deps });
+    return await assess({ mode, orgId, route, body, headers, requestIp, campaignAttribution, deps });
   } catch {
     // An engine fault must never cost a customer their order.
     console.warn("[OrderRisk] assessment failed");
@@ -70,7 +71,7 @@ export async function assessOrderRisk({ orgId, route, body, headers = {}, reques
   }
 }
 
-async function assess({ mode, orgId, route, body, headers, requestIp, deps }) {
+async function assess({ mode, orgId, route, body, headers, requestIp, campaignAttribution, deps }) {
   if (typeof deps.secret !== "string" || deps.secret.length < 16) {
     console.warn("[OrderRisk] ORDER_PROTECTION_HASH_SECRET is not configured");
     throw new Error("Risk hash secret missing");
@@ -122,7 +123,7 @@ async function assess({ mode, orgId, route, body, headers, requestIp, deps }) {
     // such a review links to the already-placed order (see
     // approveHeldProtectionReview) and never creates a duplicate.
     if (assessment.decision === "HOLD" && route !== "custom_webhook") {
-      const reviewId = await createHold({ deps, orgId, route, body, customer: ctx.customer, items: ctx.items, score: assessment.score, reasonCodes: signals.map(signal => signal.code) });
+      const reviewId = await createHold({ deps, orgId, route, body, customer: ctx.customer, items: ctx.items, score: assessment.score, reasonCodes: signals.map(signal => signal.code), campaignAttribution });
       if (reviewId) {
         if (attemptId) {
           try { await linkAttemptToReview(deps.supabase, { orgId, attemptId, reviewId }); }
@@ -138,7 +139,7 @@ async function assess({ mode, orgId, route, body, headers, requestIp, deps }) {
   if (route === "custom_webhook") return outcome(mode, "ALLOW", { ...base, reasons: row.reasons });
   if (assessment.decision !== "HOLD") return outcome(mode, assessment.decision, base);
 
-  const reviewId = await createHold({ deps, orgId, route, body, customer: ctx.customer, items: ctx.items, score: assessment.score, reasonCodes: signals.map(signal => signal.code) });
+  const reviewId = await createHold({ deps, orgId, route, body, customer: ctx.customer, items: ctx.items, score: assessment.score, reasonCodes: signals.map(signal => signal.code), campaignAttribution });
   // A HOLD that cannot be stored must never silently become an order. Fail
   // closed with a retryable HOLD so the customer retries (no order lost, no
   // fraud waved through) and the failure is loud in logs and monitoring.

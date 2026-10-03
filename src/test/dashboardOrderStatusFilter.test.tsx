@@ -59,6 +59,8 @@ const orders = [
   {
     id: "cancelled", shopify_order_id: 3, order_number: "#103", customer_name: "Cancelled Customer",
     phone: "01700000003", address: "Dhaka", product: "Honey", quantity: 1, price: 700,
+    // Navigation assertions use the default recent-cancellations window.
+    cancelled_at: new Date().toISOString(),
     status: "cancelled", created_at: "2026-09-03T00:00:00.000Z", fraud_checked: false,
     fraud_data: null, delivery_rate: 60, fulfillment_status: null, warehouse_id: "main",
   },
@@ -328,8 +330,10 @@ describe("dashboard order status filter", () => {
 
     const cancelledTab = await screen.findByRole("radio", { name: /Cancelled.*1/ });
     expect(cancelledTab).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Cancelled Customer");
-    expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Cancelled Customer");
+      expect(screen.getByTestId("dashboard-orders")).not.toHaveTextContent("Pending Customer");
+    });
     expect(sessionStorage.getItem("dashboard-fulfillment-tab")).toBe("cancelled");
   });
 
