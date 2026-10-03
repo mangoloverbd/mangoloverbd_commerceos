@@ -8,15 +8,10 @@ import {
     SidebarHeader,
     useSidebar,
 } from "@/components/ui/sidebar";
-import {
-    CommandDialog,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-} from "@/components/ui/command";
-import { DialogTitle } from "@/components/ui/dialog";
+import { Command as CommandPrimitive } from "cmdk";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Dialog } from "@/components/ui/dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -30,7 +25,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useNavCounts } from "@/hooks/useNavCounts";
 import { Link, useNavigate } from "react-router-dom";
-import { CaretDoubleLeft, CaretUpDown, LinkSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretUpDown, LinkSimple, MagnifyingGlass, X } from "@phosphor-icons/react";
 
 // Two-tone gear: the outer ring is the lighter tone, the spokes the darker one.
 function SettingsIcon() {
@@ -42,13 +37,18 @@ function SettingsIcon() {
     );
 }
 
+// Same decisive ease-out as the campaign link popup so both popups feel identical.
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
+
 // Jump to any page the current user can open. ⌘K / Ctrl+K opens it from anywhere.
 function SidebarSearch({ sections }: { sections: NavSection[] }) {
     const [open, setOpen] = useState(false);
+    const reduceMotion = useReducedMotion();
     const navigate = useNavigate();
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
+            if (event.isComposing) return;
             if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
                 event.preventDefault();
                 setOpen((current) => !current);
@@ -57,6 +57,11 @@ function SidebarSearch({ sections }: { sections: NavSection[] }) {
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, []);
+
+    const go = (link: string) => {
+        setOpen(false);
+        navigate(link);
+    };
 
     return (
         <>
@@ -70,31 +75,73 @@ function SidebarSearch({ sections }: { sections: NavSection[] }) {
                 <span className="flex-1 truncate whitespace-nowrap transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">Search…</span>
                 <kbd className="rounded-[5px] border border-[#e3e2de] bg-white px-1 font-sans text-[10.5px] font-medium leading-4 text-[#8d8c87] transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">⌘K</kbd>
             </button>
-            <CommandDialog open={open} onOpenChange={setOpen}>
-                <DialogTitle className="sr-only">Search pages</DialogTitle>
-                <CommandInput placeholder="Search pages…" />
-                <CommandList>
-                    <CommandEmpty>No pages found.</CommandEmpty>
-                    {sections.map((section) => (
-                        <CommandGroup key={section.label} heading={section.label}>
-                            {section.routes.filter((route) => !route.disabled).map((route) => (
-                                <CommandItem
-                                    key={route.id}
-                                    value={`${route.title} ${section.label}`}
-                                    onSelect={() => {
-                                        setOpen(false);
-                                        navigate(route.link);
-                                    }}
-                                    className="gap-2.5 [--fillg:#5d5c58]"
-                                >
-                                    <span className="flex h-[18px] w-[18px] items-center justify-center [&>svg]:h-[18px] [&>svg]:w-[18px]">{route.icon}</span>
-                                    {route.title}
-                                </CommandItem>
-                            ))}
-                        </CommandGroup>
-                    ))}
-                </CommandList>
-            </CommandDialog>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <AnimatePresence>
+                    {open && (
+                        <DialogPrimitive.Portal forceMount>
+                            <DialogPrimitive.Overlay asChild forceMount>
+                                <motion.div
+                                    className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1, transition: { duration: 0.2, ease: EASE_OUT } }}
+                                    exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeIn" } }}
+                                />
+                            </DialogPrimitive.Overlay>
+                            <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
+                                <DialogPrimitive.Content asChild forceMount>
+                                    <motion.div
+                                        className="pointer-events-auto relative grid max-h-[85dvh] w-full max-w-[560px] gap-4 overflow-hidden rounded-[20px] bg-[#FAFAF8] p-6 shadow-[0_30px_80px_-30px_rgba(11,11,10,0.5)] outline-none"
+                                        style={{ transformOrigin: "center" }}
+                                        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 10 }}
+                                        animate={reduceMotion ? { opacity: 1, transition: { duration: 0.15 } } : { opacity: 1, scale: 1, y: 0, transition: { duration: 0.26, ease: EASE_OUT } }}
+                                        exit={reduceMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, scale: 0.97, y: 6, transition: { duration: 0.16, ease: "easeIn" } }}
+                                    >
+                                        <DialogPrimitive.Close aria-label="Close" className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg text-black/55 transition-[background-color,color,transform] duration-150 ease-out hover:bg-black/[0.05] hover:text-black active:scale-[0.94]">
+                                            <X weight="light" size={18} />
+                                        </DialogPrimitive.Close>
+                                        <div className="flex flex-col gap-1.5 pr-8">
+                                            <p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Search</p>
+                                            <DialogPrimitive.Title className="font-sf-display text-[19px] font-semibold tracking-tight">Jump to a page</DialogPrimitive.Title>
+                                        </div>
+                                        <CommandPrimitive label="Search pages" className="grid gap-3">
+                                            <div className="flex h-11 items-center gap-2 rounded-md border border-input bg-white px-3 focus-within:ring-2 focus-within:ring-black">
+                                                <MagnifyingGlass aria-hidden="true" weight="light" size={16} className="shrink-0 text-black/45" />
+                                                <CommandPrimitive.Input autoFocus placeholder="Search pages…" className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-black/35" />
+                                            </div>
+                                            <CommandPrimitive.List className="max-h-[320px] overflow-y-auto overscroll-contain">
+                                                <CommandPrimitive.Empty className="py-6 text-center text-sm text-black/50">No pages found.</CommandPrimitive.Empty>
+                                                {sections.map((section) => {
+                                                    const routes = section.routes.filter((route) => !route.disabled);
+                                                    if (routes.length === 0) return null;
+                                                    return (
+                                                        <div key={section.label} className="mb-1">
+                                                            <p className="px-2 py-1.5 text-[8px] font-medium uppercase tracking-[0.3em] text-black/45">{section.label}</p>
+                                                            <CommandPrimitive.Group>
+                                                                {routes.map((route) => (
+                                                                    <CommandPrimitive.Item
+                                                                        key={route.id}
+                                                                        value={`${route.title} ${section.label}`}
+                                                                        onSelect={() => go(route.link)}
+                                                                        className="flex cursor-pointer items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[13px] text-black/75 outline-none [--fillg:#5d5c58] data-[selected=true]:bg-black/[0.06] data-[selected=true]:text-black"
+                                                                    >
+                                                                        <span className="flex h-[18px] w-[18px] items-center justify-center text-black/60 [&>svg]:h-[15px] [&>svg]:w-[15px]">{route.icon}</span>
+                                                                        {route.title}
+                                                                    </CommandPrimitive.Item>
+                                                                ))}
+                                                            </CommandPrimitive.Group>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </CommandPrimitive.List>
+                                            <p className="text-[11px] text-black/40">↑↓ to navigate · ↵ to open · esc to close</p>
+                                        </CommandPrimitive>
+                                    </motion.div>
+                                </DialogPrimitive.Content>
+                            </div>
+                        </DialogPrimitive.Portal>
+                    )}
+                </AnimatePresence>
+            </Dialog>
         </>
     );
 }
@@ -137,7 +184,7 @@ export function AppSidebar() {
                 },
                 {
                     id: "analytics",
-                    title: "Analytics",
+                    title: "Business Analytics",
                     icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="#000000" className={iconCls}><g clipPath="url(#clip0_4418_8922)"><path d="M17.1499 10C17.7022 10 18.1499 9.55228 18.1499 9C18.1499 8.44772 17.7022 8 17.1499 8C16.5976 8 16.1499 8.44772 16.1499 9C16.1499 9.55228 16.5976 10 17.1499 10Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M17.1499 16C17.7022 16 18.1499 15.5523 18.1499 15C18.1499 14.4477 17.7022 14 17.1499 14C16.5976 14 16.1499 14.4477 16.1499 15C16.1499 15.5523 16.5976 16 17.1499 16Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M19.75 13C20.3023 13 20.75 12.5523 20.75 12C20.75 11.4477 20.3023 11 19.75 11C19.1977 11 18.75 11.4477 18.75 12C18.75 12.5523 19.1977 13 19.75 13Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M6.7998 10C7.35209 10 7.7998 9.55228 7.7998 9C7.7998 8.44772 7.35209 8 6.7998 8C6.24752 8 5.7998 8.44772 5.7998 9C5.7998 9.55228 6.24752 10 6.7998 10Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M6.7998 16C7.35209 16 7.7998 15.5523 7.7998 15C7.7998 14.4477 7.35209 14 6.7998 14C6.24752 14 5.7998 14.4477 5.7998 15C5.7998 15.5523 6.24752 16 6.7998 16Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M4.19995 13C4.75224 13 5.19995 12.5523 5.19995 12C5.19995 11.4477 4.75224 11 4.19995 11C3.64767 11 3.19995 11.4477 3.19995 12C3.19995 12.5523 3.64767 13 4.19995 13Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M15.8999 6.19922C16.4522 6.19922 16.8999 5.7515 16.8999 5.19922C16.8999 4.64693 16.4522 4.19922 15.8999 4.19922C15.3476 4.19922 14.8999 4.64693 14.8999 5.19922C14.8999 5.7515 15.3476 6.19922 15.8999 6.19922Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M8.09985 6.19922C8.65214 6.19922 9.09985 5.7515 9.09985 5.19922C9.09985 4.64693 8.65214 4.19922 8.09985 4.19922C7.54757 4.19922 7.09985 4.64693 7.09985 5.19922C7.09985 5.7515 7.54757 6.19922 8.09985 6.19922Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M12.0498 7C12.6021 7 13.0498 6.55228 13.0498 6C13.0498 5.44772 12.6021 5 12.0498 5C11.4975 5 11.0498 5.44772 11.0498 6C11.0498 6.55228 11.4975 7 12.0498 7Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M15.8999 20C16.4522 20 16.8999 19.5523 16.8999 19C16.8999 18.4477 16.4522 18 15.8999 18C15.3476 18 14.8999 18.4477 14.8999 19C14.8999 19.5523 15.3476 20 15.8999 20Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M8.09985 20C8.65214 20 9.09985 19.5523 9.09985 19C9.09985 18.4477 8.65214 18 8.09985 18C7.54757 18 7.09985 18.4477 7.09985 19C7.09985 19.5523 7.54757 20 8.09985 20Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M12.0498 19.1992C12.6021 19.1992 13.0498 18.7515 13.0498 18.1992C13.0498 17.6469 12.6021 17.1992 12.0498 17.1992C11.4975 17.1992 11.0498 17.6469 11.0498 18.1992C11.0498 18.7515 11.4975 19.1992 12.0498 19.1992Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M13.75 10.25C14.4404 10.25 15 9.69036 15 9C15 8.30964 14.4404 7.75 13.75 7.75C13.0596 7.75 12.5 8.30964 12.5 9C12.5 9.69036 13.0596 10.25 13.75 10.25Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M10.25 10.25C10.9404 10.25 11.5 9.69036 11.5 9C11.5 8.30964 10.9404 7.75 10.25 7.75C9.55964 7.75 9 8.30964 9 9C9 9.69036 9.55964 10.25 10.25 10.25Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M15.5 13.25C16.1904 13.25 16.75 12.6904 16.75 12C16.75 11.3096 16.1904 10.75 15.5 10.75C14.8096 10.75 14.25 11.3096 14.25 12C14.25 12.6904 14.8096 13.25 15.5 13.25Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M8.5 13.25C9.19036 13.25 9.75 12.6904 9.75 12C9.75 11.3096 9.19036 10.75 8.5 10.75C7.80964 10.75 7.25 11.3096 7.25 12C7.25 12.6904 7.80964 13.25 8.5 13.25Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M10.25 16.25C10.9404 16.25 11.5 15.6904 11.5 15C11.5 14.3096 10.9404 13.75 10.25 13.75C9.55964 13.75 9 14.3096 9 15C9 15.6904 9.55964 16.25 10.25 16.25Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M13.75 16.25C14.4404 16.25 15 15.6904 15 15C15 14.3096 14.4404 13.75 13.75 13.75C13.0596 13.75 12.5 14.3096 12.5 15C12.5 15.6904 13.0596 16.25 13.75 16.25Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M12.0001 3.33031C11.5101 3.33031 11.1201 2.94031 11.1201 2.45031C11.1201 1.96031 11.5101 1.57031 12.0001 1.57031C12.4901 1.57031 12.8801 1.96031 12.8801 2.45031C12.8801 2.94031 12.4901 3.33031 12.0001 3.33031Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M17.25 3.59961C16.83 3.59961 16.49 3.25961 16.49 2.84961C16.49 2.43961 16.83 2.09961 17.24 2.09961C17.65 2.09961 18 2.43961 18 2.84961C18 3.25961 17.67 3.59961 17.25 3.59961Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M6.75 3.59961C6.34 3.59961 6 3.25961 6 2.84961C6 2.43961 6.33 2.09961 6.75 2.09961H6.76001C7.17001 2.09961 7.51001 2.43961 7.51001 2.84961C7.51001 3.25961 7.17 3.59961 6.75 3.59961Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M12.0001 22.3791C11.5101 22.3791 11.1201 21.9891 11.1201 21.4991C11.1201 21.0091 11.5101 20.6191 12.0001 20.6191C12.4901 20.6191 12.8801 21.0091 12.8801 21.4991C12.8801 21.9891 12.4901 22.3791 12.0001 22.3791Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M17.25 21.8496C16.83 21.8496 16.49 21.5096 16.49 21.0996C16.49 20.6896 16.83 20.3496 17.24 20.3496C17.65 20.3496 18 20.6896 18 21.0996C18 21.5096 17.67 21.8496 17.25 21.8496Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M6.75 21.8496C6.34 21.8496 6 21.5096 6 21.0996C6 20.6896 6.33 20.3496 6.75 20.3496H6.76001C7.17001 20.3496 7.51001 20.6896 7.51001 21.0996C7.51001 21.5096 7.17 21.8496 6.75 21.8496Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M1.5499 12.8791C1.0699 12.8791 0.669922 12.4891 0.669922 12.0091V11.9991C0.669922 11.5191 1.0599 11.1191 1.5499 11.1191C2.0399 11.1191 2.4299 11.5091 2.4299 11.9991C2.4299 12.4891 2.0299 12.8791 1.5499 12.8791Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M3.75 17.7502C3.34 17.7502 3 17.4202 3 17.0002V16.9902C3 16.5802 3.34 16.2402 3.75 16.2402C4.16 16.2402 4.5 16.5802 4.5 16.9902C4.5 17.4002 4.16 17.7502 3.75 17.7502Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M3.75 7.75977C3.34 7.75977 3 7.41977 3 7.00977C3 6.59977 3.34 6.25977 3.75 6.25977C4.16 6.25977 4.5 6.58977 4.5 6.99977V7.00977C4.5 7.41977 4.16 7.75977 3.75 7.75977Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M22.5001 12.8791C22.0201 12.8791 21.6201 12.4891 21.6201 12.0091V11.9991C21.6201 11.5191 22.0101 11.1191 22.5001 11.1191C22.9901 11.1191 23.3801 11.5091 23.3801 11.9991C23.3801 12.4891 22.9801 12.8791 22.5001 12.8791Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M20.3 17.7502C19.89 17.7502 19.55 17.4202 19.55 17.0002V16.9902C19.55 16.5802 19.89 16.2402 20.3 16.2402C20.71 16.2402 21.05 16.5802 21.05 16.9902C21.05 17.4002 20.71 17.7502 20.3 17.7502Z" fill="white" style={{fill:'var(--fillg)'}}/><path d="M20.3 7.75977C19.89 7.75977 19.55 7.41977 19.55 7.00977C19.55 6.59977 19.89 6.25977 20.3 6.25977C20.71 6.25977 21.05 6.58977 21.05 7.00977V7.01977C21.05 7.41977 20.71 7.75977 20.3 7.75977Z" fill="white" style={{fill:'var(--fillg)'}}/></g><defs><clipPath id="clip0_4418_8922"><rect width="24" height="24" fill="white"/></clipPath></defs></svg>,
                     link: "/analytics",
                     disabled: !isAdmin,
@@ -336,7 +383,8 @@ export function AppSidebar() {
                             !open && "rotate-180",
                         )}
                     >
-                        <CaretDoubleLeft aria-hidden="true" weight="light" size={16} />
+                        {/* Collapse icon from SidekickIcons by Andri Soone - https://github.com/ndri/sidekickicons/blob/master/LICENSE */}
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 16 16"><path fill="currentColor" d="M6.166 3v10H13.5a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3ZM2.5 3h2.166v10H2.5A1.5 1.5 0 0 1 1 11.5v-7A1.5 1.5 0 0 1 2.5 3" /></svg>
                     </button>
                 </div>
             </SidebarFooter>

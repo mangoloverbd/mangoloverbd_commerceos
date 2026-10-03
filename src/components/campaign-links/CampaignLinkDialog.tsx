@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Check, Copy, X } from '@phosphor-icons/react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -116,15 +117,20 @@ export function CampaignLinkDialog({ open, onOpenChange, link }: { open: boolean
         </div>
 
         <div className="grid gap-1.5"><Label htmlFor={`${prefix}-destination-choice`}>Opens</Label>
-          <select id={`${prefix}-destination-choice`} className="h-10 rounded-md border border-input bg-white px-3 text-sm" value={showCustom ? 'custom' : values.destination_path} onChange={event => {
-            setCustomDestination(event.target.value === 'custom'); if (event.target.value !== 'custom') field('destination_path', event.target.value);
-          }}>
-            <option value="/">Homepage</option>{published.map(product => <option key={product.id} value={`/product/${product.slug}`}>{product.name}</option>)}<option value="custom">Landing page or custom path…</option>
-          </select>
-          {products.isError && <p className="text-xs text-black/55">Products could not be loaded. Enter a path below.</p>}
           {showCustom && <><Label htmlFor={`${prefix}-destination_path`} className="sr-only">Destination path</Label>
             <Input {...attrs('destination_path')} maxLength={200} placeholder="/step/katimon-mango" value={values.destination_path} onChange={event => field('destination_path', event.target.value)} className="font-mono text-xs" />
             {errorText('destination_path') || <p id={`${prefix}-destination_path-note`} className="text-xs text-black/50">A storefront path, for example a /step/ landing page.</p>}</>}
+          <Select value={showCustom ? 'custom' : values.destination_path} onValueChange={next => {
+            setCustomDestination(next === 'custom'); if (next !== 'custom') field('destination_path', next);
+          }}>
+            <SelectTrigger id={`${prefix}-destination-choice`} aria-label="Opens" className="h-10 bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent side="top" align="start" sideOffset={6} avoidCollisions={false} position="popper" className="max-h-[280px]">
+              <SelectItem value="/">Homepage</SelectItem>{published.map(product => <SelectItem key={product.id} value={`/product/${product.slug}`}>{product.name}</SelectItem>)}<SelectItem value="custom">Landing page or custom path…</SelectItem>
+            </SelectContent>
+          </Select>
+          {products.isError && <p className="text-xs text-black/55">Products could not be loaded. Enter a path above.</p>}
         </div>
 
         <details open={hasDetails} className="group text-sm">
