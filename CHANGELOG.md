@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.49] - 2026-10-03
+
+### Fixed
+
+- Sidebar menu items now match the width of the search bar and logo card, with the same gap on both sides, and their icons line up with the search icon.
+
 ## [0.1.0.48] - 2026-10-03
 
 ### Changed

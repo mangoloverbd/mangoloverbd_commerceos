@@ -64,7 +64,7 @@ function SidebarSearch({ sections }: { sections: NavSection[] }) {
                 type="button"
                 data-testid="sidebar-search"
                 onClick={() => setOpen(true)}
-                className="mt-2 flex h-8 w-full shrink-0 items-center gap-2 overflow-hidden rounded-[6px] border border-[#e3e2de] bg-white pl-[7px] pr-1 text-left font-sans text-[13px] text-[#9a9994] outline-none transition-colors hover:border-[#d3d2cd] focus-visible:ring-2 focus-visible:ring-black/15"
+                className="mt-2 flex h-8 w-full shrink-0 items-center gap-2 overflow-hidden rounded-[6px] border border-[#e3e2de] bg-white pl-2 pr-1 text-left font-sans text-[13px] text-[#9a9994] outline-none transition-colors hover:border-[#d3d2cd] focus-visible:ring-2 focus-visible:ring-black/15"
             >
                 <MagnifyingGlass aria-hidden="true" weight="light" size={15} className="shrink-0" />
                 <span className="flex-1 truncate whitespace-nowrap transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">Search…</span>
@@ -289,7 +289,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             {/* ── Navigation ──────────────────────────────── */}
-            <SidebarContent className="gap-0 overflow-x-hidden px-1 pb-1.5 pt-2.5">
+            <SidebarContent className="gap-0 overflow-x-hidden px-0.5 pb-1.5 pt-2.5">
                 <DashboardNavigation sections={navSections} />
             </SidebarContent>
 
