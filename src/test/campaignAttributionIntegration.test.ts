@@ -4,6 +4,7 @@ import { assessOrderRisk } from "../../server/risk/pipeline.js";
 import { createProtectionReview } from "../../server/orderProtectionStore.js";
 import { buildPersonalDataScrubPatch, parseAbandonedCheckoutCapture, hashAbandonedCheckoutDraftKey } from "../../server/abandonedCheckouts.js";
 import { storefrontVisibleVariants } from "../../server/publicCatalog.js";
+import { analyticsSessionFromHeaders, isAnalyticsId } from "../../server/websiteAnalytics.js";
 
 const body = { customerName: "Customer", phone: "01712345678", address: "House 12, Road 8, Dhaka", items: [{ variantId: uuid(20), quantity: 2 }], abandonedCheckoutDraftKey: uuid(30), campaign_link_id: uuid(999), campaign_attributed_at: "2000-01-01T00:00:00Z" };
 const captureBody = { draftKey: uuid(30), source: "storefront", sourcePath: "/checkout", customerName: "Customer", phone: "01712345678", address: "Dhaka", items: [{ productName: "Honey", variantName: null, quantity: 2, unitPrice: 100 }], subtotal: 200, deliveryRate: 0, total: 200 };
@@ -23,10 +24,11 @@ function fixture(extra: Record<string, unknown> = {}, seed: Record<string, Recor
     buildAttributionPatch: () => ({}), prepareStatusEvent: () => null, recordStatusEvent: async () => {}, buildStatusEvent: () => ({}),
     getOrderApprovalDetailsError: () => null, enrichOrderItems: async (_db: unknown, _org: unknown, items: unknown) => items, isOrderDispatched: () => false,
     requireOrderProtectionStaff: async () => ({ user: { id: uuid(1) }, supabase: db, orgId }),
+    analyticsSessionFromHeaders, isAnalyticsId,
     sendError: (res: { status: (status: number) => { json: (body: unknown) => unknown } }, error: { statusCode?: number; message: string }) => res.status(error.statusCode || 500).json({ error: error.message }),
     ...extra,
   });
-  harness.load(["ABANDONED_CHECKOUT_DASHBOARD_FIELDS", "handlePublicHandleOrderSubmit", "persistAbandonedCheckoutCapture", "recoverCapturedCheckoutForOrder", "linkHeldReviewToAbandonedCheckout", "approveHeldProtectionReview", "closeHeldReviewForConvertedCheckout"], [
+  harness.load(["ABANDONED_CHECKOUT_DASHBOARD_FIELDS", "handlePublicHandleOrderSubmit", "persistAbandonedCheckoutCapture", "recoverCapturedCheckoutForOrder", "linkHeldReviewToAbandonedCheckout", "approveHeldProtectionReview", "closeHeldReviewForConvertedCheckout", "ANALYTICS_ORDER_TIMEOUT_MS", "recordOrderAnalyticsFact"], [
     'app.post("/api/public/v1/:handle/orders"', 'app.post("/api/custom-orders/abandoned-checkouts"', 'app.post("/api/abandoned-checkouts/:id/convert"', 'app.get("/api/orders/:id",',
     'app.patch("/api/order-protection/reviews/:id"',
   ]);
@@ -140,4 +142,36 @@ it('approval retains a durable draft hash even when no checkout was captured bef
   expect(db.tables.orders[0].abandoned_draft_key_hash).toBe(hash);
   await http(app, 'POST', '/api/custom-orders/abandoned-checkouts', captureBody, signedHeaders());
   expect(db.tables.orders[0].abandoned_checkout_id).toBe(db.tables.abandoned_checkouts[0].id);
+});
+
+describe("website visit linkage through actual purchase HTTP handlers", () => {
+  const visitId = "9f8e7d6c-5b4a-4c3d-9e2f-1a0b9c8d7e6f";
+  const factCalls = (db: ReturnType<typeof fixture>["db"]) => db.calls.filter(call => call.table === "record_analytics_order_fact").map(call => call.args[0]);
+  it("links an accepted order to the forwarded visit at submission time", async () => {
+    const { app, db } = fixture();
+    expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId.toUpperCase() })).status).toBe(200);
+    expect(factCalls(db)).toEqual([expect.objectContaining({ p_org_id: orgId, p_order_id: db.tables.orders[0].id, p_session_id: visitId })]);
+  });
+  it("skips missing or malformed visits and never fails the order when linkage is down", async () => {
+    for (const header of [undefined, "not-a-visit"]) {
+      const { app, db } = fixture();
+      expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), ...(header ? { "x-mlbd-analytics-session-id": header } : {}) })).status).toBe(200);
+      expect(factCalls(db)).toHaveLength(0);
+    }
+    const { app, db } = fixture();
+    db.failures.record_analytics_order_fact = { message: "offline" };
+    expect((await http(app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId })).status).toBe(200);
+    expect(db.tables.orders).toHaveLength(1);
+  });
+  it("keeps a held order's visit and links it at approval with the original submission time", async () => {
+    const held = fixture({ assessOrderRisk: async () => ({ enforced: true, decision: "HOLD", reviewId: uuid(51), attemptId: null }) },
+      { order_protection_reviews: [{ id: uuid(51), org_id: orgId, status: "on_hold" }] });
+    expect((await http(held.app, "POST", "/api/public/v1/mangolover/orders", body, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId })).status).toBe(202);
+    expect(held.db.tables.order_protection_reviews[0].analytics_session_id).toBe(visitId);
+    const submittedAt = "2026-10-03T08:00:00.000Z";
+    const { app, db } = fixture({}, { order_protection_reviews: [{ id: uuid(50), org_id: orgId, status: "on_hold", source_route: "public_v1", created_at: submittedAt,
+      phone: body.phone, customer_name: body.customerName, address: body.address, items: body.items, analytics_session_id: visitId }] });
+    expect((await http(app, "PATCH", `/api/order-protection/reviews/${uuid(50)}`, { action: "approve" })).status).toBe(200);
+    expect(factCalls(db)).toEqual([expect.objectContaining({ p_order_id: db.tables.orders[0].id, p_session_id: visitId, p_submitted_at: submittedAt })]);
+  });
 });

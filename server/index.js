@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
 import { countsAsLivePresence, normalizeTrackerKind, shouldForwardTrackerHit } from "./trackerHits.js";
-import { parseTrackerAnalyticsHit } from "./websiteAnalytics.js";
+import { analyticsSessionFromHeaders, isAnalyticsId, parseTrackerAnalyticsHit } from "./websiteAnalytics.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { isIP } from "node:net";
@@ -8652,6 +8652,21 @@ async function recordWebsiteAnalyticsHit(req, { orgId, kind, bucket }) {
   }
 }
 
+// Freezes the website visit behind an order. Best effort: a missing, stale or
+// slow lookup leaves the order unattributed and never fails or delays it much.
+const ANALYTICS_ORDER_TIMEOUT_MS = 800;
+async function recordOrderAnalyticsFact(supabase, orgId, orderId, sessionId, submittedAt) {
+  if (!orderId || !isAnalyticsId(sessionId)) return;
+  try {
+    const { error } = await supabase.rpc("record_analytics_order_fact", {
+      p_org_id: orgId, p_order_id: orderId, p_session_id: sessionId, p_submitted_at: submittedAt,
+    }).abortSignal(AbortSignal.timeout(ANALYTICS_ORDER_TIMEOUT_MS));
+    if (error) throw error;
+  } catch (err) {
+    console.warn("[Analytics] order visit not linked:", err?.code || err?.message || err);
+  }
+}
+
 app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
   const { org_id, session_id, url, referrer, bucket, explicit, kind } = req.body || {};
   if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
@@ -14272,6 +14287,8 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     if (reviewUpdateError) throw reviewUpdateError;
 
     await finalizeOrderRisk({ supabase, orgId, attemptId: review.attempt_id, orderId: order.id });
+    // Attribution is frozen at the original submission, not at approval.
+    await recordOrderAnalyticsFact(supabase, orgId, order.id, review.analytics_session_id, review.created_at);
 
     if (review.abandoned_checkout_id) {
       try {
@@ -14645,6 +14662,17 @@ async function handlePublicHandleOrderSubmit(req, res) {
           console.warn("[OrderProtection] held review abandoned-checkout link deferred");
         }
       }
+      // Held orders keep the submitting visit until approval links it.
+      const heldSessionId = analyticsSessionFromHeaders(req.headers);
+      if (heldSessionId) {
+        try {
+          const { error } = await supabase.from("order_protection_reviews").update({ analytics_session_id: heldSessionId })
+            .eq("id", protection.reviewId).eq("org_id", orgId).abortSignal(AbortSignal.timeout(ANALYTICS_ORDER_TIMEOUT_MS));
+          if (error) throw error;
+        } catch {
+          console.warn("[Analytics] held review visit link deferred");
+        }
+      }
       return res.status(202).json({
         success: false,
         decision: "review",
@@ -14865,6 +14893,8 @@ async function handlePublicHandleOrderSubmit(req, res) {
         console.warn("[AbandonedCheckout] public order recovery update deferred");
       }
     }
+
+    await recordOrderAnalyticsFact(supabase, orgId, order.id, analyticsSessionFromHeaders(req.headers), campaignEffectiveAt);
 
     // ── Purge inventory cache so storefront reflects new stock ───────────
     await purgeProductCache(orgId, null, { listChanged: false, warm: false });
