@@ -639,6 +639,7 @@ export type Database = {
       order_protection_reviews: {
         Row: {
           abandoned_checkout_id: string | null
+          abandoned_draft_key_hash: string | null
           address: string | null
           approval_claimed_at: string | null
           attempt_id: string | null
@@ -663,6 +664,7 @@ export type Database = {
         }
         Insert: {
           abandoned_checkout_id?: string | null
+          abandoned_draft_key_hash?: string | null
           address?: string | null
           approval_claimed_at?: string | null
           attempt_id?: string | null
@@ -687,6 +689,7 @@ export type Database = {
         }
         Update: {
           abandoned_checkout_id?: string | null
+          abandoned_draft_key_hash?: string | null
           address?: string | null
           approval_claimed_at?: string | null
           attempt_id?: string | null

@@ -54,7 +54,10 @@ describe("held orders keep the abandoned checkout in sync", () => {
   });
 
   it("does not store the raw draft key on the review", () => {
-    expect(store).not.toContain("draft_key");
+    // A bounded one-way hash is permitted for late-capture reconciliation.
+    // Reject a raw key field without confusing it with *_draft_key_hash.
+    expect(store).not.toMatch(/\bdraft_key\b|\babandoned_checkout_draft_key\b/);
+    expect(store).toContain("abandoned_draft_key_hash");
   });
 });
 

@@ -42,6 +42,13 @@ function sqlError(query: string, expected: string) {
 }
 
 describe("campaign additive schema on disposable PostgreSQL", () => {
+  it('retains only a bounded non-personal draft hash on a hold without requiring a capture', () => {
+    db.sql(`set role service_role; insert into public.order_protection_reviews(org_id,source_route,score,expires_at,abandoned_draft_key_hash)
+      values ('${org}','public_v1',50,now()+interval '1 day',repeat('a',64));`);
+    expect(db.sql(`select abandoned_draft_key_hash from public.order_protection_reviews where org_id='${org}' and abandoned_draft_key_hash=repeat('a',64)`)).toBe('a'.repeat(64));
+    sqlError(`insert into public.order_protection_reviews(org_id,source_route,score,expires_at,abandoned_draft_key_hash)
+      values ('${org}','public_v1',50,now()+interval '1 day','not-a-hash')`, 'check constraint');
+  });
   it("creates service-only campaign persistence with RLS", () => {
     expect(db.sql("select to_regclass('public.campaign_links')")).toBe("campaign_links");
     expect(db.sql("select count(*) from pg_class where oid in ('public.campaign_links'::regclass,'public.campaign_link_clicks'::regclass) and relrowsecurity")).toBe("2");

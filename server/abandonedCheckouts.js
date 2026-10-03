@@ -127,6 +127,12 @@ export function isAbandonedCheckoutDraftKey(value) {
 }
 
 export function parseAbandonedCheckoutCapture(body) {
+  // Marketing is optional. Strip even malformed values before strict commerce
+  // validation; only the authenticated proxy header may establish attribution.
+  if (isRecord(body) && Object.hasOwn(body, "campaignClickId")) {
+    body = { ...body };
+    delete body.campaignClickId;
+  }
   if (!isRecord(body) || !hasOnlyKeys(body, CAPTURE_KEYS)) invalidCapture();
 
   const submittedDraftKey = requiredString(body.draftKey, 36, 36);

@@ -309,6 +309,7 @@ begin
       ('orders', 'cancellation_reason_note'),
       ('orders', 'risk_attempt_id'),
       ('order_protection_reviews', 'attempt_id'),
+      ('order_protection_reviews', 'abandoned_draft_key_hash'),
       ('abandoned_checkouts', 'draft_key'),
       ('abandoned_checkouts', 'expires_at'),
       ('abandoned_checkouts', 'origin_source'),
