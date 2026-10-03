@@ -47,10 +47,25 @@ const website = {
   health: { latest_event_at: new Date().toISOString(), collecting: true, rollup: { last_succeeded_at: new Date().toISOString(), last_failed_at: null, healthy: true },
     matched_orders: 13, website_orders: 16, order_coverage: 13 / 16, direct_sessions: 80, direct_share: 0.4 },
 };
-const forecast = {
-  lookbackDays: 30, aiSummary: "Steady sales.", productForecasts: [], stockoutRisks: [], shutdownCandidates: [], topActions: [],
-  overview: { projectedRevenue30d: 610000, revenueChange: 19, stockoutCount: 2, shutdownCount: 3, productsTracked: 14, currentRevenue: 512300, currentOrders: 512 },
-  salesTrend: { days: [] },
+const stockForecast = {
+  generated_at: "2026-10-03T06:00:00Z", today: "2026-10-03", settings: { lead_days: 2, safety_days: 3, history_days: 56 },
+  summary: { next30_delivered_value: 505000, next30_delivered_low: 434000, next30_delivered_high: 581000, next7_orders: 135, next7_low: 116, next7_high: 155,
+    busiest_weekday: 5, busiest_lift_pct: 27, restock_now: 1, first_runs_out: { name: "Katimon Mango", runs_out: "2026-10-09", order_by: "2026-10-07" },
+    slow_products: 2, slow_stock_value: 80600, slow_with_cost: 1, delivered_rate: 74, missing_cost_products: 17 },
+  forecast: { history: [{ day: "2026-10-02", orders: 20 }], future: [{ day: "2026-10-03", orders: 18, low: 15, high: 21 }], trend: 1.06, value_per_order: 875 },
+  actions: [
+    { kind: "restock", severity: "urgent", product_id: "p1", name: "Katimon Mango", rule: "runs_out_within_7_days", order_qty: 748, order_by: "2026-10-07", runs_out: "2026-10-09", stock: 240, sold_per_day: 38 },
+    { kind: "cost_price", severity: "info", rule: "profit_needs_cost_price", count: 17 },
+  ],
+  restock: [
+    { product_id: "p1", name: "Katimon Mango", stock: 240, sold_per_day: 38, sold_per_day_30: 33, change_pct: 15, days_left: 6.3, runs_out: "2026-10-09", order_by: "2026-10-07", status: "urgent", cost_price: null },
+    { product_id: "p2", name: "Sundarbans Honey", stock: 310, sold_per_day: 4.2, sold_per_day_30: 4.4, change_pct: -5, days_left: 73.8, runs_out: "2026-12-15", order_by: "2026-12-13", status: "over", cost_price: 260 },
+  ],
+  health: [{ product_id: "p3", name: "Kalojira Mix", views: 2050, order_rate: 1.1, delivered_rate: 70, returned_rate: 8, orders: 22, verdict: "fix_page" }],
+  health_averages: { order_rate: 2.4, delivered_rate: 74, returned_rate: 7 },
+  profit: [{ product_id: "p2", name: "Sundarbans Honey", delivered_revenue: 62700, courier: 6100, cost: 31600, profit: 25000 }],
+  rhythm: { slots: [{ id: "morning", label: "Morning" }, { id: "afternoon", label: "Afternoon" }, { id: "evening", label: "Evening" }, { id: "night", label: "Night" }], weeks: 8,
+    values: [[2.9, 4.8, 6, 3.3], [2.7, 4.5, 5.6, 3.2], [2.4, 4.1, 5.3, 3.2], [2.8, 4.6, 6, 3.6], [3, 5.1, 6.9, 4], [3.6, 5.8, 8.6, 5], [3.1, 5.2, 7.4, 4.3]] },
 };
 
 function Where() { const location = useLocation(); return <output data-testid="where">{location.pathname + location.search}</output>; }
@@ -64,7 +79,7 @@ function setup(entry = "/analytics") {
 describe("Analytics page", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
-    vi.mocked(apiFetch).mockImplementation(async (path) => json(String(path).includes("business-forecast") ? forecast : String(path).includes("/api/analytics/website") ? website : behavior));
+    vi.mocked(apiFetch).mockImplementation(async (path) => json(String(path).includes("stock-forecast") ? stockForecast : String(path).includes("/api/analytics/website") ? website : behavior));
   });
   afterEach(cleanup);
 
@@ -80,7 +95,7 @@ describe("Analytics page", () => {
     expect(screen.getByRole("button", { name: /Data healthy/ })).toBeInTheDocument();
     const paths = vi.mocked(apiFetch).mock.calls.map(([path]) => String(path));
     expect(paths.some((path) => /^\/api\/analytics\/website\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/.test(path))).toBe(true);
-    expect(paths.some((path) => path.includes("business-forecast") || path.includes("website-behavior"))).toBe(false);
+    expect(paths.some((path) => path.includes("stock-forecast") || path.includes("website-behavior"))).toBe(false);
   });
 
   it("reloads the report for a picked date range", async () => {
@@ -123,21 +138,29 @@ describe("Analytics page", () => {
     expect(await screen.findByText("No website visits in this range yet")).toBeInTheDocument();
   });
 
-  it("switches to the AI forecast tab, keeps it in the URL and loads the forecast", async () => {
+  it("shows Stock & forecast from the rule-based endpoint, with no AI", async () => {
     const user = userEvent.setup();
     setup();
-    await user.click(screen.getByRole("tab", { name: "AI forecast" }));
-    expect(screen.getByRole("tab", { name: "AI forecast" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByTestId("where")).toHaveTextContent("/analytics?tab=forecast");
-    expect(await screen.findByText("Projected 30D Revenue")).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenCalledWith("/api/business-forecast");
+    await user.click(screen.getByRole("tab", { name: "Stock & forecast" }));
+    expect(screen.getByTestId("where")).toHaveTextContent("/analytics?tab=stock");
+    expect(await screen.findByText(/Order 748 units of Katimon Mango by Wed,? 7 Oct/)).toBeInTheDocument();
+    expect(screen.getByText("rule: runs out within 7 days")).toBeInTheDocument();
+    expect(screen.getByText(/^৳5,?05,000$/)).toBeInTheDocument(); // lakh grouping depends on the ICU build
+    expect(screen.getByText("Fix the page")).toBeInTheDocument();
+    expect(screen.getByText("Best: Friday evening")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith("/api/analytics/stock-forecast");
+    // Katimon: 38 a day × (21 + 3 safety + 2 lead) − 240 in stock = 748; covering 30 days → 1,090.
+    expect(screen.getByRole("cell", { name: "748" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cover 30 days" }));
+    expect(screen.getByRole("cell", { name: "1,090" })).toBeInTheDocument();
   });
 
   it("opens the tab named in the URL and moves between tabs with arrow keys", async () => {
     const user = userEvent.setup();
-    setup("/analytics?tab=forecast");
-    expect(screen.getByRole("tab", { name: "AI forecast" })).toHaveAttribute("aria-selected", "true");
-    screen.getByRole("tab", { name: "AI forecast" }).focus();
+    setup("/analytics?tab=forecast"); // old AI forecast links land on Stock & forecast
+    expect(screen.getByRole("tab", { name: "Stock & forecast" })).toHaveAttribute("aria-selected", "true");
+    screen.getByRole("tab", { name: "Stock & forecast" }).focus();
     await user.keyboard("{ArrowRight}");
     expect(screen.getByRole("tab", { name: "Data health" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("where")).toHaveTextContent("/analytics?tab=health");
@@ -149,7 +172,8 @@ describe("Analytics page", () => {
   it("falls back to Overview for an unknown tab", () => {
     expect(resolveAnalyticsTab("customers")).toBe("overview");
     expect(resolveAnalyticsTab(null)).toBe("overview");
-    expect(resolveAnalyticsTab("forecast")).toBe("forecast");
+    expect(resolveAnalyticsTab("forecast")).toBe("stock");
+    expect(resolveAnalyticsTab("stock")).toBe("stock");
   });
 });
 

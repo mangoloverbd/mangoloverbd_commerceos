@@ -17,7 +17,7 @@ import { computeOrderCogs } from "./cog.js";
 import { normalizeCampaignSlug, normalizeCampaignChannel, normalizeDestinationPath, buildCampaignUtm, isBotUserAgent, resolveCampaignAttribution, buildCampaignVisitorHash } from "./campaignLinks.js";
 import { buildCampaignReport, resolveCampaignReportRequest, redactCampaignFinancials } from "./campaignReport.js";
 import { buildOverviewData } from "./overview.js";
-import { buildSalesTrend } from "./salesTrend.js";
+import { HISTORY_DAYS as STOCK_FORECAST_HISTORY_DAYS, buildStockForecast } from "./stockForecast.js";
 import { calculateStorefrontShippingCost, cartHasFreeDeliveryProduct } from "./shippingCalculation.js";
 import {
   computeOrderWeightKg,
@@ -5135,23 +5135,6 @@ app.get("/api/analytics", async (req, res) => {
 
 // ─── AI Business Forecast ───────────────────────────────────────────────────
 
-function normalizeProductName(value = "") {
-  return String(value).toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/gi, " ").trim();
-}
-
-function orderMentionsProduct(orderProduct, productName) {
-  const orderText = normalizeProductName(orderProduct);
-  const name = normalizeProductName(productName);
-  if (!orderText || !name) return false;
-  return orderText.includes(name) || name.includes(orderText);
-}
-
-function pctChange(current, previous) {
-  if (!previous && !current) return 0;
-  if (!previous) return 100;
-  return ((current - previous) / previous) * 100;
-}
-
 const OPENAI_SIDEBAR_ALERT_MODEL = "gpt-5.4-mini";
 
 function fallbackSidebarInsight(type, orders) {
@@ -5311,32 +5294,6 @@ async function buildSidebarAlertInsights({ stalePending, unsentConfirmed }) {
   } catch (err) {
     console.warn("[Sidebar Alerts] AI fallback:", errorMessage(err));
     return { insights: fallback, fromAI: false };
-  }
-}
-
-async function buildForecastNarrative(payload) {
-  if (!AI_API_KEY) return payload.executiveSummary;
-  try {
-    const prompt = `You are an operator for a Bangladeshi ecommerce business. Write a concise executive summary and practical action plan from this JSON. Use taka symbol. Focus on stock-outs, products to stop, restocking, and risk.\n\n${JSON.stringify(payload).slice(0, 12000)}`;
-    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${AI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: AI_DEFAULT_MODEL,
-        messages: [
-          { role: "system", content: "Return markdown only. Be specific, concise, and operational." },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.2,
-      }),
-    });
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || payload.executiveSummary;
-  } catch {
-    return payload.executiveSummary;
   }
 }
 
@@ -5665,137 +5622,33 @@ app.get("/api/order-analysis/website-behavior", rateLimitAI, async (req, res) =>
   }
 });
 
-app.get("/api/business-forecast", rateLimitAI, async (req, res) => {
+// Stock & forecast tab (Analytics, admin only). Rule-based, no AI: forecast,
+// restock plan, product health, profit and weekly rhythm from the last 8 weeks.
+app.get("/api/analytics/stock-forecast", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-
     const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (role !== "admin" || !orgId) return res.status(403).json({ error: "Admin only" });
+
     const now = new Date();
-    const lookbackDays = Math.max(7, Math.min(90, parseInt(req.query.days || "30", 10) || 30));
-    const currentStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
-    const previousStart = new Date(now.getTime() - lookbackDays * 2 * 24 * 60 * 60 * 1000);
-    const { data: rawOrders, error: ordersError } = await supabase
+    const since = new Date(now.getTime() - (STOCK_FORECAST_HISTORY_DAYS + 1) * 24 * 60 * 60 * 1000).toISOString();
+    const viewsSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const [orders, products, variants, views] = await Promise.all([
+      fetchReportPages(() => supabase
         .from("orders")
-        .select("*")
+        .select("id, created_at, status, courier_status, fulfillment_status, return_status, price, courier_fee, order_items(product_id, quantity, unit_price)")
         .eq("org_id", orgId)
-        .order("created_at", { ascending: false });
-    if (ordersError) throw ordersError;
-
-    const { data: rawProducts, error: productsError } = await supabase
-        .from("products")
-        .select("*")
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false });
-    if (productsError) throw productsError;
-
-    const orders = rawOrders || [];
-    const stockMap = await getProductStockMap(orgId, (rawProducts || []).map((p) => p.id));
-    const products = (rawProducts || []).map((p) => ({ ...p, stock_quantity: stockMap[p.id] || 0 }));
-    const currentOrders = orders.filter((o) => new Date(o.created_at) >= currentStart);
-    const previousOrders = orders.filter((o) => new Date(o.created_at) < currentStart && new Date(o.created_at) >= previousStart);
-
-    const currentRevenue = currentOrders.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
-    const previousRevenue = previousOrders.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
-    const projectedRevenue30d = (currentRevenue / lookbackDays) * 30;
-
-    const productForecasts = products.map((product) => {
-      const matchedCurrent = currentOrders.filter((o) => orderMentionsProduct(o.product, product.name));
-      const matchedPrevious = previousOrders.filter((o) => orderMentionsProduct(o.product, product.name));
-      const unitsSold = matchedCurrent.reduce((sum, o) => sum + (parseInt(o.quantity || 1, 10) || 1), 0);
-      const previousUnits = matchedPrevious.reduce((sum, o) => sum + (parseInt(o.quantity || 1, 10) || 1), 0);
-      const revenue = matchedCurrent.reduce((sum, o) => sum + (parseFloat(o.price || 0) || 0), 0);
-      const canceledOrders = matchedCurrent.filter((o) => {
-        const status = `${o.status || ""} ${o.fulfillment_status || ""} ${o.courier_status || ""}`.toLowerCase();
-        return status.includes("cancel") || status.includes("fail") || status.includes("return") || status.includes("restock");
-      }).length;
-      const velocity = unitsSold / lookbackDays;
-      const stock = parseInt(product.stock_quantity || 0, 10) || 0;
-      const daysUntilStockout = velocity > 0 ? stock / velocity : null;
-      const margin = product.selling_price ? ((parseFloat(product.selling_price) - parseFloat(product.cog || 0)) / parseFloat(product.selling_price)) * 100 : null;
-      const cancellationRate = matchedCurrent.length ? (canceledOrders / matchedCurrent.length) * 100 : 0;
-      const growthRate = pctChange(unitsSold, previousUnits);
-
-      let recommendation = "Monitor";
-      let status = "stable";
-      let score = 50;
-      if (velocity > 0) score += Math.min(25, velocity * 10);
-      if (margin != null) score += Math.max(-20, Math.min(20, (margin - 20) / 2));
-      score -= Math.min(25, cancellationRate / 2);
-      if (daysUntilStockout != null && daysUntilStockout <= 7) {
-        status = "stockout";
-        recommendation = `Restock ${Math.max(10, Math.ceil(velocity * 14))} units soon`;
-        score += 10;
-      } else if (unitsSold === 0 && stock > 0) {
-        status = "dead_stock";
-        recommendation = "Pause restocking and test discount or bundle";
-        score -= 25;
-      } else if ((margin != null && margin < 15) || cancellationRate >= 35) {
-        status = "shutdown_candidate";
-        recommendation = "Review pricing, courier fit, or stop promotion";
-        score -= 20;
-      } else if (growthRate >= 30 && unitsSold > 0) {
-        status = "winner";
-        recommendation = "Protect stock and consider increasing promotion";
-        score += 15;
-      }
-
-      return {
-        id: product.id,
-        name: product.name,
-        stockQuantity: stock,
-        unitsSold,
-        revenue: Math.round(revenue),
-        salesVelocity: Number(velocity.toFixed(2)),
-        daysUntilStockout: daysUntilStockout == null ? null : Number(daysUntilStockout.toFixed(1)),
-        margin: margin == null ? null : Number(margin.toFixed(1)),
-        cancellationRate: Number(cancellationRate.toFixed(1)),
-        growthRate: Number(growthRate.toFixed(1)),
-        status,
-        recommendation,
-        score: Math.max(0, Math.min(100, Math.round(score))),
-      };
-    }).sort((a, b) => {
-      const riskRank = { stockout: 0, shutdown_candidate: 1, dead_stock: 2, winner: 3, stable: 4 };
-      return (riskRank[a.status] ?? 9) - (riskRank[b.status] ?? 9) || b.revenue - a.revenue;
-    });
-
-    const stockoutRisks = productForecasts.filter((p) => p.status === "stockout");
-    const shutdownCandidates = productForecasts.filter((p) => p.status === "shutdown_candidate" || p.status === "dead_stock");
-    const winners = productForecasts.filter((p) => p.status === "winner");
-    const topActions = [
-      ...stockoutRisks.slice(0, 3).map((p) => ({ priority: "critical", title: `Restock ${p.name}`, detail: `${p.daysUntilStockout} days until stock-out at current velocity.` })),
-      ...shutdownCandidates.slice(0, 3).map((p) => ({ priority: "warning", title: `Review ${p.name}`, detail: p.recommendation })),
-      ...winners.slice(0, 2).map((p) => ({ priority: "growth", title: `Scale ${p.name}`, detail: "Strong sales signal. Keep inventory protected before increasing promotion." })),
-    ].slice(0, 6);
-
-    const payload = {
-      generatedAt: now.toISOString(),
-      lookbackDays,
-      overview: {
-        currentOrders: currentOrders.length,
-        previousOrders: previousOrders.length,
-        currentRevenue: Math.round(currentRevenue),
-        previousRevenue: Math.round(previousRevenue),
-        revenueChange: Number(pctChange(currentRevenue, previousRevenue).toFixed(1)),
-        projectedRevenue30d: Math.round(projectedRevenue30d),
-        productsTracked: products.length,
-        stockoutCount: stockoutRisks.length,
-        shutdownCount: shutdownCandidates.length,
-      },
-      productForecasts,
-      stockoutRisks,
-      shutdownCandidates,
-      topActions,
-      salesTrend: buildSalesTrend(orders, { now, days: 365 }),
-      executiveSummary: `## Business forecast\n\nYou have ${currentOrders.length} orders in the last ${lookbackDays} days with projected 30-day revenue of ৳${Math.round(projectedRevenue30d).toLocaleString("en-BD")}. ${stockoutRisks.length} products need restock attention and ${shutdownCandidates.length} products should be reviewed for discounting, bundling, or stopping promotion.`,
-    };
-
-    payload.aiSummary = await buildForecastNarrative(payload);
-    return res.json(payload);
+        .gte("created_at", since)),
+      fetchReportPages(() => supabase.from("products").select("id, name, slug, cog").eq("org_id", orgId)),
+      fetchReportPages(() => supabase.from("product_variants").select("id, product_id, stock_quantity").eq("org_id", orgId)),
+      // Website views are optional: the tab still works without first-party analytics.
+      supabase.rpc("analytics_website_report", { p_org_id: orgId, p_since: viewsSince, p_until: now.toISOString() })
+        .then(({ data, error }) => (error ? null : data?.products ?? null), () => null),
+    ]);
+    return res.json(buildStockForecast({ orders, products, variants, productViews: views, now }));
   } catch (err) {
-    console.error("[Business Forecast] error:", err);
     return sendError(res, err);
   }
 });

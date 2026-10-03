@@ -77,12 +77,10 @@ describe("OrderAnalysis PostHog behavior intelligence", () => {
     expect(pageSource).toContain("WEBSITE_BEHAVIOR_REFETCH_MS");
     expect(pageSource).toContain("refetchInterval: WEBSITE_BEHAVIOR_REFETCH_MS");
     expect(pageSource).toContain("PostHog query credentials are not configured");
-    // Analytics tabs: website behavior lives on Overview; forecast cards and calendar on AI forecast.
-    const overviewPanel = pageSource.indexOf('id="analytics-panel-overview"');
-    const forecastPanel = pageSource.indexOf('id="analytics-panel-forecast"');
-    expect(behaviorPanel).toBeGreaterThan(overviewPanel);
-    expect(behaviorPanel).toBeLessThan(forecastPanel);
-    expect(metricCards).toBeGreaterThan(forecastPanel);
-    expect(salesCalendar).toBeGreaterThan(metricCards);
+    // During the switch-over the PostHog panel sits on Data health, next to the first-party numbers.
+    expect(pageSource).toContain("<HealthTab data={website.data} comparison={<WebsiteBehaviorPanel");
+    // The AI forecast tab and its cards are gone (replaced by the rule-based Stock & forecast tab).
+    expect(metricCards).toBe(-1);
+    expect(salesCalendar).toBe(-1);
   });
 });
