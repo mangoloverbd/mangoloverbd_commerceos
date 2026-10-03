@@ -1,6 +1,8 @@
 import { apiFetch } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, type KeyboardEvent } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
+import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { useSearchParams } from "react-router-dom";
 import { Area, AreaChart, Bar, BarChart, Cell, PolarAngleAxis, PolarGrid, Radar, RadarChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import ReactMarkdown from "react-markdown";
@@ -17,7 +19,10 @@ import { GitHubCalendar, type SalesTrendDay } from "@/components/ui/git-hub-cale
 import { KpiCard } from "@/components/overview/KpiCard";
 import { FunnelChart, type FunnelStage } from "@/components/ui/funnel-chart";
 import { useLiveVisitors } from "@/hooks/useLiveVisitors";
-import { ANALYTICS_TABS, resolveAnalyticsTab, type AnalyticsTab } from "@/lib/analyticsTabs";
+import { ANALYTICS_TABS, isWebsiteTab, resolveAnalyticsTab, type AnalyticsTab } from "@/lib/analyticsTabs";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import { AcquisitionTab, FunnelTab, HealthTab, OverviewTab, ProductsTab } from "@/components/analytics/WebsiteReportTabs";
+import { healthSummary, timeAgo, type WebsiteAnalyticsResponse } from "@/lib/websiteAnalytics";
 
 const FIVE_HOURS_IN_MS = 5 * 60 * 60 * 1000;
 const WEBSITE_BEHAVIOR_REFETCH_MS = 30 * 1000;
@@ -141,11 +146,24 @@ function priorityIcon(priority: ForecastAction["priority"]) {
   return <TrendDown weight="light" size={16} className="text-amber-600" />;
 }
 
+class ReportError extends Error {
+  constructor(message: string, readonly code?: string) { super(message); }
+}
+
+function lastThirtyDhakaDays(): DateRange {
+  const dhaka = new Date(Date.now() + 6 * 60 * 60 * 1000);
+  const to = new Date(dhaka.getUTCFullYear(), dhaka.getUTCMonth(), dhaka.getUTCDate());
+  return { from: new Date(to.getFullYear(), to.getMonth(), to.getDate() - 29), to };
+}
+
 export default function Analytics() {
   const [params, setParams] = useSearchParams();
   const tab = resolveAnalyticsTab(params.get("tab"));
   const reduceMotion = useReducedMotion();
   const liveVisitors = useLiveVisitors();
+  const [dateRange, setDateRange] = useState<DateRange | null>(lastThirtyDhakaDays);
+  const from = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null;
+  const to = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : null;
   const selectTab = (next: AnalyticsTab) => {
     const nextParams = new URLSearchParams(params);
     if (next === "overview") nextParams.delete("tab"); else nextParams.set("tab", next);
@@ -181,9 +199,26 @@ export default function Analytics() {
     },
     staleTime: 0,
     refetchInterval: WEBSITE_BEHAVIOR_REFETCH_MS,
-    enabled: tab === "overview",
+    enabled: tab === "health",
   });
-  const isFetching = tab === "forecast" ? forecastFetching : behaviorFetching;
+
+  const website = useQuery<WebsiteAnalyticsResponse, ReportError>({
+    queryKey: ["/api/analytics/website", from, to],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (from && to) { params.set("from", from); params.set("to", to); }
+      const query = params.toString();
+      const res = await apiFetch(`/api/analytics/website${query ? `?${query}` : ""}`);
+      const json = await res.json();
+      if (!res.ok) throw new ReportError(json.error || "Could not load website analytics", json.code);
+      return json;
+    },
+    retry: false,
+    staleTime: 60_000,
+    enabled: isWebsiteTab(tab),
+  });
+  const isFetching = tab === "forecast" ? forecastFetching : website.isFetching || (tab === "health" && behaviorFetching);
+  const health = website.data ? healthSummary(website.data.health) : null;
 
   const products = data?.productForecasts ?? [];
   const stockoutRisks = data?.stockoutRisks ?? [];
@@ -207,7 +242,7 @@ export default function Analytics() {
         >
           <div>
             <h1 className="font-sf-display text-[22px] font-bold tracking-tight text-black">Analytics</h1>
-            <p className="mt-1 text-[13px] text-black/45">Website visitors, sources and the AI business forecast.</p>
+            <p className="mt-1 text-[13px] text-black/45">Visitors, sources, products and the path to delivered orders.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
           {liveVisitors.loaded && (
@@ -216,10 +251,23 @@ export default function Analytics() {
               {liveVisitors.count.toLocaleString("en-BD")} on the site now
             </span>
           )}
+          {isWebsiteTab(tab) && health && website.data && (
+            <button
+              type="button"
+              onClick={() => selectTab("health")}
+              title="Open Data health"
+              className="inline-flex h-8 items-center gap-1.5 rounded-[10px] bg-black/[0.04] px-3 text-[12px] text-black/60 transition-colors hover:text-black"
+            >
+              Data <b className={cn("font-medium", health.tone === "ok" ? "text-[#2F7A55]" : "text-[#8A5F05]")}>{health.label.toLowerCase()}</b> · {timeAgo(website.data.health.latest_event_at)}
+            </button>
+          )}
+          {isWebsiteTab(tab) && <DateRangePicker value={dateRange} onChange={setDateRange} />}
           <Button
             variant="ghost"
             onClick={() => {
-              if (tab === "forecast") refetch(); else refetchWebsiteBehavior();
+              if (tab === "forecast") { refetch(); return; }
+              website.refetch();
+              if (tab === "health") refetchWebsiteBehavior();
             }}
             disabled={isFetching}
             leadingIcon={
@@ -264,9 +312,29 @@ export default function Analytics() {
           })}
         </div>
 
-        {tab === "overview" && (
-          <div role="tabpanel" id="analytics-panel-overview" aria-labelledby="analytics-tab-overview">
-            <WebsiteBehaviorPanel data={websiteBehavior} loading={behaviorLoading} />
+        {isWebsiteTab(tab) && (
+          <div role="tabpanel" id={`analytics-panel-${tab}`} aria-labelledby={`analytics-tab-${tab}`}>
+            {website.isLoading ? (
+              <div className="grid gap-3 lg:grid-cols-2" aria-busy="true">
+                {[0, 1, 2, 3].map((index) => <div key={index} className="h-[220px] animate-pulse rounded-2xl bg-black/[0.04]" />)}
+              </div>
+            ) : website.isError || !website.data ? (
+              <div className="rounded-2xl bg-black/[0.04] px-6 py-12 text-center">
+                <p className="text-sm font-medium text-black">{website.error?.code === "analytics_not_ready" ? "Website analytics is not set up yet" : "Could not load website analytics"}</p>
+                <p className="mt-2 text-[12px] text-black/55">{website.error?.code === "analytics_not_ready" ? "The database changes for first-party analytics have not been applied." : website.error?.message}</p>
+                <Button variant="ghost" className="mt-4" onClick={() => website.refetch()}>Try again</Button>
+              </div>
+            ) : tab === "overview" ? (
+              <OverviewTab data={website.data} reduceMotion={reduceMotion} onOpenFunnel={() => selectTab("funnel")} />
+            ) : tab === "acquisition" ? (
+              <AcquisitionTab data={website.data} reduceMotion={reduceMotion} />
+            ) : tab === "products" ? (
+              <ProductsTab data={website.data} reduceMotion={reduceMotion} />
+            ) : tab === "funnel" ? (
+              <FunnelTab data={website.data} reduceMotion={reduceMotion} />
+            ) : (
+              <HealthTab data={website.data} comparison={<WebsiteBehaviorPanel data={websiteBehavior} loading={behaviorLoading} />} />
+            )}
           </div>
         )}
 
