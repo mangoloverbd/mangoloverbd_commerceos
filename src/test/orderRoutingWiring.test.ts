@@ -123,7 +123,7 @@ describe("order routing wiring", () => {
     const orderRow = checkout.slice(checkout.indexOf("const orderRow = {"));
 
     expect(checkout).toContain(
-      'select("id, product_id, org_id, attributes, price_adjustment, stock_quantity, weight_kg")',
+      'select("id, product_id, org_id, attributes, price_adjustment, stock_quantity, weight_kg, storefront_visible")',
     );
     expect(checkout).toContain(
       'select("id, name, selling_price, published, weight_kg, warehouse_id")',

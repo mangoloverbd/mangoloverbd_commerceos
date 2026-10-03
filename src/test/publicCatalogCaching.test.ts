@@ -77,7 +77,7 @@ describe("public catalog CDN caching", () => {
     );
 
     expect(createRoute).toContain("purgePublishedProductCacheForId(supabase, orgId, req.params.id)");
-    expect(patchRoute).toContain('const catalogChanged = ["attributes", "price_adjustment"]');
+    expect(patchRoute).toContain('const catalogChanged = ["attributes", "price_adjustment", "storefront_visible"]');
     expect(patchRoute).toContain("purgePublishedProductCacheForId(supabase, orgId, req.params.id)");
     expect(deleteRoute).toContain("purgePublishedProductCacheForId(supabase, orgId, req.params.id)");
   });

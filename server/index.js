@@ -36,7 +36,7 @@ import {
 import { buildCustomers, customerPhoneCandidates, findCustomerOrderByPhone, summarizeCustomers } from "./customers.js";
 import { buildCustomerProfile, parseCustomerId, validateCustomerContext, validateCustomerNote } from "./customerProfile.js";
 import { MAX_CUSTOMER_SMS_RECIPIENTS, mapWithConcurrency, planCustomerSms } from "./customerSms.js";
-import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema } from "./publicCatalog.js";
+import { toPublicProduct, toPublicInventoryEntry, PublicInventoryResponseSchema, PublicInventoryEntrySchema, storefrontVisibleVariants } from "./publicCatalog.js";
 import {
   HANDLE_REGEX,
   RESERVED_HANDLES,
@@ -13783,12 +13783,12 @@ async function loadPublicProducts(orgId) {
   if (productIds.length > 0) {
     const { data: variantRows, error: variantsError } = await supabase
       .from("product_variants")
-      .select("id, product_id, attributes, price_adjustment")
+      .select("id, product_id, attributes, price_adjustment, storefront_visible")
       .in("product_id", productIds)
       .eq("org_id", orgId)
       .order("created_at", { ascending: true });
     if (variantsError) throw variantsError;
-    for (const variant of variantRows || []) {
+    for (const variant of storefrontVisibleVariants(variantRows)) {
       if (!variantsMap[variant.product_id]) variantsMap[variant.product_id] = [];
       variantsMap[variant.product_id].push(variant);
     }
@@ -13814,14 +13814,14 @@ async function loadPublicProductBySlug(orgId, slug) {
     loadProductImagesMap(supabase, orgId, [product.id]),
     supabase
       .from("product_variants")
-      .select("id, product_id, attributes, price_adjustment")
+      .select("id, product_id, attributes, price_adjustment, storefront_visible")
       .eq("product_id", product.id)
       .eq("org_id", orgId)
       .order("created_at", { ascending: true }),
   ]);
   if (variantsError) throw variantsError;
 
-  return toPublicProduct(product, variants || [], imagesMap[product.id] || []);
+  return toPublicProduct(product, storefrontVisibleVariants(variants), imagesMap[product.id] || []);
 }
 
 async function loadPublicInventory(orgId, ids) {
@@ -13841,14 +13841,14 @@ async function loadPublicInventory(orgId, ids) {
     getProductStockMap(orgId, validIds),
     supabase
       .from("product_variants")
-      .select("id, product_id, stock_quantity")
+      .select("id, product_id, stock_quantity, storefront_visible")
       .in("product_id", validIds)
       .eq("org_id", orgId),
   ]);
   if (variantsResult.error) throw variantsResult.error;
 
   const variantsByProduct = {};
-  for (const v of variantsResult.data || []) {
+  for (const v of storefrontVisibleVariants(variantsResult.data)) {
     if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
     variantsByProduct[v.product_id].push(v);
   }
@@ -14551,13 +14551,14 @@ async function handlePublicHandleOrderSubmit(req, res) {
     // Fetch all variants + their parent products in one pass
     const { data: variants, error: vErr } = await supabase
       .from("product_variants")
-      .select("id, product_id, org_id, attributes, price_adjustment, stock_quantity, weight_kg")
+      .select("id, product_id, org_id, attributes, price_adjustment, stock_quantity, weight_kg, storefront_visible")
       .in("id", variantIds)
       .eq("org_id", orgId);
     if (vErr) throw vErr;
 
+    // Merchant-Suite-only variants are treated as unknown to public checkout.
     const variantMap = {};
-    for (const v of variants || []) variantMap[v.id] = v;
+    for (const v of storefrontVisibleVariants(variants)) variantMap[v.id] = v;
 
     // Fetch parent products for base prices and names
     const productIds = [...new Set(Object.values(variantMap).map((v) => v.product_id))];
@@ -15885,7 +15886,7 @@ app.post("/api/products/:id/variants", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
-    const { attributes, cog, stock_quantity, price_adjustment, weight_kg } = req.body;
+    const { attributes, cog, stock_quantity, price_adjustment, weight_kg, storefront_visible } = req.body;
     if (!attributes || typeof attributes !== "object" || Object.keys(attributes).length === 0) {
       return res.status(400).json({ error: "attributes object with at least one key required" });
     }
@@ -15903,6 +15904,7 @@ app.post("/api/products/:id/variants", async (req, res) => {
         stock_quantity: Math.max(0, parseInt(stock_quantity, 10) || 0),
         price_adjustment: parseFloat(price_adjustment) || 0,
         weight_kg: parseOptionalWeightKg(weight_kg),
+        storefront_visible: storefront_visible !== false,
       })
       .select()
       .single();
@@ -15936,6 +15938,12 @@ app.patch("/api/products/:id/variants/:variantId", async (req, res) => {
     if (req.body.stock_quantity !== undefined) patch.stock_quantity = Math.max(0, parseInt(req.body.stock_quantity, 10) || 0);
     if (req.body.price_adjustment !== undefined) patch.price_adjustment = parseFloat(req.body.price_adjustment) || 0;
     if (req.body.weight_kg !== undefined) patch.weight_kg = parseOptionalWeightKg(req.body.weight_kg);
+    if (req.body.storefront_visible !== undefined) {
+      if (typeof req.body.storefront_visible !== "boolean") {
+        return res.status(400).json({ error: "storefront_visible must be a boolean" });
+      }
+      patch.storefront_visible = req.body.storefront_visible;
+    }
     const { data, error } = await supabase
       .from("product_variants")
       .update(patch)
@@ -15945,7 +15953,7 @@ app.patch("/api/products/:id/variants/:variantId", async (req, res) => {
       .select()
       .single();
     if (error) throw error;
-    const catalogChanged = ["attributes", "price_adjustment"]
+    const catalogChanged = ["attributes", "price_adjustment", "storefront_visible"]
       .some((field) => req.body[field] !== undefined);
     if (catalogChanged) {
       purgePublishedProductCacheForId(supabase, orgId, req.params.id).catch((purgeError) => {
