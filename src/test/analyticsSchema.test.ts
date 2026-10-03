@@ -77,12 +77,13 @@ describe("first-party analytics schema", () => {
       .toContain("analytics_events_kind_check");
   });
 
-  it("keeps browsers out and gives the server only what Phase 2a needs", () => {
+  it("keeps browsers out and never lets the server rewrite recorded events", () => {
     for (const role of ["anon", "authenticated"]) {
       expect(sqlError(`set role ${role}; select count(*) from public.analytics_sessions;`)).toContain("permission denied");
       expect(sqlError(`set role ${role}; select public.record_analytics_hit('${org}','${randomUUID()}','${randomUUID()}','${randomUUID()}','page_view','/',null,0,now(),'{}'::jsonb);`)).toContain("permission denied");
     }
-    expect(sqlError(`set role service_role; delete from public.analytics_events;`)).toContain("permission denied");
+    // Deletes are granted only for retention (Phase 2c); events are never edited.
+    expect(sqlError(`set role service_role; update public.analytics_events set path = '/';`)).toContain("permission denied");
     expect(one(`select relrowsecurity from pg_class where relname = 'analytics_session_products'`)).toBe("t");
   });
 });

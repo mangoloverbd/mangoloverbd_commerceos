@@ -38,7 +38,8 @@ describe("analytics report shaping", () => {
   });
 });
 
-function fixture({ role = "admin", rpc = async () => ({ data: {}, error: null }) as { data: unknown; error: unknown } } = {}) {
+type Rpc = (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+function fixture({ role = "admin", rpc = (async () => ({ data: {}, error: null })) as Rpc } = {}) {
   const db = database({ analytics_events: [{ org_id: orgId, received_at: "2026-10-03T05:59:00Z" }], user_roles: [{ org_id: orgId }], analytics_job_state: [] });
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const upserts: unknown[] = [];
