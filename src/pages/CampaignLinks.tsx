@@ -110,8 +110,8 @@ export default function CampaignLinks() {
         <p className="mt-1 text-[13px] text-black/60">Which posts and ads bring delivered orders.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <DateRangePicker value={dates.dateRange} onChange={dates.setRange} />
-        <Button className="active:scale-[0.97]" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><Plus weight="light" aria-hidden="true" className="mr-1.5" size={16} />New link</Button>
+        <DateRangePicker value={dates.dateRange} onChange={dates.setRange} variant="toolbar" />
+        <Button className="h-9 active:scale-[0.97]" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><Plus weight="light" aria-hidden="true" className="mr-1.5" size={16} />New link</Button>
       </div>
     </motion.header>
 

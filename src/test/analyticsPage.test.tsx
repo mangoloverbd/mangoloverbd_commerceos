@@ -187,10 +187,10 @@ describe("Analytics route and navigation", () => {
     expect(appSource).toContain("<Navigate to={`/analytics${search}`} replace />");
   });
 
-  it("lists Analytics in the Main Menu right after Ask Edith, admin only", () => {
+  it("lists Business Analytics in the Main Menu right after Ask Edith, admin only", () => {
     const section = sidebarSource.slice(sidebarSource.indexOf('label: "Main Menu"'), sidebarSource.indexOf('label: "Orders"'));
     const askEdith = section.indexOf('title: "Ask Edith"');
-    const analytics = section.indexOf('title: "Analytics"');
+    const analytics = section.indexOf('title: "Business Analytics"');
     expect(askEdith).toBeGreaterThan(-1);
     expect(analytics).toBeGreaterThan(askEdith);
     expect(section.slice(analytics)).toContain('link: "/analytics"');

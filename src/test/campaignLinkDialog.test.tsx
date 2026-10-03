@@ -19,8 +19,8 @@ describe('campaign link form', () => {
   it('lets staff select custom destination mode before typing the path', async () => {
     vi.mocked(apiFetch).mockResolvedValue(campaignJson({ products: [] }));
     const user = userEvent.setup(); setup();
-    await user.selectOptions(screen.getByLabelText('Opens'), 'custom');
-    expect(screen.getByLabelText('Opens')).toHaveValue('custom');
+    await user.click(screen.getByLabelText('Opens'));
+    await user.click(await screen.findByRole('option', { name: /landing page or custom path/i }));
     expect(screen.getByLabelText('Destination path')).toBeInTheDocument();
   });
   beforeEach(() => { vi.mocked(apiFetch).mockReset(); }); afterEach(cleanup);

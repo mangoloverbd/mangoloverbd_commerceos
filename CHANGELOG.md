@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0.52] - 2026-10-03
+
+### Fixed
+
+- Campaign link popup: the Opens dropdown now opens upward with a properly positioned chevron, and the custom path field sits above the dropdown.
+- Sidebar search now opens the same smooth popup card as New link (⌘K still works), with all nav icons showing.
+- Dismiss confirmations in the abandoned tab now open and close with the same smooth animation as the New link popup.
+- Campaign Links header: the date picker and New link button are now the same height.
+
+### Changed
+
+- Sidebar collapse icon replaced (17px, matches the settings gear).
+- Sidebar Analytics renamed to Business Analytics.
+
 ## [0.1.0.51] - 2026-10-03
 
 ### Added
