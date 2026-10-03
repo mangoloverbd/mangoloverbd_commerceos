@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.46] - 2026-10-03
+
+### Added
+
+- Merchant-Suite-only variants: untick "On website" when adding or editing a variant to keep it off the storefront. Hidden variants stay available for manual, inbox and courier orders, are left out of the public catalog and stock data, and website checkout refuses them.
+
 ## [0.1.0.45] - 2026-10-03
 
 ### Added
