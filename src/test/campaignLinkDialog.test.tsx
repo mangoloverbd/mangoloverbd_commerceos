@@ -39,6 +39,18 @@ describe('campaign link form', () => {
     expect(await screen.findByText(/use 3–60 lowercase letters/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Link')).toHaveAttribute('aria-invalid', 'true');
   });
+  it('closes from the close button and leaves the page after its exit animation', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(campaignJson({ products: [] }));
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onOpenChange = vi.fn();
+    const view = render(<QueryClientProvider client={client}><CampaignLinkDialog open onOpenChange={onOpenChange} /></QueryClientProvider>);
+    expect(screen.getByRole('dialog', { name: 'New campaign link' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    view.rerender(<QueryClientProvider client={client}><CampaignLinkDialog open={false} onOpenChange={onOpenChange} /></QueryClientProvider>);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
   it('keeps only the link ending when staff paste a full campaign URL', async () => {
     vi.mocked(apiFetch).mockResolvedValue(campaignJson({ products: [] }));
     const user = userEvent.setup(); setup();
