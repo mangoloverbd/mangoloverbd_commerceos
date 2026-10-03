@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Copy } from '@phosphor-icons/react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Check, Copy, X } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,9 +14,12 @@ import { CAMPAIGN_CHANNELS, CAMPAIGN_ORIGIN, campaignChannelLabel, campaignUrl, 
 type ProductDestination = { id: string; name: string; slug: string | null; published: boolean };
 const blank: CampaignInput = { name: '', slug: '', channel: 'facebook', destination_path: '/', creator_name: '', post_url: '', notes: '' };
 const host = CAMPAIGN_ORIGIN.replace(/^https?:\/\/(www\.)?/, '');
+// Quick, decisive ease-out on the way in; a shorter exit so closing never feels slow.
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
 export function CampaignLinkDialog({ open, onOpenChange, link }: { open: boolean; onOpenChange: (open: boolean) => void; link?: CampaignLink }) {
   const prefix = useId();
+  const reduceMotion = useReducedMotion();
   const identity = useCampaignIdentity();
   const save = useSaveCampaignLink();
   const [values, setValues] = useState<CampaignInput>(blank);
@@ -71,11 +75,23 @@ export function CampaignLinkDialog({ open, onOpenChange, link }: { open: boolean
   const attrs = (key: string) => ({ id: `${prefix}-${key}`, 'aria-invalid': !!errors[key], 'aria-describedby': errors[key] ? `${prefix}-${key}-error` : `${prefix}-${key}-note` });
   const errorText = (key: string) => errors[key] && <p id={`${prefix}-${key}-error`} className="text-xs text-[#B4473A]">{errors[key]}</p>;
   const hasDetails = !!(link?.creator_name || link?.post_url || link?.notes);
-  return <Dialog open={open} onOpenChange={next => { if (!save.isPending) onOpenChange(next); }}>
-    <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain rounded-[20px] bg-[#FAFAF8] sm:max-w-[560px]">
-      <DialogHeader><p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Marketing</p>
-        <DialogTitle className="font-sf-display text-[19px] font-semibold tracking-tight">{link ? 'Edit campaign link' : 'New campaign link'}</DialogTitle>
-        <DialogDescription className="text-xs">One link for each post, ad or creator.</DialogDescription></DialogHeader>
+  return <DialogPrimitive.Root open={open} onOpenChange={next => { if (!save.isPending) onOpenChange(next); }}>
+    <AnimatePresence>{open && <DialogPrimitive.Portal forceMount>
+      <DialogPrimitive.Overlay asChild forceMount>
+        <motion.div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]"
+          initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2, ease: EASE_OUT } }} exit={{ opacity: 0, transition: { duration: 0.15, ease: 'easeIn' } }} />
+      </DialogPrimitive.Overlay>
+      <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
+        <DialogPrimitive.Content asChild forceMount>
+          <motion.div className="pointer-events-auto relative grid max-h-[90dvh] w-full max-w-[560px] gap-4 overflow-y-auto overscroll-contain rounded-[20px] bg-[#FAFAF8] p-6 shadow-[0_30px_80px_-30px_rgba(11,11,10,0.5)] outline-none"
+            style={{ transformOrigin: 'center' }}
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 10 }}
+            animate={reduceMotion ? { opacity: 1, transition: { duration: 0.15 } } : { opacity: 1, scale: 1, y: 0, transition: { duration: 0.26, ease: EASE_OUT } }}
+            exit={reduceMotion ? { opacity: 0, transition: { duration: 0.1 } } : { opacity: 0, scale: 0.97, y: 6, transition: { duration: 0.16, ease: 'easeIn' } }}>
+      <DialogPrimitive.Close disabled={save.isPending} aria-label="Close" className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg text-black/55 transition-[background-color,color,transform] duration-150 ease-out hover:bg-black/[0.05] hover:text-black active:scale-[0.94] disabled:opacity-40"><X weight="light" size={18} /></DialogPrimitive.Close>
+      <div className="flex flex-col gap-1.5 pr-8"><p className="text-[8px] font-medium uppercase tracking-[0.3em] text-black">Marketing</p>
+        <DialogPrimitive.Title className="font-sf-display text-[19px] font-semibold tracking-tight">{link ? 'Edit campaign link' : 'New campaign link'}</DialogPrimitive.Title>
+        <DialogPrimitive.Description className="text-xs text-black/60">One link for each post, ad or creator.</DialogPrimitive.Description></div>
       <form noValidate onSubmit={submit} className="grid gap-4">
         <div className="grid gap-1.5"><Label htmlFor={`${prefix}-name`}>Name</Label><Input {...attrs('name')} maxLength={120} placeholder="e.g. Bori campaign 1" value={values.name} onChange={event => {
           const name = event.target.value; setValues(previous => ({ ...previous, name, ...(!slugEdited ? { slug: slugFromName(name) || '' } : {}) }));
@@ -131,6 +147,9 @@ export function CampaignLinkDialog({ open, onOpenChange, link }: { open: boolean
         {save.isError && <p role="alert" className="text-sm text-[#B4473A]">{save.error.message}</p>}
         <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={save.isPending} onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" disabled={save.isPending} className="active:scale-[0.97]">{save.isPending ? 'Saving…' : link ? 'Save changes' : 'Create link'}</Button></div>
       </form>
-    </DialogContent>
-  </Dialog>;
+          </motion.div>
+        </DialogPrimitive.Content>
+      </div>
+    </DialogPrimitive.Portal>}</AnimatePresence>
+  </DialogPrimitive.Root>;
 }
