@@ -39,6 +39,6 @@ describe("background request volume guards", () => {
     expect(serverSource).toContain("const VISITOR_TTL_MS = 60_000;");
     const start = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
     const route = serverSource.slice(start, serverSource.indexOf('app.post("/api/live-visitor/ping"', start));
-    expect(route).toContain("setInterval(ping, 20000)");
+    expect(route).toContain("setInterval(heartbeat, 20000)");
   });
 });

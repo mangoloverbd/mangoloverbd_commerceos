@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 describe("live visitor tracking", () => {
   const serverSource = readFileSync(resolve(process.cwd(), "server/index.js"), "utf8");
@@ -27,7 +27,7 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain("validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url)");
     expect(trackerRoute).toContain("window.MerchantSuiteTracker");
     expect(trackerRoute).toContain("track = function(bucket)");
-    expect(trackerRoute).toContain("ping(bucket, true)");
+    expect(trackerRoute).toContain('ping(bucket, true, "step")');
   });
 
   it("records behavior via explicit track calls, not DOM text sniffing", () => {
@@ -53,7 +53,7 @@ describe("live visitor tracking", () => {
     const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
     const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
 
-    expect(trackerRoute).toContain('window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); }');
+    expect(trackerRoute).toContain('window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true, "step"); }');
     // no client-side text sniffing that could mislabel an order attempt as purchased
     expect(trackerRoute).not.toContain("detectBucketFromText");
     expect(trackerRoute).not.toContain('addEventListener("click"');
@@ -151,5 +151,52 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain("AbortController");
     expect(pingRoute).toContain("await capturePostHogEvent");
     expect(pingRoute).not.toContain("void capturePostHogEvent");
+  });
+
+  it("labels tracker pings so 20-second heartbeats are not sent to PostHog", () => {
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
+    const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
+    const trackerRoute = serverSource.slice(trackerStart, trackerEnd);
+    const pingStart = serverSource.indexOf('app.post("/api/live-visitor/ping"');
+    const pingRoute = serverSource.slice(pingStart, serverSource.indexOf('app.get("/api/live-visitors"', pingStart));
+
+    expect(trackerRoute).toContain('ping(null, false, "pageview")');
+    expect(trackerRoute).toContain('ping(null, false, "heartbeat")');
+    expect(trackerRoute).toContain("setInterval(heartbeat, 20000)");
+    expect(trackerRoute).not.toContain("setInterval(ping, 20000)");
+    expect(trackerRoute).toContain('window.addEventListener("focus", heartbeat)');
+    // Redis presence still updates for every ping, before the forwarding decision.
+    expect(pingRoute.indexOf("addLiveVisitorPresence(allKey")).toBeLessThan(pingRoute.indexOf("shouldForwardTrackerHit"));
+    expect(pingRoute).toMatch(/if \(shouldForwardTrackerHit\(hitKind\)\) \{\s*await capturePostHogEvent/);
+  });
+
+  it("sends a page view on load, heartbeats on the timer and a step for explicit tracking", () => {
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
+    const bodyStart = serverSource.indexOf("return res.send(`", trackerStart) + "return res.send(`".length;
+    const script = serverSource.slice(bodyStart, serverSource.indexOf("`);", bodyStart)).replace("${JSON.stringify(orgId)}", JSON.stringify("00000000-0000-0000-0000-000000000000"));
+    const sent: Array<{ kind: string; explicit: boolean; bucket: string | null }> = [];
+    const fetchMock = vi.fn((_url: string, init: { body: string }) => { sent.push(JSON.parse(init.body)); return Promise.resolve(new Response("{}")); });
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      new Function(script)();
+      expect(sent.map(hit => hit.kind)).toEqual(["pageview"]);
+      vi.advanceTimersByTime(40_000);
+      expect(sent.slice(1).map(hit => hit.kind)).toEqual(["heartbeat", "heartbeat"]);
+      (window as unknown as { MerchantSuiteTracker: { track: (bucket: string) => void } }).MerchantSuiteTracker.track("cart");
+      expect(sent.at(-1)).toMatchObject({ kind: "step", explicit: true, bucket: "cart" });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("serves a tracker script that parses as JavaScript", () => {
+    const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
+    const bodyStart = serverSource.indexOf("return res.send(`", trackerStart) + "return res.send(`".length;
+    const bodyEnd = serverSource.indexOf("`);", bodyStart);
+    const script = serverSource.slice(bodyStart, bodyEnd).replace("${JSON.stringify(orgId)}", JSON.stringify("00000000-0000-0000-0000-000000000000"));
+    expect(script).not.toContain("${");
+    expect(() => new Function(script)).not.toThrow();
   });
 });

@@ -4,6 +4,7 @@ import cors from "cors";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
+import { normalizeTrackerKind, shouldForwardTrackerHit } from "./trackerHits.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { isIP } from "node:net";
@@ -8521,18 +8522,22 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
     }
   }
   var sessionId = getSessionId();
-  function ping(bucket, explicit){
+  function ping(bucket, explicit, kind){
     if (document.hidden) return;
-    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true });
+    var payload = JSON.stringify({ org_id: org, session_id: sessionId, url: window.location.href, referrer: document.referrer || "", bucket: bucket || null, explicit: explicit === true, kind: kind || "heartbeat" });
     try {
       fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, mode: "cors", keepalive: true, credentials: "omit" }).catch(function(){});
     } catch (_) {}
   }
   function pingCurrentLocation(){
-    ping(null);
+    ping(null, false, "pageview");
+  }
+  // Heartbeats only keep the live visitor count fresh; they are not page views.
+  function heartbeat(){
+    ping(null, false, "heartbeat");
   }
   window.MerchantSuiteTracker = window.MerchantSuiteTracker || {};
-  window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true); };
+  window.MerchantSuiteTracker.track = function(bucket){ ping(bucket, true, "step"); };
   ["pushState", "replaceState"].forEach(function(method){
     var original = history[method];
     if (typeof original !== "function") return;
@@ -8545,14 +8550,14 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   window.addEventListener("popstate", function(){ window.dispatchEvent(new Event("locationchange")); });
   window.addEventListener("locationchange", function(){ setTimeout(pingCurrentLocation, 0); });
   pingCurrentLocation();
-  setInterval(ping, 20000);
-  document.addEventListener("visibilitychange", function(){ if (!document.hidden) ping(); });
-  window.addEventListener("focus", ping);
+  setInterval(heartbeat, 20000);
+  document.addEventListener("visibilitychange", function(){ if (!document.hidden) heartbeat(); });
+  window.addEventListener("focus", heartbeat);
 })();`);
 });
 
 app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
-  const { org_id, session_id, url, referrer, bucket, explicit } = req.body || {};
+  const { org_id, session_id, url, referrer, bucket, explicit, kind } = req.body || {};
   if (!isValidOrgId(org_id) || typeof session_id !== "string" || session_id.length > 128) {
     return res.status(400).json({ error: "Invalid live visitor payload" });
   }
@@ -8564,7 +8569,13 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
     const now = Date.now();
     await addLiveVisitorPresence(allKey, session_id, now);
     if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
-    await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket, explicit });
+    // Heartbeats update live presence only; forwarding every 20-second ping to
+    // PostHog made up most of its event volume. Legacy pings without `kind`
+    // (tabs still running the old script) keep being forwarded.
+    const hitKind = normalizeTrackerKind(kind);
+    if (shouldForwardTrackerHit(hitKind)) {
+      await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket, explicit });
+    }
     return res.json({ ok: true, tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" });
   } catch (err) {
     console.warn("[LiveVisitor] Redis ping failed:", err.message);
