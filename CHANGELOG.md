@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.54] - 2026-10-04
+
+### Changed
+
+- Sidebar menu rows and section labels (Main Menu, Orders, Catalog…) sit a little closer together.
+- The dashboard scrolls as one page again, header included, and bounces naturally at the top and bottom. The area revealed by the bounce now matches the dashboard background instead of showing a darker grey band.
+
 ## [0.1.0.53] - 2026-10-04
 
 ### Changed

@@ -304,8 +304,6 @@
 
   html {
     background-color: #dedede;
-    /* No rubber-band bounce past the top or bottom of the page. */
-    overscroll-behavior: none;
   }
 
   /* Swiss Typography — strict hierarchy */
@@ -579,4 +577,12 @@
 [data-sidebar="menu-sub"] [data-sidebar="menu-sub-button"]:active {
   background-color: rgba(0, 0, 0, 0.05);
   color: #1a1a1a;
+}
+
+/* The dashboard scrolls as a whole page. When it bounces past the top or bottom,
+   the browser shows the html/body background; match it to the dashboard shell so
+   no different-coloured band appears. Unlayered so it beats body's base colour. */
+html:has([data-dashboard-shell]),
+html:has([data-dashboard-shell]) body {
+  background-color: #f4f3f1;
 }
