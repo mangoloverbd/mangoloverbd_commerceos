@@ -11,9 +11,9 @@ describe("Customers page routing", () => {
     expect(appSource).toContain('<Route path="/customers" element={<Customers />} />');
   });
 
-  it("adds Customers to the main product navigation", () => {
+  it("lists the customer list in the Orders navigation", () => {
     expect(sidebarSource).toContain('id: "customers"');
-    expect(sidebarSource).toContain('title: "Customers"');
+    expect(sidebarSource).toContain('title: "Customer List"');
     expect(sidebarSource).toContain('link: "/customers"');
   });
 

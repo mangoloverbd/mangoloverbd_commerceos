@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.47] - 2026-10-03
+
+### Changed
+
+- Redesigned sidebar: a light warm panel with a Mango Lover BD logo card, a search bar below it, and sections for Main Menu, Orders (Returns, Customer List, Order Protection), Catalog, Marketing, Social Inbox and Reports. Tree lines and the minimised icon rail work as before.
+- The bottom of the sidebar shows your name and role (Admin or Team member) with the account menu, a two-tone settings gear, and the minimise arrow, which moved from the top.
+
+### Added
+
+- Search the sidebar (or press ⌘K / Ctrl+K anywhere) to jump to any page you can open.
+
 ## [0.1.0.46] - 2026-10-03
 
 ### Added

@@ -16,28 +16,25 @@ describe("sidebar active item style", () => {
   it("uses calmer typography for active and inactive navigation labels", () => {
     expect(source).toContain("font-sans");
     expect(source).not.toContain("font-sf-text");
-    expect(source).toContain("text-[13px]");
-    expect(source).not.toContain("text-[12.5px]");
-    expect(source).toContain('const activeNavLabelClass = "font-medium text-black"');
+    expect(source).toContain("text-[14px]");
+    expect(source).toContain('const activeNavLabelClass = "font-medium text-[#111]"');
     expect(source).toContain('const inactiveNavLabelClass =');
-    expect(source).toContain('"font-normal text-black/75 group-hover/nav-link:text-black/90 group-hover/nav-button:text-black/90"');
+    expect(source).toContain('"font-normal text-[#5d5c58] group-hover/nav-link:text-[#1b1b19] group-hover/nav-button:text-[#1b1b19]"');
     expect(source).not.toContain("!font-bold text-black");
   });
 
-  it("places Reports above Intelligence in the sidebar", () => {
-    expect(appSidebarSource.indexOf("sections.push(reports)")).toBeLessThan(
-      appSidebarSource.indexOf("sections.push(workspace)"),
-    );
+  it("orders the sections Main Menu, Orders, Catalog, Marketing, Social Inbox, Reports", () => {
+    expect(appSidebarSource).toContain("return [mainMenu, orders, catalog, marketing, socialInbox, reports];");
   });
 
-  it("places Warehouses immediately above Order Protection", () => {
-    const productSection = appSidebarSource.slice(
-      appSidebarSource.indexOf("const product: NavSection"),
-      appSidebarSource.indexOf("const workspace: NavSection"),
+  it("places Customer List between Returns and Order Protection", () => {
+    const ordersSection = appSidebarSource.slice(
+      appSidebarSource.indexOf("const orders: NavSection"),
+      appSidebarSource.indexOf("const catalog: NavSection"),
     );
-    const routeIds = [...productSection.matchAll(/id: "([^"]+)"/g)].map((match) => match[1]);
+    const routeIds = [...ordersSection.matchAll(/id: "([^"]+)"/g)].map((match) => match[1]);
 
-    expect(routeIds.slice(-2)).toEqual(["warehouses", "order-protection"]);
+    expect(routeIds).toEqual(["returns", "customers", "order-protection"]);
   });
 
   it("shows the selected item as a static white card with a grey border", () => {
@@ -48,13 +45,13 @@ describe("sidebar active item style", () => {
     expect(css).not.toMatch(/\.glass-button::after\s*{[^}]*uv-beam-spin/);
     expect(source).not.toContain('layoutId="sidebar-active-pill"');
     expect(source).not.toContain("layoutId=");
-    expect(source).toContain("rounded-[6px] border border-[#d4d4d4] bg-white");
-    expect(source).toContain('const inactiveIconStyle = { "--fillg": "rgba(0, 0, 0, 0.55)" }');
+    expect(source).toContain("rounded-[6px] border border-[#e2e1dd] bg-white");
+    expect(source).toContain('const inactiveIconClass = "[--fillg:#8d8c87]');
   });
 
   it("renders dividers between the requested sidebar sections", () => {
     expect(source).toContain("sectionIndex > 0");
-    expect(source).toContain("border-t border-black/[0.08]");
+    expect(source).toContain("border-t border-[#e4e3df]");
     expect(source).toContain("sectionIndex");
   });
 
