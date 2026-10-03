@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.48] - 2026-10-03
+
+### Changed
+
+- The redesigned sidebar is back to its original width: 192px open and 44px minimised. Rows return to their earlier compact size so labels fit.
+
 ## [0.1.0.47] - 2026-10-03
 
 ### Changed

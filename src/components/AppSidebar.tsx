@@ -35,7 +35,7 @@ import { CaretDoubleLeft, CaretUpDown, LinkSimple, MagnifyingGlass } from "@phos
 // Two-tone gear: the outer ring is the lighter tone, the spokes the darker one.
 function SettingsIcon() {
     return (
-        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none">
             <path style={{ fill: "var(--fillg)", opacity: 0.4 }} d="M 21.6666 11 h -1.3987 c -0.096 -0.796 -0.3 -1.5587 -0.604 -2.2693 l 1.208 -0.6973 c 0.4787 -0.276 0.6413 -0.888 0.3653 -1.3653 -0.276 -0.4787 -0.888 -0.6413 -1.3653 -0.3653 l -1.2173 0.7027 c -0.472 -0.628 -1.0307 -1.1853 -1.6573 -1.6573 l 0.7027 -1.2187 c 0.276 -0.4787 0.112 -1.0893 -0.3653 -1.3653 -0.4773 -0.2773 -1.0893 -0.1133 -1.3653 0.3653 l -0.6973 1.208 c -0.7107 -0.3053 -1.4733 -0.508 -2.2693 -0.604 V 2.3333 c 0 -0.552 -0.448 -1 -1 -1 s -1 0.448 -1 1 v 1.3987 c -0.796 0.096 -1.5587 0.3 -2.2693 0.604 l -0.6973 -1.208 c -0.2773 -0.4787 -0.8893 -0.6427 -1.3653 -0.3653 -0.4787 0.276 -0.6413 0.888 -0.3653 1.3653 l 0.7027 1.2187 c -0.628 0.472 -1.1853 1.0293 -1.6573 1.6573 l -1.2173 -0.7027 c -0.476 -0.276 -1.0893 -0.1133 -1.3653 0.3653 -0.276 0.4787 -0.112 1.0893 0.3653 1.3653 l 1.208 0.6973 c -0.304 0.7107 -0.508 1.4733 -0.604 2.2693 H 2.3333 c -0.552 0 -1 0.448 -1 1 s 0.448 1 1 1 h 1.3987 c 0.096 0.796 0.3 1.5587 0.604 2.2693 l -1.208 0.6973 c -0.4787 0.276 -0.6413 0.888 -0.3653 1.3653 0.1853 0.3213 0.5213 0.5 0.8667 0.5 0.1693 0 0.3413 -0.0427 0.5 -0.1347 l 1.2173 -0.7027 c 0.472 0.628 1.0307 1.1853 1.6573 1.6573 l -0.7027 1.2187 c -0.276 0.4787 -0.112 1.0893 0.3653 1.3653 0.1573 0.0907 0.3293 0.1347 0.5 0.1347 0.3453 0 0.6813 -0.1787 0.8667 -0.5 l 0.6973 -1.208 c 0.7107 0.3053 1.4733 0.508 2.2693 0.604 v 1.3987 c 0 0.552 0.448 1 1 1 s 1 -0.448 1 -1 v -1.3987 c 0.796 -0.096 1.5587 -0.3 2.2693 -0.604 l 0.6973 1.208 c 0.1853 0.3213 0.5213 0.5 0.8667 0.5 0.1693 0 0.3413 -0.0427 0.5 -0.1347 0.4787 -0.276 0.6413 -0.888 0.3653 -1.3653 l -0.7027 -1.2187 c 0.628 -0.472 1.1853 -1.0293 1.6573 -1.6573 l 1.2173 0.7027 c 0.1573 0.0907 0.3293 0.1347 0.5 0.1347 0.3453 0 0.6813 -0.1787 0.8667 -0.5 0.276 -0.4787 0.112 -1.0893 -0.3653 -1.3653 l -1.208 -0.6973 c 0.304 -0.7107 0.508 -1.4733 0.604 -2.2693 h 1.3987 c 0.552 0 1 -0.448 1 -1 s -0.448 -1 -1 -1 Z m -9.6666 7.3333 c -3.492 0 -6.3333 -2.8413 -6.3333 -6.3333 s 2.8413 -6.3333 6.3333 -6.3333 6.3333 2.8413 6.3333 6.3333 -2.8413 6.3333 -6.3333 6.3333 Z" />
             <path style={{ fill: "var(--fillg)" }} d="M 19.3333 11 h -6.756 L 9.1986 5.1493 c -0.276 -0.4787 -0.8893 -0.6413 -1.3653 -0.3653 -0.4787 0.276 -0.6413 0.888 -0.3653 1.3653 l 3.3787 5.8507 -3.3787 5.852 c -0.276 0.4787 -0.112 1.0893 0.3653 1.3653 0.1573 0.0907 0.3293 0.1347 0.5 0.1347 0.3453 0 0.6813 -0.1787 0.8667 -0.5 l 3.3787 -5.852 h 6.756 c 0.552 0 1 -0.448 1 -1 s -0.448 -1 -1 -1 Z" />
         </svg>
@@ -64,11 +64,11 @@ function SidebarSearch({ sections }: { sections: NavSection[] }) {
                 type="button"
                 data-testid="sidebar-search"
                 onClick={() => setOpen(true)}
-                className="mt-2.5 flex h-9 w-full shrink-0 items-center gap-2 overflow-hidden rounded-[6px] border border-[#e3e2de] bg-white pl-[11px] pr-1.5 text-left font-sans text-[13.5px] text-[#9a9994] outline-none transition-colors hover:border-[#d3d2cd] focus-visible:ring-2 focus-visible:ring-black/15"
+                className="mt-2 flex h-8 w-full shrink-0 items-center gap-2 overflow-hidden rounded-[6px] border border-[#e3e2de] bg-white pl-[7px] pr-1 text-left font-sans text-[13px] text-[#9a9994] outline-none transition-colors hover:border-[#d3d2cd] focus-visible:ring-2 focus-visible:ring-black/15"
             >
-                <MagnifyingGlass aria-hidden="true" weight="light" size={16} className="shrink-0" />
+                <MagnifyingGlass aria-hidden="true" weight="light" size={15} className="shrink-0" />
                 <span className="flex-1 truncate whitespace-nowrap transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">Search…</span>
-                <kbd className="rounded-[5px] border border-[#e3e2de] bg-white px-1.5 font-sans text-[11px] font-medium leading-[18px] text-[#8d8c87] transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">⌘K</kbd>
+                <kbd className="rounded-[5px] border border-[#e3e2de] bg-white px-1 font-sans text-[10.5px] font-medium leading-4 text-[#8d8c87] transition-opacity duration-200 ease-out group-data-[collapsible=icon]:opacity-0">⌘K</kbd>
             </button>
             <CommandDialog open={open} onOpenChange={setOpen}>
                 <DialogTitle className="sr-only">Search pages</DialogTitle>
@@ -265,21 +265,21 @@ export function AppSidebar() {
     return (
         <Sidebar collapsible="icon" className="border-r border-[#e6e5e1] bg-[#f4f3f1]" style={{ fontFamily: "'Geist Sans', system-ui, sans-serif" }}>
             {/* ── Brand card, then search ──────────────────── */}
-            <SidebarHeader className="overflow-hidden px-3 pb-0 pt-3.5">
+            <SidebarHeader className="overflow-hidden px-1.5 pb-0 pt-2.5">
                 <div data-testid="sidebar-brand">
                     <Link
                         to="/"
-                        className="flex h-12 w-full items-center gap-2.5 overflow-hidden rounded-[6px] border border-[#dcdbd7] bg-[#f9f8f6] p-px pr-2.5 shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-black/15"
+                        className="flex h-10 w-full items-center gap-2 overflow-hidden rounded-[6px] border border-[#dcdbd7] bg-[#f9f8f6] p-px pr-2.5 shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-black/15"
                     >
-                        <span data-testid="sidebar-brand-logo" className="flex h-[38px] w-[38px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+                        <span data-testid="sidebar-brand-logo" className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
                             <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
                         </span>
                         <span className={cn("min-w-0 flex-1", railFade)}>
-                            <span className="block truncate whitespace-nowrap font-sans text-[11.5px] leading-tight text-[#8d8c87]">Merchant Suite</span>
+                            <span className="block truncate whitespace-nowrap font-sans text-[10.5px] leading-tight text-[#8d8c87]">Merchant Suite</span>
                             {orgLoading ? (
                                 <span className="mt-1 block h-3 w-24 animate-pulse rounded bg-black/10" />
                             ) : (
-                                <span className="mt-[3px] block truncate whitespace-nowrap font-sans text-[14px] font-medium leading-tight text-[#1b1b19]">{orgName || "Mango Lover BD"}</span>
+                                <span className="mt-0.5 block truncate whitespace-nowrap font-sans text-[13px] font-medium leading-tight text-[#1b1b19]">{orgName || "Mango Lover BD"}</span>
                             )}
                         </span>
                         <CaretUpDown aria-hidden="true" weight="light" size={14} className={cn("shrink-0 text-[#a3a29d]", railFade)} />
@@ -289,20 +289,20 @@ export function AppSidebar() {
             </SidebarHeader>
 
             {/* ── Navigation ──────────────────────────────── */}
-            <SidebarContent className="gap-0 overflow-x-hidden px-3 pb-1.5 pt-3">
+            <SidebarContent className="gap-0 overflow-x-hidden px-1 pb-1.5 pt-2.5">
                 <DashboardNavigation sections={navSections} />
             </SidebarContent>
 
             {/* ── Footer: profile, settings, minimise ─────── */}
-            <SidebarFooter className="overflow-hidden px-3 pb-3 pt-2.5">
-                <div data-testid="sidebar-footer" className="-mr-[7px] flex items-center gap-0.5 group-data-[collapsible=icon]:mr-0 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1.5">
+            <SidebarFooter className="overflow-hidden px-1.5 pb-2.5 pt-2">
+                <div data-testid="sidebar-footer" className="-mr-1 flex items-center gap-0 group-data-[collapsible=icon]:mr-0 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1.5">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
                                 type="button"
                                 data-testid="sidebar-profile"
                                 title="Account"
-                                className="flex h-10 min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-[6px] px-2 text-left outline-none transition-colors hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:flex-none"
+                                className="flex h-9 min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-[6px] px-1 text-left outline-none transition-colors hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:flex-none"
                             >
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#d6d5d1] bg-white font-sans text-[10px] font-medium text-[#5d5c58]">
                                     {initials}
@@ -322,7 +322,7 @@ export function AppSidebar() {
                         title="System Settings"
                         aria-label="System Settings"
                         data-testid="sidebar-settings"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] outline-none transition-colors [--fillg:#8d8c87] hover:bg-black/5 hover:[--fillg:#1b1b19] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:hidden"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] outline-none transition-colors [--fillg:#8d8c87] hover:bg-black/5 hover:[--fillg:#1b1b19] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:hidden"
                     >
                         <SettingsIcon />
                     </Link>
@@ -332,11 +332,11 @@ export function AppSidebar() {
                         aria-label={open ? "Collapse sidebar" : "Expand sidebar"}
                         title={open ? "Collapse sidebar" : "Expand sidebar"}
                         className={cn(
-                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[#8d8c87] outline-none transition-[color,background-color,transform] duration-200 hover:bg-black/5 hover:text-[#1b1b19] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:w-10",
+                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[#8d8c87] outline-none transition-[color,background-color,transform] duration-200 hover:bg-black/5 hover:text-[#1b1b19] focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:w-8",
                             !open && "rotate-180",
                         )}
                     >
-                        <CaretDoubleLeft aria-hidden="true" weight="light" size={18} />
+                        <CaretDoubleLeft aria-hidden="true" weight="light" size={16} />
                     </button>
                 </div>
             </SidebarFooter>
