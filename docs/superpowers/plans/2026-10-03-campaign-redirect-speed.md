@@ -38,5 +38,6 @@ Enterprise-only), degrading checkout context and order protection.
   delete its two unused queues.
 - [x] Checks (2026-10-04): Suite tests/lint/build; storefront typecheck/build;
   storefront Node sweep has only the 13 failures that also fail on `origin/main`.
-- [ ] Ship Suite then storefront through feature PRs.
-- [ ] Verify production per the runbook and record before/after timings.
+- [x] Ship Suite (#159) then storefront (#90); both deployed to production.
+- [x] Verify production and record timings: 0.64–1.26 s before, 0.15–0.25 s after
+  (server ~70 ms). Link-edit purge and fast-checkout receipt still to observe.
