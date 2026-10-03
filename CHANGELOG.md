@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.53] - 2026-10-04
+
+### Changed
+
+- Campaign links redirect faster: the storefront now answers `/go/*` links right away and records the click in the background. Merchant Suite accepts those signed click records, saves each click once even if it is sent twice, and links an order to its click even when the buyer checks out within seconds.
+- Editing or creating a campaign link refreshes the storefront's cached copy of that link immediately.
+
 ## [0.1.0.52] - 2026-10-03
 
 ### Fixed
