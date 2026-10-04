@@ -2,12 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import OrderProtection from "@/pages/OrderProtection";
-import { fetchRiskAccuracy, fetchRiskAttempts, fetchRiskLists, updateRiskSettings } from "@/lib/orderRisk";
+import { addRiskListEntry, fetchRiskAccuracy, fetchRiskAttempt, fetchRiskAttempts, fetchRiskLists, labelRiskAttempt, updateRiskSettings } from "@/lib/orderRisk";
 
 vi.mock("@/components/OrderProtectionReviewQueue", () => ({ OrderProtectionReviewQueue: () => <div>Held reviews</div> }));
 vi.mock("@/lib/orderRisk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/orderRisk")>()),
-  fetchRiskAttempts: vi.fn().mockResolvedValue({ attempts: [{ id: "attempt-1", created_at: "2026-09-23T00:00:00Z", decision: "HOLD", mode: "shadow", score: 40, customer_name: "Rahim", phone: "01712345678", topSignals: [{ code: "address_incomplete", label: "Address incomplete", severity: "medium", evidence: "More address detail needed" }], label: null }] }),
+  fetchRiskAttempts: vi.fn().mockResolvedValue({ attempts: [{ id: "attempt-1", created_at: "2026-09-23T00:00:00Z", decision: "HOLD", mode: "shadow", score: 40, customer_name: "Rahim", phone: "01712345678", ip_address: "203.0.113.24", order_id: "order-1", order_number: "ML-152777", topSignals: [{ code: "address_incomplete", label: "Address incomplete", severity: "medium", evidence: "More address detail needed" }], label: null }] }),
+  fetchRiskSummary: vi.fn().mockResolvedValue({ days: 30, held: 2, blocked: 1, unlabelled: 6, fake: 0 }),
   fetchRiskAttempt: vi.fn().mockResolvedValue({ attempt: { id: "attempt-1", decision: "HOLD", mode: "shadow", score: 40, customer_name: "Rahim", phone: "01712345678", signals: [{ code: "address_incomplete", label: "Address incomplete", severity: "medium", evidence: "More address detail needed" }], reasons: ["score>=40"], context_trusted: true, items: [] }, related: [], order: null, review: null }),
   fetchRiskLists: vi.fn((list: "block" | "allow") => Promise.resolve({ entries: list === "block" ? [{ id: "list-1", list: "block", kind: "phone", display_hint: "Phone ending 5678", reason: "Repeated checkout attempts", created_at: "2026-09-23T00:00:00Z", expires_at: null }] : [] })),
   fetchRiskSettings: vi.fn().mockResolvedValue({ mode: "shadow", haterDistrictIds: ["15"], extraAbuseTerms: [], districtOptions: [{ id: "15", name: "Rajshahi" }] }),
@@ -67,22 +68,42 @@ it("renders report-style attempt summaries and investigation", async () => {
   render(<OrderProtection />);
 
   await user.click(screen.getByRole("radio", { name: "Attempts" }));
-  expect(await screen.findByText("Loaded attempts")).toBeInTheDocument();
-  expect(screen.getAllByText("Held").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
-  expect(screen.getByText("Average score")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByTestId("attempt-summary")).toHaveTextContent("Last 30 days · 2 held · 1 blocked · 6 not labelled · 0 marked fake"));
+
+  // Full phone, order number and IP are visible on the row.
+  expect(await screen.findByText("01712345678")).toBeInTheDocument();
+  expect(screen.getByText(/ML-152777/)).toBeInTheDocument();
+  expect(screen.getByText("IP 203.0.113.24")).toBeInTheDocument();
 
   await user.click(await screen.findByRole("button", { name: /Rahim.*40/ }));
-  expect(await screen.findByText("Investigation")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Mark genuine" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Mark fake" })).toBeInTheDocument();
+  const drawer = await screen.findByRole("dialog", { name: "Investigation" });
+  expect(drawer).toHaveTextContent("Rahim");
+  expect(screen.getByRole("button", { name: "Genuine customer" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Fake order" })).toBeInTheDocument();
+
+  // Closes from its close button and returns to the list.
+  await user.click(screen.getByRole("button", { name: "Close investigation" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Investigation" })).not.toBeInTheDocument());
 });
 
-it("renders report-style list controls and entries", async () => {
+it("closes the investigation drawer with Escape", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("radio", { name: "Lists" }));
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
+  await user.click(await screen.findByRole("button", { name: /Rahim.*40/ }));
+  await screen.findByRole("dialog", { name: "Investigation" });
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Investigation" })).not.toBeInTheDocument());
+});
+
+it("shows blocked and allowed lists inside Attempts instead of a separate tab", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  expect(screen.queryByRole("radio", { name: "Lists" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
+  await user.click(await screen.findByRole("button", { name: /Blocked & allowed/ }));
   expect(await screen.findByRole("button", { name: "Blocklist" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: "Allowlist" })).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByText("Phone ending 5678")).toBeInTheDocument();
@@ -121,21 +142,59 @@ it("keeps the attempts decision filter connected to the risk API", async () => {
 
   await user.click(screen.getByRole("radio", { name: "Attempts" }));
   await screen.findByRole("button", { name: /Rahim.*40/ });
-  await user.selectOptions(screen.getByLabelText("Decision"), "hold");
+  await user.click(screen.getByRole("button", { name: "Held", pressed: false }));
 
   await waitFor(() => expect(fetchRiskAttempts).toHaveBeenLastCalledWith({ decision: "hold", before: undefined }));
+});
+
+it("searches attempts on the server by name, phone or order number", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
+  await screen.findByRole("button", { name: /Rahim.*40/ });
+  await user.type(screen.getByRole("searchbox"), "ML-152777");
+
+  await waitFor(() => expect(fetchRiskAttempts).toHaveBeenLastCalledWith({ decision: "all", before: undefined, q: "ML-152777" }));
+});
+
+it("marks an attempt fake straight from its row", async () => {
+  const user = userEvent.setup();
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
+  await user.click(await screen.findByRole("button", { name: "Mark Rahim fake" }));
+
+  await waitFor(() => expect(labelRiskAttempt).toHaveBeenCalledWith("attempt-1", "fake"));
+  expect(await screen.findByRole("button", { name: "Mark Rahim fake" })).toHaveAttribute("aria-pressed", "true");
+});
+
+it("blocks a phone with a chosen reason instead of a browser prompt", async () => {
+  const user = userEvent.setup();
+  const prompt = vi.spyOn(window, "prompt");
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
+  await user.click(await screen.findByRole("button", { name: "Block Rahim phone" }));
+  await user.click(await screen.findByRole("button", { name: "Refused delivery" }));
+  await user.type(screen.getByPlaceholderText(/3 orders refused/), "Refused twice");
+  await user.click(screen.getByRole("button", { name: "Confirm block" }));
+
+  await waitFor(() => expect(addRiskListEntry).toHaveBeenCalledWith("attempt-1", "block", ["phone"], "Refused delivery: Refused twice"));
+  expect(prompt).not.toHaveBeenCalled();
+  expect(await screen.findByRole("button", { name: "Block Rahim phone" })).toHaveTextContent("Phone blocked");
 });
 
 it("switches lists and keeps the remove action wired", async () => {
   const user = userEvent.setup();
   render(<OrderProtection />);
 
-  await user.click(screen.getByRole("radio", { name: "Lists" }));
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
+  await user.click(await screen.findByRole("button", { name: /Blocked & allowed/ }));
   await user.click(await screen.findByRole("button", { name: "Allowlist" }));
   await waitFor(() => expect(fetchRiskLists).toHaveBeenLastCalledWith("allow"));
   expect(await screen.findByText("No entries in this list.")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("radio", { name: "Lists" }));
   await user.click(await screen.findByRole("button", { name: "Blocklist" }));
   await user.click(await screen.findByRole("button", { name: "Remove" }));
   await waitFor(() => expect(screen.queryByText("Phone ending 5678")).not.toBeInTheDocument());
@@ -161,4 +220,26 @@ it("saves settings and exposes the success status", async () => {
 
   await waitFor(() => expect(updateRiskSettings).toHaveBeenCalled());
   expect(await screen.findByRole("status")).toHaveTextContent("Settings saved");
+});
+
+it("shows the newly clicked attempt immediately instead of the previous one", async () => {
+  const user = userEvent.setup();
+  const base = (await vi.mocked(fetchRiskAttempts)()).attempts[0];
+  vi.mocked(fetchRiskAttempts).mockResolvedValue({ attempts: [base, { ...base, id: "attempt-2", customer_name: "Karim", phone: "01811111111", order_number: "ML-152700" }] });
+  render(<OrderProtection />);
+
+  await user.click(screen.getByRole("radio", { name: "Attempts" }));
+  await user.click(await screen.findByRole("button", { name: /Rahim.*40/ }));
+  expect(await screen.findByRole("dialog", { name: "Investigation" })).toHaveTextContent("Rahim");
+  await user.click(screen.getByRole("button", { name: "Close investigation" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+  // Karim's details never arrive in this test; the drawer must still show Karim, not Rahim.
+  vi.mocked(fetchRiskAttempt).mockImplementationOnce(() => new Promise(() => {}));
+  await user.click(screen.getByRole("button", { name: /Karim.*40/ }));
+  const drawer = await screen.findByRole("dialog", { name: "Investigation" });
+  expect(drawer).toHaveTextContent("Karim");
+  expect(drawer).toHaveTextContent("01811111111");
+  expect(drawer).not.toHaveTextContent("Rahim");
+  expect(screen.getByRole("status", { name: "Loading attempt details" })).toBeInTheDocument();
 });

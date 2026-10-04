@@ -109,6 +109,23 @@ describe("buildOverviewData", () => {
     expect(day1.profit).toBe(3120 - 1100 - 120);
   });
 
+  it("generates a daily delivery series with success rate and pending count", () => {
+    const result = buildOverviewData(orders, products, socialConversations, [], {
+      since: "2026-08-10",
+      until: "2026-08-13",
+      prevSince: "2026-08-06",
+      prevUntil: "2026-08-09",
+      now,
+    });
+
+    expect(result.deliverySeries).toEqual([
+      { date: "2026-08-10", successRate: 0, pending: 0 }, // 1 returned
+      { date: "2026-08-11", successRate: 100, pending: 0 }, // 1 delivered
+      { date: "2026-08-12", successRate: 100, pending: 1 }, // 1 delivered, 1 pending
+      { date: "2026-08-13", successRate: 0, pending: 0 }, // no orders
+    ]);
+  });
+
   it("computes social inbox stats by channel", () => {
     const result = buildOverviewData(orders, products, socialConversations, [], {
       since: "2026-08-12",

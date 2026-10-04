@@ -2,12 +2,11 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { OrderProtectionReviewQueue } from "@/components/OrderProtectionReviewQueue";
-import { RiskAccuracyPanel, RiskAttemptsPanel, RiskListsPanel, RiskSettingsPanel } from "@/components/risk/RiskDashboard";
+import { RiskAccuracyPanel, RiskAttemptsPanel, RiskSettingsPanel } from "@/components/risk/RiskDashboard";
 
 const tabs = [
   ["reviews", "Reviews"],
   ["attempts", "Attempts"],
-  ["lists", "Lists"],
   ["accuracy", "Accuracy"],
   ["settings", "Settings"],
 ] as const;
@@ -17,7 +16,6 @@ type OrderProtectionTab = typeof tabs[number][0];
 const panelLabels: Record<OrderProtectionTab, string> = {
   reviews: "Held storefront orders",
   attempts: "Assessment history",
-  lists: "Identity lists",
   accuracy: "Risk accuracy",
   settings: "Protection settings",
 };
@@ -71,7 +69,7 @@ export default function OrderProtection() {
         aria-label={panelLabels[tab]}
         tabIndex={0}
       >
-        {tab === "reviews" ? <OrderProtectionReviewQueue /> : tab === "attempts" ? <RiskAttemptsPanel /> : tab === "lists" ? <RiskListsPanel /> : tab === "accuracy" ? <RiskAccuracyPanel /> : <RiskSettingsPanel />}
+        {tab === "reviews" ? <OrderProtectionReviewQueue /> : tab === "attempts" ? <RiskAttemptsPanel /> : tab === "accuracy" ? <RiskAccuracyPanel /> : <RiskSettingsPanel />}
       </motion.div>
     </div>
   );

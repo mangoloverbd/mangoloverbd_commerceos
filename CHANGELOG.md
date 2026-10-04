@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.0.56] - 2026-10-04
+
+### Added
+
+- Advance / partial payments can record where the money came from (bKash, Nagad, Rocket or Bank) and a TrxID or the sender's last 4 digits, on New Order, order editing and the abandoned-checkout editor. Both are optional, are cleared when the advance is removed, and show in the order's activity history.
+- Order Protection › Attempts: search by customer name, phone (01… or +880…) or order number across all attempts, not just the loaded page.
+
+### Changed
+
+- Order Protection › Attempts is redesigned as cards showing the full phone number, order number and IP address, with Fake, Block phone and Block device right on each card. The investigation opens in a smoothly animated side drawer, blocking asks for a reason in place of a browser popup, and you can page back to newer attempts.
+- The Attempts summary counts the last 30 days across the whole workspace (held, blocked, not labelled, marked fake) instead of only the 50 loaded rows.
+- Blocked and allowed phones and devices are managed from Attempts ("Blocked & allowed"); the separate Lists tab is gone.
+- Overview KPI cards have a new light card design with a stepped trend line; Delivery Success and Pending Fulfillment now chart real daily values, Profit Margin charts daily margin %, and hovering shows each day's value and date.
+- Home P&L cards chart each period's amount as a smooth graphite curve (single-day ranges in 3-hour blocks), with hover tooltips.
+- Business Report moved to the bottom of the Reports section in the sidebar.
+
+### Fixed
+
+- An advance entered in the abandoned-checkout editor was silently discarded; it is now saved on the order the checkout converts into.
+
 ## [0.1.0.55] - 2026-10-04
 
 ### Changed

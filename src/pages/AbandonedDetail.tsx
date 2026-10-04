@@ -109,6 +109,10 @@ export default function AbandonedDetail() {
   const [saveError, setSaveError] = useState("");
   const [deliveryOn, setDeliveryOn] = useState(true);
   const [deliveryRate, setDeliveryRate] = useState(100);
+  // Advance taken while recovering the checkout; saved on the order it converts into.
+  const [advanceDraft, setAdvanceDraft] = useState(0);
+  const [advanceMethod, setAdvanceMethod] = useState("");
+  const [advanceReference, setAdvanceReference] = useState("");
   const [additionReasons, setAdditionReasons] = useState<Record<string, AdditionReason | "">>({});
   const [target, setTarget] = useState<MoveTarget>("keep");
   const [holdDetails, setHoldDetails] = useState<OrderHoldMetadata>(EMPTY_HOLD_DETAILS);
@@ -216,6 +220,7 @@ export default function AbandonedDetail() {
     () => calculateCartTotals(draft, deliveryOn ? deliveryRate : 0, 0),
     [draft, deliveryOn, deliveryRate],
   );
+  const advance = Math.min(Math.max(0, advanceDraft), totals.finalTotal);
   const requiredAdditionReasonKeys = useMemo(() => {
     if (!checkout) return [];
     const initial = new Map(checkout.cart.map((line) => [`${line.productName}:${line.variantName || ""}`, Number(line.quantity) || 0]));
@@ -379,6 +384,13 @@ export default function AbandonedDetail() {
           hold_reason_code: onHold ? holdDetails.hold_reason_code : null,
           hold_reason_detail: onHold ? holdDetails.hold_reason_detail : null,
           hold_until_date: onHold ? holdDetails.hold_until_date : null,
+          ...(advance > 0
+            ? {
+                advanced_payment: advance,
+                advance_payment_method: advanceMethod || undefined,
+                advance_payment_reference: advanceReference.trim() || undefined,
+              }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -550,7 +562,7 @@ export default function AbandonedDetail() {
               </div>
               <div data-testid="abandoned-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
                 <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit locked={false} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
-                <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={undefined} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} advance={0} onAdvanceChange={() => {}} status={null} onStatusChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => {}} onCancel={goBack} hideOrderSections actions={actionBlock} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} />
+                <CartPanel items={draft} totals={totals} canEdit locked={false} saving={saving} error={undefined} overallDiscountType={null} overallDiscountValue={0} deliveryOn={deliveryOn} advance={advance} onAdvanceChange={setAdvanceDraft} advanceMethod={advanceMethod} advanceReference={advanceReference} onAdvanceMethodChange={setAdvanceMethod} onAdvanceReferenceChange={setAdvanceReference} status={null} onStatusChange={() => {}} onToggleDelivery={setDeliveryOn} onOverallDiscount={() => {}} onRemoveOverallDiscount={() => {}} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={() => {}} onSave={() => {}} onCancel={goBack} hideOrderSections actions={actionBlock} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} />
               </div>
             </div>
           }
