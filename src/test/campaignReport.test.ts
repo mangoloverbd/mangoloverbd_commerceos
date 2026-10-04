@@ -90,6 +90,18 @@ describe("campaign counting and date scope", () => {
     const result = report({ checkouts: [{ id: "late", org_id: org, campaign_link_id: a.id, campaign_click_id: "c1", draft_key: "55555555-5555-4555-8555-555555555555" }], orders: [order("o1", { abandoned_draft_key_hash: "fbfe405ca65f6275b98fdeb81ceb4df23903cb9138435c28458e161b27313455" })] });
     expect(result.rows[0].captured_checkouts).toBe(1);
   });
+  it("adds each link's clicks per day and a Dhaka weekday-by-hour click grid", () => {
+    const result = report({ clicks: [click(), click("c2", a, "2026-09-29T15:30:00Z"), click("c3", b, "2026-09-30T02:00:00Z")] });
+    expect(result.rows[0].daily_clicks).toEqual([2, 0]);
+    expect(result.rows[1].daily_clicks).toEqual([0, 1]);
+    expect(result.click_heatmap).toHaveLength(7);
+    expect(result.click_heatmap.every((day: number[]) => day.length === 24)).toBe(true);
+    // Tuesday 16:00 and 21:30 Dhaka; Wednesday 08:00 Dhaka. Sunday is index 0.
+    expect(result.click_heatmap[2][16]).toBe(1);
+    expect(result.click_heatmap[2][21]).toBe(1);
+    expect(result.click_heatmap[3][8]).toBe(1);
+    expect(result.click_heatmap.flat().reduce((sum: number, value: number) => sum + value, 0)).toBe(3);
+  });
   it("keeps September clicks' October orders in September and plots orders on click day", () => {
     const result = report();
     expect(result.totals.orders).toBe(1);
@@ -243,6 +255,13 @@ describe("campaign monetary completeness", () => {
 });
 
 describe("team response projection", () => {
+  it("keeps click-only series for team members as plain numbers", () => {
+    const full = report();
+    full.rows[0].daily_clicks = [1, { courier_fees: 9 }, 2];
+    const team = redactCampaignFinancials(full);
+    expect(team.rows[0].daily_clicks).toEqual([1, 0, 2]);
+    expect(team.click_heatmap).toEqual(full.click_heatmap);
+  });
   it("allowlists all response depths, preserving revenue but never mutating the admin report", () => {
     const full = report({ orders: [order("partial", { status: "partial_delivered" })] });
     const forbidden = { delivered_cogs: 1, courier_fees: 2, delivered_profit: 3, estimated_delivered_profit: 4, spend: 5, roas_delivered: 6, profit_after_ads: 7, margin: 8, cost_coverage: { set: 9 }, fee_coverage: {}, cogs_incomplete_reasons: ["private"], secret_new_financial_alias: 10 };

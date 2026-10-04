@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { campaignReportFixture } from './helpers/campaignFixtures';
 const captured = vi.hoisted(() => ({ options: [] as Array<{ series?: Array<{ type: string; data: Array<{ value: number | null; itemStyle: { color: string } }> }> }> }));
 vi.mock('@/components/business-report/EChart', () => ({ EChart: ({ option, ariaLabel }: { option: (typeof captured.options)[number]; ariaLabel: string }) => { captured.options.push(option); return <div role="img" aria-label={ariaLabel} />; } }));
-import { CampaignTiles, CampaignTrendChart, OutcomeBar } from '@/components/campaign-links/CampaignReportView';
+import { CampaignClickHeatmap, CampaignTiles, CampaignTrendChart, OutcomeBar } from '@/components/campaign-links/CampaignReportView';
 afterEach(() => { cleanup(); captured.options = []; });
 describe('campaign metric and chart presentation', () => {
   it('locks the profit tile for team members instead of showing a value', () => {
@@ -24,6 +24,24 @@ describe('campaign metric and chart presentation', () => {
     const series = captured.options.at(-1)?.series?.[0];
     expect(series?.type).toBe('bar'); expect(series?.data[0].value).toBe(100);
     expect((series as { markPoint?: unknown }).markPoint).toBeUndefined();
+  });
+  it('overlays orders as a line on the clicks chart when there is more than one day', () => {
+    const day = campaignReportFixture().daily[0];
+    render(<CampaignTrendChart daily={[day, { ...day, day: '2026-10-04', clicks: 40, orders: 3 }]} />);
+    const series = captured.options.at(-1)?.series;
+    expect(series?.map(item => item.type)).toEqual(['bar', 'line']);
+    expect(series?.[1].data).toEqual([10, 3]);
+  });
+  it('names the busiest Dhaka weekday slot, counting Saturday first', () => {
+    const heatmap = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    heatmap[5][20] = 4; heatmap[5][21] = 2; heatmap[6][9] = 3;
+    render(<CampaignClickHeatmap heatmap={heatmap} />);
+    expect(screen.getByText('Fri, 8 PM–10 PM')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /busiest: fri, 8 pm–10 pm/i })).toBeInTheDocument();
+  });
+  it('shows an empty state instead of a blank click grid', () => {
+    render(<CampaignClickHeatmap heatmap={undefined} />);
+    expect(screen.getByText('No clicks in these dates yet.')).toBeInTheDocument();
   });
   it('summarises outcomes as delivered share and lost orders', () => {
     render(<OutcomeBar metrics={campaignReportFixture().totals} legend />);

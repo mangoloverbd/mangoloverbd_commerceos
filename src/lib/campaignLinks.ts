@@ -24,9 +24,11 @@ export type CampaignOrder = {
   delivery_kind: string | null; order_value: number | null; delivered_revenue: number | null;
   amount_incomplete_reason?: string | null;
 };
-export type CampaignRow = CampaignLink & CampaignMetrics & { recent_orders?: CampaignOrder[]; has_more?: boolean };
+export type CampaignRow = CampaignLink & CampaignMetrics & { recent_orders?: CampaignOrder[]; has_more?: boolean; daily_clicks?: number[] };
 export type CampaignReport = {
   rows: CampaignRow[]; totals: CampaignMetrics; link?: CampaignLink;
+  // Clicks by Dhaka weekday (0 = Sunday) and hour; absent from older responses.
+  click_heatmap?: number[][];
   unattributed: CampaignMetrics & { label: string; date_basis: string };
   daily: Array<CampaignMetrics & { day: string }>;
   meta: { range: { from: string; to: string }; date_basis: 'click'; as_of: string;
@@ -55,11 +57,15 @@ export const CAMPAIGN_CHANNEL_LABELS: Record<string, string> = {
   influencer: 'Influencer', print: 'Print / QR', sms: 'SMS', other: 'Other',
 };
 export const campaignChannelLabel = (channel: string) => CAMPAIGN_CHANNEL_LABELS[channel] || channel;
-// Channel colours reuse the Business Report categorical slots; the last slot is "other".
+// The channels the revenue donut shows on their own; everything else is grouped as "other".
 export const CAMPAIGN_CHANNEL_SLOTS = ['facebook', 'whatsapp', 'instagram', 'influencer'] as const;
+// Each channel keeps its recognisable brand colour across chips, donut and row trends.
+const CHANNEL_COLORS: Record<string, string> = {
+  facebook: '#1877F2', instagram: '#E1306C', whatsapp: '#25D366', influencer: '#F59E0B',
+  tiktok: '#111110', youtube: '#FF0033', print: '#8B5CF6', sms: '#06B6D4',
+};
 export function channelColor(channel: string) {
-  const slot = (CAMPAIGN_CHANNEL_SLOTS as readonly string[]).indexOf(channel);
-  return CHART.categorical[slot === -1 ? CHART.categorical.length - 1 : slot];
+  return CHANNEL_COLORS[channel] ?? CHART.categorical[CHART.categorical.length - 1];
 }
 export const hasFinancials = (metrics: CampaignMetrics | undefined) => !!metrics && Object.prototype.hasOwnProperty.call(metrics, 'estimated_delivered_profit');
 // The equal-length period that ends the day before `from`, for "vs previous period" changes.
