@@ -9,11 +9,11 @@ import { toast } from '@/components/ui/sonner';
 import { DateRangePicker } from '@/components/DateRangePicker';
 import { CampaignLinkDialog } from '@/components/campaign-links/CampaignLinkDialog';
 import {
-  CampaignChannelMix, CampaignFunnelPanel, CampaignLinkInsights, CampaignTiles, CampaignTrendChart, CampaignUpdatedNote,
-  ChannelChip, Hint, OutcomeBar, Panel, labelClass,
+  CampaignChannelMix, CampaignClickHeatmap, CampaignFunnelPanel, CampaignLinkInsights, CampaignTiles, CampaignTrendChart, CampaignUpdatedNote,
+  ChannelChip, Hint, OutcomeBar, Panel, PillBars, labelClass,
 } from '@/components/campaign-links/CampaignReportView';
 import { useCampaignDates, useCampaignLinks, useSaveCampaignLink } from '@/hooks/useCampaignLinks';
-import { campaignMoney, campaignRate, campaignUrl, hasFinancials, previousCampaignRange, type CampaignLink, type CampaignRow } from '@/lib/campaignLinks';
+import { campaignMoney, campaignRate, campaignUrl, channelColor, hasFinancials, previousCampaignRange, type CampaignLink, type CampaignRow } from '@/lib/campaignLinks';
 
 type SortKey = 'clicks' | 'orders' | 'delivered_revenue' | 'estimated_delivered_profit';
 type Status = 'active' | 'archived' | 'all';
@@ -124,11 +124,15 @@ export default function CampaignLinks() {
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)]">
         <CampaignFunnelPanel metrics={report.totals} />
         <Panel eyebrow="Trend" title="Daily performance" hint="Orders and revenue are shown on the day of the click that brought them, not the day the order was placed.">
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
-            <CampaignTrendChart daily={report.daily} />
-            <CampaignChannelMix rows={allRows.filter(row => !row.archived_at)} />
-          </div>
+          <CampaignTrendChart daily={report.daily} className="h-full min-h-[224px] w-full" />
         </Panel>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)]">
+        <Panel eyebrow="Channels" title="Delivered revenue by channel">
+          <CampaignChannelMix rows={allRows.filter(row => !row.archived_at)} />
+        </Panel>
+        <CampaignClickHeatmap heatmap={report.click_heatmap} />
       </div>
 
       <Panel eyebrow="Links" title="All campaign links" aside={<div className="flex flex-1 flex-wrap items-center justify-end gap-2">
@@ -150,7 +154,9 @@ export default function CampaignLinks() {
             <caption className="sr-only">Campaign link performance for clicks in the selected dates</caption>
             <thead><tr>
               <th scope="col" className={`${labelClass} px-3 py-1 text-left`}>Link</th>
-              {header('Clicks', 'clicks')}{header('Orders', 'orders')}
+              {header('Clicks', 'clicks')}
+              <th scope="col" className={`${labelClass} px-3 py-1 text-left`}>Trend</th>
+              {header('Orders', 'orders')}
               <th scope="col" className={`${labelClass} px-3 py-1 text-left`}>Outcomes</th>
               {header('Delivered ৳', 'delivered_revenue')}
               {financial && header('Est. profit ৳', 'estimated_delivered_profit')}
@@ -158,7 +164,7 @@ export default function CampaignLinks() {
             </tr></thead>
             <tbody>{rows.map(row => {
               const highReturns = row.orders >= 10 && (row.loss_rate ?? 0) >= 0.25;
-              return <tr key={row.id} onClick={() => setSelected(row)} className={`cursor-pointer bg-white transition-shadow duration-150 ease-out hover:shadow-[0_0_0_1px_rgba(11,11,10,0.09),0_6px_18px_-10px_rgba(11,11,10,0.25)] ${row.archived_at ? 'opacity-60' : ''}`}>
+              return <tr key={row.id} onClick={() => setSelected(row)} className={`cursor-pointer bg-[#F7F6F3] transition-shadow duration-150 ease-out hover:shadow-[0_0_0_1px_rgba(11,11,10,0.09),0_6px_18px_-10px_rgba(11,11,10,0.25)] ${row.archived_at ? 'opacity-60' : ''}`}>
                 <td className="rounded-l-xl px-3 py-2.5">
                   <div className="flex max-w-[320px] flex-col gap-1">
                     <Link to={`/campaign-links/${row.id}?${dates.query}`} onClick={event => event.stopPropagation()} className="font-medium underline-offset-4 hover:underline">{row.name}</Link>
@@ -172,6 +178,9 @@ export default function CampaignLinks() {
                   </div>
                 </td>
                 <td className="px-3 text-right tabular-nums">{row.clicks.toLocaleString('en-BD')}</td>
+                <td className="px-3">{row.daily_clicks && row.daily_clicks.length > 1
+                  ? <PillBars values={row.daily_clicks} solid={channelColor(row.channel)} tint={`${channelColor(row.channel)}40`} className="h-[26px] w-[92px]" />
+                  : <span className="text-[11px] text-black/40">—</span>}</td>
                 <td className="px-3 text-right tabular-nums">{row.orders.toLocaleString('en-BD')}<span className="block text-[11px] text-black/45">{row.clicks ? `${campaignRate(row.click_to_order)} of clicks` : '—'}</span></td>
                 <td className="px-3"><OutcomeBar metrics={row} /></td>
                 <td className="px-3 text-right font-medium tabular-nums">{campaignMoney(row.delivered_revenue)}{row.delivered_revenue == null && <span className="block text-[11px] font-normal text-black/50">Amount incomplete</span>}</td>
@@ -205,8 +214,8 @@ export default function CampaignLinks() {
         </div>
         {share > 0 && <div className="flex flex-col gap-1.5 text-[11px] tabular-nums text-black/60">
           <div className="flex justify-between gap-3"><span>Website orders from campaign links</span><span>{campaignRate(report.totals.orders / share)}</span></div>
-          <div role="img" aria-label={`${campaignRate(report.totals.orders / share)} of website orders came through campaign links`} className="flex h-2.5 gap-[2px] overflow-hidden rounded-[5px]">
-            <i className="block h-full bg-black" style={{ width: `${report.totals.orders / share * 100}%` }} /><i className="block h-full flex-1 bg-black/[0.08]" />
+          <div role="img" aria-label={`${campaignRate(report.totals.orders / share)} of website orders came through campaign links`} className="flex h-3 gap-[2px] overflow-hidden rounded-full">
+            <i className="block h-full rounded-full bg-gradient-to-r from-[#A78BFA] to-[#7C3AED]" style={{ width: `${report.totals.orders / share * 100}%` }} /><i className="block h-full flex-1 rounded-full bg-[#EDE9FE]" />
           </div>
           <div className="flex justify-between gap-3"><span>{report.totals.orders.toLocaleString('en-BD')} via links</span><span>{report.unattributed.orders.toLocaleString('en-BD')} without</span></div>
         </div>}

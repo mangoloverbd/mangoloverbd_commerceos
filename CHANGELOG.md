@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.55] - 2026-10-04
+
+### Changed
+
+- Campaign Links has a new colourful look: each metric keeps one colour across the page, the totals cards show small pill bar trends, the funnel is a centred stack of coloured pills with gauges for the conversion rates, and daily performance draws clicks as rounded bars with orders as a line.
+- Delivered revenue by channel uses each channel's brand colour and has its own panel.
+- Each link in the table shows its daily click trend in its channel colour.
+
+### Added
+
+- "When people click": a heatmap of clicks by Dhaka weekday and two-hour slot that names the busiest time. Team members see it too, since it contains only click counts.
+
 ## [0.1.0.54] - 2026-10-04
 
 ### Changed

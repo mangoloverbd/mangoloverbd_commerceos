@@ -5,6 +5,8 @@ import { hashAbandonedCheckoutDraftKey } from "./abandonedCheckouts.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const dayFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka", year: "numeric", month: "2-digit", day: "2-digit" });
+const hourFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Dhaka", weekday: "short", hour: "2-digit", hourCycle: "h23" });
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const state = (value) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
 const scalar = (value) => value === null || ["string", "number", "boolean"].includes(typeof value);
 const ratio = (numerator, denominator) => denominator ? numerator / denominator : null;
@@ -18,6 +20,14 @@ function dhakaDay(value) {
   if (!Number.isFinite(date.getTime())) return null;
   const parts = Object.fromEntries(dayFormatter.formatToParts(date).map((part) => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+// [weekday 0=Sunday, hour 0-23] in Dhaka time, or null for an unreadable timestamp.
+function dhakaWeekHour(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = Object.fromEntries(hourFormatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return [WEEKDAYS.indexOf(parts.weekday), Number(parts.hour)];
 }
 
 export function resolveCampaignReportRequest({ from, to } = {}) {
@@ -217,10 +227,17 @@ export function buildCampaignReport({ links = [], clicks = [], checkouts = [], o
   }
   const totalBucket = createBucket();
   const clicksById = new Map();
+  const dayIndex = new Map([...dailyBuckets.keys()].map((day, index) => [day, index]));
+  const dailyClicksByLink = new Map([...linksById.keys()].map((id) => [id, new Array(dayIndex.size).fill(0)]));
+  const clickHeatmap = Array.from({ length: 7 }, () => new Array(24).fill(0));
   for (const click of clicks) {
     if (!click.id || clicksById.has(click.id) || click.is_bot !== false || click.org_id !== orgId || !linksById.has(click.link_id) || !inInterval(click.clicked_at, request)) continue;
     clicksById.set(click.id, click);
     for (const bucket of [bucketsByLink.get(click.link_id), totalBucket, dailyBuckets.get(dhakaDay(click.clicked_at))]) addClick(bucket, click);
+    const day = dayIndex.get(dhakaDay(click.clicked_at));
+    if (day !== undefined) dailyClicksByLink.get(click.link_id)[day] += 1;
+    const slot = dhakaWeekHour(click.clicked_at);
+    if (slot && slot[0] >= 0) clickHeatmap[slot[0]][slot[1]] += 1;
   }
   const linkedDraftIds = new Set();
   const linkedDraftHashes = new Set();
@@ -271,8 +288,9 @@ export function buildCampaignReport({ links = [], clicks = [], checkouts = [], o
   }
   const totals = finalize(totalBucket);
   return {
-    rows: [...linksById.values()].map((link) => ({ ...pickScalars(link, LINK_FIELDS), ...finalize(bucketsByLink.get(link.id), true) })),
+    rows: [...linksById.values()].map((link) => ({ ...pickScalars(link, LINK_FIELDS), ...finalize(bucketsByLink.get(link.id), true), daily_clicks: dailyClicksByLink.get(link.id) })),
     totals,
+    click_heatmap: clickHeatmap,
     unattributed: { label: "Unattributed website orders placed in this period", date_basis: "order_created", ...finalize(comparisonBucket, true) },
     daily: [...dailyBuckets].map(([day, bucket]) => ({ day, ...finalize(bucket) })),
     meta: {
@@ -312,6 +330,10 @@ export function redactCampaignFinancials(report) {
   if (!report || typeof report !== "object") return report === null ? null : {};
   const output = pickScalars(report, TEAM_ROW_FIELDS);
   projectReasons(report, output);
+  // Click counts carry no money, so staff keep them — coerced to plain numbers.
+  const counts = (values) => values.map((value) => Number.isFinite(value) ? value : 0);
+  if (Array.isArray(report.daily_clicks)) output.daily_clicks = counts(report.daily_clicks);
+  if (Array.isArray(report.click_heatmap)) output.click_heatmap = report.click_heatmap.map((day) => Array.isArray(day) ? counts(day) : []);
   for (const key of ["rows", "daily", "recent_orders"]) {
     if (Array.isArray(report[key])) output[key] = report[key].map(redactCampaignFinancials);
   }
