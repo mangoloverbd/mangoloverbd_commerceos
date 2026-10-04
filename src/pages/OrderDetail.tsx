@@ -56,6 +56,8 @@ type Order = {
   price?: number | null;
   discount?: number | null;
   advanced_payment?: number | null;
+  advance_payment_method?: string | null;
+  advance_payment_reference?: string | null;
   courier_name?: string | null;
   courier_status?: string | null;
   consignment_id?: string | null;
@@ -204,6 +206,8 @@ export default function OrderDetail() {
   const [overallType, setOverallType] = useState<DiscountType | null>(null);
   const [overallValue, setOverallValue] = useState(0);
   const [advanceDraft, setAdvanceDraft] = useState(0);
+  const [advanceMethodDraft, setAdvanceMethodDraft] = useState("");
+  const [advanceReferenceDraft, setAdvanceReferenceDraft] = useState("");
   const [deliveryOn, setDeliveryOn] = useState(true);
   const [deliveryRate, setDeliveryRate] = useState(DEFAULT_DELIVERY_FEE);
   const [statusDraft, setStatusDraft] = useState<string | null>(null);
@@ -279,6 +283,8 @@ export default function OrderDetail() {
       hold_until_date: detailQuery.data.order.hold_until_date ?? null,
     });
     setAdvanceDraft(Math.max(0, Number(detailQuery.data.order.advanced_payment) || 0));
+    setAdvanceMethodDraft(detailQuery.data.order.advance_payment_method ?? "");
+    setAdvanceReferenceDraft(detailQuery.data.order.advance_payment_reference ?? "");
     setAdditionReasons({}); setCancellationReasonCode(""); setCancellationReasonNote("");
     initializedOrderId.current = id;
     initializedWithPlaceholder.current = detailQuery.isPlaceholderData;
@@ -317,6 +323,10 @@ export default function OrderDetail() {
   const clampedAdvance = Math.min(Math.max(0, advanceDraft), totals.finalTotal);
   const amountDue = Math.max(0, roundTaka(totals.finalTotal - clampedAdvance));
   const advanceChanged = clampedAdvance !== Math.max(0, Number(order?.advanced_payment) || 0);
+  // Proof only matters while an advance is set; clearing the advance clears it server-side.
+  const proofChanged = clampedAdvance > 0
+    && (advanceMethodDraft !== (order?.advance_payment_method ?? "")
+      || advanceReferenceDraft.trim() !== (order?.advance_payment_reference ?? ""));
   const deliveryChanged = deliveryFee !== (Number(order?.delivery_rate) || 0);
   const statusChanged = statusDraft !== (order?.status ?? null);
   const holdDetailsChanged = holdDetailsDraft.hold_reason_code !== (order?.hold_reason_code ?? null)
@@ -369,7 +379,7 @@ export default function OrderDetail() {
     const originalCustomer = customerFromOrder(order);
     const detailsChanged = JSON.stringify(customer) !== JSON.stringify(originalCustomer);
     const cartChanged = !cartsMatch(draft, detail.items);
-    if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged && !advanceChanged && !statusChanged && !holdDetailsChanged) {
+    if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged && !advanceChanged && !proofChanged && !statusChanged && !holdDetailsChanged) {
       if (!hasQueueNav) goBack();
       return;
     }
@@ -396,7 +406,7 @@ export default function OrderDetail() {
     const pendingSegments: string[] = [
       ...(detailsChanged ? ["customer details"] : []),
       ...(cartChanged ? ["order items"] : []),
-      ...((overallChanged || deliveryChanged || advanceChanged || statusChanged || holdDetailsChanged) ? ["totals and status"] : []),
+      ...((overallChanged || deliveryChanged || advanceChanged || proofChanged || statusChanged || holdDetailsChanged) ? ["totals and status"] : []),
     ];
     const expectedVersion = order.updated_at || null;
     try {
@@ -447,8 +457,8 @@ export default function OrderDetail() {
         completedSegments.push("order items");
       }
 
-      if (overallChanged || deliveryChanged || advanceChanged || statusChanged || holdDetailsChanged) {
-        const orderPatch: { discount?: number; delivery_rate?: number; advanced_payment?: number; status?: string; hold_reason_code?: string | null; hold_reason_detail?: string | null; hold_until_date?: string | null; activity_group_id: string; expected_updated_at?: string | null; cancellation_reason_code?: CancellationReason; cancellation_reason_note?: string | null } = { activity_group_id: activityGroupId, ...(currentOrder.updated_at ? { expected_updated_at: currentOrder.updated_at } : {}) };
+      if (overallChanged || deliveryChanged || advanceChanged || proofChanged || statusChanged || holdDetailsChanged) {
+        const orderPatch: { discount?: number; delivery_rate?: number; advanced_payment?: number; advance_payment_method?: string | null; advance_payment_reference?: string | null; status?: string; hold_reason_code?: string | null; hold_reason_detail?: string | null; hold_until_date?: string | null; activity_group_id: string; expected_updated_at?: string | null; cancellation_reason_code?: CancellationReason; cancellation_reason_note?: string | null } = { activity_group_id: activityGroupId, ...(currentOrder.updated_at ? { expected_updated_at: currentOrder.updated_at } : {}) };
         if (overallChanged) {
           const itemTotal = currentItems.reduce(
             (sum, item) => sum + (Number(item.unit_discount) || 0) * (Number(item.quantity) || 0),
@@ -462,6 +472,10 @@ export default function OrderDetail() {
         }
         if (advanceChanged && clampedAdvance !== Math.max(0, Number(currentOrder.advanced_payment) || 0)) {
           orderPatch.advanced_payment = clampedAdvance;
+        }
+        if (proofChanged) {
+          orderPatch.advance_payment_method = advanceMethodDraft || null;
+          orderPatch.advance_payment_reference = advanceReferenceDraft.trim() || null;
         }
         if (statusChanged && statusDraft) orderPatch.status = statusDraft;
         if (shouldSaveHoldDetails) Object.assign(orderPatch, holdDetailsDraft);
@@ -493,6 +507,8 @@ export default function OrderDetail() {
         hold_until_date: currentOrder.hold_until_date ?? null,
       });
       setAdvanceDraft(Math.max(0, Number(currentOrder.advanced_payment) || 0));
+      setAdvanceMethodDraft(currentOrder.advance_payment_method ?? "");
+      setAdvanceReferenceDraft(currentOrder.advance_payment_reference ?? "");
       setAdditionReasons({}); setCancellationReasonCode(""); setCancellationReasonNote("");
       void refreshOrderActivity(queryClient, `/api/orders/${id}/activity`);
       if (hasQueueNav) {
@@ -546,7 +562,7 @@ export default function OrderDetail() {
                 <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={normalizeOrderSource(order.source)} originSource={order.origin_source} smsAmount={amountDue} smsAdvancePaid={clampedAdvance} />
                 <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
                   <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
-                  <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} advance={clampedAdvance} onAdvanceChange={setAdvanceDraft} status={statusDraft} onStatusChange={setStatusDraft} holdDetails={holdDetailsDraft} onHoldDetailsChange={setHoldDetailsDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} cancellationRequired={cancellationRequired} cancellationReasonCode={cancellationReasonCode} cancellationReasonNote={cancellationReasonNote} onCancellationReasonChange={setCancellationReasonCode} onCancellationReasonNoteChange={setCancellationReasonNote} />
+                  <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} advance={clampedAdvance} onAdvanceChange={setAdvanceDraft} advanceMethod={advanceMethodDraft} advanceReference={advanceReferenceDraft} onAdvanceMethodChange={setAdvanceMethodDraft} onAdvanceReferenceChange={setAdvanceReferenceDraft} status={statusDraft} onStatusChange={setStatusDraft} holdDetails={holdDetailsDraft} onHoldDetailsChange={setHoldDetailsDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} cancellationRequired={cancellationRequired} cancellationReasonCode={cancellationReasonCode} cancellationReasonNote={cancellationReasonNote} onCancellationReasonChange={setCancellationReasonCode} onCancellationReasonNoteChange={setCancellationReasonNote} />
                 </div>
               </div>
             }

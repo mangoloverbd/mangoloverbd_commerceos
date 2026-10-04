@@ -195,6 +195,15 @@ export function buildOverviewData(orders, products, socialConversations, socialM
     revenueSeries.push({ date: day, revenue: Math.round(revenue), cog: Math.round(cog), shipping: Math.round(shipping), profit: Math.round(profit) });
   }
 
+  const deliverySeries = [];
+  for (let i = 0; i < dayCount; i++) {
+    const day = addDaysYmd(since, i);
+    const counts = courierStatusCounts(currentOrders.filter((o) => toDayKey(o.created_at) === day));
+    const settled = counts.delivered + counts.failed;
+    const successRate = settled > 0 ? Math.round((counts.delivered / settled) * 1000) / 10 : 0;
+    deliverySeries.push({ date: day, successRate, pending: counts.pending });
+  }
+
   const courierPerformance = {};
   const courierNames = new Set(currentOrders.map((o) => o.courier_name).filter(Boolean));
   for (const name of courierNames) {
@@ -246,5 +255,5 @@ export function buildOverviewData(orders, products, socialConversations, socialM
 
   const staffPerformance = buildStaffPerformanceSummary(currentOrders, staff, { since, until });
 
-  return { kpis, orderVolumeSeries, revenueSeries, courierPerformance, socialInbox, staffPerformance, customerRetention };
+  return { kpis, orderVolumeSeries, revenueSeries, deliverySeries, courierPerformance, socialInbox, staffPerformance, customerRetention };
 }

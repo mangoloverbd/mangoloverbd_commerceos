@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { CaretDown, CaretRight, Check, Eye, MagnifyingGlass, MapPin, Plus, Prohibit, ShieldCheck, ShieldSlash, X, type Icon } from "@phosphor-icons/react";
@@ -11,6 +12,7 @@ import {
   fetchRiskAttempts,
   fetchRiskLists,
   fetchRiskSettings,
+  fetchRiskSummary,
   isVisibleRiskSignal,
   labelRiskAttempt,
   reasonLabel,
@@ -18,6 +20,7 @@ import {
   visibleRiskSignals,
   type RiskAccuracy,
   type RiskAttempt,
+  type RiskAttemptSummary,
   type RiskListEntry,
   type RiskSettings,
   type RiskSignal,
@@ -179,6 +182,7 @@ export function RiskDetails({ attempt, related = [] }: { attempt: RiskAttempt; r
       <RiskDetailGroup
         title="Network & device"
         items={[
+          { label: "IP address", value: attempt.ip_address || "Unknown" },
           { label: "Network", value: attempt.network_type || "Unknown network" },
           { label: "City", value: attempt.geo_city || "Unknown city" },
           { label: "Browser", value: attempt.user_agent_summary || "Unknown browser" },
@@ -198,188 +202,515 @@ export function RiskDetails({ attempt, related = [] }: { attempt: RiskAttempt; r
   );
 }
 
+const DECISION_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "hold", label: "Held" },
+  { value: "block", label: "Blocked" },
+  { value: "allow", label: "Allowed" },
+] as const;
+
+const BLOCK_REASONS = ["Fake order", "Refused delivery", "Abusive", "Bot / spam"] as const;
+
+const decisionTone: Record<RiskAttempt["decision"], { label: string; badge: string }> = {
+  ALLOW: { label: "Allowed", badge: "bg-[#EEF3EE] text-[#2F5E37]" },
+  HOLD: { label: "Held", badge: "bg-[#FBF0DC] text-[#8A5A00]" },
+  BLOCK: { label: "Blocked", badge: "bg-[#FBE7E5] text-[#B42318]" },
+};
+
+const cardActionClass = "inline-flex h-8 items-center justify-center gap-1 whitespace-nowrap rounded-[9px] px-3 text-[12px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-black disabled:cursor-default";
+const quietAction = "bg-black/[0.04] text-black/75 hover:bg-black/[0.08] hover:text-black";
+
+// iOS-style sheet curve: quick to start, long soft settle.
+const DRAWER_EASE = [0.32, 0.72, 0, 1] as const;
+
+function initialsOf(name: string | null) {
+  const words = (name || "?").trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase() || "?";
+}
+
+function whySummary(signals: RiskSignal[] | undefined) {
+  const visible = visibleRiskSignals(signals || []);
+  if (!visible.length) return "No risk signals";
+  return visible.map((signal) => `${signal.label ?? signal.code} ${signal.points > 0 ? "+" : ""}${signal.points}`).join(" · ");
+}
+
+// Right-side drawer that slides in and out with Framer Motion. Esc, the
+// backdrop and the close button dismiss it; focus returns to the opener.
+function RiskDrawer({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
+  const reduceMotion = useReducedMotion();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    openerRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    const focusTimer = window.setTimeout(() => closeRef.current?.focus(), 0);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      window.clearTimeout(focusTimer);
+      openerRef.current?.focus?.();
+    };
+  }, [open, onClose]);
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            key="risk-drawer-backdrop"
+            aria-hidden
+            className="fixed inset-0 z-50 bg-black/20"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0.12 : 0.3, ease: "easeOut" }}
+            onClick={onClose}
+          />
+          <motion.aside
+            key="risk-drawer-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label={label}
+            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[440px] flex-col bg-white shadow-[-16px_0_40px_rgba(0,0,0,0.12)]"
+            initial={reduceMotion ? { opacity: 0 } : { x: "100%" }}
+            animate={reduceMotion ? { opacity: 1 } : { x: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { x: "100%" }}
+            transition={reduceMotion ? { duration: 0.12 } : { duration: 0.42, ease: DRAWER_EASE }}
+          >
+            <button
+              ref={closeRef}
+              type="button"
+              aria-label={`Close ${label.toLowerCase()}`}
+              onClick={onClose}
+              className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-black/50 transition-colors hover:bg-black/[0.05] hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-black"
+            >
+              <X size={16} weight="light" />
+            </button>
+            {children}
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+type BlockKind = "phone" | "device";
+
 export function RiskAttemptsPanel() {
   const reduceMotion = useReducedMotion();
   const [decision, setDecision] = useState("all");
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [attempts, setAttempts] = useState<RiskAttempt[]>([]);
+  const [summary, setSummary] = useState<RiskAttemptSummary | null>(null);
   const [selected, setSelected] = useState<RiskAttempt | null>(null);
   const [related, setRelated] = useState<RiskAttempt[]>([]);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  // The attempt the drawer was last asked to show; slower replies for others are dropped.
+  const requestedId = useRef<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
-  const [before, setBefore] = useState<string | undefined>();
+  // Cursor history: the last entry is the current page's `before`; earlier ones go back to newer pages.
+  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined]);
+  const [blockKind, setBlockKind] = useState<BlockKind | null>(null);
+  const [blockReason, setBlockReason] = useState<string>(BLOCK_REASONS[0]);
+  const [blockNote, setBlockNote] = useState("");
+  const [blocked, setBlocked] = useState<Record<string, true>>({});
+  const [busy, setBusy] = useState("");
+  const [listsOpen, setListsOpen] = useState(false);
+  const before = cursors[cursors.length - 1];
+
+  // Search as you type, without a request per keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(query.trim());
+      setCursors([undefined]);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
-    fetchRiskAttempts({ decision, before })
+    fetchRiskAttempts({ decision, before, ...(search ? { q: search } : {}) })
       .then(({ attempts: rows }) => { if (!cancelled) setAttempts(rows); })
       .catch((err) => { if (!cancelled) setError(errorMessage(err)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [decision, before]);
+  }, [decision, before, search]);
 
-  async function openAttempt(id: string) {
+  const refreshSummary = () => {
+    fetchRiskSummary().then(setSummary).catch(() => setSummary(null));
+  };
+  useEffect(refreshSummary, []);
+
+  async function openAttempt(id: string, nextBlock: BlockKind | null = null) {
+    setBlockKind(nextBlock);
+    setNotice("");
+    setDrawerOpen(true);
+    if (requestedId.current === id) return;
+    requestedId.current = id;
+    // Show the clicked attempt at once from its list row; details fill in when they arrive.
+    const summaryRow = attempts.find((row) => row.id === id) ?? null;
+    setSelected(summaryRow);
+    setRelated([]);
+    setDetailsLoading(true);
     try {
       const detail = await fetchRiskAttempt(id);
-      setSelected(detail.attempt);
+      if (requestedId.current !== id) return;
+      setSelected({ ...detail.attempt, order_number: summaryRow?.order_number ?? null });
       setRelated(detail.related);
       setError("");
     } catch (err) {
+      if (requestedId.current !== id) return;
+      requestedId.current = null;
+      setDrawerOpen(false);
       setError(errorMessage(err));
+    } finally {
+      if (requestedId.current === id) setDetailsLoading(false);
     }
   }
 
-  async function updateLabel(label: "fake" | "genuine") {
-    if (!selected) return;
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    setBlockKind(null);
+  }, []);
+  const closeLists = useCallback(() => setListsOpen(false), []);
+
+  async function updateLabel(id: string, label: "fake" | "genuine") {
+    setBusy(`${id}:${label}`);
     try {
-      const result = await labelRiskAttempt(selected.id, label);
-      setSelected((current) => current ? { ...current, ...result.attempt } : result.attempt);
+      const result = await labelRiskAttempt(id, label);
+      setAttempts((rows) => rows.map((row) => (row.id === id ? { ...row, label } : row)));
+      setSelected((current) => (current?.id === id ? { ...current, ...result.attempt, label } : current));
+      setNotice(label === "fake" ? "Marked as a fake order." : "Marked genuine. This phone and device are now trusted.");
+      setError("");
+      refreshSummary();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function confirmBlock() {
+    if (!selected || !blockKind) return;
+    const reason = blockNote.trim() ? `${blockReason}: ${blockNote.trim()}` : blockReason;
+    setBusy(`${selected.id}:block`);
+    try {
+      await addRiskListEntry(selected.id, "block", [blockKind], reason);
+      setBlocked((current) => ({ ...current, [`${selected.id}:${blockKind}`]: true }));
+      setNotice(`Blocked this ${blockKind}. Future checkouts from it will be stopped.`);
+      setBlockKind(null);
+      setBlockNote("");
       setError("");
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      setBusy("");
     }
   }
 
-  async function blockIdentity(kind: "phone" | "device") {
-    if (!selected) return;
-    const reason = window.prompt(`Reason to block ${kind} (required)`);
-    if (!reason?.trim()) return;
-    try {
-      await addRiskListEntry(selected.id, "block", [kind], reason);
-      setError("");
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-
-  const heldCount = attempts.filter((row) => row.decision === "HOLD").length;
-  const blockedCount = attempts.filter((row) => row.decision === "BLOCK").length;
-  const averageScore = attempts.length === 0
-    ? "—"
-    : (attempts.reduce((sum, row) => sum + row.score, 0) / attempts.length).toFixed(1);
+  const selectedTone = selected ? decisionTone[selected.decision] : null;
 
   return (
-    <div className="space-y-4 p-4 sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-4 p-4 sm:p-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className={riskLabelClass}>Assessment history</p>
-          <p className="mt-1 text-[11px] text-black/55">Investigate checkout decisions and label outcomes for better accuracy.</p>
+          <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-black">Attempts</h2>
+          <p className="mt-1 text-[13px] text-black/55" data-testid="attempt-summary">
+            {summary ? (
+              <>
+                Last {summary.days} days · <span className="font-medium text-[#8A5A00]">{formatNumber(summary.held)} held</span>
+                {" · "}{formatNumber(summary.blocked)} blocked · {formatNumber(summary.unlabelled)} not labelled · {formatNumber(summary.fake)} marked fake
+              </>
+            ) : "Every checkout we scored. Search, review and act in one place."}
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="risk-decision" className={riskLabelClass}>Decision</label>
-          <select
-            id="risk-decision"
-            className="h-8 rounded-lg border border-black/15 bg-transparent px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-black"
-            value={decision}
-            onChange={(event) => { setDecision(event.target.value); setBefore(undefined); setSelected(null); }}
-          >
-            <option value="all">All attempts</option>
-            <option value="allow">Allowed</option>
-            <option value="hold">Held</option>
-            <option value="block">Blocked</option>
-          </select>
-        </div>
+        <button
+          type="button"
+          onClick={() => setListsOpen(true)}
+          className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-white px-3.5 text-[13px] text-black ring-1 ring-inset ring-black/[0.08] transition-colors hover:bg-black/[0.03]"
+        >
+          <ShieldSlash size={14} weight="light" /> Blocked &amp; allowed
+        </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <RiskMetricCard label="Loaded attempts" value={formatNumber(attempts.length)} description="Current result set" delay={0.02} reduceMotion={reduceMotion} />
-        <RiskMetricCard label="Held" value={formatNumber(heldCount)} description="Awaiting review" delay={0.06} reduceMotion={reduceMotion} />
-        <RiskMetricCard label="Blocked" value={formatNumber(blockedCount)} description="Prevented checkout" delay={0.1} reduceMotion={reduceMotion} />
-        <RiskMetricCard label="Average score" value={averageScore} description="Across loaded attempts" delay={0.14} reduceMotion={reduceMotion} />
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex h-11 min-w-0 flex-[1_1_300px] items-center gap-2.5 rounded-xl bg-white px-3.5 ring-1 ring-inset ring-black/[0.08] transition-shadow focus-within:ring-black/25">
+          <MagnifyingGlass size={16} weight="light" className="shrink-0 text-black/50" aria-hidden />
+          <span className="sr-only">Search attempts</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search name, phone or order number"
+            className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-black/40 [&::-webkit-search-cancel-button]:hidden"
+          />
+          {query && (
+            <button type="button" aria-label="Clear search" className="rounded-md p-1 text-black/50 hover:bg-black/[0.05] hover:text-black" onClick={() => setQuery("")}>
+              <X size={13} weight="light" />
+            </button>
+          )}
+        </label>
+        <div className="flex gap-0.5 rounded-xl bg-black/[0.06] p-1" role="group" aria-label="Decision">
+          {DECISION_FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              aria-pressed={decision === filter.value}
+              onClick={() => { setDecision(filter.value); setCursors([undefined]); }}
+              className={`h-9 rounded-[9px] px-3.5 text-[13px] transition-colors ${decision === filter.value ? "bg-white text-black shadow-[0_1px_2px_rgba(0,0,0,0.08)]" : "text-black/55 hover:text-black"}`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      <RiskSectionHeading title="Assessment history" count={`${attempts.length} loaded`} detail="Newest first" />
+      {notice && !drawerOpen && <p role="status" className="rounded-lg bg-[#EEF3EE] px-3 py-2 text-sm text-[#2F5E37]">{notice}</p>}
 
       {loading ? (
-        <div className="flex min-h-40 items-center justify-center gap-2 rounded-2xl bg-black/[0.03] text-sm text-black/60" role="status">
+        <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-black/60" role="status">
           <Spinner size="sm" /> Loading attempts…
         </div>
       ) : attempts.length === 0 ? (
-        <RiskEmptyState>No attempts match this decision filter.</RiskEmptyState>
+        <RiskEmptyState>
+          {search ? `No attempts match “${search}”. Try a phone number or an order number.` : "No attempts match this decision filter."}
+        </RiskEmptyState>
       ) : (
-        <div className="grid gap-3">
+        <ul className="grid gap-3 lg:grid-cols-2">
           {attempts.map((row, index) => {
-            const detailsId = `risk-attempt-details-${row.id}`;
-            const expanded = selected?.id === row.id;
+            const tone = decisionTone[row.decision];
+            const isOpen = drawerOpen && selected?.id === row.id;
+            const isFake = row.label === "fake";
+            const phoneBlocked = blocked[`${row.id}:phone`];
+            const deviceBlocked = blocked[`${row.id}:device`];
             return (
-              <motion.article
+              <motion.li
                 key={row.id}
                 initial={reduceMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: reduceMotion ? 0 : Math.min(index * 0.04, 0.2), duration: 0.3 }}
-                className="overflow-hidden rounded-2xl bg-black/[0.04] transition-colors hover:bg-black/[0.055]"
+                transition={{ delay: reduceMotion ? 0 : Math.min(index * 0.03, 0.18), duration: 0.28, ease: "easeOut" }}
+                className={`overflow-hidden rounded-2xl bg-white transition-shadow ${isOpen ? "shadow-[0_0_0_2px_#121212]" : "shadow-[0_0_0_1px_rgba(0,0,0,0.07),0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_0_0_1px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.05)]"}`}
               >
                 <button
                   type="button"
                   aria-label={`${row.customer_name || "Unknown"} ${row.decision} ${row.score}`}
-                  aria-expanded={expanded}
-                  aria-controls={detailsId}
-                  onClick={() => {
-                    if (expanded) {
-                      setSelected(null);
-                      setRelated([]);
-                    } else {
-                      void openAttempt(row.id);
-                    }
-                  }}
-                  className="group flex w-full items-start justify-between gap-4 px-4 py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/25 sm:px-5"
+                  aria-haspopup="dialog"
+                  aria-expanded={isOpen}
+                  onClick={() => void openAttempt(row.id)}
+                  className="flex w-full items-start gap-3.5 px-4 py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/25 sm:px-5"
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-semibold tracking-tight text-black">{row.customer_name || "Unknown customer"}</span>
-                    <span className="mt-1 block text-[11px] text-black/60">{formatDate(row.created_at)} · {row.mode === "shadow" ? "Shadow" : "Active"}</span>
+                  <span aria-hidden className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[13px] font-medium ${tone.badge}`}>{initialsOf(row.customer_name)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2.5">
+                      <span className="truncate text-[15px] font-semibold text-black">{row.customer_name || "Unknown customer"}</span>
+                      {row.order_number && <span className="text-[12px] text-black/55">{row.order_number}</span>}
+                    </span>
+                    <span className="mt-1 block font-mono text-[14px] text-black">{row.phone || "No phone"}</span>
+                    <span className="mt-1 block text-[12px] text-black/50">
+                      {formatDate(row.created_at)}{row.mode === "shadow" ? " · Shadow" : ""}
+                      {row.ip_address && <> · <span className="whitespace-nowrap font-mono">IP {row.ip_address}</span></>}
+                    </span>
                   </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-right">
-                      <span className="block text-[15px] font-light tabular-nums">{row.decision} · {row.score}</span>
-                      <span className="mt-0.5 block text-[10px] text-black/50">Open investigation</span>
-                    </span>
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-black/60 transition-colors group-hover:text-black">
-                      {expanded ? <CaretDown size={15} weight="light" /> : <CaretRight size={15} weight="light" />}
-                    </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1.5">
+                    <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-medium ${tone.badge}`}>{tone.label}</span>
+                    <span className="text-[12px] text-black/55">Score {row.score}</span>
                   </span>
                 </button>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-black/[0.08] px-4 py-3 sm:px-5">
-                  <RiskSignalChips signals={row.topSignals || []} />
-                  <span className="text-[10px] text-black/50">{row.label ? `Labeled ${row.label}` : "Not labeled"}</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.05] px-4 py-2.5 sm:px-5">
+                  <span className="min-w-0 truncate text-[12px] text-black/55">{whySummary(row.topSignals)}</span>
+                  <span className="flex gap-1.5">
+                    <button
+                      type="button"
+                      aria-label={`Mark ${row.customer_name || "attempt"} fake`}
+                      aria-pressed={isFake}
+                      disabled={isFake || busy === `${row.id}:fake`}
+                      onClick={() => void updateLabel(row.id, "fake")}
+                      className={`${cardActionClass} ${isFake ? "bg-[#B42318] text-white" : quietAction}`}
+                    >
+                      {isFake && <Check size={12} weight="light" aria-hidden />}{isFake ? "Marked fake" : "Fake"}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Block ${row.customer_name || "attempt"} phone`}
+                      disabled={phoneBlocked}
+                      onClick={() => void openAttempt(row.id, "phone")}
+                      className={`${cardActionClass} ${phoneBlocked ? "bg-[#FBE7E5] text-[#B42318]" : quietAction}`}
+                    >
+                      {phoneBlocked ? "Phone blocked" : "Block phone"}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Block ${row.customer_name || "attempt"} device`}
+                      disabled={deviceBlocked}
+                      onClick={() => void openAttempt(row.id, "device")}
+                      className={`${cardActionClass} ${deviceBlocked ? "bg-[#FBE7E5] text-[#B42318]" : quietAction}`}
+                    >
+                      {deviceBlocked ? "Device blocked" : "Block device"}
+                    </button>
+                  </span>
+                </div>
+              </motion.li>
+            );
+          })}
+        </ul>
+      )}
+
+      {!loading && attempts.length > 0 && (
+        <div className="flex items-center justify-between gap-3 pt-1 text-[12px] text-black/55">
+          <span>{attempts.length} shown · newest first</span>
+          <span className="flex gap-1.5">
+            <button type="button" className={riskActionClass} disabled={cursors.length <= 1} onClick={() => setCursors((stack) => stack.slice(0, -1))}>Newer</button>
+            <button type="button" className={riskActionClass} disabled={attempts.length < 50} onClick={() => setCursors((stack) => [...stack, attempts.at(-1)?.created_at])}>Older</button>
+          </span>
+        </div>
+      )}
+
+      <RiskDrawer open={drawerOpen} onClose={closeDrawer} label="Investigation">
+        {!selected ? (
+          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-black/60" role="status"><Spinner size="sm" /> Loading…</div>
+        ) : (
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={selected.id}
+              className="flex min-h-0 flex-1 flex-col"
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+            >
+              <div className="space-y-1.5 border-b border-black/[0.06] px-6 pb-5 pt-6 pr-14">
+                <h3 className="sr-only">Investigation</h3>
+                {selectedTone && <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[12px] font-medium ${selectedTone.badge}`}>{selectedTone.label} · score {selected.score}</span>}
+                <p className="text-[20px] font-semibold tracking-[-0.01em] text-black">{selected.customer_name || "Unknown customer"}</p>
+                <p className="font-mono text-[14px] text-black">{selected.phone || "No phone"}</p>
+                <p className="text-[12px] text-black/55">
+                  {selected.order_number ? `Order ${selected.order_number} · ` : ""}{formatDate(selected.created_at)}
+                  {selected.ip_address && <> · <span className="font-mono">IP {selected.ip_address}</span></>}
+                </p>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                {detailsLoading ? (
+                  <div className="space-y-3" role="status" aria-label="Loading attempt details">
+                    {[0, 1, 2].map((line) => (
+                      <div key={line} className="h-12 animate-pulse rounded-xl bg-black/[0.04]" />
+                    ))}
+                  </div>
+                ) : (
+                  <RiskDetails attempt={selected} related={related} />
+                )}
+              </div>
+
+              <div className="space-y-3 border-t border-black/[0.06] bg-[#FBFBF9] px-6 py-5">
+                {notice && <p role="status" className="rounded-lg bg-[#EEF3EE] px-3 py-2 text-[12px] text-[#2F5E37]">{notice}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={selected.label === "genuine" || busy === `${selected.id}:genuine`}
+                    onClick={() => void updateLabel(selected.id, "genuine")}
+                    className={`h-11 rounded-xl text-[14px] font-medium transition-colors ${selected.label === "genuine" ? "bg-[#2F5E37] text-white" : "bg-white text-black ring-1 ring-inset ring-black/10 hover:bg-black/[0.03]"}`}
+                  >
+                    Genuine customer
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selected.label === "fake" || busy === `${selected.id}:fake`}
+                    onClick={() => void updateLabel(selected.id, "fake")}
+                    className={`h-11 rounded-xl text-[14px] font-medium transition-colors ${selected.label === "fake" ? "bg-[#B42318] text-white" : "bg-black text-white hover:bg-black/85"}`}
+                  >
+                    Fake order
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["phone", "device"] as const).map((kind) => {
+                    const done = blocked[`${selected.id}:${kind}`];
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        disabled={done}
+                        aria-pressed={blockKind === kind}
+                        onClick={() => setBlockKind(blockKind === kind ? null : kind)}
+                        className={`h-10 rounded-xl text-[13px] transition-colors ${done ? "bg-[#FBE7E5] text-[#B42318]" : blockKind === kind ? "bg-[#B42318] text-white" : "bg-white text-[#B42318] ring-1 ring-inset ring-black/10 hover:bg-[#FBE7E5]/60"}`}
+                      >
+                        {done ? `${kind === "phone" ? "Phone" : "Device"} blocked` : `Block this ${kind}`}
+                      </button>
+                    );
+                  })}
                 </div>
                 <AnimatePresence initial={false}>
-                  {expanded && selected && (
+                  {blockKind && (
                     <motion.div
-                      id={detailsId}
-                      initial={reduceMotion ? false : { opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                      transition={{ duration: reduceMotion ? 0 : 0.22, ease: "easeOut" }}
-                      className="border-t border-black/[0.08] px-4 py-5 sm:px-5"
+                      initial={reduceMotion ? false : { opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+                      transition={{ duration: reduceMotion ? 0 : 0.24, ease: DRAWER_EASE }}
+                      className="overflow-hidden"
                     >
-                      <div className="mb-4 flex items-center justify-between gap-3">
-                        <h3 className="text-lg font-light">Investigation</h3>
-                        <button type="button" className={riskActionClass} onClick={() => { setSelected(null); setRelated([]); }}>Close investigation</button>
-                      </div>
-                      <RiskDetails attempt={selected} related={related} />
-                      <div className="mt-5 flex flex-wrap gap-2">
-                        <button type="button" className={riskActionClass} onClick={() => void updateLabel("genuine")}>Mark genuine</button>
-                        <button type="button" className={riskActionClass} onClick={() => void updateLabel("fake")}>Mark fake</button>
-                        <button type="button" className={riskActionClass} onClick={() => void blockIdentity("phone")}>Block phone</button>
-                        <button type="button" className={riskActionClass} onClick={() => void blockIdentity("device")}>Block device</button>
+                      <div className="space-y-2.5 rounded-xl bg-white p-3 ring-1 ring-inset ring-black/[0.08]">
+                        <p className="text-[12px] text-black">Why block this {blockKind}?</p>
+                        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Block reason">
+                          {BLOCK_REASONS.map((reason) => (
+                            <button
+                              key={reason}
+                              type="button"
+                              aria-pressed={blockReason === reason}
+                              onClick={() => setBlockReason(reason)}
+                              className={`h-8 rounded-lg px-2.5 text-[12px] transition-colors ${blockReason === reason ? "bg-black text-white" : quietAction}`}
+                            >
+                              {reason}
+                            </button>
+                          ))}
+                        </div>
+                        <label className="block text-[11px] text-black/55">
+                          Note (optional)
+                          <input
+                            value={blockNote}
+                            maxLength={160}
+                            onChange={(event) => setBlockNote(event.target.value)}
+                            placeholder="e.g. 3 orders refused this week"
+                            className="mt-1 h-9 w-full rounded-lg bg-black/[0.04] px-2.5 text-[13px] text-black outline-none focus:bg-white focus:ring-1 focus:ring-black/20"
+                          />
+                        </label>
+                        <div className="flex justify-end gap-1.5">
+                          <button type="button" className="h-9 rounded-lg px-3 text-[13px] text-black/60 hover:text-black" onClick={() => setBlockKind(null)}>Cancel</button>
+                          <button
+                            type="button"
+                            disabled={busy === `${selected.id}:block`}
+                            onClick={() => void confirmBlock()}
+                            className="h-9 rounded-lg bg-[#B42318] px-3.5 text-[13px] text-white hover:bg-[#9A1F15] disabled:opacity-60"
+                          >
+                            Confirm block
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </motion.article>
-            );
-          })}
-        </div>
-      )}
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        )}
+      </RiskDrawer>
 
-      {attempts.length >= 50 && !loading && (
-        <button type="button" className={riskActionClass} onClick={() => { setBefore(attempts.at(-1)?.created_at); setSelected(null); }}>
-          Older attempts
-        </button>
-      )}
+      <RiskDrawer open={listsOpen} onClose={closeLists} label="Blocked and allowed">
+        <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+          <RiskListsPanel />
+        </div>
+      </RiskDrawer>
     </div>
   );
 }

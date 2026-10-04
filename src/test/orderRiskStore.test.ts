@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  insertRiskAttempt, linkAttemptToOrder, linkAttemptToReview, listRiskAttempts,
+  insertRiskAttempt, linkAttemptToOrder, linkAttemptToReview, listRiskAttempts, summarizeRiskAttempts,
   getRiskAttempt, listRelatedAttempts, findListHits, createListEntries,
   listListEntries, deleteListEntry, labelRiskAttempt, scrubExpiredRiskAttempts,
 } from "../../server/risk/store.js";
@@ -17,7 +17,7 @@ function mockSupabase(results: Array<{ data?: unknown; error?: Error | null; cou
       const query = { table, calls: [] as Array<[string, ...unknown[]]> };
       queries.push(query);
       const chain: Record<string, (...args: unknown[]) => unknown> = {};
-      for (const method of ["select", "insert", "update", "upsert", "delete", "eq", "in", "or", "not", "lt", "gte", "order", "limit", "maybeSingle", "single"]) {
+      for (const method of ["select", "insert", "update", "upsert", "delete", "eq", "in", "or", "not", "lt", "gte", "ilike", "is", "order", "limit", "maybeSingle", "single"]) {
         chain[method] = (...args: unknown[]) => {
           query.calls.push([method, ...args]);
           return chain;
@@ -61,6 +61,48 @@ describe("risk store", () => {
     await expect(listRiskAttempts(supabase, { orgId, decision: "BLOCK" })).rejects.toThrow();
     await expect(listRiskAttempts(supabase, { orgId, limit: 101 })).rejects.toThrow();
     await expect(getRiskAttempt(supabase, { orgId, attemptId: "bad" })).rejects.toThrow();
+  });
+
+  it("searches attempts by name, phone and order number within the workspace", async () => {
+    const orderId = "40000000-0000-0000-0000-000000000001";
+    const { supabase, queries } = mockSupabase([{ data: [{ id: orderId }] }, { data: [] }]);
+    await listRiskAttempts(supabase, { orgId, search: "ML-1527" });
+    guarded(queries);
+    expect(queries[0]).toMatchObject({ table: "orders" });
+    expect(queries[0].calls).toContainEqual(["ilike", "order_number", "%ML-1527%"]);
+    const or = queries[1].calls.find((call) => call[0] === "or")?.[1] as string;
+    expect(or).toContain('customer_name.ilike."%ML-1527%"');
+    expect(or).toContain("phone.ilike.%1527%");
+    expect(or).toContain(`order_id.in.(${orderId})`);
+  });
+
+  it("matches +880 phone input against local numbers and strips filter syntax", async () => {
+    const { supabase, queries } = mockSupabase([{ data: [] }, { data: [] }]);
+    await listRiskAttempts(supabase, { orgId, search: "+880 1712-345678" });
+    const or = queries[1].calls.find((call) => call[0] === "or")?.[1] as string;
+    expect(or).toContain("phone.ilike.%01712345678%");
+
+    const injected = mockSupabase([{ data: [] }]);
+    await listRiskAttempts(injected.supabase, { orgId, search: 'Rahim",org_id.neq.x' });
+    const name = injected.queries.at(-1)!.calls.find((call) => call[0] === "or")?.[1] as string;
+    expect(name).not.toMatch(/org_id\.neq/);
+    expect(name).not.toContain(',org');
+  });
+
+  it("ignores a blank search", async () => {
+    const { supabase, queries } = mockSupabase([{ data: [] }]);
+    await listRiskAttempts(supabase, { orgId, search: "   " });
+    expect(queries).toHaveLength(1);
+    expect(queries[0].calls.some((call) => call[0] === "or")).toBe(false);
+  });
+
+  it("summarizes the last 30 days of attempts for the workspace", async () => {
+    const { supabase, queries } = mockSupabase([{ count: 2 }, { count: 1 }, { count: 9 }, { count: 3 }]);
+    const summary = await summarizeRiskAttempts(supabase, { orgId, now: new Date("2026-10-04T00:00:00Z") });
+    expect(summary).toEqual({ days: 30, held: 2, blocked: 1, unlabelled: 9, fake: 3 });
+    guarded(queries);
+    for (const query of queries) expect(query.calls).toContainEqual(["gte", "created_at", "2026-09-04T00:00:00.000Z"]);
+    expect(queries[2].calls).toContainEqual(["is", "label", null]);
   });
 
   it("finds related activity and validates identity filters", async () => {

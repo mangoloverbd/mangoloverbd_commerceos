@@ -198,3 +198,56 @@ describe("CartPanel draft mode", () => {
     expect(screen.queryByRole("button", { name: /Hold reason/ })).not.toBeInTheDocument();
   });
 });
+
+describe("CartPanel advance payment proof", () => {
+  function renderWithAdvance(advance: number) {
+    const onReference = vi.fn();
+    function Harness() {
+      const [advanceValue, setAdvance] = useState(advance);
+      const [reference, setReference] = useState("");
+      return (
+        <CartPanel
+          items={[]}
+          totals={totals}
+          canEdit
+          locked={false}
+          saving={false}
+          status="confirmed"
+          onStatusChange={vi.fn()}
+          overallDiscountType={null}
+          overallDiscountValue={0}
+          deliveryOn
+          advance={advanceValue}
+          onAdvanceChange={setAdvance}
+          advanceMethod=""
+          advanceReference={reference}
+          onAdvanceMethodChange={vi.fn()}
+          onAdvanceReferenceChange={(value) => { onReference(value); setReference(value); }}
+          onToggleDelivery={vi.fn()}
+          onOverallDiscount={vi.fn()}
+          onRemoveOverallDiscount={vi.fn()}
+          onQuantity={vi.fn()}
+          onRemove={vi.fn()}
+          onDiscount={vi.fn()}
+          onSave={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />);
+    return { onReference };
+  }
+
+  it("hides the proof row until an advance is entered", () => {
+    renderWithAdvance(0);
+    expect(screen.queryByTestId("advance-payment-proof")).toBeNull();
+  });
+
+  it("shows method and reference inputs for an advance and uppercases the TrxID", async () => {
+    const { onReference } = renderWithAdvance(50);
+    expect(screen.getByLabelText("Advance paid via")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Advance payment reference"), "9kx7");
+    expect(onReference).toHaveBeenLastCalledWith("9KX7");
+    expect(screen.getByLabelText("Advance payment reference")).toHaveValue("9KX7");
+  });
+});

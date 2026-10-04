@@ -78,7 +78,7 @@ import {
   type CancellationReasonKey,
 } from "@/lib/cancellationInsights";
 import GlyphMatrix from "@/components/ui/glyph-matrix";
-import { BarChart, Bar, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { StepSparkline } from "@/components/charts/StepSparkline";
 import {
   countOrdersByStatus,
   filterOrdersByStatus,
@@ -191,6 +191,13 @@ interface Order {
   }>;
 }
 
+function hourLabel(hour: number) {
+  if (hour === 0) return "12 AM";
+  if (hour === 24) return "midnight";
+  if (hour === 12) return "12 PM";
+  return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
+}
+
 function fmtBDT(n: number) {
   return "৳" + n.toLocaleString("en-BD", { maximumFractionDigits: 0 });
 }
@@ -253,61 +260,6 @@ function markCourierRefreshRan(storageKey: string): void {
 
 
 
-function MiniBarChart({ data }: { data: { label: string; value: number }[] }) {
-  const dataSignature = JSON.stringify(data);
-  const previousDataSignature = useRef(dataSignature);
-  const chartAnimationEnabled = previousDataSignature.current !== dataSignature;
-
-  useEffect(() => {
-    previousDataSignature.current = dataSignature;
-  }, [dataSignature]);
-
-  const max = Math.max(...data.map((d) => d.value), 1);
-  // The tallest bar is inked black (reference look); the rest are light gray.
-  const peakIdx = data.reduce((best, d, i) => (d.value > data[best].value ? i : best), 0);
-  // Zero renders as a small baseline tick so the chart reads as "no data that
-  // period" rather than a blank chart. Tooltip still shows the real value (0).
-  const chartData = data.map((d) => ({
-    label: d.label,
-    value: d.value,
-    display: d.value === 0 ? max * 0.18 : d.value,
-  }));
-
-  return (
-    <div className="shrink-0" style={{ width: "72px", height: "28px" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }} barCategoryGap={1} barSize={2}>
-          <Tooltip
-            cursor={false}
-            content={({ active, payload, label }) => {
-              if (!active || !payload?.length) return null;
-              return (
-                <div className="whitespace-nowrap rounded-md bg-[#131316] px-2 py-1 text-[10px] leading-tight text-white shadow-lg">
-                  <span className="text-white/50">{label} · </span>
-                  <span className="font-medium tabular-nums">{fmtBDT((payload[0].payload as { value: number }).value)}</span>
-                </div>
-              );
-            }}
-          />
-          <Bar
-            dataKey="display"
-            radius={[2, 2, 2, 2]}
-            isAnimationActive={chartAnimationEnabled}
-            animationDuration={600}
-            animationEasing="ease-out"
-          >
-            {chartData.map((d, i) => {
-              const isPeak = i === peakIdx;
-              const fill = isPeak ? "#111111" : "#D4D4D1";
-              return <Cell key={i} fill={fill} fillOpacity={isPeak ? 1 : 0.9} />;
-            })}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 const dashboardTextEffectVariants = {
   container: {
     hidden: { opacity: 0 },
@@ -368,7 +320,7 @@ const FinanceMetric = memo(function FinanceMetric({
   /** Numeric metric value. Renders "—" when null. */
   amount: number | null;
   prefix?: string;
-  data: { label: string; value: number }[];
+  data: { label: string; endLabel?: string; value: number }[];
   trend?: number | null;
   mobileSolid?: boolean;
   seed?: number;
@@ -452,7 +404,18 @@ const FinanceMetric = memo(function FinanceMetric({
                     <MetricNumberFlow value={amount} prefix={prefix} />
                   </p>
                 )}
-                <MiniBarChart data={data} />
+                <StepSparkline
+                  values={data.map((d) => d.value)}
+                  labels={data.map((d) => d.label)}
+                  endLabels={data.every((d) => d.endLabel) ? data.map((d) => d.endLabel!) : undefined}
+                  format={(v) => (v < 0 ? `−${fmtBDT(-v)}` : fmtBDT(v))}
+                  seed={label}
+                  width={100}
+                  height={30}
+                  maxSteps={8}
+                  curve="smooth"
+                  animateOnMount={false}
+                />
               </div>
             </div>
 
@@ -1279,7 +1242,7 @@ export default function Dashboard() {
 
   const metricSparklines = useMemo(() => {
     const buckets = analytics?.series?.buckets;
-    const empty: { label: string; value: number }[] = [{ label: "—", value: 0 }];
+    const empty: { label: string; endLabel?: string; value: number }[] = [{ label: "—", value: 0 }];
     if (!buckets?.length) {
       return { revenue: empty, adSpend: empty, shipping: empty, cog: empty, profit: empty };
     }
@@ -1287,7 +1250,9 @@ export default function Dashboard() {
     const isHourly = buckets[0].key.split("-").length === 4;
     const pts = (key: "revenue" | "adSpend" | "shipping" | "totalCog" | "profit") =>
       buckets.map((b) => ({
-        label: isHourly ? b.label : format(parseISO(b.key), "MMM d"),
+        // Hourly buckets are spans: 14:00 → "2 PM" to "3 PM".
+        label: isHourly ? hourLabel(Number(b.key.split("-")[3])) : format(parseISO(b.key), "MMM d"),
+        endLabel: isHourly ? hourLabel(Number(b.key.split("-")[3]) + 1) : undefined,
         value: b[key] ?? 0,
       }));
     return {

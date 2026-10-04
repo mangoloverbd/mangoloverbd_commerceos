@@ -3,8 +3,8 @@ const sortSignals = signals => [...(Array.isArray(signals) ? signals : [])].sort
 const short = (value, length) => typeof value === "string" ? value.slice(0, length) : null;
 
 export function toAttemptSummary(row) {
-  const { id, created_at, decision, score, mode, customer_name, phone, parsed_district, total, order_id, review_id, label } = row;
-  return { id, created_at, decision, score, mode, topSignals: sortSignals(row.signals).slice(0, 3), customer_name, phone, parsed_district, total, order_id, review_id, label };
+  const { id, created_at, decision, score, mode, customer_name, phone, ip_address, parsed_district, total, order_id, review_id, label } = row;
+  return { id, created_at, decision, score, mode, topSignals: sortSignals(row.signals).slice(0, 3), customer_name, phone, ip_address: ip_address ?? null, parsed_district, total, order_id, review_id, label };
 }
 
 export function toAttemptDetail(row) {

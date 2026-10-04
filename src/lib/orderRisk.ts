@@ -9,7 +9,7 @@ export type RiskAttempt = {
   topSignals?: RiskSignal[];
   context_trusted: boolean; order_id: string | null; review_id: string | null;
   network_type?: string | null; geo_city?: string | null; user_agent_summary?: string | null;
-  ip_address?: string | null; ip_prefix?: string | null;
+  ip_address?: string | null; ip_prefix?: string | null; order_number?: string | null;
   items?: Array<Record<string, unknown>>;
 };
 
@@ -48,10 +48,15 @@ async function read<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function fetchRiskAttempts({ decision = "all", limit = 50, before }: { decision?: string; limit?: number; before?: string } = {}) {
+export async function fetchRiskAttempts({ decision = "all", limit = 50, before, q }: { decision?: string; limit?: number; before?: string; q?: string } = {}) {
   const params = new URLSearchParams({ decision, limit: String(limit) });
   if (before) params.set("before", before);
+  if (q?.trim()) params.set("q", q.trim());
   return read<{ attempts: RiskAttempt[] }>(await apiFetch(`/api/order-protection/attempts?${params}`));
+}
+export type RiskAttemptSummary = { days: number; held: number; blocked: number; unlabelled: number; fake: number };
+export async function fetchRiskSummary() {
+  return read<RiskAttemptSummary>(await apiFetch("/api/order-protection/summary"));
 }
 export async function fetchRiskAttempt(id: string) {
   return read<{ attempt: RiskAttempt; related: RiskAttempt[]; review: unknown; order: { id: string; order_number: string } | null }>(await apiFetch(`/api/order-protection/attempts/${encodeURIComponent(id)}`));

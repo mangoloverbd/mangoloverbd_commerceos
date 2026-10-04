@@ -114,6 +114,8 @@ const TRACKED_ORDER_FIELDS = Object.freeze([
   ["delivery_rate", "Delivery fee"],
   ["payment_method", "Payment method"],
   ["advanced_payment", "Advanced payment"],
+  ["advance_payment_method", "Advance paid via"],
+  ["advance_payment_reference", "Advance payment reference"],
   ["price", "Order total"],
   ["total_price", "Order total"],
   ["subtotal", "Subtotal"],

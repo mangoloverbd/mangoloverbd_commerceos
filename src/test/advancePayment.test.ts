@@ -73,3 +73,35 @@ describe("advance payment (TDD RED)", () => {
     expect(orderDetail).toContain("dvance");
   });
 });
+
+describe("advance payment proof wiring", () => {
+  const abandonedDetail = readFileSync(resolve(process.cwd(), "src/pages/AbandonedDetail.tsx"), "utf8");
+  const migrations = readFileSync(
+    resolve(process.cwd(), "supabase/migrations/20261004130340_order_advance_payment_proof.sql"),
+    "utf8",
+  );
+
+  it("adds nullable, constrained proof columns to orders", () => {
+    expect(migrations).toContain("add column advance_payment_method text");
+    expect(migrations).toContain("add column advance_payment_reference text");
+    expect(migrations).toContain("orders_advance_payment_method_check");
+  });
+
+  it("validates proof on create, update and abandoned conversion", () => {
+    const create = sectionBetween(server, 'app.post("/api/orders"', 'app.patch("/api/orders/:id"');
+    const patch = sectionBetween(server, 'app.patch("/api/orders/:id"', 'app.post("/api/orders/:id/send-sms"');
+    const convert = sectionBetween(server, 'app.post("/api/abandoned-checkouts/:id/convert"', 'app.patch("/api/orders/:id/items"');
+    for (const [name, section] of [["create", create], ["patch", patch], ["convert", convert]] as const) {
+      expect(section, name).toContain("normalizeAdvancePaymentProof");
+    }
+    expect(convert).toContain("advanced_payment");
+  });
+
+  it("every advance editor offers the proof row", () => {
+    expect(newOrder).toContain("<AdvancePaymentProof");
+    expect(cartPanel).toContain("<AdvancePaymentProof");
+    expect(orderDetail).toContain("onAdvanceReferenceChange={setAdvanceReferenceDraft}");
+    expect(abandonedDetail).toContain("onAdvanceChange={setAdvanceDraft}");
+    expect(abandonedDetail).not.toContain("onAdvanceChange={() => {}}");
+  });
+});

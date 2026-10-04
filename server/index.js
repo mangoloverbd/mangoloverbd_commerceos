@@ -84,6 +84,7 @@ import {
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
 import { getOrderApprovalDetailsError } from "./orderApprovalDetails.js";
+import { normalizeAdvancePaymentProof } from "./advancePaymentProof.js";
 import {
   hashProtectionSignal,
   getProtectionReview,
@@ -95,7 +96,7 @@ import { CLIENT_CONTEXT_HEADER, verifyClientContext } from "./clientContext.js";
 import { classifyNetwork, getTrustedRequestIp, networkKey } from "./risk/network.js";
 import { assessOrderRisk, finalizeOrderRisk } from "./risk/pipeline.js";
 import { PROTECTION_MODE_SETTING_SUFFIX, resolveProtectionMode } from "./risk/mode.js";
-import { createListEntries, deleteListEntry, getRiskAttempt, labelRiskAttempt, listListEntries, listRelatedAttempts, listRiskAttempts, scrubExpiredRiskAttempts } from "./risk/store.js";
+import { createListEntries, deleteListEntry, getRiskAttempt, labelRiskAttempt, listListEntries, listRelatedAttempts, listRiskAttempts, scrubExpiredRiskAttempts, summarizeRiskAttempts } from "./risk/store.js";
 import { buildDisplayHint, toAttemptDetail, toAttemptSummary } from "./risk/serialize.js";
 import { computeAccuracy } from "./risk/accuracy.js";
 import { labelOrderRiskAttempt } from "./risk/labels.js";
@@ -7474,6 +7475,27 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       quantity: item.quantity,
     }));
     const subtotal = Math.round(draft.cart.reduce((sum, item) => sum + Number(item.unitPrice) * Number(item.quantity), 0) * 100) / 100;
+    // Optional advance taken while editing the abandoned checkout, with its proof.
+    const conversionAdvance = {};
+    if (req.body?.advanced_payment !== undefined && req.body.advanced_payment !== null) {
+      const advanceValue = Number(req.body.advanced_payment);
+      if (!Number.isFinite(advanceValue) || advanceValue < 0) {
+        return res.status(400).json({ error: "Advance payment must be a non-negative number" });
+      }
+      if (advanceValue - (subtotal + (Number(draft.delivery_rate) || 0)) > 1e-9) {
+        return res.status(400).json({ error: "Advance payment cannot exceed the order total" });
+      }
+      if (advanceValue > 0) {
+        conversionAdvance.advanced_payment = Math.round((advanceValue + Number.EPSILON) * 100) / 100;
+        const proof = normalizeAdvancePaymentProof({
+          advance: advanceValue,
+          method: req.body.advance_payment_method,
+          reference: req.body.advance_payment_reference,
+        });
+        if (!proof.ok) return res.status(400).json({ error: proof.error });
+        for (const [key, value] of Object.entries(proof.value)) if (value !== null) conversionAdvance[key] = value;
+      }
+    }
     const routing = await resolveOrderRouting(
       supabase,
       orgId,
@@ -7500,6 +7522,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
         quantity: draft.cart.reduce((sum, item) => sum + Number(item.quantity), 0),
         price: subtotal,
         delivery_rate: draft.delivery_rate,
+        ...conversionAdvance,
         status: orderStatus,
         hold_reason_code: conversionHoldDetails?.hold_reason_code ?? null,
         hold_reason_detail: conversionHoldDetails?.hold_reason_detail ?? null,
@@ -9291,6 +9314,8 @@ app.post("/api/orders", async (req, res) => {
       "payment_method",
       "discount",
       "advanced_payment",
+      "advance_payment_method",
+      "advance_payment_reference",
       "source",
       "hold_reason_code",
       "hold_reason_detail",
@@ -9403,6 +9428,17 @@ app.post("/api/orders", async (req, res) => {
       }
       row.advanced_payment = Math.round((advanceValue + Number.EPSILON) * 100) / 100;
     }
+    if (row.advance_payment_method !== undefined || row.advance_payment_reference !== undefined) {
+      const proof = normalizeAdvancePaymentProof({
+        advance: row.advanced_payment,
+        method: row.advance_payment_method,
+        reference: row.advance_payment_reference,
+      });
+      if (!proof.ok) return res.status(400).json({ error: proof.error });
+      delete row.advance_payment_method;
+      delete row.advance_payment_reference;
+      for (const [key, value] of Object.entries(proof.value)) if (value !== null) row[key] = value;
+    }
 
     // New Order submits "confirmed" today. Derive the confirmation attribution
     // from that initial transition rather than hard-coding a parallel rule.
@@ -9474,7 +9510,7 @@ app.patch("/api/orders/:id", async (req, res) => {
     const supabase = getServiceSupabase();
     const { orgId } = await getUserOrg(supabase, user.id);
     const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
-    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source", "advanced_payment", "payment_method", "hold_reason_code", "hold_reason_detail", "hold_until_date"];
+    const allowed = ["status", "notes", "courier_status", "consignment_id", "tracking_code", "courier_message", "sent_to_courier", "fraud_checked", "fraud_data", "price", "delivery_rate", "discount", "customer_name", "phone", "address", "warehouse_id", "weight_kg", "source", "advanced_payment", "advance_payment_method", "advance_payment_reference", "payment_method", "hold_reason_code", "hold_reason_detail", "hold_until_date"];
     const update = {};
     for (const k of allowed) { if (req.body[k] !== undefined) update[k] = req.body[k]; }
     if (update.source !== undefined && !isCanonicalOrderSource(update.source)) {
@@ -9614,6 +9650,19 @@ app.patch("/api/orders/:id", async (req, res) => {
         return res.status(400).json({ error: "Advance payment cannot exceed the order total" });
       }
       update.advanced_payment = Math.round((advanceValue + Number.EPSILON) * 100) / 100;
+    }
+    // Advance proof is only written when the request carries it, or when an
+    // existing proof has to be cleared because the advance was removed.
+    const proofSent = update.advance_payment_method !== undefined || update.advance_payment_reference !== undefined;
+    const proofStored = orderCheck.advance_payment_method != null || orderCheck.advance_payment_reference != null;
+    if (proofSent || (update.advanced_payment !== undefined && proofStored)) {
+      const proof = normalizeAdvancePaymentProof({
+        advance: update.advanced_payment ?? orderCheck.advanced_payment,
+        method: update.advance_payment_method !== undefined ? update.advance_payment_method : orderCheck.advance_payment_method,
+        reference: update.advance_payment_reference !== undefined ? update.advance_payment_reference : orderCheck.advance_payment_reference,
+      });
+      if (!proof.ok) return res.status(400).json({ error: proof.error });
+      Object.assign(update, proof.value);
     }
     // Print state machine (mirrors src/lib/orderTransitions.ts — keep in sync).
     if (update.status !== undefined) {
@@ -14426,8 +14475,25 @@ app.get("/api/order-protection/attempts", async (req, res) => {
     const limit = Number(req.query.limit ?? 50);
     const before = req.query.before ?? null;
     if (!["all", "allow", "hold", "block"].includes(decision) || !Number.isInteger(limit) || limit < 1 || limit > 100 || (before !== null && (typeof before !== "string" || !Number.isFinite(Date.parse(before))))) return res.status(400).json({ error: "Invalid attempt filters" });
-    const attempts = await listRiskAttempts(supabase, { orgId, decision, limit, before });
-    return res.json({ attempts: attempts.map(toAttemptSummary) });
+    const search = typeof req.query.q === "string" ? req.query.q.slice(0, 100) : null;
+    const attempts = await listRiskAttempts(supabase, { orgId, decision, limit, before, search });
+    // Show the human order number (ML-…) on each row.
+    const orderIds = [...new Set(attempts.map((row) => row.order_id).filter(Boolean))];
+    const orderNumbers = new Map();
+    if (orderIds.length) {
+      const { data: orders, error: ordersError } = await supabase.from("orders").select("id, order_number").eq("org_id", orgId).in("id", orderIds);
+      if (ordersError) throw ordersError;
+      for (const order of orders || []) orderNumbers.set(order.id, order.order_number);
+    }
+    return res.json({ attempts: attempts.map((row) => ({ ...toAttemptSummary(row), order_number: orderNumbers.get(row.order_id) ?? null })) });
+  } catch (error) { return sendError(res, error); }
+});
+
+app.get("/api/order-protection/summary", async (req, res) => {
+  try {
+    const { user, supabase, orgId } = await requireOrderProtectionStaff(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    return res.json(await summarizeRiskAttempts(supabase, { orgId }));
   } catch (error) { return sendError(res, error); }
 });
 

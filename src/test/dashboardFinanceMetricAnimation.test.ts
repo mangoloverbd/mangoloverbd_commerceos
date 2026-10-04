@@ -62,13 +62,13 @@ describe("dashboard P&L metric animation", () => {
     );
   });
 
-  it("does not replay mini bar animations on remount", () => {
-    const chartStart = source.indexOf("function MiniBarChart");
-    const chartEnd = source.indexOf("function DashboardTextEffect", chartStart);
-    const chartSource = source.slice(chartStart, chartEnd);
+  it("does not replay mini chart animations on remount", () => {
+    const financeMetricStart = source.indexOf("const FinanceMetric");
+    const dashboardStart = source.indexOf("export default function Dashboard");
+    const financeMetricSource = source.slice(financeMetricStart, dashboardStart);
 
-    expect(chartSource).toContain("chartAnimationEnabled");
-    expect(chartSource).toContain("isAnimationActive={chartAnimationEnabled}");
+    expect(financeMetricSource).toContain("<StepSparkline");
+    expect(financeMetricSource).toContain("animateOnMount={false}");
   });
 
   it("does not replay container fade animations when the P&L section remounts", () => {

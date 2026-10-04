@@ -8,7 +8,7 @@ import { CourierPanel } from "@/components/overview/CourierPanel";
 import { StaffPerformancePanel } from "@/components/overview/StaffPerformancePanel";
 import { RetentionPanel } from "@/components/overview/RetentionPanel";
 import { Spinner } from "@/components/ui/ios-spinner";
-import { format, subDays } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 
 function dhakaToday(): Date {
@@ -29,6 +29,7 @@ interface OverviewData {
   };
   orderVolumeSeries: Array<{ date: string; current: number; previous: number }>;
   revenueSeries: Array<{ date: string; revenue: number; cog: number; shipping: number; profit: number }>;
+  deliverySeries?: Array<{ date: string; successRate: number; pending: number }>;
   courierPerformance: Record<string, { delivered: number; in_transit: number; failed: number; pending: number }>;
   socialInbox: {
     unread: number;
@@ -123,6 +124,10 @@ export default function Overview() {
 
   const sparklineFromSeries = (series: Array<{ current?: number; revenue?: number }>, key: "current" | "revenue") =>
     series.slice(-7).map((d) => d[key] || 0);
+  const sparklineDates = (series: Array<{ date: string }>) =>
+    series.slice(-7).map((d) => format(parseISO(d.date), "MMM d"));
+  const fmtPercent = (n: number) => `${Math.round(n * 10) / 10}%`;
+  const fmtCount = (n: number) => n.toLocaleString();
 
   return (
     <div className="min-h-full space-y-6 bg-white p-1 lg:p-2">
@@ -150,6 +155,8 @@ export default function Overview() {
           trend={data.kpis.totalOrders.trend}
           previousValue={data.kpis.totalOrders.previousValue}
           sparklineValues={sparklineFromSeries(data.orderVolumeSeries, "current")}
+          sparklineLabels={sparklineDates(data.orderVolumeSeries)}
+          formatSparkline={fmtCount}
           icon="Package"
         />
         <KpiCard
@@ -158,6 +165,8 @@ export default function Overview() {
           trend={data.kpis.revenue.trend}
           previousValue={data.kpis.revenue.previousValue}
           sparklineValues={sparklineFromSeries(data.revenueSeries, "revenue")}
+          sparklineLabels={sparklineDates(data.revenueSeries)}
+          formatSparkline={fmtBDT}
           icon="CurrencyCircleDollar"
         />
         <KpiCard
@@ -165,7 +174,9 @@ export default function Overview() {
           value={`${data.kpis.profitMargin.value}%`}
           trend={data.kpis.profitMargin.trend}
           previousValue={data.kpis.profitMargin.previousValue}
-          sparklineValues={data.revenueSeries.slice(-7).map((d) => d.profit)}
+          sparklineValues={data.revenueSeries.slice(-7).map((d) => (d.revenue > 0 ? (d.profit / d.revenue) * 100 : 0))}
+          sparklineLabels={sparklineDates(data.revenueSeries)}
+          formatSparkline={fmtPercent}
           icon="Percent"
         />
         <KpiCard
@@ -173,7 +184,9 @@ export default function Overview() {
           value={`${data.kpis.deliverySuccess.value}%`}
           trend={data.kpis.deliverySuccess.trend}
           previousValue={data.kpis.deliverySuccess.previousValue}
-          sparklineValues={[data.kpis.deliverySuccess.value]}
+          sparklineValues={(data.deliverySeries ?? []).slice(-7).map((d) => d.successRate)}
+          sparklineLabels={sparklineDates(data.deliverySeries ?? [])}
+          formatSparkline={fmtPercent}
           icon="Truck"
         />
         <KpiCard
@@ -181,7 +194,9 @@ export default function Overview() {
           value={data.kpis.pendingFulfillment.value.toString()}
           trend={data.kpis.pendingFulfillment.trend}
           previousValue={data.kpis.pendingFulfillment.previousValue}
-          sparklineValues={[data.kpis.pendingFulfillment.value]}
+          sparklineValues={(data.deliverySeries ?? []).slice(-7).map((d) => d.pending)}
+          sparklineLabels={sparklineDates(data.deliverySeries ?? [])}
+          formatSparkline={fmtCount}
           icon="Warning"
         />
       </div>

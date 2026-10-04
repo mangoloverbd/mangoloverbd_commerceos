@@ -67,13 +67,57 @@ export async function linkAttemptToReview(supabase, { orgId, attemptId, reviewId
   return review;
 }
 
-export async function listRiskAttempts(supabase, { orgId, decision = "all", limit = 50, before = null }) {
+// Staff search: free text is reduced to letters, digits, spaces and dashes so
+// it can never add PostgREST filter syntax; phone input in +880 form matches
+// the stored 01… numbers; order numbers resolve to order ids in this workspace.
+function attemptSearchTerms(raw) {
+  if (typeof raw !== "string") return null;
+  const text = raw.replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (!text) return null;
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("880")) digits = `0${digits.slice(3)}`;
+  return { text, digits: digits.length >= 3 ? digits.slice(0, 15) : "" };
+}
+
+export async function listRiskAttempts(supabase, { orgId, decision = "all", limit = 50, before = null, search = null }) {
   uuid(orgId, "orgId"); pageSize(limit);
   if (!["all", "allow", "hold", "block"].includes(decision)) throw new TypeError("Invalid decision");
+  const terms = attemptSearchTerms(search);
+  let orderIds = [];
+  if (terms && /\d/.test(terms.text)) {
+    const orders = await result(supabase.from("orders").select("id").eq("org_id", orgId).ilike("order_number", `%${terms.text}%`).limit(25));
+    orderIds = (orders || []).map((order) => order.id).filter((value) => UUID.test(value));
+  }
   let query = supabase.from("order_risk_attempts").select("*").eq("org_id", orgId);
   if (decision !== "all") query = query.eq("decision", decision.toUpperCase());
   if (before != null) query = query.lt("created_at", isoDate(before, "before"));
+  if (terms) {
+    const filters = [`customer_name.ilike."%${terms.text}%"`];
+    if (terms.digits) filters.push(`phone.ilike.%${terms.digits}%`);
+    if (orderIds.length) filters.push(`order_id.in.(${orderIds.join(",")})`);
+    query = query.or(filters.join(","));
+  }
   return (await result(query.order("created_at", { ascending: false }).limit(limit))) || [];
+}
+
+// Workspace-wide counts behind the Attempts summary cards (not just one page).
+export async function summarizeRiskAttempts(supabase, { orgId, days = 30, now = new Date() }) {
+  uuid(orgId, "orgId");
+  const since = new Date(now.getTime() - days * 86_400_000).toISOString();
+  const count = async (narrow) => {
+    const { count: total, error } = await narrow(
+      supabase.from("order_risk_attempts").select("id", { count: "exact", head: true }).eq("org_id", orgId).gte("created_at", since),
+    );
+    if (error) throw error;
+    return total ?? 0;
+  };
+  const [held, blocked, unlabelled, fake] = await Promise.all([
+    count((q) => q.eq("decision", "HOLD")),
+    count((q) => q.eq("decision", "BLOCK")),
+    count((q) => q.is("label", null)),
+    count((q) => q.eq("label", "fake")),
+  ]);
+  return { days, held, blocked, unlabelled, fake };
 }
 
 export async function getRiskAttempt(supabase, { orgId, attemptId }) {

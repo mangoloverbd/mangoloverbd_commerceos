@@ -13,6 +13,7 @@ const route = (method: string, path: string) => {
 it("guards attempt, order, list, and setting APIs with staff auth and admin mutations", () => {
   for (const [method, path] of [
     ["get", "/api/order-protection/attempts"], ["get", "/api/order-protection/attempts/:id"],
+    ["get", "/api/order-protection/summary"],
     ["get", "/api/orders/:id/risk"], ["get", "/api/order-protection/lists"],
     ["post", "/api/order-protection/lists"], ["delete", "/api/order-protection/lists/:id"],
     ["get", "/api/order-protection/settings"], ["put", "/api/order-protection/settings"],
@@ -25,6 +26,8 @@ it("guards attempt, order, list, and setting APIs with staff auth and admin muta
   expect(route("get", "/api/order-protection/attempts/:id")).toContain("getRiskAttempt(supabase, { orgId");
   expect(route("get", "/api/orders/:id/risk")).toContain('.eq("org_id", orgId)');
   expect(route("delete", "/api/order-protection/lists/:id")).toContain("deleteListEntry(supabase, { orgId");
+  expect(route("get", "/api/order-protection/attempts")).toContain("search });");
+  expect(route("get", "/api/order-protection/summary")).toContain("summarizeRiskAttempts(supabase, { orgId })");
 });
 
 it("heals stale order links instead of showing dead Open order links", () => {

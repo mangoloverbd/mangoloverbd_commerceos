@@ -26,6 +26,7 @@ import {
 import { DiscountEditor } from "@/components/order-editor/DiscountEditor";
 import { CartDiscountEditor } from "@/components/order-editor/CartDiscountEditor";
 import { OrderSourceSelect } from "@/components/order-editor/OrderSourceSelect";
+import { AdvancePaymentProof } from "@/components/order-editor/AdvancePaymentProof";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
 import { useFraudCheckMutation } from "@/hooks/useFraudCheck";
 import { normalizeBdMobileInput } from "@/lib/bdPhone";
@@ -114,6 +115,8 @@ export default function NewOrder() {
   const [overallType, setOverallType] = useState<DiscountType | null>(null);
   const [overallValue, setOverallValue] = useState(0);
   const [advance, setAdvance] = useState(0);
+  const [advanceMethod, setAdvanceMethod] = useState("");
+  const [advanceReference, setAdvanceReference] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cod");
   const [notes, setNotes] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
@@ -343,6 +346,9 @@ export default function NewOrder() {
           payment_method: paymentMethod,
           discount: totals.aggregateDiscount,
           advanced_payment: Math.min(advance, total),
+          // Proof is optional and only sent alongside an advance.
+          advance_payment_method: advance > 0 && advanceMethod ? advanceMethod : undefined,
+          advance_payment_reference: advance > 0 && advanceReference.trim() ? advanceReference.trim() : undefined,
           source,
           assigned_to: assignedTo,
         }),
@@ -476,6 +482,7 @@ export default function NewOrder() {
                 {totals.itemDiscount > 0 && <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Item discounts</span><span className="font-mono text-[13px] tabular-nums text-emerald-700">−{formatTaka(totals.itemDiscount)}</span></div>}
                 {totals.legacyDiscount > 0 && <div className="flex items-center justify-between border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Order discount</span><span className="font-mono text-[13px] tabular-nums text-emerald-700">−{formatTaka(totals.legacyDiscount)}</span></div>}
                 <div className="flex items-center justify-between gap-2 border-b border-black/[0.07] px-4 py-2"><span className="text-[13px] text-black">Advance / partial</span><span className="flex items-center gap-1.5"><span className="flex items-center gap-1 rounded-lg bg-black/[0.04] py-1 pl-2.5 pr-1 ring-1 ring-inset ring-black/[0.06] transition focus-within:bg-white focus-within:ring-black/25"><span className="font-mono text-[13px] text-black/40">৳</span><input aria-label="Advance payment" type="number" onWheel={blurOnWheel} min={0} max={total} value={advance > 0 ? advance : ""} placeholder="0" onChange={(event) => setAdvance(Math.min(total, Math.max(0, Number(event.target.value) || 0)))} className="w-20 bg-transparent text-right font-mono text-[13px] font-medium tabular-nums outline-none placeholder:text-black/30" /></span></span></div>
+                {advance > 0 && <AdvancePaymentProof method={advanceMethod} reference={advanceReference} onMethodChange={setAdvanceMethod} onReferenceChange={setAdvanceReference} disabled={creating} className="border-b border-black/[0.07] px-4 py-2" />}
                 <div className="flex items-center justify-between bg-black/[0.035] px-4 py-2"><span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-black">Final total</span><span className="font-mono text-[19px] font-semibold tabular-nums text-black">{formatTaka(total)}</span></div>
                 {advance > 0 && <div className="flex items-center justify-between border-t border-black/[0.07] px-4 py-2"><span className="text-[11px] text-black">Due after advance</span>{advance < total ? <Chip variant="subtle" color="lime" className="font-mono tabular-nums">{formatTaka(total - advance)}</Chip> : <Chip variant="subtle" color="lime" className="font-medium">Paid</Chip>}</div>}
                 <div className="flex flex-wrap items-center gap-2 border-t border-black/[0.07] px-4 py-1.5">
