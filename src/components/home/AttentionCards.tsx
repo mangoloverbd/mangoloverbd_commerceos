@@ -105,7 +105,7 @@ function Preview({ preview, kind }: { preview: HomePreview | null; kind: string 
 export function AttentionCards({ cards }: { cards: HomeAttentionCard[] }) {
   const reduceMotion = useReducedMotion();
   return (
-    <section aria-label="Needs your attention" className="relative z-[2] grid grid-cols-3 gap-5 px-5 pb-5 max-[1200px]:grid-cols-1 max-md:px-4 max-md:pb-10">
+    <section aria-label="Needs your attention" className="relative z-[2] grid grid-cols-3 gap-4 px-3 pb-3 max-[1200px]:grid-cols-1 max-md:px-3 max-md:pb-10">
       {cards.map((card, index) => (
         <motion.article
           key={card.kind}

@@ -36,7 +36,7 @@ function summaryUrl(range: DateRange | null, channel: HomeChannel) {
 
 function CardSkeletons() {
   return (
-    <div aria-hidden="true" className="grid grid-cols-3 gap-5 px-5 pb-5 max-[1200px]:grid-cols-1 max-md:px-4">
+    <div aria-hidden="true" className="grid grid-cols-3 gap-4 px-3 pb-3 max-[1200px]:grid-cols-1 max-md:px-3">
       {[0, 1, 2].map((index) => (
         <div key={index} className="min-h-[440px] animate-pulse rounded-[26px] border border-[#ECEAE4] bg-white/70" />
       ))}

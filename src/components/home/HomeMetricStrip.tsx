@@ -185,7 +185,7 @@ export function HomeMetricStrip({ metrics, loading, liveCount, isAdmin, scope }:
   scope: ReactNode;
 }) {
   return (
-    <header className="relative z-[3] flex items-start justify-between gap-6 px-5 pt-4 max-md:flex-col max-md:px-4 max-md:pt-4">
+    <header className="relative z-[3] flex items-start justify-between gap-6 px-3 pt-4 max-md:flex-col max-md:px-3 max-md:pt-4">
       {scope}
       <div className="flex flex-wrap justify-center gap-x-9 gap-y-4 max-[1360px]:gap-x-6">
         {METRICS.map(({ key, label, prefix, suffix, format, adminOnly }) => (
