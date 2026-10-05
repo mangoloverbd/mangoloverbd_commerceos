@@ -25,6 +25,11 @@ export function projectPoint(longitude: number, latitude: number, centerLongitud
   return { x: SIZE / 2 + x, y: SIZE / 2 - y, depth };
 }
 
+// Puts the dot's centre on the point: the label sits left of the dot, both centred vertically.
+export function pinTransform(x: number, y: number) {
+  return `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) translate(calc(-100% + 7px), -50%)`;
+}
+
 const timeFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Dhaka" });
 
 function pinLabel(visitor: HomeLiveVisitor) {
@@ -104,10 +109,9 @@ export function DottedGlobe({ visitors }: { visitors: HomeLiveVisitor[] }) {
       if (pinElement && visitor) {
         const pin = projectPoint(visitor.longitude, visitor.latitude, longitude, CENTER.latitude);
         pinElement.style.visibility = pin ? "visible" : "hidden";
-        if (pin) {
-          pinElement.style.left = `${pin.x}px`;
-          pinElement.style.top = `${pin.y}px`;
-        }
+        // A transform glides by fractions of a pixel; left/top snapped to whole
+        // pixels as the globe drifted, which made the pin flicker.
+        if (pin) pinElement.style.transform = pinTransform(pin.x, pin.y);
       }
       if (!reduceMotion) {
         tickRef.current += 0.004;
@@ -140,7 +144,7 @@ export function DottedGlobe({ visitors }: { visitors: HomeLiveVisitor[] }) {
         // mount (the value never changes), so re-renders can't hide it.
         <div
           ref={pinRef}
-          className="absolute z-[2] -translate-y-1/2 translate-x-[calc(-100%_+_7px)]"
+          className="absolute left-0 top-0 z-[2] will-change-transform"
           style={{ visibility: "hidden" }}
         >
           <motion.div
