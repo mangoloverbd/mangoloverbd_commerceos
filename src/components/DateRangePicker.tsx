@@ -11,7 +11,7 @@ import {
 import { CalendarDate } from "@internationalized/date";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown } from "lucide-react";
-import { CaretDown, X } from "@phosphor-icons/react";
+import { X } from "@phosphor-icons/react";
 import {
   SolarCalendarIcon,
   SolarCalendarMarkIcon,
@@ -247,10 +247,9 @@ export function DateRangePicker({
     <AriaButton
       ref={triggerRef}
       data-testid="button-date-range-picker"
-      className="flex items-center gap-1 rounded-lg px-2 py-1 text-[14px] text-[#55534E] outline-none transition-colors hover:bg-[#F2F1EC] hover:text-[#111110] focus-visible:ring-2 focus-visible:ring-black"
+      className="flex items-center rounded-lg px-2 py-1 text-[14px] font-medium text-[#111110] outline-none transition-colors hover:bg-[#F2F1EC] focus-visible:ring-2 focus-visible:ring-black"
     >
       {matchedPreset ?? fmtRange(value)}
-      <CaretDown weight="light" size={12} className="opacity-60" />
     </AriaButton>
   ) : (
     <AriaButton

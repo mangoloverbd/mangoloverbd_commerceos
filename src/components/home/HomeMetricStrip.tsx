@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { cn } from "@/lib/utils";
 import type { HomeMetric } from "./types";
 
 const number = new Intl.NumberFormat("en-US");
@@ -14,26 +13,20 @@ const METRICS: { key: MetricKey; label: string; format: (value: number) => strin
   { key: "conversion_rate", label: "Conversion rate", format: (value) => `${value.toFixed(2)}%`, adminOnly: true },
 ];
 
-// Today's running total (solid) over the comparison period's (dashed), one scale.
-export function Sparkline({ series, previous, up }: { series: number[]; previous: number[] | null; up: boolean }) {
-  const length = Math.max(series.length, previous?.length ?? 0, 2);
-  const max = Math.max(...series, ...(previous ?? []), 0);
-  const points = (values: number[]) => values
+// The running total as one quiet grey line, like Shopify's metric strip.
+export function Sparkline({ series }: { series: number[] }) {
+  if (series.length < 2) return null;
+  const max = Math.max(...series, 0);
+  const points = series
     .map((value, index) => {
-      const x = 1 + (index / (length - 1)) * 32;
-      const y = max > 0 ? 12.5 - (value / max) * 11 : 12.5;
+      const x = 1 + (index / (series.length - 1)) * 28;
+      const y = max > 0 ? 13 - (value / max) * 11 : 13;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
   return (
-    <svg aria-hidden="true" width="34" height="14" viewBox="0 0 34 14" className="shrink-0">
-      {previous && previous.length > 1 && (
-        <polyline points={points(previous)} fill="none" strokeWidth="1" strokeDasharray="2 2" strokeLinecap="round" className="stroke-[#C9C7C0]" />
-      )}
-      {series.length > 1 && (
-        <polyline points={points(series)} fill="none" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"
-          className={up ? "stroke-[#3FA34D]" : "stroke-[#8C8A84]"} />
-      )}
+    <svg aria-hidden="true" width="30" height="14" viewBox="0 0 30 14" className="shrink-0">
+      <polyline points={points} fill="none" strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" className="stroke-[#BDBBB5]" />
     </svg>
   );
 }
@@ -48,7 +41,6 @@ function MetricItem({ label, metric, format, locked }: {
   format: (value: number) => string;
   locked: boolean;
 }) {
-  const up = (metric?.change ?? 0) > 0;
   return (
     <div className="flex flex-col items-center gap-2" data-testid={`home-metric-${label}`}>
       <span className="text-[15px] text-[#55534E]">{label}</span>
@@ -59,10 +51,8 @@ function MetricItem({ label, metric, format, locked }: {
       ) : (
         <div className="flex items-center gap-2 text-[15px]">
           <b className="font-semibold tabular-nums text-[#111110]">{metric ? format(metric.value) : "—"}</b>
-          {metric?.series && <Sparkline series={metric.series} previous={metric.previous_series} up={up} />}
-          {metric?.change != null && (
-            <span className={cn("tabular-nums", up ? "text-[#3FA34D]" : "text-[#8C8A84]")}>{formatChange(metric.change)}</span>
-          )}
+          {metric?.series && <Sparkline series={metric.series} />}
+          {metric?.change != null && <span className="tabular-nums text-[#6F6D68]">{formatChange(metric.change)}</span>}
         </div>
       )}
     </div>
