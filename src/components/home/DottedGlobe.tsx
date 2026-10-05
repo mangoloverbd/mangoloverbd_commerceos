@@ -124,9 +124,10 @@ export function DottedGlobe({ visitors }: { visitors: HomeLiveVisitor[] }) {
     // Cropped by the top and right of the page like Shopify's, but placed high enough
     // that the whole bottom curve sits above the cards instead of behind them.
     <div aria-hidden="true" className="pointer-events-none absolute -right-[170px] -top-[150px] z-0 h-[780px] w-[780px] max-md:opacity-35">
-      {/* The sphere itself (same radius as the projection), so the globe has an edge. */}
+      {/* The sphere (same radius as the projection): a white glow that fades into the
+          page at its rim, with only a soft shadow hinting at the lower edge. */}
       <div
-        className="absolute rounded-full bg-[radial-gradient(circle_at_38%_32%,#fff_0%,#fff_48%,#F4F3EF_100%)] shadow-[0_32px_64px_-32px_rgba(17,17,16,0.08),0_0_0_1px_rgba(17,17,16,0.03)]"
+        className="absolute rounded-full bg-[radial-gradient(closest-side,#fff_0%,rgba(255,255,255,0.9)_55%,rgba(255,255,255,0)_100%)] shadow-[0_70px_90px_-70px_rgba(17,17,16,0.07)]"
         style={{ inset: SIZE / 2 - RADIUS }}
       />
       {/* Fades in once the map has loaded, instead of popping in. */}
