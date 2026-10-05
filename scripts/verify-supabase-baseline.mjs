@@ -208,12 +208,15 @@ begin
      or has_function_privilege('anon', 'public.touch_live_visitor(uuid, text, text)', 'execute')
      or has_function_privilege('authenticated', 'public.touch_live_visitor(uuid, text, text)', 'execute')
      or has_function_privilege('anon', 'public.count_live_visitors(uuid, integer)', 'execute')
-     or has_function_privilege('authenticated', 'public.count_live_visitors(uuid, integer)', 'execute') then
+     or has_function_privilege('authenticated', 'public.count_live_visitors(uuid, integer)', 'execute')
+     or has_function_privilege('anon', 'public.live_visitor_locations(uuid, integer)', 'execute')
+     or has_function_privilege('authenticated', 'public.live_visitor_locations(uuid, integer)', 'execute') then
     raise exception 'Live visitor presence exposes excess privileges';
   end if;
   if not has_table_privilege('service_role', 'public.live_visitor_presence', 'select,insert,update,delete')
      or not has_function_privilege('service_role', 'public.touch_live_visitor(uuid, text, text)', 'execute')
-     or not has_function_privilege('service_role', 'public.count_live_visitors(uuid, integer)', 'execute') then
+     or not has_function_privilege('service_role', 'public.count_live_visitors(uuid, integer)', 'execute')
+     or not has_function_privilege('service_role', 'public.live_visitor_locations(uuid, integer)', 'execute') then
     raise exception 'Live visitor presence server privileges are missing';
   end if;
   select count(*) into runtime_table_count
@@ -412,6 +415,8 @@ begin
       ,('order_activity_events', 'metadata')
       ,('order_activity_events', 'view_bucket')
       ,('order_activity_events', 'created_at')
+      ,('analytics_sessions', 'latitude')
+      ,('analytics_sessions', 'longitude')
     except
     select table_name, column_name
     from information_schema.columns

@@ -8686,6 +8686,7 @@ async function recordWebsiteAnalyticsHit(req, { orgId, kind, bucket }) {
   const hit = parseTrackerAnalyticsHit(req.body, {
     kind, bucket, userAgent,
     country: req.headers["x-vercel-ip-country"], city: req.headers["x-vercel-ip-city"],
+    latitude: req.headers["x-vercel-ip-latitude"], longitude: req.headers["x-vercel-ip-longitude"],
     now: new Date(),
   });
   if (!hit) return {};

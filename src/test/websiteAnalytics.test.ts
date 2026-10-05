@@ -71,6 +71,16 @@ describe("tracker hit parsing", () => {
     expect(parseTrackerAnalyticsHit({ ...body, active_seconds: 0 }, { kind: "engage", now })).toBeNull();
     expect(parseTrackerAnalyticsHit({ ...body, active_seconds: "x" }, { kind: "engage", now })).toBeNull();
   });
+  it("keeps Vercel coordinates only when both are valid", () => {
+    const at = (latitude?: string, longitude?: string) =>
+      parseTrackerAnalyticsHit(body, { kind: "pageview", latitude, longitude, now })?.entry;
+    expect(at("23.8103", "90.4125")).toMatchObject({ latitude: 23.8103, longitude: 90.4125 });
+    expect(at("91", "90.4")).toMatchObject({ latitude: null, longitude: null });
+    expect(at("23.8", "-181")).toMatchObject({ latitude: null, longitude: null });
+    expect(at("23.8", undefined)).toMatchObject({ latitude: null, longitude: null });
+    expect(at("abc", "90.4")).toMatchObject({ latitude: null, longitude: null });
+    expect(at("", "")).toMatchObject({ latitude: null, longitude: null });
+  });
   it("decodes city headers safely and recognises devices", () => {
     expect(parseTrackerAnalyticsHit(body, { kind: "pageview", city: "Cox%27s%20Bazar", now })?.entry.city).toBe("Cox's Bazar");
     expect(parseTrackerAnalyticsHit(body, { kind: "pageview", city: "%E0%A4", now })?.entry.city).toBe("%E0%A4");
