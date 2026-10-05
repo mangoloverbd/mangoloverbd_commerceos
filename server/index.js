@@ -146,7 +146,7 @@ import {
 } from "./orderActivity.js";
 import { getBangladeshDateKey, validateOrderHoldDetails } from "../shared/orderHold.js";
 import { classifyOrderStatus } from "../shared/orderStatus.js";
-import { buildHomeMetrics, homeWindows, rankAttentionCards, shortProductName, topProducts } from "./homeSummary.js";
+import { buildHomeMetrics, homeWindows, isHomeChannel, rankAttentionCards, shortProductName, topProducts } from "./homeSummary.js";
 import { visitorLocation } from "./bdPlaces.js";
 import { releaseDueOrderHolds } from "./orderHoldMaintenance.js";
 
@@ -8787,7 +8787,7 @@ app.get("/api/live-visitors", async (req, res) => {
 // One request feeds the Home page: today's metrics, live visitor locations and
 // the ranked attention cards. Every source fails on its own (null), never the page.
 // Plan: docs/superpowers/plans/2026-10-06-home-page.md §3.
-const homeSummaryCache = createTtlCache({ prefix: "home:summary:", maxEntries: 20 });
+const homeSummaryCache = createTtlCache({ prefix: "home:summary:", maxEntries: 100 });
 const HOME_SUMMARY_TTL_MS = 30_000;
 // Older orders still sitting in a queue are stale; the Orders page shows them all.
 const HOME_QUEUE_DAYS = 30;
@@ -8954,14 +8954,41 @@ async function loadHomeSignals(supabase, orgId, { isAdmin, now, liveLocations })
   };
 }
 
+// The website report needs a bounded window, so all time reads the last year.
+const HOME_WEBSITE_MAX_MS = 366 * 24 * 60 * 60 * 1000;
+
 async function loadHomeWebsite(supabase, orgId, windows) {
-  const report = async (window) => {
-    const { data, error } = await supabase.rpc("analytics_website_report", { p_org_id: orgId, p_since: window.since, p_until: window.until });
+  const report = async ({ since, until }) => {
+    const p_since = since || new Date(Date.parse(until) - HOME_WEBSITE_MAX_MS).toISOString();
+    const { data, error } = await supabase.rpc("analytics_website_report", { p_org_id: orgId, p_since, p_until: until });
     if (error) throw error;
-    return { totals: data?.totals || {}, hourly: data?.hourly || [] };
+    return { totals: data?.totals || {}, hourly: data?.hourly || [], daily: data?.daily || [] };
   };
-  const [today, yesterday] = await Promise.all([report(windows.today), report(windows.yesterday)]);
-  return { today, yesterday };
+  const [current, previous] = await Promise.all([
+    report(windows.current),
+    windows.previous ? report(windows.previous) : null,
+  ]);
+  return { current, previous };
+}
+
+// Orders behind the headline metrics, paged past PostgREST's 1000-row cap.
+async function loadHomeOrders(supabase, orgId, windows) {
+  const since = windows.previous?.since ?? windows.current.since;
+  const rows = [];
+  for (let offset = 0; ; offset += 1000) {
+    let query = supabase
+      .from("orders")
+      .select("created_at, price, delivery_rate, source")
+      .eq("org_id", orgId)
+      .neq("status", "cancelled")
+      .lt("created_at", windows.current.until);
+    if (since) query = query.gte("created_at", since);
+    const { data, error } = await query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + 999);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return rows;
 }
 
 async function loadLiveVisitorLocations(supabase, orgId) {
@@ -8972,30 +8999,22 @@ async function loadLiveVisitorLocations(supabase, orgId) {
   return data || [];
 }
 
-async function buildHomeSummary(supabase, orgId, isAdmin) {
+async function buildHomeSummary(supabase, orgId, isAdmin, { range, channel }) {
   const now = new Date();
-  const windows = homeWindows(now);
+  const windows = homeWindows(now, range);
   const [orders, website, live, liveLocations] = await Promise.all([
-    settle("orders", async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("created_at, price, delivery_rate")
-        .eq("org_id", orgId)
-        .neq("status", "cancelled")
-        .gte("created_at", windows.yesterday.since)
-        .limit(5000);
-      if (error) throw error;
-      return data || [];
-    }),
+    settle("orders", () => loadHomeOrders(supabase, orgId, windows)),
     settle("website report", () => loadHomeWebsite(supabase, orgId, windows)),
     settle("live visitors", () => countLiveVisitors(supabase, orgId)),
     settle("live locations", () => loadLiveVisitorLocations(supabase, orgId)),
   ]);
-  const metrics = buildHomeMetrics({ orders: orders || [], windows, website });
+  const metrics = buildHomeMetrics({ orders: orders || [], windows, website, channel });
   const signals = await loadHomeSignals(supabase, orgId, { isAdmin, now, liveLocations });
 
   return {
     generated_at: now.toISOString(),
+    range: { since: windows.current.since, until: windows.current.until, compared_with: windows.previous },
+    channel,
     metrics: {
       sessions: metrics.sessions,
       // Money and conversion stay with admins, as on the Orders page.
@@ -9028,8 +9047,14 @@ app.get("/api/home/summary", async (req, res) => {
     const { orgId, role } = await getUserOrg(supabase, user.id);
     if (!orgId) return res.status(403).json({ error: "No workspace" });
     const isAdmin = role === "admin";
-    const summary = await homeSummaryCache.get(`${orgId}:${isAdmin ? "admin" : "team"}`, HOME_SUMMARY_TTL_MS, async () => ({
-      value: await buildHomeSummary(supabase, orgId, isAdmin),
+    const text = (value) => (typeof value === "string" && value ? value : undefined);
+    const range = req.query.range === "all" ? { all: true } : { from: text(req.query.from), to: text(req.query.to) };
+    const channel = text(req.query.channel) ?? "all";
+    if (!isHomeChannel(channel)) return res.status(400).json({ error: "Unknown channel" });
+    homeWindows(new Date(), range); // Rejects a bad range with 400 before anything is cached.
+    const key = [orgId, isAdmin ? "admin" : "team", range.all ? "all" : `${range.from ?? ""}..${range.to ?? ""}`, channel].join(":");
+    const summary = await homeSummaryCache.get(key, HOME_SUMMARY_TTL_MS, async () => ({
+      value: await buildHomeSummary(supabase, orgId, isAdmin, { range, channel }),
       cacheable: true,
     }));
     return res.json(summary);

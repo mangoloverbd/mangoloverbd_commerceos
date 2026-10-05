@@ -2,18 +2,45 @@
 // cards. Pure functions; server/index.js gathers the data and calls these.
 // Plan: docs/superpowers/plans/2026-10-06-home-page.md §3–§4.
 
-const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
+import {
+  normalizeBusinessReportSource,
+  resolveBusinessReportRequest,
+  resolvePreviousBusinessReportRequest,
+} from "./businessReport.js";
 
-// Today in Dhaka so far, and yesterday up to the same time of day.
-export function homeWindows(now = new Date()) {
-  const local = new Date(now.getTime() + DHAKA_OFFSET_MS);
-  const todayStart = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - DHAKA_OFFSET_MS;
-  const iso = (ms) => new Date(ms).toISOString();
+// "all", or an order source as the Business Report groups them.
+export function isHomeChannel(value) {
+  return value === "all" || (typeof value === "string" && normalizeBusinessReportSource(value) === value);
+}
+
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+const dhakaDayOf = (ms) => new Date(ms + DHAKA_OFFSET_MS).toISOString().slice(0, 10);
+const dayIndex = (ms) => Math.floor((ms + DHAKA_OFFSET_MS) / DAY_MS);
+
+/**
+ * The period Home reports on and the period it is compared with. Ranges use the
+ * Business Report's rules (Dhaka days, same validation, equal-length previous
+ * period up to the same elapsed time). No range means today; `all` means all time.
+ */
+export function homeWindows(now = new Date(), { from, to, all = false } = {}) {
+  const nowMs = now.getTime();
+  if (all) return { current: { since: null, until: now.toISOString() }, previous: null, bucket: null };
+
+  const today = dhakaDayOf(nowMs);
+  const request = resolveBusinessReportRequest(from || to ? { from, to } : { from: today, to: today });
+  const until = Math.min(Date.parse(request.until), nowMs);
+  const previous = resolvePreviousBusinessReportRequest(request, nowMs);
+  const sinceMs = Date.parse(request.since);
+  const singleDay = request.range.from === request.range.to;
   return {
-    today: { since: iso(todayStart), until: iso(now.getTime()) },
-    yesterday: { since: iso(todayStart - DAY_MS), until: iso(now.getTime() - DAY_MS) },
-    hour: local.getUTCHours(),
+    current: { since: request.since, until: new Date(until).toISOString() },
+    previous: previous && { since: previous.since, until: previous.until },
+    bucket: singleDay
+      ? { unit: "hour", count: Math.floor((until - 1 - sinceMs) / HOUR_MS) + 1 }
+      : { unit: "day", count: dayIndex(until - 1) - dayIndex(sinceMs) + 1 },
   };
 }
 
@@ -28,55 +55,73 @@ export function percentChange(current, previous) {
 }
 
 const inWindow = (value, window) => {
+  if (!window) return false;
   const time = Date.parse(value);
-  return time >= Date.parse(window.since) && time < Date.parse(window.until);
+  return (!window.since || time >= Date.parse(window.since)) && time < Date.parse(window.until);
 };
-
-const dhakaHour = (value) => new Date(Date.parse(value) + DHAKA_OFFSET_MS).getUTCHours();
-
-const metric = (value, previous, series) => ({ value, previous, change: percentChange(value, previous), series });
 
 const round2 = (value) => Math.round(value * 100) / 100;
 
-export function buildHomeMetrics({ orders, windows, website }) {
-  const hours = windows.hour + 1;
-  const salesSeries = Array(hours).fill(0);
-  const orderSeries = Array(hours).fill(0);
-  let sales = 0, count = 0, previousSales = 0, previousCount = 0;
+const metric = (value, previous, series) => ({
+  value,
+  previous,
+  change: previous === null ? null : percentChange(value, previous),
+  series,
+});
+
+function bucketOf(ms, windows) {
+  const { bucket, current } = windows;
+  if (!bucket) return -1;
+  return bucket.unit === "hour"
+    ? Math.floor((ms - Date.parse(current.since)) / HOUR_MS)
+    : dayIndex(ms) - dayIndex(Date.parse(current.since));
+}
+
+export function buildHomeMetrics({ orders, windows, website, channel = "all" }) {
+  const count = windows.bucket?.count ?? 0;
+  const salesSeries = Array(count).fill(0);
+  const orderSeries = Array(count).fill(0);
+  let sales = 0, total = 0, previousSales = 0, previousTotal = 0;
   for (const order of orders || []) {
-    if (inWindow(order.created_at, windows.today)) {
+    if (channel !== "all" && normalizeBusinessReportSource(order.source) !== channel) continue;
+    if (inWindow(order.created_at, windows.current)) {
       const revenue = orderRevenue(order);
-      const hour = dhakaHour(order.created_at);
+      const index = bucketOf(Date.parse(order.created_at), windows);
       sales += revenue;
-      count += 1;
-      if (hour < hours) {
-        salesSeries[hour] += revenue;
-        orderSeries[hour] += 1;
+      total += 1;
+      if (index >= 0 && index < count) {
+        salesSeries[index] += revenue;
+        orderSeries[index] += 1;
       }
-    } else if (inWindow(order.created_at, windows.yesterday)) {
+    } else if (inWindow(order.created_at, windows.previous)) {
       previousSales += orderRevenue(order);
-      previousCount += 1;
+      previousTotal += 1;
     }
   }
 
   let sessions = null;
   let conversion = null;
-  if (website?.today && website?.yesterday) {
-    const today = website.today.totals || {};
-    const yesterday = website.yesterday.totals || {};
-    const sessionSeries = Array(hours).fill(0);
-    for (const row of website.today.hourly || []) {
-      if (row.hour < hours) sessionSeries[row.hour] = Number(row.sessions) || 0;
+  if (website?.current) {
+    const current = website.current.totals || {};
+    const previous = website.previous?.totals || null;
+    let sessionSeries = null;
+    if (windows.bucket) {
+      sessionSeries = Array(count).fill(0);
+      const rows = windows.bucket.unit === "hour"
+        ? (website.current.hourly || []).map((row) => [Number(row.hour), row.sessions])
+        : (website.current.daily || []).map((row) => [bucketOf(Date.parse(`${String(row.day).slice(0, 10)}T00:00:00+06:00`), windows), row.sessions]);
+      for (const [index, value] of rows) if (index >= 0 && index < count) sessionSeries[index] = Number(value) || 0;
     }
     const rate = (totals) => (totals.sessions > 0 ? round2((totals.ordered_sessions / totals.sessions) * 100) : 0);
-    sessions = metric(Number(today.sessions) || 0, Number(yesterday.sessions) || 0, sessionSeries);
-    conversion = metric(rate(today), rate(yesterday), null);
+    sessions = metric(Number(current.sessions) || 0, previous ? Number(previous.sessions) || 0 : null, sessionSeries);
+    conversion = metric(rate(current), previous ? rate(previous) : null, null);
   }
 
+  const hasPrevious = Boolean(windows.previous);
   return {
     sessions,
-    sales: metric(round2(sales), round2(previousSales), salesSeries),
-    orders: metric(count, previousCount, orderSeries),
+    sales: metric(round2(sales), hasPrevious ? round2(previousSales) : null, windows.bucket ? salesSeries : null),
+    orders: metric(total, hasPrevious ? previousTotal : null, windows.bucket ? orderSeries : null),
     conversion_rate: conversion,
   };
 }

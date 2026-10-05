@@ -11,7 +11,7 @@ import {
 import { CalendarDate } from "@internationalized/date";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown } from "lucide-react";
-import { X } from "@phosphor-icons/react";
+import { CaretDown, X } from "@phosphor-icons/react";
 import {
   SolarCalendarIcon,
   SolarCalendarMarkIcon,
@@ -218,8 +218,11 @@ export function DateRangePicker({
   children?: ReactNode;
   triggerClassName?: string;
   placement?: "bottom" | "bottom start" | "bottom end";
-  /** "toolbar" drops the animated beam ring and matches the h-9 toolbar controls. */
-  variant?: "beam" | "toolbar";
+  /**
+   * "toolbar" drops the animated beam ring and matches the h-9 toolbar controls.
+   * "plain" is a borderless text trigger showing the preset name (Home's metric strip).
+   */
+  variant?: "beam" | "toolbar" | "plain";
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingValue, setPendingValue] = useState<DateRangeValue | null>(toDateRangeValue(value));
@@ -228,7 +231,7 @@ export function DateRangePicker({
   useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
   const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
 
-  const activePresetLabel = (
+  const matchedPreset = (
     PRESETS.find((p) => {
       if (!p.range && !value) return true;
       if (!p.range || !value) return false;
@@ -236,10 +239,20 @@ export function DateRangePicker({
         p.range.from && value.from && toYMD(p.range.from) === toYMD(value.from) &&
         p.range.to && value.to && toYMD(p.range.to) === toYMD(value.to)
       );
-    })?.label ?? "All Time"
+    })?.label
   );
+  const activePresetLabel = matchedPreset ?? "All Time";
 
-  const trigger = (
+  const trigger = variant === "plain" ? (
+    <AriaButton
+      ref={triggerRef}
+      data-testid="button-date-range-picker"
+      className="flex items-center gap-1 rounded-lg px-2 py-1 text-[14px] text-[#55534E] outline-none transition-colors hover:bg-[#F2F1EC] hover:text-[#111110] focus-visible:ring-2 focus-visible:ring-black"
+    >
+      {matchedPreset ?? fmtRange(value)}
+      <CaretDown weight="light" size={12} className="opacity-60" />
+    </AriaButton>
+  ) : (
     <AriaButton
       ref={triggerRef}
       data-testid="button-date-range-picker"
@@ -316,7 +329,7 @@ export function DateRangePicker({
   if (!children) {
     return (
       <DialogTrigger isOpen={isOpen} onOpenChange={handleOpenChange}>
-        <span className={cn(variant === "toolbar" ? "relative inline-flex" : "uv-beam rounded-full", triggerClassName)}>
+        <span className={cn(variant === "toolbar" || variant === "plain" ? "relative inline-flex" : "uv-beam rounded-full", triggerClassName)}>
           {trigger}
           {variant === "toolbar" && value?.from && (
             <button

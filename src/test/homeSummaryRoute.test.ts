@@ -36,12 +36,19 @@ describe("GET /api/home/summary", () => {
     }
   });
 
+  it("validates the date range and channel and keys the cache by both", () => {
+    const handler = route();
+    expect(handler).toContain('req.query.range === "all"');
+    expect(handler).toContain("if (!isHomeChannel(channel)) return res.status(400)");
+    expect(handler).toContain("homeWindows(new Date(), range);");
+    expect(handler).toMatch(/const key = \[orgId, isAdmin \? "admin" : "team", [^\]]*channel\]/);
+  });
+
   it("keeps money and conversion away from team members", () => {
     const code = home();
     expect(code).toContain("sales: isAdmin && orders ? metrics.sales : null");
     expect(code).toContain("orders: isAdmin && orders ? metrics.orders : null");
     expect(code).toContain("conversion_rate: isAdmin ? metrics.conversion_rate : null");
-    expect(code).toMatch(/`\$\{orgId\}:\$\{isAdmin \? "admin" : "team"\}`/);
   });
 
   it("lets each source fail without failing the page", () => {
