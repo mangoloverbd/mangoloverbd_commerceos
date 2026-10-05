@@ -12,6 +12,7 @@ import { DottedGlobe } from "@/components/home/DottedGlobe";
 import { HomeMetricStrip } from "@/components/home/HomeMetricStrip";
 import { HomeScopeControls, type HomeChannel } from "@/components/home/HomeScopeControls";
 import { QuickActions } from "@/components/home/QuickActions";
+import { Rise } from "@/components/home/Rise";
 import type { HomeSummary } from "@/components/home/types";
 
 const REFRESH_MS = 30_000;
@@ -74,6 +75,7 @@ export default function Home() {
   return (
     <div data-testid="home-page" className="relative min-h-full overflow-hidden bg-[#FAFAF8] font-sans text-[#111110]">
       <HomeMetricStrip
+        loading={!data}
         metrics={data?.metrics}
         liveCount={data?.live.count ?? null}
         isAdmin={isAdmin}
@@ -82,12 +84,23 @@ export default function Home() {
 
       <section className="relative -mt-20 flex min-h-[640px] flex-col items-center justify-center px-4 pb-20 pt-10 max-md:mt-0 max-md:min-h-[520px]">
         <DottedGlobe visitors={data?.live.visitors ?? []} />
-        <h1 className="relative z-[2] text-center text-[40px] font-medium leading-[1.2] tracking-[-0.02em] text-[#8C8A84] max-md:text-[28px]">
-          {greeting}
-          <span className="block text-[#111110]">Let's keep {orgName || "Mango Lover BD"} growing.</span>
-        </h1>
-        <AskEdithBar />
-        <QuickActions actions={data?.quick_actions ?? []} />
+        <Rise className="relative z-[2]">
+          <h1 className="text-center text-[40px] font-medium leading-[1.2] tracking-[-0.02em] text-[#8C8A84] max-md:text-[28px]">
+            {greeting}
+            <span className="block text-[#111110]">Let's keep {orgName || "Mango Lover BD"} growing.</span>
+          </h1>
+        </Rise>
+        <Rise delay={0.08} className="relative z-[2] flex w-full justify-center">
+          <AskEdithBar />
+        </Rise>
+        {/* Space is held so the greeting doesn't shift when the actions arrive. */}
+        <div className="relative z-[2] min-h-[70px]">
+          {data && (
+            <Rise delay={0.16}>
+              <QuickActions actions={data.quick_actions} />
+            </Rise>
+          )}
+        </div>
         {isError && !data && (
           <p role="status" className="relative z-[2] mt-6 text-[13px] text-[#8C8A84]">
             Today's numbers couldn't load. They'll retry in a moment.

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import type { HomeLiveVisitor } from "./types";
 
 const SIZE = 780;
@@ -49,19 +49,31 @@ export function DottedGlobe({ visitors }: { visitors: HomeLiveVisitor[] }) {
     return () => { active = false; };
   }, []);
 
+  // One pin per place: visitors from the same city share it (newest wins), so the
+  // pin only moves when there is somewhere else to show.
+  const places = useMemo(() => {
+    const byPlace = new Map<string, HomeLiveVisitor>();
+    for (const visitor of visitors) {
+      const key = `${visitor.latitude.toFixed(2)},${visitor.longitude.toFixed(2)}`;
+      if (!byPlace.has(key)) byPlace.set(key, visitor);
+    }
+    return [...byPlace].map(([key, visitor]) => ({ key, visitor }));
+  }, [visitors]);
+
   useEffect(() => {
-    if (visitors.length < 2) return;
+    if (places.length < 2) return;
     const timer = window.setInterval(() => setPinIndex((index) => index + 1), PIN_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [visitors.length]);
+  }, [places.length]);
 
-  const visitor = visitors.length ? visitors[pinIndex % visitors.length] : null;
+  const place = places.length ? places[pinIndex % places.length] : null;
+  const visitor = place?.visitor ?? null;
   // The draw loop reads these, so a new pin or data refresh never restarts the drift.
   const visitorRef = useRef(visitor);
   visitorRef.current = visitor;
   const tickRef = useRef(0);
   // With reduced motion there is no loop: redraw once per pin instead.
-  const staticKey = reduceMotion && visitor ? `${visitor.latitude},${visitor.longitude},${pinIndex}` : null;
+  const staticKey = reduceMotion && place ? place.key : null;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -111,17 +123,24 @@ export function DottedGlobe({ visitors }: { visitors: HomeLiveVisitor[] }) {
   return (
     <div aria-hidden="true" className="pointer-events-none absolute -right-[200px] -top-10 z-0 h-[780px] w-[780px] max-md:opacity-35">
       <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_45%_45%,#fff_0%,rgba(255,255,255,0.6)_45%,rgba(250,250,248,0)_70%)]" />
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      <AnimatePresence>
-        {label && (
+      {/* Fades in once the map has loaded, instead of popping in. */}
+      <canvas
+        ref={canvasRef}
+        className={`absolute inset-0 h-full w-full transition-opacity duration-1000 ease-out motion-reduce:transition-none ${dots ? "opacity-100" : "opacity-0"}`}
+      />
+      {label && place && (
+        // Positioned only by the draw loop. React never rewrites its style after
+        // mount (the value never changes), so re-renders can't hide it.
+        <div
+          ref={pinRef}
+          className="absolute z-[2] -translate-y-1/2 translate-x-[calc(-100%_+_7px)]"
+          style={{ visibility: "hidden" }}
+        >
           <motion.div
-            ref={pinRef}
-            key={`${visitor?.city}-${pinIndex}`}
-            className="absolute z-[2] flex items-center gap-3.5"
-            style={{ visibility: "hidden", translateX: "calc(-100% + 7px)", translateY: "-50%" }}
-            initial={{ opacity: 0, y: 6 }}
+            key={place.key}
+            className="flex items-center gap-3.5"
+            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
           >
             <div className="rounded-[14px] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(17,17,16,0.04),0_8px_24px_rgba(17,17,16,0.05)]">
@@ -138,8 +157,8 @@ export function DottedGlobe({ visitors }: { visitors: HomeLiveVisitor[] }) {
               )}
             </span>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }

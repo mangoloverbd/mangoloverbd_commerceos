@@ -94,6 +94,20 @@ describe("Home page", () => {
     expect(screen.getByRole("button", { name: "Channel: All channels" })).toBeInTheDocument();
   });
 
+  it("starts the numbers at 0 on first load so they roll up to today's values", async () => {
+    let resolve: (response: Response) => void = () => {};
+    apiFetch.mockImplementation(() => new Promise<Response>((done) => { resolve = done; }));
+    renderHome();
+    expect(screen.getByText("৳0")).toBeInTheDocument();
+    expect(screen.getByText("0.00%")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Quick actions" })).not.toBeInTheDocument();
+
+    resolve(new Response(JSON.stringify(summary), { status: 200 }));
+    expect(await screen.findByText("৳84,620")).toBeInTheDocument();
+    expect(screen.queryByText("৳0")).not.toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "Quick actions" })).toBeInTheDocument();
+  });
+
   it("hides money figures from team members", async () => {
     role.isAdmin = false;
     apiFetch.mockImplementation(async () => new Response(JSON.stringify({ ...summary, metrics: { ...summary.metrics, sales: null, orders: null, conversion_rate: null } }), { status: 200 }));
