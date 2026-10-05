@@ -65,10 +65,10 @@ class ReportError extends Error {
   constructor(message: string, readonly code?: string) { super(message); }
 }
 
-function lastThirtyDhakaDays(): DateRange {
+function todayInDhaka(): DateRange {
   const dhaka = new Date(Date.now() + 6 * 60 * 60 * 1000);
-  const to = new Date(dhaka.getUTCFullYear(), dhaka.getUTCMonth(), dhaka.getUTCDate());
-  return { from: new Date(to.getFullYear(), to.getMonth(), to.getDate() - 29), to };
+  const today = new Date(dhaka.getUTCFullYear(), dhaka.getUTCMonth(), dhaka.getUTCDate());
+  return { from: today, to: today };
 }
 
 export default function Analytics() {
@@ -76,7 +76,7 @@ export default function Analytics() {
   const tab = resolveAnalyticsTab(params.get("tab"));
   const reduceMotion = useReducedMotion();
   const liveVisitors = useLiveVisitors();
-  const [dateRange, setDateRange] = useState<DateRange | null>(lastThirtyDhakaDays);
+  const [dateRange, setDateRange] = useState<DateRange | null>(todayInDhaka);
   const from = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null;
   const to = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : null;
   const selectTab = (next: AnalyticsTab) => {

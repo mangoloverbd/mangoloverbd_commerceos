@@ -7,13 +7,11 @@ describe("live visitor tracking", () => {
   const dashboardSource = readFileSync(resolve(process.cwd(), "src/pages/Dashboard.tsx"), "utf8");
   const settingsSource = readFileSync(resolve(process.cwd(), "src/components/IntegrationSettings.tsx"), "utf8");
 
-  it("serves a tenant-scoped public tracker script and records pings in Redis", () => {
+  it("serves a tenant-scoped public tracker script and records pings in shared Supabase presence", () => {
     expect(serverSource).toContain('app.get("/api/tracker.js"');
     expect(serverSource).toContain('app.post("/api/live-visitor/ping"');
-    expect(serverSource).toContain('`visitors:${org_id}:all`');
-    expect(serverSource).toContain('`visitors:${org_id}:${behaviorBucket}`');
-    expect(serverSource).toContain("zremrangebyscore");
-    expect(serverSource).toContain("zadd");
+    expect(serverSource).toContain("countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id)");
+    expect(serverSource).toContain('rpc("touch_live_visitor"');
     expect(serverSource).toContain("VISITOR_TTL_MS");
     expect(serverSource).toContain("liveVisitorBucketFromUrl");
   });
@@ -73,19 +71,14 @@ describe("live visitor tracking", () => {
     expect(route).toContain("await getUser(getToken(req))");
     expect(route).toContain("if (!user) return res.status(401)");
     expect(route).toContain("await getUserOrg(supabase, user.id)");
-    expect(route).toContain('`visitors:${orgId}:all`');
-    expect(route).toContain('`visitors:${orgId}:cart`');
-    expect(route).toContain('`visitors:${orgId}:checkout`');
-    expect(route).toContain('`visitors:${orgId}:purchased`');
-    expect(route).toContain("details");
-    expect(serverSource).toContain("zcount");
+    expect(route).toContain("countLiveVisitors(supabase, orgId)");
+    expect(route).toContain("activeCarts: live.cart || 0, checkingOut: live.checkout || 0, purchased: live.purchased || 0");
+    expect(serverSource).toContain('rpc("count_live_visitors", { p_org_id: orgId');
   });
 
-  it("falls back to process memory when Redis is not configured", () => {
-    expect(serverSource).toContain("memoryLiveVisitors");
-    expect(serverSource).toContain("addLiveVisitorPresence");
-    expect(serverSource).toContain("countLiveVisitorsForKey");
-    expect(serverSource).toContain("falling back to memory");
+  it("shares presence across server instances instead of per-instance memory", () => {
+    expect(serverSource).not.toContain("memoryLiveVisitors");
+    expect(serverSource).not.toContain("redisClient.zadd");
     expect(serverSource).not.toContain("if (!redisClient) return res.json({ count: 0, tracked: false })");
     expect(serverSource).not.toContain("if (!redisClient) return res.json({ ok: true, tracked: false })");
   });
@@ -196,7 +189,7 @@ describe("live visitor tracking", () => {
     const pingRoute = serverSource.slice(pingStart, serverSource.indexOf('app.get("/api/live-visitors"', pingStart));
     const helper = serverSource.slice(serverSource.indexOf("async function recordWebsiteAnalyticsHit"), pingStart);
 
-    expect(pingRoute).toContain("if (countsAsLivePresence(hitKind))");
+    expect(pingRoute).toContain("if (countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id))");
     expect(pingRoute.indexOf("recordWebsiteAnalyticsHit")).toBeGreaterThan(pingRoute.indexOf("} catch (err) {"));
     expect(pingRoute).toContain("return res.json({ ok: true, ...presence, ...analytics });");
     // Fixed workspace, bot filter, rate limit and a bounded database call.

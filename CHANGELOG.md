@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.58] - 2026-10-06
+
+### Fixed
+
+- "On the site now" counts every shopper. Presence was kept in each server instance's memory, so the dashboard only saw the shoppers who happened to ping the same instance; it now lives in one shared Supabase table. Adds an unlogged, server-only `live_visitor_presence` table and two functions.
+- The storefront tracker script is cached at Vercel's CDN, so a cold server no longer delays it and drops shoppers who leave in the first seconds.
+
+### Changed
+
+- Analytics opens on today (Dhaka time) instead of the last 30 days.
+
 ## [0.1.0.57] - 2026-10-05
 
 ### Added

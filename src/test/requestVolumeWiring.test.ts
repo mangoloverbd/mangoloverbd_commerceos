@@ -14,15 +14,16 @@ describe("background request volume guards", () => {
   it("does not run discarded live visitor counts on every tracker ping", () => {
     const start = serverSource.indexOf('app.post("/api/live-visitor/ping"');
     const route = serverSource.slice(start, serverSource.indexOf('app.get("/api/live-visitors"', start));
-    expect(route).not.toContain("countLiveVisitorsForKey");
-    expect(route).toContain("addLiveVisitorPresence(allKey, session_id, now)");
+    expect(route).not.toContain("countLiveVisitors");
+    expect(route).toContain("touchLiveVisitor(org_id, session_id, behaviorBucket)");
     expect(route).toContain("capturePostHogEvent");
   });
 
-  it("prunes expired visitors on presence writes so sets stay bounded without a dashboard open", () => {
-    const start = serverSource.indexOf("async function addLiveVisitorPresence");
-    const fn = serverSource.slice(start, serverSource.indexOf("async function countLiveVisitorsForKey", start));
-    expect(fn).toContain("redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS)");
+  it("writes presence with one bounded database call per ping", () => {
+    const start = serverSource.indexOf("async function touchLiveVisitor");
+    const fn = serverSource.slice(start, serverSource.indexOf("async function countLiveVisitors", start));
+    expect(fn).toContain('rpc("touch_live_visitor"');
+    expect(fn).toContain("AbortSignal.timeout(LIVE_PRESENCE_TIMEOUT_MS)");
   });
 
   it("marks the courier refresh throttle only after both refresh POSTs succeed", () => {
