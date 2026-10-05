@@ -637,14 +637,15 @@ function invalidateAuthCacheForUser(userId) {
 async function ensureUserRole(supabase, user) {
   const { data: existingRole, error: roleError } = await supabase
     .from("user_roles")
-    .select("org_id, role, deleted_at")
+    .select("org_id, role, deleted_at, suspended_at")
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (roleError) throw roleError;
   // A soft-deleted Auth user can retain an old JWT briefly. Never revive or
-  // authorize the archived role during that window.
-  if (existingRole?.deleted_at) return null;
+  // authorize the archived role during that window. Switched-off members are
+  // denied the same way until an admin switches them back on.
+  if (existingRole?.deleted_at || existingRole?.suspended_at) return null;
 
   const configuredAdmin = isConfiguredAdmin(user);
   if (existingRole?.role && existingRole?.org_id && !configuredAdmin) {
@@ -724,6 +725,7 @@ async function getUserOrg(supabase, userId) {
     .select("org_id, role")
     .eq("user_id", userId)
     .is("deleted_at", null)
+    .is("suspended_at", null)
     .maybeSingle();
   if (error) throw error;
   const orgId = roleRow?.org_id || null;
@@ -1148,6 +1150,7 @@ async function getCurrentUserContext(token) {
     .select("org_id, role")
     .eq("user_id", user.id)
     .is("deleted_at", null)
+    .is("suspended_at", null)
     .maybeSingle();
   if (error) throw error;
 
@@ -1196,6 +1199,13 @@ app.get("/api/admin/check", async (req, res) => {
   }
 });
 
+// Optional short text fields on a team member: null clears, a string is trimmed.
+function optionalMemberText(raw, maxLength) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "string") return undefined;
+  return raw.trim().slice(0, maxLength) || null;
+}
+
 function generateTemporaryPassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
   return Array.from({ length: 14 }, () => alphabet[crypto.randomInt(alphabet.length)]).join("");
@@ -1224,6 +1234,7 @@ app.get("/api/staff", async (req, res) => {
       .select("user_id, display_name")
       .eq("org_id", orgId)
       .is("deleted_at", null)
+      .is("suspended_at", null)
       .order("created_at", { ascending: true });
     if (error) throw error;
 
@@ -1246,7 +1257,7 @@ app.get("/api/team-members", async (req, res) => {
 
     const { data: roles, error } = await supabase
       .from("user_roles")
-      .select("id, user_id, role, org_id, display_name, created_at")
+      .select("id, user_id, role, org_id, display_name, post, suspended_at, created_at")
       .eq("org_id", orgId)
       .is("deleted_at", null)
       .order("created_at", { ascending: true });
@@ -1271,8 +1282,12 @@ async function createTeamMemberHandler(req, res) {
     const { supabase, orgId } = admin;
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = req.body?.password ? String(req.body.password) : generateTemporaryPassword();
+    const displayName = optionalMemberText(req.body?.display_name, 80);
+    const post = optionalMemberText(req.body?.post, 60);
 
     if (!email) return res.status(400).json({ error: "Email is required" });
+    if (displayName === undefined) return res.status(400).json({ error: "display_name must be text or null" });
+    if (post === undefined) return res.status(400).json({ error: "post must be text or null" });
     if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
     const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
@@ -1286,10 +1301,10 @@ async function createTeamMemberHandler(req, res) {
     const { data: roleRow, error: roleError } = await supabase
       .from("user_roles")
       .upsert(
-        { user_id: newUser.user.id, role: "team_member", org_id: orgId },
+        { user_id: newUser.user.id, role: "team_member", org_id: orgId, display_name: displayName, post },
         { onConflict: "user_id" }
       )
-      .select("id, user_id, role, org_id, display_name, created_at")
+      .select("id, user_id, role, org_id, display_name, post, suspended_at, created_at")
       .single();
     invalidateAuthCacheForUser(newUser.user.id);
 
@@ -1314,23 +1329,60 @@ app.patch("/api/team-members/:id", async (req, res) => {
   try {
     const admin = await requireAdmin(req, res);
     if (!admin) return;
-    const { supabase, orgId } = admin;
+    const { supabase, user, orgId } = admin;
+    const body = req.body || {};
 
-    const raw = req.body?.display_name;
-    if (raw !== null && typeof raw !== "string") {
-      return res.status(400).json({ error: "display_name must be text or null" });
+    const updates = {};
+    if ("display_name" in body) {
+      const displayName = optionalMemberText(body.display_name, 80);
+      if (displayName === undefined) return res.status(400).json({ error: "display_name must be text or null" });
+      updates.display_name = displayName;
     }
-    const displayName = raw === null ? null : raw.trim().slice(0, 80) || null;
+    if ("post" in body) {
+      const post = optionalMemberText(body.post, 60);
+      if (post === undefined) return res.status(400).json({ error: "post must be text or null" });
+      updates.post = post;
+    }
+    if ("active" in body && typeof body.active !== "boolean") {
+      return res.status(400).json({ error: "active must be true or false" });
+    }
+    if (!Object.keys(updates).length && !("active" in body)) {
+      return res.status(400).json({ error: "Nothing to update" });
+    }
 
-    const { data, error } = await supabase
+    const { data: member, error: fetchError } = await supabase
       .from("user_roles")
-      .update({ display_name: displayName })
+      .select("id, user_id, role, suspended_at")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .is("deleted_at", null)
-      .select("id, user_id, display_name")
       .maybeSingle();
-    if (data) invalidateAuthCacheForUser(data.user_id);
+    if (fetchError) throw fetchError;
+    if (!member) return res.status(404).json({ error: "Team member not found" });
+
+    if ("active" in body) {
+      if (member.user_id === user.id) return res.status(400).json({ error: "You cannot switch yourself off" });
+      if (member.role === "admin") return res.status(400).json({ error: "Admin access cannot be switched off" });
+      if (body.active && member.suspended_at) {
+        updates.suspended_at = null;
+      } else if (!body.active && !member.suspended_at) {
+        updates.suspended_at = new Date().toISOString();
+      }
+    }
+
+    if (!Object.keys(updates).length) {
+      return res.json({ success: true, member: { id: member.id, user_id: member.user_id, suspended_at: member.suspended_at } });
+    }
+
+    const { data, error } = await supabase
+      .from("user_roles")
+      .update(updates)
+      .eq("id", member.id)
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .select("id, user_id, display_name, post, suspended_at")
+      .maybeSingle();
+    invalidateAuthCacheForUser(member.user_id);
     if (error) throw error;
     if (!data) return res.status(404).json({ error: "Team member not found" });
 
@@ -9154,6 +9206,7 @@ async function assertWorkspaceMember(supabase, orgId, userId) {
     .eq("org_id", orgId)
     .eq("user_id", userId)
     .is("deleted_at", null)
+    .is("suspended_at", null)
     .maybeSingle();
   if (error) throw error;
   return Boolean(data);

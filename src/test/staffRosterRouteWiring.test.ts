@@ -52,12 +52,20 @@ describe("PATCH /api/team-members/:id", () => {
     expect(section).toContain('.eq("org_id", orgId)');
   });
 
-  it("only writes a bounded display name", () => {
+  it("only writes a bounded display name, post and access state", () => {
     const section = rename();
-    expect(section).toContain("display_name");
-    expect(section).toContain("slice(0, 80)");
+    expect(section).toContain("optionalMemberText(body.display_name, 80)");
+    expect(section).toContain("optionalMemberText(body.post, 60)");
+    expect(section).toContain("updates.suspended_at");
     expect(section).not.toContain("role:");
     expect(section).not.toContain("org_id:");
+  });
+
+  it("never switches off admins or the caller", () => {
+    const section = rename();
+    expect(section).toContain('member.role === "admin"');
+    expect(section).toContain("member.user_id === user.id");
+    expect(section).toContain("invalidateAuthCacheForUser(member.user_id)");
   });
 });
 
@@ -87,9 +95,11 @@ describe("active staff authorization", () => {
       "async function recordStatusEvent",
     );
 
-    expect(authHelpers).toContain('select("org_id, role, deleted_at")');
-    expect(authHelpers).toContain("if (existingRole?.deleted_at) return null;");
+    expect(authHelpers).toContain('select("org_id, role, deleted_at, suspended_at")');
+    expect(authHelpers).toContain("if (existingRole?.deleted_at || existingRole?.suspended_at) return null;");
     expect(authHelpers).toContain('.is("deleted_at", null)');
+    expect(authHelpers).toContain('.is("suspended_at", null)');
     expect(assigneeGuard).toContain('.is("deleted_at", null)');
+    expect(assigneeGuard).toContain('.is("suspended_at", null)');
   });
 });

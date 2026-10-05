@@ -42,8 +42,7 @@ describe('Bulk SMS Settings UI', () => {
         </BrowserRouter>
       </QueryClientProvider>
     );
-    expect(await screen.findByText('Bulk SMS BD Integration')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Enable Bulk SMS BD/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/Enable Bulk SMS BD/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/SMS API Key/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Sender ID/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save Bulk SMS Settings/i })).toBeInTheDocument();

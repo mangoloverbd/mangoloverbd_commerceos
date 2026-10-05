@@ -81,13 +81,8 @@ export function BulkSmsSection() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-[17px] font-semibold text-black tracking-tight">Bulk SMS BD Integration</h2>
-        <p className="mt-0.5 text-[13px] text-black/45">Configure automated SMS updates for confirmed and dispatched orders.</p>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl bg-black/[0.04] divide-y divide-black/[0.06]">
+    <div>
+      <div className="overflow-hidden rounded-[18px] border border-black/[0.06] bg-white divide-y divide-black/[0.06]">
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
             <Label htmlFor="bulksms-enabled" className="text-[13px] font-medium text-black">Enable Bulk SMS BD</Label>
