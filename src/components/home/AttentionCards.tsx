@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowUUpLeft, ChatsCircle, CheckCircle, ShieldCheck } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { RISE_EASE } from "./Rise";
 import type { HomeAttentionCard, HomeChatRow, HomeOrderRow, HomePreview, HomeTagTone } from "./types";
 
 const TAG_TONES: Record<HomeTagTone, string> = {
@@ -102,13 +103,17 @@ function Preview({ preview, kind }: { preview: HomePreview | null; kind: string 
 }
 
 export function AttentionCards({ cards }: { cards: HomeAttentionCard[] }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <section aria-label="Needs your attention" className="relative z-[2] grid grid-cols-3 gap-5 px-5 pb-5 max-[1200px]:grid-cols-1 max-md:px-4 max-md:pb-10">
-      {cards.map((card) => (
-        <article
+    <section aria-label="Needs your attention" className="relative z-[2] grid grid-cols-3 gap-4 px-3 pb-3 max-[1200px]:grid-cols-1 max-md:px-3 max-md:pb-10">
+      {cards.map((card, index) => (
+        <motion.article
           key={card.kind}
           data-testid={`home-card-${card.kind}`}
           className="relative flex min-h-[440px] flex-col overflow-hidden rounded-[26px] border border-[#ECEAE4] bg-white px-7 pt-7"
+          initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 + index * 0.08, ease: RISE_EASE }}
         >
           <h3 className="max-w-[440px] text-[21px] font-medium leading-[1.3] tracking-[-0.01em] text-[#111110]">{card.title}</h3>
           <p className="mt-2.5 max-w-[470px] text-[14.5px] leading-[1.6] text-[#55534E]">{card.body}</p>
@@ -122,7 +127,7 @@ export function AttentionCards({ cards }: { cards: HomeAttentionCard[] }) {
           >
             {card.cta.label}
           </Link>
-        </article>
+        </motion.article>
       ))}
     </section>
   );

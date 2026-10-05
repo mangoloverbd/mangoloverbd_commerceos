@@ -2,6 +2,7 @@ import { useId, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Format } from "@number-flow/react";
 import { MetricNumberFlow } from "@/components/ui/number-flow";
+import { RISE_EASE } from "./Rise";
 import type { HomeMetric } from "./types";
 
 type MetricKey = "sessions" | "sales" | "orders" | "conversion_rate";
@@ -57,6 +58,7 @@ export function smoothPath(points: [number, number][]) {
 // The running total as a soft grey curve over a fading fill, like Shopify's metric strip.
 export function Sparkline({ series }: { series: number[] }) {
   const gradientId = useId();
+  const reduceMotion = useReducedMotion();
   if (!series.length) return null;
   // A running total is 0 when the period starts, so the curve rises from the baseline.
   const values = [0, ...series];
@@ -76,15 +78,48 @@ export function Sparkline({ series }: { series: number[] }) {
           <stop offset="100%" stopColor="#B5B3AD" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={area} fill={`url(#${gradientId})`} />
-      <path d={line} fill="none" stroke="#A9A7A1" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      <motion.path
+        d={area}
+        fill={`url(#${gradientId})`}
+        initial={reduceMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.5 }}
+      />
+      <motion.path
+        d={line}
+        fill="none"
+        stroke="#A9A7A1"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={reduceMotion ? false : { pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.9, ease: RISE_EASE }}
+      />
     </svg>
   );
 }
 
-function MetricItem({ label, metric, prefix, suffix, format, locked }: {
+// Fades in a value that only exists once data has arrived (change, sparkline).
+function Appear({ children }: { children: ReactNode }) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <motion.span
+      className="flex items-center"
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4, delay: 0.25 }}
+    >
+      {children}
+    </motion.span>
+  );
+}
+
+function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: {
   label: string;
   metric: HomeMetric | null;
+  /** First load: show 0 so the value rolls up when it arrives. */
+  loading: boolean;
   prefix: string;
   suffix?: string;
   format?: Format;
@@ -99,14 +134,22 @@ function MetricItem({ label, metric, prefix, suffix, format, locked }: {
         </span>
       ) : (
         <div className="flex items-center gap-2 text-[15px]">
-          {metric ? (
-            <MetricNumberFlow value={metric.value} prefix={prefix} suffix={suffix} format={format} className="font-semibold tabular-nums text-[#111110]" />
+          {loading || metric ? (
+            <MetricNumberFlow
+              value={metric?.value ?? 0}
+              prefix={prefix}
+              suffix={suffix}
+              format={format}
+              className={`font-semibold tabular-nums text-[#111110] transition-opacity duration-300 ${loading ? "opacity-30" : ""}`}
+            />
           ) : (
             <b className="font-semibold text-[#111110]">—</b>
           )}
           {metric?.series && <Sparkline series={metric.series} />}
           {metric?.change != null && (
-            <MetricNumberFlow value={metric.change} prefix="" suffix="%" format={CHANGE_FORMAT} className="tabular-nums text-[#6F6D68]" />
+            <Appear>
+              <MetricNumberFlow value={metric.change} prefix="" suffix="%" format={CHANGE_FORMAT} className="tabular-nums text-[#6F6D68]" />
+            </Appear>
           )}
         </div>
       )}
@@ -114,13 +157,13 @@ function MetricItem({ label, metric, prefix, suffix, format, locked }: {
   );
 }
 
-function LiveIndicator({ count }: { count: number | null }) {
+function LiveIndicator({ count, loading }: { count: number | null; loading: boolean }) {
   const reduceMotion = useReducedMotion();
   return (
     <div className="flex items-center gap-2 pt-1.5 text-[14px] text-[#55534E]" aria-live="polite">
-      Live visitors {count === null
+      Live visitors {count === null && !loading
         ? <b className="font-semibold text-[#111110]">—</b>
-        : <MetricNumberFlow value={count} prefix="" className="font-semibold tabular-nums text-[#111110]" />}
+        : <MetricNumberFlow value={count ?? 0} prefix="" className={`font-semibold tabular-nums text-[#111110] transition-opacity duration-300 ${loading ? "opacity-30" : ""}`} />}
       <span className="relative h-2.5 w-2.5 rounded-full border-2 border-[#3FA34D]" aria-hidden="true">
         <motion.span
           className="absolute -inset-[6px] rounded-full border border-dashed border-[#3FA34D]/50"
@@ -132,22 +175,24 @@ function LiveIndicator({ count }: { count: number | null }) {
   );
 }
 
-export function HomeMetricStrip({ metrics, liveCount, isAdmin, scope }: {
+export function HomeMetricStrip({ metrics, loading, liveCount, isAdmin, scope }: {
   metrics: Record<MetricKey, HomeMetric | null> | undefined;
+  /** No summary yet (first load). */
+  loading: boolean;
   liveCount: number | null;
   isAdmin: boolean;
   /** The period and channel controls on the left. */
   scope: ReactNode;
 }) {
   return (
-    <header className="relative z-[3] flex items-start justify-between gap-6 px-5 pt-4 max-md:flex-col max-md:px-4 max-md:pt-4">
+    <header className="relative z-[3] flex items-start justify-between gap-6 px-3 pt-4 max-md:flex-col max-md:px-3 max-md:pt-4">
       {scope}
       <div className="flex flex-wrap justify-center gap-x-9 gap-y-4 max-[1360px]:gap-x-6">
         {METRICS.map(({ key, label, prefix, suffix, format, adminOnly }) => (
-          <MetricItem key={key} label={label} metric={metrics?.[key] ?? null} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
+          <MetricItem key={key} label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
         ))}
       </div>
-      <LiveIndicator count={liveCount} />
+      <LiveIndicator count={liveCount} loading={loading} />
     </header>
   );
 }
