@@ -14,20 +14,26 @@ const METRICS: { key: MetricKey; label: string; format: (value: number) => strin
   { key: "conversion_rate", label: "Conversion rate", format: (value) => `${value.toFixed(2)}%`, adminOnly: true },
 ];
 
-export function Sparkline({ series, up }: { series: number[] | null; up: boolean }) {
-  const values = series && series.length > 1 ? series : [0, 0];
-  const max = Math.max(...values);
-  const points = values
+// Today's running total (solid) over the comparison period's (dashed), one scale.
+export function Sparkline({ series, previous, up }: { series: number[]; previous: number[] | null; up: boolean }) {
+  const length = Math.max(series.length, previous?.length ?? 0, 2);
+  const max = Math.max(...series, ...(previous ?? []), 0);
+  const points = (values: number[]) => values
     .map((value, index) => {
-      const x = 1 + (index / (values.length - 1)) * 32;
-      const y = max > 0 ? 12 - (value / max) * 10 : 12;
+      const x = 1 + (index / (length - 1)) * 32;
+      const y = max > 0 ? 12.5 - (value / max) * 11 : 12.5;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
   return (
     <svg aria-hidden="true" width="34" height="14" viewBox="0 0 34 14" className="shrink-0">
-      <polyline points={points} fill="none" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"
-        className={up ? "stroke-[#3FA34D]" : "stroke-[#8C8A84]"} />
+      {previous && previous.length > 1 && (
+        <polyline points={points(previous)} fill="none" strokeWidth="1" strokeDasharray="2 2" strokeLinecap="round" className="stroke-[#C9C7C0]" />
+      )}
+      {series.length > 1 && (
+        <polyline points={points(series)} fill="none" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"
+          className={up ? "stroke-[#3FA34D]" : "stroke-[#8C8A84]"} />
+      )}
     </svg>
   );
 }
@@ -53,7 +59,7 @@ function MetricItem({ label, metric, format, locked }: {
       ) : (
         <div className="flex items-center gap-2 text-[15px]">
           <b className="font-semibold tabular-nums text-[#111110]">{metric ? format(metric.value) : "—"}</b>
-          {metric && <Sparkline series={metric.series} up={up} />}
+          {metric?.series && <Sparkline series={metric.series} previous={metric.previous_series} up={up} />}
           {metric?.change != null && (
             <span className={cn("tabular-nums", up ? "text-[#3FA34D]" : "text-[#8C8A84]")}>{formatChange(metric.change)}</span>
           )}
@@ -87,7 +93,7 @@ export function HomeMetricStrip({ metrics, liveCount, isAdmin, scope }: {
   scope: ReactNode;
 }) {
   return (
-    <header className="relative z-[3] flex items-start justify-between gap-6 px-8 pt-[26px] max-md:flex-col max-md:px-4 max-md:pt-4">
+    <header className="relative z-[3] flex items-start justify-between gap-6 px-5 pt-4 max-md:flex-col max-md:px-4 max-md:pt-4">
       {scope}
       <div className="flex flex-wrap justify-center gap-x-9 gap-y-4 max-[1360px]:gap-x-6">
         {METRICS.map(({ key, label, format, adminOnly }) => (

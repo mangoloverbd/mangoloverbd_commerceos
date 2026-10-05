@@ -18,7 +18,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { user_metadata: { f
 import Home from "@/pages/Home";
 import { projectPoint } from "@/components/home/DottedGlobe";
 
-const metric = (value: number, change: number | null) => ({ value, previous: 1, change, series: [1, 2, 3] });
+const metric = (value: number, change: number | null) => ({ value, previous: 1, change, series: [1, 2, 3], previous_series: [1, 1, 2] });
 
 const summary: HomeSummary = {
   generated_at: "2026-10-06T04:30:00.000Z",
@@ -26,7 +26,7 @@ const summary: HomeSummary = {
     sessions: metric(1284, 18),
     sales: metric(84620, 24),
     orders: metric(63, 12),
-    conversion_rate: { value: 4.76, previous: 3.14, change: -2, series: null },
+    conversion_rate: { value: 4.76, previous: 3.14, change: -2, series: null, previous_series: null },
   },
   live: { count: 17, visitors: [{ city: "Dhaka", country: "BD", path: "/", last_seen_at: "2026-10-06T04:29:00.000Z", latitude: 23.81, longitude: 90.41 }] },
   quick_actions: [

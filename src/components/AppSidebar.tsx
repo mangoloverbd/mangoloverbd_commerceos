@@ -25,7 +25,7 @@ import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { useNavCounts } from "@/hooks/useNavCounts";
 import { Link, useNavigate } from "react-router-dom";
-import { CaretUpDown, ClipboardText, LinkSimple, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { CaretUpDown, LinkSimple, MagnifyingGlass, X } from "@phosphor-icons/react";
 
 // Two-tone gear: the outer ring is the lighter tone, the spokes the darker one.
 function SettingsIcon() {
@@ -173,7 +173,7 @@ export function AppSidebar() {
                 {
                     id: "orders",
                     title: "Orders",
-                    icon: <ClipboardText weight="light" size={15} className={iconCls} />,
+                    icon: <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" className={iconCls}><path fill="currentColor" d="M7.69 7.256a3.893 3.893 0 0 1 6.86-2.52l.107-.385l2.139.272A5.839 5.839 0 0 0 5.744 7.256v1.216H3.17L1 22.583h21.165l-1.177-7.65l-3.066 2.037l-4.776-7.19l.364-1.308H7.69z" style={{fill: 'var(--fillg)', opacity: 'var(--fillo, .3)'}}/><path fill="currentColor" d="M15.725 5.958l-.994 3.57l3.6 5.418L23 11.844l-3.6-5.418z" style={{fill: 'var(--fillg)'}}/></svg>,
                     link: "/orders",
                 },
                 {

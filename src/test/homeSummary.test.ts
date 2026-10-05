@@ -80,9 +80,13 @@ describe("home metrics", () => {
     expect(metrics.orders).toMatchObject({ value: 2, previous: 1, change: 100 });
     expect(metrics.sessions).toMatchObject({ value: 200, previous: 100, change: 100 });
     expect(metrics.conversion_rate).toMatchObject({ value: 2, previous: 4, change: -50 });
-    expect(metrics.sales.series).toHaveLength(11);
-    expect(metrics.sales.series[1]).toBe(1080);
-    expect(metrics.sessions.series[9]).toBe(150);
+    // Running totals that end at the headline value, plus the previous period's.
+    expect(metrics.sales.series).toEqual([0, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1580, 1580]);
+    expect(metrics.sales.previous_series).toEqual([0, 0, 2100, 2100, 2100, 2100, 2100, 2100, 2100, 2100, 2100]);
+    expect(metrics.orders.series.at(-1)).toBe(2);
+    expect(metrics.sessions.series[9]).toBe(200);
+    expect(metrics.sessions.series.at(-1)).toBe(metrics.sessions.value);
+    expect(metrics.conversion_rate.series).toBeNull();
 
     const websiteOnly = buildHomeMetrics({ orders, windows, website, channel: "website" });
     expect(websiteOnly.sales).toMatchObject({ value: 1080, previous: 2100 });
@@ -102,8 +106,8 @@ describe("home metrics", () => {
         previous: { totals: { sessions: 0, ordered_sessions: 0 }, hourly: [], daily: [] },
       },
     });
-    expect(metrics.sales.series).toEqual([100, 50, 0]);
-    expect(metrics.sessions.series).toEqual([0, 30, 0]);
+    expect(metrics.sales.series).toEqual([100, 150, 150]);
+    expect(metrics.sessions.series).toEqual([0, 30, 30]);
     expect(metrics.sessions.change).toBeNull();
   });
 
@@ -120,7 +124,7 @@ describe("home metrics", () => {
       windows: homeWindows(now, { all: true }),
       website: null,
     });
-    expect(metrics.sales).toEqual({ value: 10, previous: null, change: null, series: null });
+    expect(metrics.sales).toEqual({ value: 10, previous: null, change: null, series: null, previous_series: null });
   });
 });
 

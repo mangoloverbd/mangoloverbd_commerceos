@@ -5,8 +5,10 @@ export interface HomeMetric {
   previous: number;
   /** Percent change against the same time yesterday; null without a baseline. */
   change: number | null;
-  /** Per-hour values for today, midnight to the current hour (Dhaka). */
+  /** Running total per hour (single day) or per Dhaka day, ending at `value`. */
   series: number[] | null;
+  /** The comparison period's running total over the same buckets. */
+  previous_series: number[] | null;
 }
 
 export interface HomeLiveVisitor {

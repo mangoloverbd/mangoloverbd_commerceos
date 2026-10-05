@@ -103,7 +103,7 @@ function Preview({ preview, kind }: { preview: HomePreview | null; kind: string 
 
 export function AttentionCards({ cards }: { cards: HomeAttentionCard[] }) {
   return (
-    <section aria-label="Needs your attention" className="relative z-[2] mx-auto grid max-w-[1400px] grid-cols-3 gap-5 px-8 pb-16 max-[1200px]:grid-cols-1 max-md:px-4 max-md:pb-10">
+    <section aria-label="Needs your attention" className="relative z-[2] grid grid-cols-3 gap-5 px-5 pb-5 max-[1200px]:grid-cols-1 max-md:px-4 max-md:pb-10">
       {cards.map((card) => (
         <article
           key={card.kind}

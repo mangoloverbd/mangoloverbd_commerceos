@@ -62,66 +62,82 @@ const inWindow = (value, window) => {
 
 const round2 = (value) => Math.round(value * 100) / 100;
 
-const metric = (value, previous, series) => ({
+const metric = (value, previous, series = null, previousSeries = null) => ({
   value,
   previous,
   change: previous === null ? null : percentChange(value, previous),
   series,
+  previous_series: previousSeries,
 });
 
-function bucketOf(ms, windows) {
-  const { bucket, current } = windows;
-  if (!bucket) return -1;
-  return bucket.unit === "hour"
-    ? Math.floor((ms - Date.parse(current.since)) / HOUR_MS)
-    : dayIndex(ms) - dayIndex(Date.parse(current.since));
+// Running totals, so a sparkline rises to the headline value instead of
+// showing each (partly elapsed) hour or day on its own.
+const cumulative = (values) => {
+  let sum = 0;
+  return values.map((value) => round2((sum += value)));
+};
+
+// Bucket of a timestamp within a window: hours or Dhaka days since its start.
+function bucketOf(ms, windows, since) {
+  if (!windows.bucket || !since) return -1;
+  return windows.bucket.unit === "hour"
+    ? Math.floor((ms - Date.parse(since)) / HOUR_MS)
+    : dayIndex(ms) - dayIndex(Date.parse(since));
 }
 
 export function buildHomeMetrics({ orders, windows, website, channel = "all" }) {
   const count = windows.bucket?.count ?? 0;
-  const salesSeries = Array(count).fill(0);
-  const orderSeries = Array(count).fill(0);
-  let sales = 0, total = 0, previousSales = 0, previousTotal = 0;
+  const blank = () => Array(count).fill(0);
+  const current = { sales: 0, total: 0, salesSeries: blank(), orderSeries: blank() };
+  const previous = { sales: 0, total: 0, salesSeries: blank(), orderSeries: blank() };
   for (const order of orders || []) {
     if (channel !== "all" && normalizeBusinessReportSource(order.source) !== channel) continue;
-    if (inWindow(order.created_at, windows.current)) {
-      const revenue = orderRevenue(order);
-      const index = bucketOf(Date.parse(order.created_at), windows);
-      sales += revenue;
-      total += 1;
-      if (index >= 0 && index < count) {
-        salesSeries[index] += revenue;
-        orderSeries[index] += 1;
-      }
-    } else if (inWindow(order.created_at, windows.previous)) {
-      previousSales += orderRevenue(order);
-      previousTotal += 1;
+    const [period, window] = inWindow(order.created_at, windows.current)
+      ? [current, windows.current]
+      : inWindow(order.created_at, windows.previous) ? [previous, windows.previous] : [null, null];
+    if (!period) continue;
+    const revenue = orderRevenue(order);
+    period.sales += revenue;
+    period.total += 1;
+    const index = bucketOf(Date.parse(order.created_at), windows, window.since);
+    if (index >= 0 && index < count) {
+      period.salesSeries[index] += revenue;
+      period.orderSeries[index] += 1;
     }
   }
+
+  const sessionSeriesOf = (report, since) => {
+    const series = blank();
+    const rows = windows.bucket.unit === "hour"
+      ? (report?.hourly || []).map((row) => [Number(row.hour), row.sessions])
+      : (report?.daily || []).map((row) => [bucketOf(Date.parse(`${String(row.day).slice(0, 10)}T00:00:00+06:00`), windows, since), row.sessions]);
+    for (const [index, value] of rows) if (index >= 0 && index < count) series[index] = Number(value) || 0;
+    return cumulative(series);
+  };
 
   let sessions = null;
   let conversion = null;
   if (website?.current) {
-    const current = website.current.totals || {};
-    const previous = website.previous?.totals || null;
-    let sessionSeries = null;
-    if (windows.bucket) {
-      sessionSeries = Array(count).fill(0);
-      const rows = windows.bucket.unit === "hour"
-        ? (website.current.hourly || []).map((row) => [Number(row.hour), row.sessions])
-        : (website.current.daily || []).map((row) => [bucketOf(Date.parse(`${String(row.day).slice(0, 10)}T00:00:00+06:00`), windows), row.sessions]);
-      for (const [index, value] of rows) if (index >= 0 && index < count) sessionSeries[index] = Number(value) || 0;
-    }
-    const rate = (totals) => (totals.sessions > 0 ? round2((totals.ordered_sessions / totals.sessions) * 100) : 0);
-    sessions = metric(Number(current.sessions) || 0, previous ? Number(previous.sessions) || 0 : null, sessionSeries);
-    conversion = metric(rate(current), previous ? rate(previous) : null, null);
+    const totals = website.current.totals || {};
+    const previousTotals = website.previous?.totals || null;
+    const rate = (row) => (row.sessions > 0 ? round2((row.ordered_sessions / row.sessions) * 100) : 0);
+    sessions = metric(
+      Number(totals.sessions) || 0,
+      previousTotals ? Number(previousTotals.sessions) || 0 : null,
+      windows.bucket ? sessionSeriesOf(website.current, windows.current.since) : null,
+      windows.bucket && website.previous ? sessionSeriesOf(website.previous, windows.previous.since) : null,
+    );
+    // Orders per visit by the hour isn't in the report, so conversion has no sparkline.
+    conversion = metric(rate(totals), previousTotals ? rate(previousTotals) : null);
   }
 
   const hasPrevious = Boolean(windows.previous);
+  const series = (values) => (windows.bucket ? cumulative(values) : null);
+  const previousSeries = (values) => (windows.bucket && hasPrevious ? cumulative(values) : null);
   return {
     sessions,
-    sales: metric(round2(sales), hasPrevious ? round2(previousSales) : null, windows.bucket ? salesSeries : null),
-    orders: metric(total, hasPrevious ? previousTotal : null, windows.bucket ? orderSeries : null),
+    sales: metric(round2(current.sales), hasPrevious ? round2(previous.sales) : null, series(current.salesSeries), previousSeries(previous.salesSeries)),
+    orders: metric(current.total, hasPrevious ? previous.total : null, series(current.orderSeries), previousSeries(previous.orderSeries)),
     conversion_rate: conversion,
   };
 }
