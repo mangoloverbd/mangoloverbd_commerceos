@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch, getAppConfig } from "@/lib/api";
 import { DownloadSimple } from "@phosphor-icons/react";
 import { motion, LayoutGroup } from "framer-motion";
@@ -100,6 +101,15 @@ export default function OrderChat() {
   const [aiProvider, setAiProvider] = useState<string>("openai");
   const [model, setModel] = useState(openAIModels[0].id);
   const [chatModels, setChatModels] = useState(openAIModels);
+  const [configReady, setConfigReady] = useState(false);
+  // A question typed into Home's "Ask Edith" bar, sent once the model is known.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const homePrompt = useRef<string | null>(
+    typeof (location.state as { prompt?: unknown } | null)?.prompt === "string"
+      ? (location.state as { prompt: string }).prompt
+      : null,
+  );
 
   // Default the chat model to the configured provider's default once /api/config
   // is available. For OpenAI we keep the curated list; for OpenRouter we show
@@ -121,6 +131,9 @@ export default function OrderChat() {
       } else {
         setChatModels(openAIModels);
       }
+      setConfigReady(true);
+    }).catch(() => {
+      if (active) setConfigReady(true);
     });
     return () => {
       active = false;
@@ -318,6 +331,16 @@ export default function OrderChat() {
       },
     });
   };
+
+  useEffect(() => {
+    const prompt = homePrompt.current;
+    if (!configReady || !prompt) return;
+    homePrompt.current = null;
+    // Clear the state so a refresh or back navigation doesn't ask again.
+    navigate(location.pathname, { replace: true, state: null });
+    void send(prompt, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the model config is ready
+  }, [configReady]);
 
   const stop = () => {
     abortRef.current?.abort();

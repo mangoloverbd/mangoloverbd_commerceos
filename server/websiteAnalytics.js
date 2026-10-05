@@ -102,9 +102,19 @@ const decodeHeader = (value) => {
   try { return clip(decodeURIComponent(value), 80); } catch { return clip(value, 80); }
 };
 
+// Vercel's approximate visitor coordinates; a pair is kept only when both are valid.
+function coordinatesFromHeaders(latitude, longitude) {
+  const lat = typeof latitude === "string" && latitude.trim() ? Number(latitude) : NaN;
+  const lon = typeof longitude === "string" && longitude.trim() ? Number(longitude) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+    return { latitude: null, longitude: null };
+  }
+  return { latitude: lat, longitude: lon };
+}
+
 // Returns null when the hit is not a first-party analytics event (legacy
 // script, heartbeat, malformed ids). Never throws.
-export function parseTrackerAnalyticsHit(body, { kind, bucket, userAgent, country, city, now } = {}) {
+export function parseTrackerAnalyticsHit(body, { kind, bucket, userAgent, country, city, latitude, longitude, now } = {}) {
   if (!body || typeof body !== "object") return null;
   const { event_id: eventId, visitor_id: visitorId, session_id: sessionId } = body;
   if (!isAnalyticsId(eventId) || !isAnalyticsId(visitorId) || !isAnalyticsId(sessionId)) return null;
@@ -135,6 +145,7 @@ export function parseTrackerAnalyticsHit(body, { kind, bucket, userAgent, countr
       device: deviceFromUserAgent(userAgent),
       country: decodeHeader(country),
       city: decodeHeader(city),
+      ...coordinatesFromHeaders(latitude, longitude),
     },
   };
 }

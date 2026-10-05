@@ -5,9 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 // All other routes are code-split so the dashboard's initial bundle stays
-// small (fast first load in production). Dashboard itself stays eager.
+// small (fast first load in production). Home and Dashboard stay eager.
 // Auth is split too — unauthenticated visitors only download it on demand.
 const Auth = lazy(() => import("./pages/Auth"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -121,7 +122,8 @@ const AppRoutes = () => (
         </ProtectedRoute>
       }
     >
-      <Route path="/" element={<Dashboard />} />
+      <Route path="/" element={<Home />} />
+      <Route path="/orders" element={<Dashboard />} />
       <Route path="/overview" element={<Overview />} />
       <Route path="/reports/staff" element={<StaffPerformance />} />
       <Route path="/reports/business" element={<AdminRoute><BusinessReport /></AdminRoute>} />

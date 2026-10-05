@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0.59] - 2026-10-06
+
+### Added
+
+- A new Home page opens the dashboard. It shows today's sessions, total sales, orders and conversion rate against yesterday up to the same time, with smooth running-total charts and numbers that roll when they change. "Today" opens the date picker and "All channels" filters sales and orders by order source; money figures stay admin-only.
+- A dotted globe pins where live visitors are browsing from, city by city. Adds two nullable coordinate columns to website visits and a server-only `live_visitor_locations` function; older visits are placed by their Bangladeshi district.
+- Up to three "needs attention" cards rank what to do next (flagged orders, Order Protection holds, orders ready for courier, unanswered chats, orders to confirm, inbox orders, abandoned checkouts, returns), with quick actions and insights on quiet days.
+- An "Ask Edith" bar on Home opens Ask Edith with the question already sent.
+
+### Changed
+
+- The orders dashboard moved from `/` to `/orders` and is listed as Orders, with its own icon, under Home in the sidebar and mobile navigation.
+- The order status rules behind the Orders queues are shared with the server, so Home's counts always match the Orders page.
+
 ## [0.1.0.58] - 2026-10-06
 
 ### Fixed

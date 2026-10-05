@@ -161,7 +161,7 @@ export default function OrderDetail() {
       navigate(location.state.from, { state: location.state.profileNavigationState });
       return;
     }
-    navigate("/", backState ? { state: backState } : undefined);
+    navigate("/orders", backState ? { state: backState } : undefined);
   }
   const rawPendingOrderIds = (location.state as { pendingOrderIds?: unknown } | null)?.pendingOrderIds;
   const statePendingOrderIds = Array.isArray(rawPendingOrderIds)

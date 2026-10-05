@@ -17,6 +17,7 @@ import { AccountMenuBody, accountMenuPanelClass, useAccountIdentity } from "./Ac
 
 const routeBreadcrumbLabels: Record<string, string> = {
     "/": "Home",
+    "/orders": "Orders",
     "/overview": "Overview",
     "/returns": "Returns",
     "/products": "Products",

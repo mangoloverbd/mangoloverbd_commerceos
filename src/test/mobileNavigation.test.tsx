@@ -20,8 +20,8 @@ describe("MobileBottomNav", () => {
 
     const navigation = screen.getByRole("navigation", { name: "Mobile navigation" });
     expect(navigation).toHaveClass("inset-x-0", "bottom-0", "backdrop-blur-xl", "md:hidden");
-    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/overview");
-    expect(screen.getByRole("link", { name: "Orders" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Orders" })).toHaveAttribute("href", "/orders");
     expect(screen.getByRole("link", { name: "Inbox" })).toHaveAttribute("href", "/inbox/facebook");
     expect(screen.getByRole("link", { name: "Products" })).toHaveAttribute("href", "/products");
     expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();

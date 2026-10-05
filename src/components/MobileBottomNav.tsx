@@ -34,8 +34,8 @@ function MobileHomeIcon({ size = 21, ...props }: MobileHomeIconProps) {
 }
 
 const destinations = [
-  { label: "Home", to: "/overview", icon: MobileHomeIcon },
-  { label: "Orders", to: "/", icon: ClipboardText },
+  { label: "Home", to: "/", icon: MobileHomeIcon },
+  { label: "Orders", to: "/orders", icon: ClipboardText },
   { label: "Inbox", to: "/inbox/facebook", icon: ChatCircle },
   { label: "Products", to: "/products", icon: Package },
 ] as const;

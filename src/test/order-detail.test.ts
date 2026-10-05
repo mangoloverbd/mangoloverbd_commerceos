@@ -107,7 +107,7 @@ function renderPage(id = "order-1", cachedOrders?: unknown[], initialEntry = `/o
       { initialEntries: [initialEntry] },
       createElement(Routes, null,
         createElement(Route, { path: "/orders/:id", element: createElement(OrderDetail) }),
-        createElement(Route, { path: "/", element: createElement("div", null, "Orders dashboard") }),
+        createElement(Route, { path: "/orders", element: createElement("div", null, "Orders dashboard") }),
       ),
       createElement(LocationSearchProbe),
     ),

@@ -145,6 +145,9 @@ import {
   validateCancellationReason,
 } from "./orderActivity.js";
 import { getBangladeshDateKey, validateOrderHoldDetails } from "../shared/orderHold.js";
+import { classifyOrderStatus } from "../shared/orderStatus.js";
+import { buildHomeMetrics, homeWindows, isHomeChannel, rankAttentionCards, shortProductName, topProducts } from "./homeSummary.js";
+import { visitorLocation } from "./bdPlaces.js";
 import { releaseDueOrderHolds } from "./orderHoldMaintenance.js";
 
 // ─── AI provider (OpenAI-compatible, supports OpenRouter and any
@@ -8686,6 +8689,7 @@ async function recordWebsiteAnalyticsHit(req, { orgId, kind, bucket }) {
   const hit = parseTrackerAnalyticsHit(req.body, {
     kind, bucket, userAgent,
     country: req.headers["x-vercel-ip-country"], city: req.headers["x-vercel-ip-city"],
+    latitude: req.headers["x-vercel-ip-latitude"], longitude: req.headers["x-vercel-ip-longitude"],
     now: new Date(),
   });
   if (!hit) return {};
@@ -8776,6 +8780,286 @@ app.get("/api/live-visitors", async (req, res) => {
     }
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Home ────────────────────────────────────────────────────────────────────
+// One request feeds the Home page: today's metrics, live visitor locations and
+// the ranked attention cards. Every source fails on its own (null), never the page.
+// Plan: docs/superpowers/plans/2026-10-06-home-page.md §3.
+const homeSummaryCache = createTtlCache({ prefix: "home:summary:", maxEntries: 100 });
+const HOME_SUMMARY_TTL_MS = 30_000;
+// Older orders still sitting in a queue are stale; the Orders page shows them all.
+const HOME_QUEUE_DAYS = 30;
+const HOME_QUEUE_PREVIEW = 4;
+
+async function settle(label, work) {
+  try {
+    return await work();
+  } catch (err) {
+    console.warn(`[Home] ${label} unavailable:`, err?.code || err?.message || err);
+    return null;
+  }
+}
+
+const homeOrderRow = (order, tag) => ({
+  title: `#${order.order_number || String(order.id).slice(-6).toUpperCase()} · ${order.customer_name || "Customer"}`,
+  detail: shortProductName(order.product),
+  tag,
+});
+
+// The bulk query carries only what the classifier reads; names and products are
+// fetched for the few preview rows afterwards. Cached longer than the summary
+// because it scans every in-progress order.
+const homeQueueCache = createTtlCache({ prefix: "home:queues:", maxEntries: 20 });
+const HOME_QUEUE_TTL_MS = 60_000;
+
+async function loadHomeQueues(supabase, orgId, now) {
+  const since = new Date(now.getTime() - HOME_QUEUE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const rows = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, status, fulfillment_status, courier_status, courier_name, courier_message, sent_to_courier, fraud_checked, fraud_total:fraud_data->total_parcels, fraud_delivered:fraud_data->total_delivered")
+      .eq("org_id", orgId)
+      .gte("created_at", since)
+      .or("status.is.null,status.not.in.(cancelled,canceled,rejected)")
+      .or("courier_status.is.null,courier_status.not.in.(delivered,cancelled,returned)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const queues = { pending: [], approved: [], flagged: [] };
+  for (const order of rows) {
+    const fraud = { total_parcels: order.fraud_total, total_delivered: order.fraud_delivered };
+    const status = classifyOrderStatus({ ...order, fraud_data: order.fraud_checked ? fraud : null });
+    if (queues[status]) queues[status].push({ order, fraud });
+  }
+
+  const previewIds = Object.values(queues).flatMap((list) => list.slice(0, HOME_QUEUE_PREVIEW).map(({ order }) => order.id));
+  const details = new Map();
+  if (previewIds.length) {
+    const { data, error } = await supabase.from("orders").select("id, order_number, customer_name, product").eq("org_id", orgId).in("id", previewIds);
+    if (error) throw error;
+    for (const row of data || []) details.set(row.id, row);
+  }
+  const preview = (list, tagFor) => list.slice(0, HOME_QUEUE_PREVIEW)
+    .map(({ order, fraud }) => homeOrderRow({ ...order, ...details.get(order.id) }, tagFor(order, fraud)));
+  const deliveredShare = ({ total_parcels: total, total_delivered: delivered }) =>
+    Number(total) > 0 ? Math.round((Number(delivered) / Number(total)) * 100) : null;
+
+  return {
+    toConfirm: { count: queues.pending.length, rows: preview(queues.pending, () => ({ label: "New", tone: "warn" })) },
+    readyForCourier: {
+      count: queues.approved.length,
+      rows: preview(queues.approved, (order, fraud) => {
+        const share = order.fraud_checked ? deliveredShare(fraud) : null;
+        return share === null ? { label: "Confirmed", tone: "ok" } : { label: `${share}% delivered`, tone: share < 50 ? "risk" : "ok" };
+      }),
+    },
+    flagged: {
+      count: queues.flagged.length,
+      rows: preview(queues.flagged, (order, fraud) => {
+        const share = deliveredShare(fraud);
+        return { label: share === null ? "Check courier" : `${share}% delivered`, tone: "risk" };
+      }),
+    },
+  };
+}
+
+async function loadHomeSignals(supabase, orgId, { isAdmin, now, liveLocations }) {
+  const nowIso = now.toISOString();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const count = (result) => {
+    if (result.error) throw result.error;
+    return result.count || 0;
+  };
+  const [queues, protectionHolds, inboxUnread, inboxOrders, returnsPending, abandoned, topVarieties] = await Promise.all([
+    settle("order queues", () => homeQueueCache.get(orgId, HOME_QUEUE_TTL_MS, async () => ({ value: await loadHomeQueues(supabase, orgId, now), cacheable: true }))),
+    isAdmin
+      ? settle("order protection", async () => ({
+        count: count(await supabase.from("order_protection_reviews").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "on_hold")),
+      }))
+      : null,
+    settle("inbox", async () => {
+      const { data, count: unread, error } = await supabase
+        .from("social_conversations")
+        .select("platform, contact_name, last_message", { count: "exact" })
+        .eq("org_id", orgId)
+        .gt("unread_count", 0)
+        .order("last_message_at", { ascending: false })
+        .limit(2);
+      if (error) throw error;
+      return {
+        count: unread || 0,
+        rows: (data || []).map((row) => ({ source: row.platform, name: row.contact_name || "Customer", text: String(row.last_message || "").slice(0, 160) })),
+      };
+    }),
+    settle("inbox orders", async () => ({
+      count: count(await supabase.from("social_inbox_orders").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "pending").eq("sent_to_courier", false)),
+    })),
+    settle("returns", async () => {
+      const [orders, inbox] = await Promise.all(["orders", "social_inbox_orders"].map((table) =>
+        supabase.from(table).select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("sent_to_courier", true).eq("return_status", "pending")));
+      return { count: count(orders) + count(inbox) };
+    }),
+    settle("abandoned checkouts", async () => {
+      const { data, count: open, error } = await supabase
+        .from("abandoned_checkouts")
+        .select("id, customer_name, cart, total, created_at", { count: "exact" })
+        .eq("org_id", orgId)
+        .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+        .gt("expires_at", nowIso)
+        .order("created_at", { ascending: false })
+        .limit(HOME_QUEUE_PREVIEW);
+      if (error) throw error;
+      return {
+        count: open || 0,
+        rows: (data || []).map((row) => ({
+          title: row.customer_name || "Shopper",
+          detail: shortProductName(Array.isArray(row.cart) ? row.cart[0]?.productName : ""),
+          tag: isAdmin && Number(row.total) > 0 ? { label: `৳${Math.round(Number(row.total)).toLocaleString("en-US")}`, tone: "warn" } : { label: "Open", tone: "warn" },
+        })),
+      };
+    }),
+    settle("top products", async () => {
+      const { data, error } = await supabase
+        .from("order_items")
+        .select("product_name, quantity")
+        .eq("org_id", orgId)
+        .gte("created_at", weekAgo)
+        .limit(5000);
+      if (error) throw error;
+      return topProducts(data);
+    }),
+  ]);
+
+  const cityCounts = new Map();
+  for (const visit of liveLocations || []) {
+    if (!visit.city) continue;
+    cityCounts.set(visit.city, (cityCounts.get(visit.city) || 0) + 1);
+  }
+  return {
+    ...(queues || {}),
+    protectionHolds,
+    inboxUnread,
+    inboxOrders,
+    returnsPending,
+    abandoned,
+    topVarieties: topVarieties || [],
+    liveCities: [...cityCounts].map(([city, visitors]) => ({ city, count: visitors })).sort((a, b) => b.count - a.count),
+  };
+}
+
+// The website report needs a bounded window, so all time reads the last year.
+const HOME_WEBSITE_MAX_MS = 366 * 24 * 60 * 60 * 1000;
+
+async function loadHomeWebsite(supabase, orgId, windows) {
+  const report = async ({ since, until }) => {
+    const p_since = since || new Date(Date.parse(until) - HOME_WEBSITE_MAX_MS).toISOString();
+    const { data, error } = await supabase.rpc("analytics_website_report", { p_org_id: orgId, p_since, p_until: until });
+    if (error) throw error;
+    return { totals: data?.totals || {}, hourly: data?.hourly || [], daily: data?.daily || [] };
+  };
+  const [current, previous] = await Promise.all([
+    report(windows.current),
+    windows.previous ? report(windows.previous) : null,
+  ]);
+  return { current, previous };
+}
+
+// Orders behind the headline metrics, paged past PostgREST's 1000-row cap.
+async function loadHomeOrders(supabase, orgId, windows) {
+  const since = windows.previous?.since ?? windows.current.since;
+  const rows = [];
+  for (let offset = 0; ; offset += 1000) {
+    let query = supabase
+      .from("orders")
+      .select("created_at, price, delivery_rate, source")
+      .eq("org_id", orgId)
+      .neq("status", "cancelled")
+      .lt("created_at", windows.current.until);
+    if (since) query = query.gte("created_at", since);
+    const { data, error } = await query.order("created_at", { ascending: true }).order("id", { ascending: true }).range(offset, offset + 999);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return rows;
+}
+
+async function loadLiveVisitorLocations(supabase, orgId) {
+  const { data, error } = await supabase
+    .rpc("live_visitor_locations", { p_org_id: orgId, p_window_seconds: VISITOR_TTL_MS / 1000 })
+    .abortSignal(AbortSignal.timeout(LIVE_PRESENCE_TIMEOUT_MS));
+  if (error) throw error;
+  return data || [];
+}
+
+async function buildHomeSummary(supabase, orgId, isAdmin, { range, channel }) {
+  const now = new Date();
+  const windows = homeWindows(now, range);
+  const [orders, website, live, liveLocations] = await Promise.all([
+    settle("orders", () => loadHomeOrders(supabase, orgId, windows)),
+    settle("website report", () => loadHomeWebsite(supabase, orgId, windows)),
+    settle("live visitors", () => countLiveVisitors(supabase, orgId)),
+    settle("live locations", () => loadLiveVisitorLocations(supabase, orgId)),
+  ]);
+  const metrics = buildHomeMetrics({ orders: orders || [], windows, website, channel });
+  const signals = await loadHomeSignals(supabase, orgId, { isAdmin, now, liveLocations });
+
+  return {
+    generated_at: now.toISOString(),
+    range: { since: windows.current.since, until: windows.current.until, compared_with: windows.previous },
+    channel,
+    metrics: {
+      sessions: metrics.sessions,
+      // Money and conversion stay with admins, as on the Orders page.
+      sales: isAdmin && orders ? metrics.sales : null,
+      orders: isAdmin && orders ? metrics.orders : null,
+      conversion_rate: isAdmin ? metrics.conversion_rate : null,
+    },
+    live: {
+      count: live ? live.all || 0 : null,
+      // City-level only; latitude/longitude are approximate (Vercel IP geolocation).
+      visitors: (liveLocations || []).flatMap((visit) => {
+        const point = visitorLocation(visit);
+        return point ? [{ city: visit.city || null, country: visit.country || null, path: visit.path || null, last_seen_at: visit.last_seen_at, ...point }] : [];
+      }),
+    },
+    quick_actions: [
+      { key: "send_to_courier", label: "Send to courier", count: signals.readyForCourier?.count ?? null, to: "/orders", state: { fulfillmentTab: "approved" } },
+      { key: "reply_to_inbox", label: "Reply to inbox", count: signals.inboxUnread?.count ?? null, to: "/inbox/facebook" },
+      { key: "review_fraud_flags", label: "Review fraud flags", count: signals.flagged?.count ?? null, to: "/orders", state: { fulfillmentTab: "flagged" }, tone: "warn" },
+    ],
+    attention: rankAttentionCards(signals, { isAdmin }),
+  };
+}
+
+app.get("/api/home/summary", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const supabase = getServiceSupabase();
+    const { orgId, role } = await getUserOrg(supabase, user.id);
+    if (!orgId) return res.status(403).json({ error: "No workspace" });
+    const isAdmin = role === "admin";
+    const text = (value) => (typeof value === "string" && value ? value : undefined);
+    const range = req.query.range === "all" ? { all: true } : { from: text(req.query.from), to: text(req.query.to) };
+    const channel = text(req.query.channel) ?? "all";
+    if (!isHomeChannel(channel)) return res.status(400).json({ error: "Unknown channel" });
+    homeWindows(new Date(), range); // Rejects a bad range with 400 before anything is cached.
+    const key = [orgId, isAdmin ? "admin" : "team", range.all ? "all" : `${range.from ?? ""}..${range.to ?? ""}`, channel].join(":");
+    const summary = await homeSummaryCache.get(key, HOME_SUMMARY_TTL_MS, async () => ({
+      value: await buildHomeSummary(supabase, orgId, isAdmin, { range, channel }),
+      cacheable: true,
+    }));
+    return res.json(summary);
+  } catch (err) {
+    return sendError(res, err);
   }
 });
 

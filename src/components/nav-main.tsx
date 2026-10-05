@@ -74,7 +74,8 @@ function SidebarLabel({ text, active }: { text: string; active?: boolean }) {
 const navIconFrame =
     "flex h-[17px] w-[17px] shrink-0 items-center justify-center [&>img]:h-[17px] [&>img]:w-[17px] [&>img]:object-contain [&>svg]:h-[17px] [&>svg]:w-[17px]";
 
-const activeIconStyle = { "--fillg": "#111111" } as React.CSSProperties;
+// --fillo lets a duotone icon opt in to going fully solid when active (Orders).
+const activeIconStyle = { "--fillg": "#111111", "--fillo": 1 } as React.CSSProperties;
 // Inactive icons are grey and darken with their row on hover (a class, so hover can override it).
 const inactiveIconClass = "[--fillg:#8d8c87] group-hover/nav-link:[--fillg:#1b1b19] group-hover/nav-button:[--fillg:#1b1b19]";
 
