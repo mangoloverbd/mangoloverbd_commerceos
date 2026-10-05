@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.60] - 2026-10-06
+
+### Changed
+
+- Home opens smoothly: the greeting, Ask Edith bar, quick actions and cards fade and rise in a short cascade, the numbers count up from 0, the sparklines draw in and the globe fades in. All of it is skipped with reduced motion.
+- The Home globe sits higher, so its whole lower curve shows above the cards, and its soft glow fades into the page.
+- Narrower side margins on Home.
+
+### Fixed
+
+- The live visitor pin no longer flickers. It moves with a sub-pixel transform, stays put while every visitor is in the same city, and isn't hidden again when the data refreshes.
+
 ## [0.1.0.59] - 2026-10-06
 
 ### Added
