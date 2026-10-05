@@ -251,7 +251,7 @@ export default function AbandonedDetail() {
   }
 
   function goBack() {
-    navigate("/", { state: { fulfillmentTab: "abandoned" } });
+    navigate("/orders", { state: { fulfillmentTab: "abandoned" } });
   }
 
   function removeFromAbandonedCache() {

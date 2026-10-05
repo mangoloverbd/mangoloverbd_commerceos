@@ -30,7 +30,7 @@ function renderDetail(initialEntries: string[] = ["/abandoned/draft-1"]) {
       <MemoryRouter initialEntries={initialEntries}>
         <Routes>
           <Route path="/abandoned/:id" element={<AbandonedDetail />} />
-          <Route path="/" element={<div data-testid="dashboard-home">Dashboard</div>} />
+          <Route path="/orders" element={<div data-testid="dashboard-home">Dashboard</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
