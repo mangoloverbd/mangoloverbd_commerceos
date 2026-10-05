@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20261006001500_live_visitor_locations.sql"), "utf8");
+const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20261005224708_live_visitor_locations.sql"), "utf8");
 
 describe("live visitor locations migration", () => {
   it("adds bounded, nullable coordinates to visits", () => {
