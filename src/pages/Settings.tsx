@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
 import { TeamManagement } from "@/components/TeamManagement";
@@ -7,12 +7,13 @@ import { BulkSmsSection } from "@/components/BulkSmsSection";
 import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { toast, dismiss } from "@/components/ui/sonner";
+import { toast } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Building2, Puzzle, Lock, Globe, Bot, Users, MessageSquare, SlidersHorizontal } from "lucide-react";
-import { MessengerLogo, InstagramLogo, WhatsappLogo } from "@phosphor-icons/react";
+import { Building2, Puzzle, Lock } from "lucide-react";
+import { MessengerLogo, InstagramLogo, WhatsAppLogo } from "@/components/IntegrationLogos";
+import { Check, PencilSimple } from "@phosphor-icons/react";
 
 type Section = "workspace" | "integrations";
 
@@ -22,52 +23,53 @@ const NAV: { id: Section; label: string; icon: React.ElementType; adminOnly?: bo
 ];
 
 const AI_CHANNELS = [
-  { id: "whatsapp", label: "WhatsApp", icon: WhatsappLogo },
+  { id: "whatsapp", label: "WhatsApp", icon: WhatsAppLogo },
   { id: "instagram", label: "Instagram DMs", icon: InstagramLogo },
   { id: "facebook", label: "Facebook Messenger", icon: MessengerLogo },
 ] as const;
 
 /* ── BoardUI-style layout primitives ─────────────────────────────────────── */
 
+const sectionLabel = "text-[8px] font-medium uppercase tracking-[0.3em] text-black";
+
 function PageHeader({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black/[0.05] text-black">
-        <SlidersHorizontal className="h-[18px] w-[18px]" strokeWidth={1.8} />
-      </span>
+    <div>
+      <h1 className="text-[26px] font-light leading-tight tracking-[-0.025em] text-black">{title}</h1>
+      <p className="mt-1 text-[14px] text-black/50">{description}</p>
+    </div>
+  );
+}
+
+function SectionHeading({ title, description, meta }: { title: string; description?: string; meta?: React.ReactNode }) {
+  return (
+    <div className="mb-3 flex items-end justify-between gap-4 px-1">
       <div className="min-w-0">
-        <h1 className="font-sf-display text-[22px] font-semibold tracking-tight text-black leading-tight">{title}</h1>
-        <p className="mt-0.5 text-[13px] text-black leading-tight">{description}</p>
+        <p className={sectionLabel}>{title}</p>
+        {description && <p className="mt-1.5 text-[12px] text-black/50">{description}</p>}
       </div>
+      {meta && <div className="shrink-0 text-[12px] text-black/50">{meta}</div>}
     </div>
   );
 }
 
 function GroupCard({
-  icon: Icon,
   title,
   description,
+  meta,
   children,
   className,
 }: {
-  icon: React.ElementType;
   title: string;
-  description: string;
+  description?: string;
+  meta?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <section className={cn("space-y-3", className)}>
-      <div className="flex items-center gap-2.5 px-1">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/[0.05] text-black">
-          <Icon className="h-4 w-4" strokeWidth={1.8} />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-semibold text-black leading-none">{title}</h2>
-          {description && <p className="mt-1 text-[12px] text-black leading-none">{description}</p>}
-        </div>
-      </div>
-      <div className="overflow-hidden rounded-2xl bg-black/[0.04] pl-3">
+    <section className={className}>
+      <SectionHeading title={title} description={description} meta={meta} />
+      <div className="overflow-hidden rounded-[18px] border border-black/[0.06] bg-white px-5">
         {children}
       </div>
     </section>
@@ -75,29 +77,21 @@ function GroupCard({
 }
 
 function GroupSection({
-  icon: Icon,
   title,
   description,
+  meta,
   children,
   className,
 }: {
-  icon: React.ElementType;
   title: string;
-  description: string;
+  description?: string;
+  meta?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <section className={cn("space-y-3", className)}>
-      <div className="flex items-center gap-2.5 px-1">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/[0.05] text-black">
-          <Icon className="h-4 w-4" strokeWidth={1.8} />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-semibold text-black leading-none">{title}</h2>
-          {description && <p className="mt-1 text-[12px] text-black leading-none">{description}</p>}
-        </div>
-      </div>
+    <section className={className}>
+      <SectionHeading title={title} description={description} meta={meta} />
       {children}
     </section>
   );
@@ -105,13 +99,18 @@ function GroupSection({
 
 function Row({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex min-h-[52px] items-center justify-between gap-4 py-2.5 pr-2.5", className)}>{children}</div>
+    <div className={cn("flex min-h-[60px] items-center justify-between gap-4 py-3", className)}>{children}</div>
   );
 }
 
-function IconTile({ children, className }: { children: React.ReactNode; className?: string }) {
+function LogoTile({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/[0.04] text-black", className)}>
+    <span
+      className={cn(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border border-black/[0.07] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+        className,
+      )}
+    >
       {children}
     </span>
   );
@@ -177,12 +176,21 @@ function AIAutoReplySection() {
   }
 
   return (
-    <GroupCard icon={Bot} title="AI Auto-Reply" description="Control AI responses for each social channel.">
+    <GroupCard
+      title="AI Auto-Reply"
+      description="Control AI responses for each social channel."
+      meta={
+        <span className={cn("inline-flex items-center gap-1.5", enabled ? "text-emerald-700" : "text-black/50")}>
+          <span className={cn("h-1.5 w-1.5 rounded-full", enabled ? "bg-emerald-500" : "bg-black/20")} />
+          {enabled ? `On for ${channels.length} channel${channels.length === 1 ? "" : "s"}` : "Off"}
+        </span>
+      }
+    >
       <div className="divide-y divide-black/[0.06]">
         <Row>
           <div className="min-w-0">
-            <p className="text-[13px] font-medium text-black">Enable AI Auto-Reply</p>
-            <p className="text-[11px] text-black mt-0.5">Master switch — turns off AI replies on all channels when disabled.</p>
+            <p className="text-[14px] font-medium text-black">Enable AI Auto-Reply</p>
+            <p className="mt-0.5 text-[12px] text-black/50">Master switch — turns off AI replies on all channels when disabled.</p>
           </div>
           <Switch
             checked={enabled}
@@ -201,10 +209,10 @@ function AIAutoReplySection() {
             )}
           >
             <div className="flex items-center gap-3 min-w-0">
-              <IconTile>
-                <Icon weight="light" size={16} />
-              </IconTile>
-              <p className="text-[13px] font-medium text-black">{label}</p>
+              <LogoTile>
+                <Icon className="h-[22px] w-[22px]" />
+              </LogoTile>
+              <p className="text-[14px] font-medium text-black">{label}</p>
             </div>
             <Switch
               checked={channels.includes(id)}
@@ -218,6 +226,9 @@ function AIAutoReplySection() {
     </GroupCard>
   );
 }
+
+// The Storefront section (deploy + custom domain) is hidden for now; flip to true to bring it back.
+const SHOW_STOREFRONT_SECTION = false;
 
 function StorefrontDomainSection() {
   const { isAdmin } = useUserRole();
@@ -347,7 +358,7 @@ function StorefrontDomainSection() {
   };
 
   return (
-    <GroupCard icon={Globe} title="Storefront" description="Deploy your storefront and connect your own domain.">
+    <GroupCard title="Storefront" description="Deploy your storefront and connect your own domain.">
       <div className="divide-y divide-black/[0.06]">
         <Row>
           <div className="min-w-0">
@@ -434,79 +445,135 @@ function StorefrontDomainSection() {
   );
 }
 
-function WorkspaceSection() {
+function BusinessCard() {
   const { orgName, isLoading, refresh } = useOrgName();
-  const [value, setValue] = useState<string | null>(null);
-  const displayValue = value !== null ? value : orgName;
-  const isDirty = displayValue.trim() !== orgName && displayValue.trim() !== "";
-  const latestValue = useRef(displayValue);
-  latestValue.current = displayValue;
-  const savedRef = useRef(false);
-  const toastId = useRef<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (isDirty && !toastId.current) {
-      toastId.current = toast.unsaved({
-        message: "Unsaved changes",
-        savingText: "Saving",
-        savedText: "Business name saved",
-        onSave: async () => {
-          const trimmed = latestValue.current.trim();
-          if (!trimmed) return;
-          const res = await apiFetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ settings: { org_name: trimmed } }),
-          });
-          if (!res.ok) throw new Error("Save failed");
-          refresh();
-        },
-        onSaved: () => {
-          savedRef.current = true;
-          setValue(null);
-        },
-        onReset: () => setValue(null),
+  const startEditing = () => {
+    setDraft(orgName);
+    setEditing(true);
+  };
+
+  const save = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed || saving) return;
+    if (trimmed === orgName) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: { org_name: trimmed } }),
       });
-    } else if (!isDirty && toastId.current && !savedRef.current) {
-      dismiss(toastId.current);
-      toastId.current = null;
+      if (!res.ok) throw new Error("Save failed");
+      await refresh();
+      setEditing(false);
+      toast.success("Business name saved");
+    } catch {
+      toast.error("Could not save the business name");
+    } finally {
+      setSaving(false);
     }
-  }, [isDirty, refresh]);
+  };
 
   return (
-    <div className="space-y-10">
+    <section className="flex flex-wrap items-center gap-4 rounded-[18px] border border-[#F3DFB4] bg-[#FFF8EB] px-5 py-4">
+      <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-black/[0.06] bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)]">
+        <img src="/brand/mango-lover-logo.webp" alt="" className="h-full w-full scale-110 object-contain" />
+      </span>
+
+      <div className="min-w-0 flex-1 basis-56">
+        <p className={sectionLabel}>Business name</p>
+        <AnimatePresence mode="wait" initial={false}>
+          {editing ? (
+            <motion.form
+              key="edit"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16 }}
+              onSubmit={(e) => { e.preventDefault(); void save(); }}
+              className="mt-1.5 flex flex-wrap items-center gap-2"
+            >
+              <Input
+                autoFocus
+                aria-label="Business name"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+                placeholder="Mango Lover BD"
+                className="h-9 w-full max-w-xs rounded-[10px] border-black/[0.12] bg-white text-[14px] text-black placeholder:text-black/25 focus-visible:ring-1 focus-visible:ring-black/20"
+              />
+              <button
+                type="submit"
+                disabled={saving || !draft.trim()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-black px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-black/85 disabled:opacity-40"
+              >
+                {saving ? <Spinner size="sm" className="text-white" /> : <Check weight="light" size={14} />}
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                disabled={saving}
+                className="h-9 rounded-[10px] px-3 text-[13px] text-black/60 transition-colors hover:text-black"
+              >
+                Cancel
+              </button>
+            </motion.form>
+          ) : (
+            <motion.div
+              key="view"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16 }}
+              className="mt-1"
+            >
+              <p className="truncate text-[18px] font-medium tracking-[-0.01em] text-black">
+                {isLoading ? "…" : orgName || "Your business"}
+              </p>
+              <p className="truncate text-[12px] text-black/55">Shown across the dashboard and reports.</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {!editing && (
+        <button
+          type="button"
+          onClick={startEditing}
+          disabled={isLoading}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] border border-black/[0.1] bg-white px-3.5 text-[13px] font-medium text-black shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-colors hover:bg-black/[0.03] disabled:opacity-50"
+        >
+          <PencilSimple weight="light" size={15} />
+          Edit name
+        </button>
+      )}
+    </section>
+  );
+}
+
+function WorkspaceSection() {
+  return (
+    <div className="space-y-8">
       <PageHeader title="Workspace" description="Manage your organisation, team, and connected services." />
 
-      <GroupCard icon={Building2} title="Business Name" description="Appears across your dashboard and reports.">
-        <Row>
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium text-black">Display name</p>
-            <p className="text-[11px] text-black mt-0.5">This is your organisation's public name.</p>
-          </div>
-          {isLoading ? (
-            <Spinner className="h-4 w-4 text-black/30 shrink-0" />
-          ) : (
-            <Input
-              value={displayValue}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="Merchant-Suite Corporation"
-              className="h-9 w-56 rounded-lg border-black/[0.1] bg-black/[0.04] text-[13px] text-black placeholder:text-black/25 focus-visible:ring-1 focus-visible:ring-black/20"
-            />
-          )}
-        </Row>
-      </GroupCard>
+      <BusinessCard />
 
-      <GroupSection icon={Users} title="Team" description="Manage members and access.">
+      <GroupSection title="Team" description="Manage members and access.">
         <TeamManagement />
       </GroupSection>
 
       <AIAutoReplySection />
 
-      <GroupSection icon={MessageSquare} title="Bulk SMS" description="Automated SMS updates for confirmed and dispatched orders.">
+      <GroupSection title="Bulk SMS" description="Automated SMS updates for confirmed and dispatched orders.">
         <BulkSmsSection />
       </GroupSection>
 
-      <StorefrontDomainSection />
+      {SHOW_STOREFRONT_SECTION && <StorefrontDomainSection />}
     </div>
   );
 }
@@ -555,7 +622,7 @@ export default function Settings() {
         <TabNav items={visibleNav} value={section} onChange={setSection} />
       </div>
 
-      <div className="flex-1 min-w-0 overflow-auto bg-white px-6 py-8">
+      <div className="flex-1 min-w-0 overflow-auto bg-white px-3 pb-8 pt-3">
         <div className="w-full">
           <AnimatePresence mode="wait">
             <motion.div

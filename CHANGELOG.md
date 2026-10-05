@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.0.57] - 2026-10-05
+
+### Added
+
+- Team members can be switched off and on from Settings › Team. A switched-off member keeps their name and order history but loses access until switched back on; admins and your own account can't be switched off.
+- Each team member can have a post (Moderator, Order Manager, Customer Support, Packer, Delivery Coordinator or a custom one), set from their row or while adding them. Adds two nullable columns to user roles.
+- Removing a team member now asks for confirmation in an animated warning that offers to switch them off instead and closes itself after 12 seconds if left alone.
+
+### Changed
+
+- Adding a team member is a three-step popup: who they are, what they'll do, then their login details to share.
+- Settings › Integrations is redesigned: Meta Business on top with its Pages, Instagram, WhatsApp and ad accounts at a glance, then "Your stack" for what's connected and "Add to your stack" for the rest, with full-colour brand logos.
+- Settings › Workspace matches the new look, with a highlighted business name card and a visible Edit name button.
+- The storefront deploy and custom domain settings are hidden for now.
+- Switched-off team members no longer appear in the order assignee list.
+
 ## [0.1.0.56] - 2026-10-04
 
 ### Added
