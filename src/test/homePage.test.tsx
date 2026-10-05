@@ -17,6 +17,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { user_metadata: { f
 
 import Home from "@/pages/Home";
 import { projectPoint } from "@/components/home/DottedGlobe";
+import { smoothPath } from "@/components/home/HomeMetricStrip";
 
 const metric = (value: number, change: number | null) => ({ value, previous: 1, change, series: [1, 2, 3], previous_series: [1, 1, 2] });
 
@@ -146,5 +147,20 @@ describe("globe projection", () => {
     const dhaka = projectPoint(90.4, 23.8, 68.4, 15.8)!;
     expect(dhaka.x).toBeGreaterThan(390);
     expect(dhaka.y).toBeLessThan(390);
+  });
+});
+
+describe("sparkline curve", () => {
+  it("passes through every point without overshooting a flat stretch", () => {
+    const d = smoothPath([[0, 10], [10, 2], [20, 2], [30, 2]]);
+    expect(d.startsWith("M0.00,10.00")).toBe(true);
+    expect(d).toContain(" 10.00,2.00");
+    expect(d).toContain(" 30.00,2.00");
+    // Control points on the flat part stay on the line (y = 2), so it never bulges above it.
+    const controls = [...d.matchAll(/C([\d.]+),([\d.]+) ([\d.]+),([\d.]+)/g)].slice(1);
+    for (const [, , y1, , y2] of controls) {
+      expect(Number(y1)).toBeGreaterThanOrEqual(2);
+      expect(Number(y2)).toBeGreaterThanOrEqual(2);
+    }
   });
 });
