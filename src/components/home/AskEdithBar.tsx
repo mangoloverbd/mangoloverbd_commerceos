@@ -17,7 +17,7 @@ export function AskEdithBar() {
   return (
     <form
       onSubmit={submit}
-      className="relative z-[2] mt-[34px] flex w-full max-w-[860px] items-center gap-3.5 rounded-[12px] border border-[#ECEAE4] bg-white px-[22px] py-[18px]"
+      className="relative z-[2] mt-[34px] flex w-full max-w-[860px] items-center gap-3.5 rounded-[12px] border border-[#ECEAE4] bg-white px-[20px] py-[12px]"
     >
       <span aria-hidden="true" className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#FFD27A,#E0861B)] text-white">
         <Sparkle weight="light" size={16} />
