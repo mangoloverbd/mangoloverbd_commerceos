@@ -6,8 +6,9 @@ type CapturedNumberFlowProps = {
   animated?: boolean;
   value: number;
   prefix?: string;
+  suffix?: string;
   locales?: string;
-  format?: { maximumFractionDigits?: number };
+  format?: Intl.NumberFormatOptions;
 };
 
 const numberFlowCalls = vi.hoisted(() => [] as CapturedNumberFlowProps[]);
@@ -42,5 +43,15 @@ describe("MetricNumberFlow", () => {
     view.rerender(<MetricNumberFlow value={200} />);
 
     expect(numberFlowCalls.at(-1)).toMatchObject({ animated: true, value: 200 });
+  });
+
+  it("accepts a suffix and number format for counts, rates and changes", () => {
+    render(<MetricNumberFlow value={4.68} prefix="" suffix="%" format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }} />);
+    expect(numberFlowCalls[0]).toMatchObject({
+      value: 4.68,
+      prefix: "",
+      suffix: "%",
+      format: { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+    });
   });
 });

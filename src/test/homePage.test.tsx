@@ -11,6 +11,11 @@ const { role, apiFetch } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api", () => ({ apiFetch }));
+// NumberFlow draws with a custom element; render the same formatted text instead.
+vi.mock("@number-flow/react", () => ({
+  default: ({ value, prefix = "", suffix = "", locales, format }: { value: number; prefix?: string; suffix?: string; locales?: string; format?: Intl.NumberFormatOptions }) =>
+    <span>{`${prefix}${new Intl.NumberFormat(locales, format).format(value)}${suffix}`}</span>,
+}));
 vi.mock("@/hooks/useUserRole", () => ({ useUserRole: () => ({ isAdmin: role.isAdmin, role: role.isAdmin ? "admin" : "team_member", loading: false }) }));
 vi.mock("@/hooks/useOrgName", () => ({ useOrgName: () => ({ orgName: "Mango Lover BD" }) }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { user_metadata: { full_name: "Noor Karim" } } }) }));
@@ -82,7 +87,7 @@ describe("Home page", () => {
     expect(screen.getByText("1,284")).toBeInTheDocument();
     expect(screen.getByText("4.76%")).toBeInTheDocument();
     expect(screen.getByText("+18%")).toBeInTheDocument();
-    expect(screen.getByText("−2%")).toBeInTheDocument();
+    expect(screen.getByText("-2%")).toBeInTheDocument();
     expect(screen.getByText("17")).toBeInTheDocument();
     expect(apiFetch.mock.calls[0][0]).toMatch(/^\/api\/home\/summary\?from=(\d{4}-\d{2}-\d{2})&to=\1$/);
     expect(screen.getByTestId("button-date-range-picker")).toHaveTextContent("Today");

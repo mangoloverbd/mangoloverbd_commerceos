@@ -1,17 +1,20 @@
 import { useId, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import type { Format } from "@number-flow/react";
+import { MetricNumberFlow } from "@/components/ui/number-flow";
 import type { HomeMetric } from "./types";
-
-const number = new Intl.NumberFormat("en-US");
 
 type MetricKey = "sessions" | "sales" | "orders" | "conversion_rate";
 
-const METRICS: { key: MetricKey; label: string; format: (value: number) => string; adminOnly: boolean }[] = [
-  { key: "sessions", label: "Sessions", format: (value) => number.format(value), adminOnly: false },
-  { key: "sales", label: "Total sales", format: (value) => `৳${number.format(Math.round(value))}`, adminOnly: true },
-  { key: "orders", label: "Orders", format: (value) => number.format(value), adminOnly: true },
-  { key: "conversion_rate", label: "Conversion rate", format: (value) => `${value.toFixed(2)}%`, adminOnly: true },
+// How each value rolls in MetricNumberFlow: currency, plain count or two-decimal rate.
+const METRICS: { key: MetricKey; label: string; prefix: string; suffix?: string; format?: Format; adminOnly: boolean }[] = [
+  { key: "sessions", label: "Sessions", prefix: "", adminOnly: false },
+  { key: "sales", label: "Total sales", prefix: "৳", adminOnly: true },
+  { key: "orders", label: "Orders", prefix: "", adminOnly: true },
+  { key: "conversion_rate", label: "Conversion rate", prefix: "", suffix: "%", format: { minimumFractionDigits: 2, maximumFractionDigits: 2 }, adminOnly: true },
 ];
+
+const CHANGE_FORMAT: Format = { maximumFractionDigits: 0, signDisplay: "exceptZero" };
 
 const SPARK_W = 34;
 const SPARK_H = 16;
@@ -79,14 +82,12 @@ export function Sparkline({ series }: { series: number[] }) {
   );
 }
 
-function formatChange(change: number) {
-  return `${change > 0 ? "+" : change < 0 ? "−" : ""}${Math.abs(change)}%`;
-}
-
-function MetricItem({ label, metric, format, locked }: {
+function MetricItem({ label, metric, prefix, suffix, format, locked }: {
   label: string;
   metric: HomeMetric | null;
-  format: (value: number) => string;
+  prefix: string;
+  suffix?: string;
+  format?: Format;
   locked: boolean;
 }) {
   return (
@@ -98,9 +99,15 @@ function MetricItem({ label, metric, format, locked }: {
         </span>
       ) : (
         <div className="flex items-center gap-2 text-[15px]">
-          <b className="font-semibold tabular-nums text-[#111110]">{metric ? format(metric.value) : "—"}</b>
+          {metric ? (
+            <MetricNumberFlow value={metric.value} prefix={prefix} suffix={suffix} format={format} className="font-semibold tabular-nums text-[#111110]" />
+          ) : (
+            <b className="font-semibold text-[#111110]">—</b>
+          )}
           {metric?.series && <Sparkline series={metric.series} />}
-          {metric?.change != null && <span className="tabular-nums text-[#6F6D68]">{formatChange(metric.change)}</span>}
+          {metric?.change != null && (
+            <MetricNumberFlow value={metric.change} prefix="" suffix="%" format={CHANGE_FORMAT} className="tabular-nums text-[#6F6D68]" />
+          )}
         </div>
       )}
     </div>
@@ -111,7 +118,9 @@ function LiveIndicator({ count }: { count: number | null }) {
   const reduceMotion = useReducedMotion();
   return (
     <div className="flex items-center gap-2 pt-1.5 text-[14px] text-[#55534E]" aria-live="polite">
-      Live visitors <b className="font-semibold tabular-nums text-[#111110]">{count ?? "—"}</b>
+      Live visitors {count === null
+        ? <b className="font-semibold text-[#111110]">—</b>
+        : <MetricNumberFlow value={count} prefix="" className="font-semibold tabular-nums text-[#111110]" />}
       <span className="relative h-2.5 w-2.5 rounded-full border-2 border-[#3FA34D]" aria-hidden="true">
         <motion.span
           className="absolute -inset-[6px] rounded-full border border-dashed border-[#3FA34D]/50"
@@ -134,8 +143,8 @@ export function HomeMetricStrip({ metrics, liveCount, isAdmin, scope }: {
     <header className="relative z-[3] flex items-start justify-between gap-6 px-5 pt-4 max-md:flex-col max-md:px-4 max-md:pt-4">
       {scope}
       <div className="flex flex-wrap justify-center gap-x-9 gap-y-4 max-[1360px]:gap-x-6">
-        {METRICS.map(({ key, label, format, adminOnly }) => (
-          <MetricItem key={key} label={label} metric={metrics?.[key] ?? null} format={format} locked={adminOnly && !isAdmin} />
+        {METRICS.map(({ key, label, prefix, suffix, format, adminOnly }) => (
+          <MetricItem key={key} label={label} metric={metrics?.[key] ?? null} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
         ))}
       </div>
       <LiveIndicator count={liveCount} />
