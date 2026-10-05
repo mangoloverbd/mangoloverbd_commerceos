@@ -64,6 +64,7 @@ const runtimeTables = Object.freeze([
   "analytics_daily_pages",
   "analytics_daily_products",
   "analytics_job_state",
+  "live_visitor_presence",
 ]);
 
 const runtimeTablesSql = runtimeTables.map((table) => `'${table}'`).join(", ");
@@ -201,6 +202,19 @@ begin
      or not has_function_privilege('service_role', 'public.run_analytics_maintenance(uuid, timestamptz, integer)', 'execute')
      or not has_function_privilege('service_role', 'public.analytics_website_report(uuid, timestamptz, timestamptz)', 'execute') then
     raise exception 'Website analytics server privileges are missing';
+  end if;
+  if has_table_privilege('anon', 'public.live_visitor_presence', 'select,insert,update,delete')
+     or has_table_privilege('authenticated', 'public.live_visitor_presence', 'select,insert,update,delete')
+     or has_function_privilege('anon', 'public.touch_live_visitor(uuid, text, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.touch_live_visitor(uuid, text, text)', 'execute')
+     or has_function_privilege('anon', 'public.count_live_visitors(uuid, integer)', 'execute')
+     or has_function_privilege('authenticated', 'public.count_live_visitors(uuid, integer)', 'execute') then
+    raise exception 'Live visitor presence exposes excess privileges';
+  end if;
+  if not has_table_privilege('service_role', 'public.live_visitor_presence', 'select,insert,update,delete')
+     or not has_function_privilege('service_role', 'public.touch_live_visitor(uuid, text, text)', 'execute')
+     or not has_function_privilege('service_role', 'public.count_live_visitors(uuid, integer)', 'execute') then
+    raise exception 'Live visitor presence server privileges are missing';
   end if;
   select count(*) into runtime_table_count
   from pg_class

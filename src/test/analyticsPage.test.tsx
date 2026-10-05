@@ -83,7 +83,7 @@ describe("Analytics page", () => {
   });
   afterEach(cleanup);
 
-  it("opens on Overview with first-party numbers for the last 30 days, without PostHog or the forecast", async () => {
+  it("opens on Overview with first-party numbers for today (Dhaka), without PostHog or the forecast", async () => {
     setup();
     expect(screen.getByRole("heading", { name: "Analytics" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
@@ -94,7 +94,9 @@ describe("Analytics page", () => {
     expect(screen.getByText("৳7,200")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Data healthy/ })).toBeInTheDocument();
     const paths = vi.mocked(apiFetch).mock.calls.map(([path]) => String(path));
-    expect(paths.some((path) => /^\/api\/analytics\/website\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/.test(path))).toBe(true);
+    const dhaka = new Date(Date.now() + 6 * 60 * 60 * 1000);
+    const today = `${dhaka.getUTCFullYear()}-${String(dhaka.getUTCMonth() + 1).padStart(2, "0")}-${String(dhaka.getUTCDate()).padStart(2, "0")}`;
+    expect(paths).toContain(`/api/analytics/website?from=${today}&to=${today}`);
     expect(paths.some((path) => path.includes("stock-forecast") || path.includes("website-behavior"))).toBe(false);
   });
 

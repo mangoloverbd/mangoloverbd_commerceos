@@ -8478,7 +8478,6 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
 // ─── Live Visitor Tracking ──────────────────────────────────────────────────
 const VISITOR_TTL_MS = 60_000;
 const POSTHOG_CAPTURE_TIMEOUT_MS = 900;
-const memoryLiveVisitors = new Map();
 
 function isValidOrgId(value) {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -8496,45 +8495,23 @@ function validLiveVisitorBucket(value) {
   return ["cart", "checkout", "purchased"].includes(value) ? value : null;
 }
 
-function pruneMemoryLiveVisitors(key, now) {
-  const visitors = memoryLiveVisitors.get(key);
-  if (!visitors) return new Map();
-  for (const [sessionId, lastSeen] of visitors.entries()) {
-    if (lastSeen < now - VISITOR_TTL_MS) visitors.delete(sessionId);
-  }
-  if (visitors.size === 0) memoryLiveVisitors.delete(key);
-  return visitors;
+// Presence is stored in Supabase so every server instance sees every shopper;
+// per-instance memory only counted the shoppers that happened to ping it.
+const LIVE_PRESENCE_TIMEOUT_MS = 1500;
+
+async function touchLiveVisitor(orgId, sessionId, bucket) {
+  const { error } = await getServiceSupabase()
+    .rpc("touch_live_visitor", { p_org_id: orgId, p_session_id: sessionId, p_bucket: bucket })
+    .abortSignal(AbortSignal.timeout(LIVE_PRESENCE_TIMEOUT_MS));
+  if (error) throw error;
 }
 
-async function addLiveVisitorPresence(key, sessionId, now) {
-  if (redisClient) {
-    try {
-      await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
-      await redisClient.zadd(key, { score: now, member: sessionId });
-      await redisClient.expire(key, Math.ceil(VISITOR_TTL_MS / 1000) * 2);
-      return;
-    } catch (err) {
-      console.warn("[LiveVisitor] Redis write failed, falling back to memory:", err.message);
-    }
-  }
-
-  const visitors = pruneMemoryLiveVisitors(key, now);
-  visitors.set(sessionId, now);
-  memoryLiveVisitors.set(key, visitors);
-}
-
-async function countLiveVisitorsForKey(key, now) {
-  if (redisClient) {
-    try {
-      await redisClient.zremrangebyscore(key, 0, now - VISITOR_TTL_MS);
-      const count = await redisClient.zcount(key, now - VISITOR_TTL_MS, "+inf");
-      return Number(count) || 0;
-    } catch (err) {
-      console.warn("[LiveVisitor] Redis count failed, falling back to memory:", err.message);
-    }
-  }
-
-  return pruneMemoryLiveVisitors(key, now).size;
+async function countLiveVisitors(supabase, orgId) {
+  const { data, error } = await supabase
+    .rpc("count_live_visitors", { p_org_id: orgId, p_window_seconds: VISITOR_TTL_MS / 1000 })
+    .abortSignal(AbortSignal.timeout(LIVE_PRESENCE_TIMEOUT_MS));
+  if (error) throw error;
+  return data || {};
 }
 
 async function capturePostHogEvent({ orgId, sessionId, url, referrer, bucket, explicit }) {
@@ -8586,7 +8563,9 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
 
   res.set({
     "Content-Type": "application/javascript; charset=utf-8",
-    "Cache-Control": "public, max-age=300",
+    // s-maxage lets Vercel's CDN answer, so a cold function never delays the
+    // tracker and drops shoppers who leave in the first seconds.
+    "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
   });
 
   return res.send(`(function(){
@@ -8756,12 +8735,8 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
   const behaviorBucket = validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url);
   let presence = { tracked: false };
   try {
-    if (countsAsLivePresence(hitKind)) {
-      const allKey = `visitors:${org_id}:all`;
-      const bucketKey = behaviorBucket ? `visitors:${org_id}:${behaviorBucket}` : null;
-      const now = Date.now();
-      await addLiveVisitorPresence(allKey, session_id, now);
-      if (bucketKey) await addLiveVisitorPresence(bucketKey, session_id, now);
+    if (countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id)) {
+      await touchLiveVisitor(org_id, session_id, behaviorBucket);
     }
     // Heartbeats update live presence only; forwarding every 20-second ping to
     // PostHog made up most of its event volume. Legacy pings without `kind`
@@ -8769,11 +8744,11 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
     if (shouldForwardTrackerHit(hitKind)) {
       await capturePostHogEvent({ orgId: org_id, sessionId: session_id, url, referrer, bucket: behaviorBucket, explicit });
     }
-    presence = { tracked: true, bucket: behaviorBucket, storage: redisClient ? "redis" : "memory" };
+    presence = { tracked: true, bucket: behaviorBucket, storage: "supabase" };
   } catch (err) {
-    console.warn("[LiveVisitor] Redis ping failed:", err.message);
+    console.warn("[LiveVisitor] presence not recorded:", err?.code || err?.message || err);
   }
-  // First-party analytics is independent of presence: a Redis failure must not
+  // First-party analytics is independent of presence: a presence failure must not
   // drop the page view, and an analytics failure never fails the ping.
   const analytics = await recordWebsiteAnalyticsHit(req, { orgId: org_id, kind: hitKind, bucket: validLiveVisitorBucket(bucket) });
   return res.json({ ok: true, ...presence, ...analytics });
@@ -8788,25 +8763,15 @@ app.get("/api/live-visitors", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
 
     try {
-      const allKey = `visitors:${orgId}:all`;
-      const cartKey = `visitors:${orgId}:cart`;
-      const checkoutKey = `visitors:${orgId}:checkout`;
-      const purchasedKey = `visitors:${orgId}:purchased`;
-      const now = Date.now();
-      const [count, activeCarts, checkingOut, purchased] = await Promise.all([
-        countLiveVisitorsForKey(allKey, now),
-        countLiveVisitorsForKey(cartKey, now),
-        countLiveVisitorsForKey(checkoutKey, now),
-        countLiveVisitorsForKey(purchasedKey, now),
-      ]);
+      const live = await countLiveVisitors(supabase, orgId);
       return res.json({
-        count,
+        count: live.all || 0,
         tracked: true,
-        storage: redisClient ? "redis" : "memory",
-        details: { activeCarts, checkingOut, purchased },
+        storage: "supabase",
+        details: { activeCarts: live.cart || 0, checkingOut: live.checkout || 0, purchased: live.purchased || 0 },
       });
     } catch (err) {
-      console.warn("[LiveVisitor] Redis count failed:", err.message);
+      console.warn("[LiveVisitor] count failed:", err?.code || err?.message || err);
       return res.json({ count: 0, tracked: false });
     }
   } catch (e) {
