@@ -115,15 +115,15 @@ export function AttentionCards({ cards }: { cards: HomeAttentionCard[] }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 + index * 0.08, ease: RISE_EASE }}
         >
-          <h3 className="max-w-[440px] text-[21px] font-medium leading-[1.3] tracking-[-0.01em] text-[#111110]">{card.title}</h3>
-          <p className="mt-2.5 max-w-[470px] text-[14.5px] leading-[1.6] text-[#55534E]">{card.body}</p>
+          <h3 className="max-w-[440px] text-[17px] font-normal leading-[1.35] tracking-[-0.01em] text-[#111110]">{card.title}</h3>
+          <p className="mt-2 max-w-[470px] text-[13.5px] leading-[1.6] text-[#55534E]">{card.body}</p>
           <div className="relative mt-auto h-[240px]">
             <Preview preview={card.preview} kind={card.kind} />
           </div>
           <Link
             to={card.cta.to}
             state={card.cta.state}
-            className="absolute bottom-6 left-7 z-[2] rounded-full border border-[#ECEAE4] bg-white px-[18px] py-2.5 text-[14px] font-medium text-[#111110] shadow-[0_1px_2px_rgba(17,17,16,0.04),0_8px_24px_rgba(17,17,16,0.05)] transition-transform duration-150 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+            className="absolute bottom-6 left-7 z-[2] rounded-full border border-[#ECEAE4] bg-white px-[18px] py-2 text-[13px] font-medium text-[#111110] shadow-[0_1px_2px_rgba(17,17,16,0.04),0_8px_24px_rgba(17,17,16,0.05)] transition-transform duration-150 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
           >
             {card.cta.label}
           </Link>

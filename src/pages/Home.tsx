@@ -87,7 +87,7 @@ export default function Home() {
       <section className="relative -mt-20 flex min-h-[640px] flex-col items-center justify-center px-4 pb-20 pt-10 max-md:mt-0 max-md:min-h-[520px]">
         <DottedGlobe visitors={data?.live.visitors ?? []} onLand={() => setPinLandings((count) => count + 1)} />
         <Rise className="relative z-[2]">
-          <h1 className="text-center text-[40px] font-medium leading-[1.2] tracking-[-0.02em] text-[#8C8A84] max-md:text-[28px]">
+          <h1 className="text-center text-[32px] font-medium leading-[1.2] tracking-[-0.02em] text-[#8C8A84] max-md:text-[24px]">
             {greeting}
             <span className="block text-[#111110]">Let's keep {orgName || "Mango Lover BD"} growing.</span>
           </h1>

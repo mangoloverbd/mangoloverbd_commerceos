@@ -289,8 +289,8 @@ export function DottedGlobe({ visitors, onLand, className = HOME_PLACEMENT }: {
                   animate={{ opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } }}
                   exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
                 >
-                  <strong className="block whitespace-nowrap text-[15px] font-semibold text-[#111110]">{label.place}</strong>
-                  <span className="whitespace-nowrap text-[13px] text-[#55534E]">{label.detail}</span>
+                  <strong className="block whitespace-nowrap text-[14px] font-medium text-[#111110]">{label.place}</strong>
+                  <span className="whitespace-nowrap text-[12px] text-[#55534E]">{label.detail}</span>
                 </motion.div>
               )}
             </AnimatePresence>
