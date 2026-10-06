@@ -8634,12 +8634,16 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
     activeMs = 0;
     if (seconds >= 1) ping(null, false, "engage", { active_seconds: seconds });
   }
-  var lastPath = "";
+  var lastPath = "", pageviewPending = false;
   function pingCurrentLocation(){
     // Same-path history updates (query or scroll state) are not new page views.
     if (location.pathname === lastPath) return;
     if (lastPath) flushEngagement();
     lastPath = location.pathname;
+    // A page opened in a background tab (or preloaded by an in-app browser) is
+    // counted once it is shown; dropping it left a live visitor with no visit.
+    if (document.hidden) { pageviewPending = true; return; }
+    pageviewPending = false;
     ping(null, false, "pageview");
   }
   // Heartbeats only keep the live visitor count fresh; they are not page views.
@@ -8663,7 +8667,11 @@ app.get("/api/tracker.js", publicTrackerCors, (req, res) => {
   setInterval(heartbeat, 20000);
   document.addEventListener("visibilitychange", function(){
     if (document.hidden) { flushEngagement(); visibleSince = 0; }
-    else { visibleSince = Date.now(); heartbeat(); }
+    else {
+      visibleSince = Date.now();
+      if (pageviewPending) { pageviewPending = false; ping(null, false, "pageview"); }
+      else heartbeat();
+    }
   });
   window.addEventListener("pagehide", flushEngagement);
   window.addEventListener("focus", heartbeat);
@@ -8737,9 +8745,12 @@ app.post("/api/live-visitor/ping", publicTrackerCors, async (req, res) => {
 
   const hitKind = normalizeTrackerKind(kind);
   const behaviorBucket = validLiveVisitorBucket(bucket) || liveVisitorBucketFromUrl(url);
+  // Crawlers that run JavaScript (Meta's ad review, link previews) are not shoppers:
+  // analytics already skips them, so the live count does too.
+  const isBot = isBotUserAgent(String(req.headers["user-agent"] || ""));
   let presence = { tracked: false };
   try {
-    if (countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id)) {
+    if (!isBot && countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id)) {
       await touchLiveVisitor(org_id, session_id, behaviorBucket);
     }
     // Heartbeats update live presence only; forwarding every 20-second ping to
@@ -8767,12 +8778,16 @@ app.get("/api/live-visitors", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
 
     try {
-      const live = await countLiveVisitors(supabase, orgId);
+      const [live, locations] = await Promise.all([
+        countLiveVisitors(supabase, orgId),
+        settle("live locations", () => loadLiveVisitorLocations(supabase, orgId)),
+      ]);
       return res.json({
         count: live.all || 0,
         tracked: true,
         storage: "supabase",
         details: { activeCarts: live.cart || 0, checkingOut: live.checkout || 0, purchased: live.purchased || 0 },
+        visitors: liveVisitorPins(locations),
       });
     } catch (err) {
       console.warn("[LiveVisitor] count failed:", err?.code || err?.message || err);
@@ -8991,6 +9006,14 @@ async function loadHomeOrders(supabase, orgId, windows) {
   return rows;
 }
 
+// City-level only; latitude/longitude are approximate (Vercel IP geolocation).
+function liveVisitorPins(locations) {
+  return (locations || []).flatMap((visit) => {
+    const point = visitorLocation(visit);
+    return point ? [{ city: visit.city || null, country: visit.country || null, path: visit.path || null, last_seen_at: visit.last_seen_at, ...point }] : [];
+  });
+}
+
 async function loadLiveVisitorLocations(supabase, orgId) {
   const { data, error } = await supabase
     .rpc("live_visitor_locations", { p_org_id: orgId, p_window_seconds: VISITOR_TTL_MS / 1000 })
@@ -9024,11 +9047,7 @@ async function buildHomeSummary(supabase, orgId, isAdmin, { range, channel }) {
     },
     live: {
       count: live ? live.all || 0 : null,
-      // City-level only; latitude/longitude are approximate (Vercel IP geolocation).
-      visitors: (liveLocations || []).flatMap((visit) => {
-        const point = visitorLocation(visit);
-        return point ? [{ city: visit.city || null, country: visit.country || null, path: visit.path || null, last_seen_at: visit.last_seen_at, ...point }] : [];
-      }),
+      visitors: liveVisitorPins(liveLocations),
     },
     quick_actions: [
       { key: "send_to_courier", label: "Send to courier", count: signals.readyForCourier?.count ?? null, to: "/orders", state: { fulfillmentTab: "approved" } },

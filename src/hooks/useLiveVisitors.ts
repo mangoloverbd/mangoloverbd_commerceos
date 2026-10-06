@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useVisibleInterval } from "@/hooks/useVisibleInterval";
+import type { HomeLiveVisitor } from "@/components/home/types";
 
 export interface LiveVisitorDetails {
   activeCarts: number;
@@ -11,6 +12,8 @@ export interface LiveVisitorDetails {
 export interface LiveVisitorsState {
   count: number;
   details: LiveVisitorDetails;
+  /** Where live visitors are browsing from (city level), for the globe. */
+  visitors: HomeLiveVisitor[];
   loaded: boolean;
 }
 
@@ -29,6 +32,7 @@ const EMPTY_DETAILS: LiveVisitorDetails = {
 export function useLiveVisitors(pollMs = 30000): LiveVisitorsState {
   const [count, setCount] = useState(0);
   const [details, setDetails] = useState<LiveVisitorDetails>(EMPTY_DETAILS);
+  const [visitors, setVisitors] = useState<HomeLiveVisitor[]>([]);
   const [loaded, setLoaded] = useState(false);
   const cancelledRef = useRef(false);
 
@@ -44,6 +48,7 @@ export function useLiveVisitors(pollMs = 30000): LiveVisitorsState {
           checkingOut: Number(data.details?.checkingOut) || 0,
           purchased: Number(data.details?.purchased) || 0,
         });
+        setVisitors(Array.isArray(data.visitors) ? data.visitors : []);
       }
     } catch {
       // Non-critical dashboard signal — keep previous values.
@@ -62,5 +67,5 @@ export function useLiveVisitors(pollMs = 30000): LiveVisitorsState {
 
   useVisibleInterval(() => void fetchCount(), pollMs);
 
-  return { count, details, loaded };
+  return { count, details, visitors, loaded };
 }
