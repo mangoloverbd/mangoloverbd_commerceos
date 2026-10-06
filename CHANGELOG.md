@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0.61] - 2026-10-06
+
+### Changed
+
+- The Home globe now hops between live visitors' places like Shopify's: the pin flies to the next city as a small mango comet that curls in, its landing ripples through the map dots, and the "Live visitors" ring spins once on each landing. Reduced motion just swaps the pin.
+- The Ask Edith bar on Home has a new "Mango glow" look: a pill with a mango-gradient edge, a warm glow that deepens on focus, and a round send button that turns black once there's a question.
+
+### Fixed
+
+- The Orders page no longer lags. A globe library was rewriting a stylesheet on every frame, restyling the whole page and holding it at about 16fps; it now runs at about 60fps, so the sidebar hover is smooth.
+- Hovering the collapsed sidebar slides it over the page instead of pushing the page aside, and the Fulfillment Queue no longer draws on top of it.
+- The logo in the collapsed sidebar is centered in a square box instead of being pushed right and clipped.
+- The date picker no longer has empty space under its Reset / Cancel / Apply row.
+
 ## [0.1.0.60] - 2026-10-06
 
 ### Changed
