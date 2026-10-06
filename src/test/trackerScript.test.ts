@@ -12,10 +12,12 @@ const script = serverSource.slice(bodyStart, serverSource.indexOf("`);", bodySta
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 type Hit = Record<string, unknown> & { kind: string; session_id: string; visitor_id: string; event_id: string };
 
-function loadTracker({ url = "https://www.mangolover.com.bd/product/katimon-mango", cookie = "", reply = () => ({ ok: true }) as Record<string, unknown> } = {}) {
+function loadTracker({ url = "https://www.mangolover.com.bd/product/katimon-mango", cookie = "", hidden = false, reply = () => ({ ok: true }) as Record<string, unknown> } = {}) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", { url, runScripts: "outside-only", pretendToBeVisual: true });
   const win = dom.window as unknown as Window & typeof globalThis & { eval: (code: string) => unknown };
   if (cookie) win.document.cookie = cookie;
+  // A page opened in a background tab (or preloaded by an in-app browser) starts hidden.
+  if (hidden) Object.defineProperty(win.document, "hidden", { configurable: true, get: () => true });
   const hits: Hit[] = [];
   win.fetch = vi.fn(async (_endpoint: string, init: { body: string }) => {
     const body = JSON.parse(init.body) as Hit;
@@ -72,6 +74,23 @@ describe("tracker script", () => {
     const engage = tracker.hits.find(hit => hit.kind === "engage");
     expect(engage?.active_seconds).toBeGreaterThanOrEqual(1);
     expect(tracker.hits.filter(hit => hit.kind === "heartbeat")).toHaveLength(0);
+  });
+
+  it("counts a page opened in a background tab once it is shown", async () => {
+    const tracker = loadTracker({ hidden: true });
+    await tracker.settle();
+    // Nothing while nobody is looking at it.
+    expect(tracker.hits).toHaveLength(0);
+    tracker.setHidden(false);
+    await tracker.settle();
+    // Shown: the page view goes out (not just a heartbeat), so the visit and its location exist.
+    expect(tracker.hits.map(hit => hit.kind)).toEqual(["pageview"]);
+    expect(new URL(String(tracker.hits[0].url)).pathname).toBe("/product/katimon-mango");
+    // Later visibility changes are heartbeats; the page is never counted twice.
+    tracker.setHidden(true);
+    tracker.setHidden(false);
+    await tracker.settle();
+    expect(tracker.hits.filter(hit => hit.kind === "pageview")).toHaveLength(1);
   });
 
   it("sends nothing from a team browser opted out with ?ms_exclude=1", async () => {

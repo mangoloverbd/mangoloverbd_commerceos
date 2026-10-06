@@ -34,6 +34,25 @@ describe("useLiveVisitors", () => {
     expect(result.current.details).toEqual({ activeCarts: 2, checkingOut: 1, purchased: 3 });
   });
 
+  it("returns where live visitors are browsing from, for the globe", async () => {
+    const dhaka = { city: "Dhaka", country: "BD", path: "/", latitude: 23.71, longitude: 90.41, last_seen_at: "2026-10-06T06:00:00.000Z" };
+    mockApiFetch.mockResolvedValue(jsonResponse({ count: 1, details: {}, visitors: [dhaka] }));
+
+    const { result } = renderHook(() => useLiveVisitors());
+
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.visitors).toEqual([dhaka]);
+  });
+
+  it("has no visitors when the API sends no locations", async () => {
+    mockApiFetch.mockResolvedValue(jsonResponse({ count: 2, details: {} }));
+
+    const { result } = renderHook(() => useLiveVisitors());
+
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.visitors).toEqual([]);
+  });
+
   it("keeps zeros and still reports loaded when the request fails", async () => {
     mockApiFetch.mockRejectedValue(new Error("network down"));
 

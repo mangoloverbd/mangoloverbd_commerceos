@@ -16,6 +16,14 @@ describe("live visitor tracking", () => {
     expect(serverSource).toContain("liveVisitorBucketFromUrl");
   });
 
+  it("does not count crawlers as live visitors, matching what analytics records", () => {
+    const pingStart = serverSource.indexOf('app.post("/api/live-visitor/ping"');
+    const pingRoute = serverSource.slice(pingStart, serverSource.indexOf('app.get("/api/live-visitors"', pingStart));
+    // A bot gets no visit (and so no globe pin); it must not inflate the live count either.
+    expect(pingRoute).toContain('const isBot = isBotUserAgent(String(req.headers["user-agent"] || ""));');
+    expect(pingRoute).toContain("if (!isBot && countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id))");
+  });
+
   it("supports explicit behavior events from custom websites", () => {
     const trackerStart = serverSource.indexOf('app.get("/api/tracker.js", publicTrackerCors');
     const trackerEnd = serverSource.indexOf('app.post("/api/live-visitor/ping"', trackerStart);
@@ -73,6 +81,9 @@ describe("live visitor tracking", () => {
     expect(route).toContain("await getUserOrg(supabase, user.id)");
     expect(route).toContain("countLiveVisitors(supabase, orgId)");
     expect(route).toContain("activeCarts: live.cart || 0, checkingOut: live.checkout || 0, purchased: live.purchased || 0");
+    // City-level pins for the Orders globe, best effort so the count never fails with them.
+    expect(route).toContain('settle("live locations", () => loadLiveVisitorLocations(supabase, orgId))');
+    expect(route).toContain("visitors: liveVisitorPins(locations)");
     expect(serverSource).toContain('rpc("count_live_visitors", { p_org_id: orgId');
   });
 
@@ -189,7 +200,7 @@ describe("live visitor tracking", () => {
     const pingRoute = serverSource.slice(pingStart, serverSource.indexOf('app.get("/api/live-visitors"', pingStart));
     const helper = serverSource.slice(serverSource.indexOf("async function recordWebsiteAnalyticsHit"), pingStart);
 
-    expect(pingRoute).toContain("if (countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id))");
+    expect(pingRoute).toContain("if (!isBot && countsAsLivePresence(hitKind) && await isAnalyticsWorkspace(org_id))");
     expect(pingRoute.indexOf("recordWebsiteAnalyticsHit")).toBeGreaterThan(pingRoute.indexOf("} catch (err) {"));
     expect(pingRoute).toContain("return res.json({ ok: true, ...presence, ...analytics });");
     // Fixed workspace, bot filter, rate limit and a bounded database call.

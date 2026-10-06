@@ -1,7 +1,7 @@
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
-  "version": "0.1.0.61",
+  "version": "0.1.0.62",
   "type": "module",
   "scripts": {
     "dev": "node --watch --watch-path=server server/index.js",
@@ -66,7 +66,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "cobe": "^2.0.1",
     "cors": "^2.8.6",
     "date-fns": "^3.6.0",
     "dotenv": "^17.4.2",

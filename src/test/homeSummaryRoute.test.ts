@@ -60,8 +60,10 @@ describe("GET /api/home/summary", () => {
 
   it("returns live visitors at city level only", () => {
     const code = home();
-    const live = code.slice(code.indexOf("visitors: (liveLocations"), code.indexOf("quick_actions:"));
-    expect(live).not.toMatch(/session_id|visitor_id|\bip\b/);
-    expect(live).toContain("visitorLocation(visit)");
+    // Home and /api/live-visitors share one mapping into globe pins.
+    const pins = code.slice(code.indexOf("function liveVisitorPins"), code.indexOf("async function loadLiveVisitorLocations"));
+    expect(pins).not.toMatch(/session_id|visitor_id|\bip\b/);
+    expect(pins).toContain("visitorLocation(visit)");
+    expect(code).toContain("visitors: liveVisitorPins(liveLocations)");
   });
 });

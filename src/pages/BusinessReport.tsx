@@ -20,6 +20,7 @@ import { SummaryTiles } from "@/components/business-report/SummaryTiles";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/ios-spinner";
 import { apiFetch } from "@/lib/api";
+import { pageKeys } from "@/lib/pageQueries";
 import type { BusinessReportResponse } from "@/components/business-report/types";
 
 function dhakaToday(): Date {
@@ -47,7 +48,7 @@ export default function BusinessReport() {
   const to = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : null;
 
   const reportQuery = useQuery({
-    queryKey: ["business-report", from, to],
+    queryKey: pageKeys.businessReport(from, to),
     retry: false,
     staleTime: 60_000,
     queryFn: async (): Promise<BusinessReportResponse> => {

@@ -7,7 +7,8 @@ const sidebarSource = readFileSync(resolve(process.cwd(), "src/components/AppSid
 
 describe("Activity Log navigation", () => {
   it("registers the protected report route for every authenticated staff member", () => {
-    expect(appSource).toContain('const ActivityLog = lazy(() => import("./pages/ActivityLog"))');
+    // Dashboard pages are declared (and preloaded) in src/dashboardPages.ts.
+    expect(readFileSync(resolve(process.cwd(), "src/dashboardPages.ts"), "utf8")).toContain('export const ActivityLog = lazyPage(() => import("./pages/ActivityLog"))');
     expect(appSource).toContain('<Route path="/reports/activity" element={<ActivityLog />} />');
     expect(appSource).not.toContain('<Route path="/reports/activity" element={<AdminRoute><ActivityLog /></AdminRoute>} />');
   });

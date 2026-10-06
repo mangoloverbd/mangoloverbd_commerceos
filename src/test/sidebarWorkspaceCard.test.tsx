@@ -1,4 +1,5 @@
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -6,6 +7,8 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 
 const role = vi.hoisted(() => ({ value: "admin" }));
+const apiFetch = vi.hoisted(() => vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+vi.mock("@/lib/api", () => ({ apiFetch }));
 
 vi.mock("@/hooks/useUserRole", () => ({ useUserRole: () => ({ isAdmin: role.value === "admin", role: role.value }) }));
 vi.mock("@/hooks/useOrgName", () => ({ useOrgName: () => ({ orgName: "Mango Lover BD", isLoading: false }) }));
@@ -16,11 +19,13 @@ vi.mock("@/hooks/useAuth", () => ({
 
 function renderSidebar() {
   return render(
-    <MemoryRouter>
-      <SidebarProvider>
-        <AppSidebar />
-      </SidebarProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <SidebarProvider>
+          <AppSidebar />
+        </SidebarProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -91,5 +96,14 @@ describe("sidebar footer", () => {
     await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
     expect(root()).toHaveAttribute("data-state", "expanded");
     expect(screen.getByRole("button", { name: "Collapse sidebar" })).toBeInTheDocument();
+  });
+});
+
+describe("sidebar page prefetch", () => {
+  it("warms a page's data while the pointer rests on its link", async () => {
+    apiFetch.mockClear();
+    renderSidebar();
+    await userEvent.hover(screen.getByRole("link", { name: /customer list/i }));
+    expect(apiFetch).toHaveBeenCalledWith("/api/customers");
   });
 });

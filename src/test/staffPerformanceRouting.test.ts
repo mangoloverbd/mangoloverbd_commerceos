@@ -7,7 +7,8 @@ const sidebarSource = readFileSync(resolve(process.cwd(), "src/components/AppSid
 
 describe("Staff Performance navigation", () => {
   it("registers the protected report route for every authenticated staff member", () => {
-    expect(appSource).toContain('const StaffPerformance = lazy(() => import("./pages/StaffPerformance"))');
+    // Dashboard pages are declared (and preloaded) in src/dashboardPages.ts.
+    expect(readFileSync(resolve(process.cwd(), "src/dashboardPages.ts"), "utf8")).toContain('export const StaffPerformance = lazyPage(() => import("./pages/StaffPerformance"))');
     expect(appSource).toContain('<Route path="/reports/staff" element={<StaffPerformance />} />');
     expect(appSource).not.toContain('<Route path="/reports/staff" element={<AdminRoute><StaffPerformance /></AdminRoute>} />');
   });

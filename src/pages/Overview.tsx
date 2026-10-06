@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { apiFetch } from "@/lib/api";
+import { useState, useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getJson, overviewUrl, pageKeys } from "@/lib/pageQueries";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { KpiCard } from "@/components/overview/KpiCard";
 import { OrderVolumeChart } from "@/components/overview/OrderVolumeChart";
@@ -66,30 +67,20 @@ function fmtBDT(n: number) {
 }
 
 export default function Overview() {
-  const [data, setData] = useState<OverviewData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const todayRange = useMemo<DateRange>(() => ({ from: subDays(TODAY, 6), to: TODAY }), []);
   const [dateRange, setDateRange] = useState<DateRange | null>(todayRange);
+  const since = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null;
+  const until = dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : null;
 
-  const fetchData = useCallback(async (range?: DateRange | null) => {
-    setLoading(true);
-    setError(false);
-    try {
-      const params = new URLSearchParams({ t: String(Date.now()) });
-      if (range?.from) params.set("since", format(range.from, "yyyy-MM-dd"));
-      if (range?.to) params.set("until", format(range.to, "yyyy-MM-dd"));
-      const res = await apiFetch(`/api/overview?${params}`, { cache: "no-store" });
-      const json = await res.json();
-      if (res.ok) setData(json);
-      else setError(true);
-    } catch { setError(true); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    fetchData(dateRange);
-  }, [dateRange, fetchData]);
+  // Cached per range (and warmed by the sidebar on hover): coming back to Overview
+  // shows the last numbers at once and refreshes them in the background.
+  const overview = useQuery({
+    queryKey: pageKeys.overview(since, until),
+    queryFn: () => getJson<OverviewData>(overviewUrl(since, until), "Failed to load overview"),
+  });
+  const data = overview.data;
+  const loading = overview.isPending;
+  const fetchData = () => void overview.refetch();
 
   const handleDateRangeChange = useCallback((range: DateRange | null) => {
     setDateRange(range);
@@ -106,13 +97,13 @@ export default function Overview() {
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="min-h-[calc(100vh-96px)] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-center">
           <p className="text-sm font-medium text-foreground/60">Failed to load overview</p>
           <button
-            onClick={() => fetchData(dateRange)}
+            onClick={fetchData}
             className="text-xs text-foreground/50 hover:text-foreground underline"
           >
             Try again
@@ -138,8 +129,8 @@ export default function Overview() {
         <div className="flex items-center gap-2">
           <DateRangePicker value={dateRange} onChange={handleDateRangeChange} />
           <button
-            onClick={() => fetchData(dateRange)}
-            disabled={loading}
+            onClick={fetchData}
+            disabled={overview.isFetching}
             className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-30"
             title="Refresh"
           >

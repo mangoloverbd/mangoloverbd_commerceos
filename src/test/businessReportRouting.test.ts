@@ -7,7 +7,8 @@ const sidebarSource = readFileSync(resolve(process.cwd(), "src/components/AppSid
 
 describe("Business Report navigation", () => {
   it("lazy-loads the route behind AdminRoute", () => {
-    expect(appSource).toContain('const BusinessReport = lazy(() => import("./pages/BusinessReport"))');
+    // Dashboard pages are declared (and preloaded) in src/dashboardPages.ts.
+    expect(readFileSync(resolve(process.cwd(), "src/dashboardPages.ts"), "utf8")).toContain('export const BusinessReport = lazyPage(() => import("./pages/BusinessReport"))');
     expect(appSource).toContain('<Route path="/reports/business" element={<AdminRoute><BusinessReport /></AdminRoute>} />');
   });
 

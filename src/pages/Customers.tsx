@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { apiFetch } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { getJson, pageKeys } from "@/lib/pageQueries";
 import { buildCustomerExportCsv } from "@/lib/customerExport";
 import { MagnifyingGlass, Package, X } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -120,58 +121,42 @@ export default function Customers() {
   const location = useLocation();
   const navigate = useNavigate();
   const restored = location.state?.customerListState as { query?: string; source?: Source | "all"; campaignFilter?: (typeof campaignOptions)[number]; productFilter?: string; dateRange?: DateRange | null; tableView?: CustomerTableView; selectedIds?: string[] } | undefined;
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [summary, setSummary] = useState<CustomerSummary | null>(null);
-  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(restored?.query || "");
   const [source, setSource] = useState<Source | "all">(restored?.source || "all");
   const [campaignFilter, setCampaignFilter] = useState<(typeof campaignOptions)[number]>(restored?.campaignFilter || "all");
   const [productFilter, setProductFilter] = useState(restored?.productFilter || "all");
-  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | null>(restored?.dateRange || null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(restored?.selectedIds || []));
   const [smsOpen, setSmsOpen] = useState(false);
 
+  // Cached (and warmed by the sidebar on hover): coming back to Customers shows the
+  // list at once and refreshes it in the background.
+  const customersQuery = useQuery({
+    queryKey: pageKeys.customers,
+    queryFn: () => getJson<{ customers?: Customer[]; summary?: CustomerSummary | null }>("/api/customers", "Failed to load customers"),
+  });
+  const customers = useMemo(() => customersQuery.data?.customers || [], [customersQuery.data]);
+  const summary = customersQuery.data?.summary || null;
+  const loading = customersQuery.isPending;
+  const loadError = customersQuery.error?.message;
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await apiFetch("/api/customers");
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to load customers");
-        if (!cancelled) {
-          setCustomers(data.customers || []);
-          setSummary(data.summary || null);
-        }
-      } catch (error) {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load customers");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, []);
+    if (loadError) toast.error(loadError);
+  }, [loadError]);
 
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch("/api/products")
-      .then((res) => (res.ok ? res.json() : { products: [] }))
-      .then((data: { products?: Array<{ name?: string | null; image_url?: string | null }> }) => {
-        if (cancelled) return;
-        const byName = new Map<string, ProductOption>();
-        for (const product of data.products || []) {
-          const name = product.name?.trim();
-          if (name && !byName.has(name)) byName.set(name, { name, imageUrl: product.image_url || null });
-        }
-        setProductOptions([...byName.values()].sort((a, b) => a.name.localeCompare(b.name)));
-      })
-      .catch(() => {
-        // The product filter is optional; the customer list still works without it.
-      });
-    return () => { cancelled = true; };
-  }, []);
+  // The product filter shares the catalog cache with the Products page. It is optional:
+  // the customer list still works without it.
+  const productsQuery = useQuery({
+    queryKey: pageKeys.products,
+    queryFn: () => getJson<{ products?: Array<{ name?: string | null; image_url?: string | null }> }>("/api/products"),
+  });
+  const productOptions = useMemo(() => {
+    const byName = new Map<string, ProductOption>();
+    for (const product of productsQuery.data?.products || []) {
+      const name = product.name?.trim();
+      if (name && !byName.has(name)) byName.set(name, { name, imageUrl: product.image_url || null });
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [productsQuery.data]);
 
   // Only offer sources this workspace has actually received orders from.
   const sourceOptions = useMemo(() => {

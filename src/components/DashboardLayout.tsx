@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { HeaderAlerts } from "./HeaderAlerts";
@@ -13,6 +13,14 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
+import { prefetchOrdersPage } from "@/pages/Dashboard";
+import { preloadDashboardPages } from "@/dashboardPages";
+import { Spinner } from "@/components/ui/ios-spinner";
+
+// Long enough for the page being opened to load first.
+const ORDERS_PREFETCH_DELAY_MS = 1500;
 import { AccountMenuBody, accountMenuPanelClass, useAccountIdentity } from "./AccountMenu";
 
 const routeBreadcrumbLabels: Record<string, string> = {
@@ -52,6 +60,20 @@ export function DashboardLayout() {
 
     const { initials } = useAccountIdentity();
     const mainRef = useRef<HTMLElement>(null);
+    const queryClient = useQueryClient();
+    const { user } = useAuth();
+
+    // Warm the app in the background once the current page has loaded: Orders' data
+    // first (the main workspace; on Orders itself the page loads its own), then every
+    // page's code, so opening a page needs no download and no loading state.
+    useEffect(() => {
+        if (!user?.id) return;
+        const timer = window.setTimeout(async () => {
+            if (!window.location.pathname.startsWith("/orders")) await prefetchOrdersPage(queryClient, user.id);
+            await preloadDashboardPages();
+        }, ORDERS_PREFETCH_DELAY_MS);
+        return () => window.clearTimeout(timer);
+    }, [queryClient, user?.id]);
 
     useLayoutEffect(() => {
         window.scrollTo(0, 0);
@@ -132,7 +154,11 @@ export function DashboardLayout() {
                         </div>
                     </header>
                     <main ref={mainRef} className="isolate mx-3 mb-3 min-w-0 flex-1 overflow-auto rounded-[18px] border border-black/10 bg-[#f3f3f3] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] max-md:pb-16">
-                        <Outlet />
+                        {/* Only the page area waits for a page that isn't downloaded yet;
+                            the sidebar and header stay. */}
+                        <Suspense fallback={<div className="flex h-full min-h-[50vh] items-center justify-center"><Spinner size="lg" className="text-muted-foreground" /></div>}>
+                            <Outlet />
+                        </Suspense>
                     </main>
                 </SidebarInset>
                 <MobileBottomNav />

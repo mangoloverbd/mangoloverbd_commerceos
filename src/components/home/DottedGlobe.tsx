@@ -62,10 +62,16 @@ function pinLabel(visitor: HomeLiveVisitor) {
   return { place, detail: `Page view · ${when}` };
 }
 
-export function DottedGlobe({ visitors, onLand }: {
+// Home's placement: cropped by the top and right of the page like Shopify's, but placed high
+// enough that the whole bottom curve sits above the cards instead of behind them.
+const HOME_PLACEMENT = "-right-[170px] -top-[150px] max-md:opacity-35";
+
+export function DottedGlobe({ visitors, onLand, className = HOME_PLACEMENT }: {
   visitors: HomeLiveVisitor[];
   /** Called each time the pin lands on a new place. */
   onLand?: () => void;
+  /** Where the globe sits in its positioned parent. */
+  className?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pinRef = useRef<HTMLDivElement>(null);
@@ -253,9 +259,7 @@ export function DottedGlobe({ visitors, onLand }: {
   const label = visitor ? pinLabel(visitor) : null;
 
   return (
-    // Cropped by the top and right of the page like Shopify's, but placed high enough
-    // that the whole bottom curve sits above the cards instead of behind them.
-    <div aria-hidden="true" className="pointer-events-none absolute -right-[170px] -top-[150px] z-0 h-[780px] w-[780px] max-md:opacity-35">
+    <div aria-hidden="true" className={`pointer-events-none absolute z-0 h-[780px] w-[780px] ${className}`}>
       {/* The sphere (same radius as the projection): a white glow that fades into the
           page at its rim, with only a soft shadow hinting at the lower edge. */}
       <div

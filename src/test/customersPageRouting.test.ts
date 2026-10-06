@@ -7,7 +7,8 @@ describe("Customers page routing", () => {
   const sidebarSource = readFileSync(resolve(process.cwd(), "src/components/AppSidebar.tsx"), "utf8");
 
   it("registers a protected Customers route", () => {
-    expect(appSource).toContain('const Customers = lazy(() => import("./pages/Customers"))');
+    // Dashboard pages are declared (and preloaded) in src/dashboardPages.ts.
+    expect(readFileSync(resolve(process.cwd(), "src/dashboardPages.ts"), "utf8")).toContain('export const Customers = lazyPage(() => import("./pages/Customers"))');
     expect(appSource).toContain('<Route path="/customers" element={<Customers />} />');
   });
 
@@ -20,7 +21,7 @@ describe("Customers page routing", () => {
   it("loads customers through apiFetch and supports source-aware labels", () => {
     const pageSource = readFileSync(resolve(process.cwd(), "src/pages/Customers.tsx"), "utf8");
 
-    expect(pageSource).toContain('apiFetch("/api/customers")');
+    expect(pageSource).toContain('getJson<{ customers?: Customer[]; summary?: CustomerSummary | null }>("/api/customers"');
     expect(pageSource).toContain('CustomerDataTable');
     expect(pageSource).not.toContain('AI source-aware profiles');
     expect(pageSource).toContain("ORDER_SOURCE_OPTIONS");

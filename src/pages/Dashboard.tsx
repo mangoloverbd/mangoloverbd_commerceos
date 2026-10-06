@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQueries, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useQueries, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { OrdersSyncError, syncOrders } from "@/lib/ordersSync";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,7 +14,8 @@ import { getDhakaGreeting } from "@/lib/greeting";
 import { detectDistrict, DISTRICT_UNKNOWN_SENTINEL } from "@/lib/bdDistricts";
 import { matchesOrderSearch } from "@/lib/orderSearch";
 import { buildPendingOrdersByPhone } from "@/lib/abandonedPendingMatch";
-import { GlobeAnalytics } from "@/components/ui/cobe-globe-analytics";
+import { DottedGlobe } from "@/components/home/DottedGlobe";
+import { RISE_EASE, Rise } from "@/components/home/Rise";
 import { OrdersTable } from "@/components/OrdersTable";
 import {
   OrderRowsPerPageSelect,
@@ -40,7 +41,7 @@ import {
 } from "lucide-react";
 import { CaretDown, Printer } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/input";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -236,6 +237,31 @@ function cachedSnapshotFor(range?: DateRange | null, userId?: string) {
     : null;
 }
 
+// Warms Orders before it is opened (called from the dashboard shell): the order list,
+// shared with the page's own sync, and today's P&L pair. The first visit then renders
+// from cache and only revalidates. Each part is skipped once it is warm.
+export async function prefetchOrdersPage(queryClient: QueryClient, userId: string): Promise<void> {
+  const tasks: Promise<unknown>[] = [];
+  if (!queryClient.getQueryData(["/api/orders"])) tasks.push(syncOrders(queryClient));
+  if (analyticsSnapshot?.userId !== userId) tasks.push(prefetchTodayAnalytics(userId));
+  await Promise.allSettled(tasks);
+}
+
+async function prefetchTodayAnalytics(userId: string): Promise<void> {
+  const range: DateRange = { from: TODAY, to: TODAY };
+  const prev = prevRangeOf(range)!;
+  const query = (r: DateRange) => new URLSearchParams({ since: toYMD(r.from!), until: toYMD(r.to!) });
+  const [res, prevRes] = await Promise.all([
+    apiFetch(`/api/analytics?${query(range)}`),
+    apiFetch(`/api/analytics?${query(prev)}`),
+  ]);
+  if (!res.ok || !prevRes.ok) return;
+  const [analytics, prevAnalytics] = await Promise.all([res.json(), prevRes.json()]);
+  // The page may have opened and stored its own (possibly other range) meanwhile.
+  if (analyticsSnapshot?.userId === userId) return;
+  analyticsSnapshot = { userId, rangeKey: rangeKeyOf(range), range, analytics, prev: prevAnalytics };
+}
+
 const COURIER_REFRESH_MIN_INTERVAL_MS = 10 * 60 * 1000;
 
 // Courier status refreshes are expensive upstream calls; run them at most
@@ -414,7 +440,6 @@ const FinanceMetric = memo(function FinanceMetric({
                   height={30}
                   maxSteps={8}
                   curve="smooth"
-                  animateOnMount={false}
                 />
               </div>
             </div>
@@ -546,6 +571,7 @@ export default function Dashboard() {
   const { orgName } = useOrgName();
   const liveVisitors = useLiveVisitors();
   const isMobile = useIsMobile();
+  const reduceMotion = useReducedMotion();
 
   // `fresh` bypasses the server's short analytics cache for the selected range
   // (user-triggered refreshes); the previous-period call stays cached.
@@ -1363,7 +1389,7 @@ export default function Dashboard() {
 
           {/* Desktop metric cards grid. Keep this branch unchanged for desktop. */}
           <div data-testid="desktop-pnl" className="hidden md:block">
-          <div className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <Rise className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3">
             <FinanceMetric
               label="Revenue incl. delivery"
               loading={analyticsLoading}
@@ -1405,9 +1431,10 @@ export default function Dashboard() {
               trend={trends.profit}
               seed={75}
             />
-          </div>
+          </Rise>
           </div>
 
+          <Rise className="md:hidden">
           <MobilePnlLayout
             metrics={[
               { key: "revenue", label: "Revenue incl. delivery" },
@@ -1482,21 +1509,26 @@ export default function Dashboard() {
               }
             }}
           />
+          </Rise>
         </div>
 
-        {/* Globe — large, anchored to the right edge and bleeding off the
-            corner behind the content, like the Shopify hero */}
-        <div className="pointer-events-none absolute right-[-170px] top-1/2 z-0 -translate-y-1/2">
-          <GlobeAnalytics className="w-[620px]" />
-        </div>
+        {/* Home's dotted globe with the live visitors, anchored to the right edge and
+            bleeding off the corner behind the content; scaled to the hero. */}
+        <DottedGlobe
+          visitors={liveVisitors.visitors}
+          className="-right-[250px] top-1/2 -translate-y-1/2 scale-[0.8]"
+        />
 
         {/* ── Greeting band — inside the hero, above the globe ───────── */}
         <div className="relative z-10 grid items-center md:grid-cols-[1fr_auto_1fr] pb-10 pt-8">
           {/* Glyph background — left side (globe stays on the right). Runs down
               into the gap above the Fulfillment Queue card; two intersected
               masks dissolve it on every edge so it blends into the panel. */}
-          <div
+          <motion.div
             aria-hidden
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1, delay: 0.2 }}
             className="pointer-events-none absolute -bottom-6 left-0 top-0 z-0 hidden w-[60%] md:block"
             style={{
               maskImage:
@@ -1516,17 +1548,20 @@ export default function Dashboard() {
               color="rgba(0, 0, 0, 0.65)"
               className="absolute inset-0"
             />
-          </div>
+          </motion.div>
 
           <div className="hidden md:block" />
         <div className="text-center relative z-10 max-md:px-3">
-          <TextShimmer
-            as="h2"
-            duration={3}
-            className="text-5xl font-bold max-md:text-3xl"
-          >
-            {`${getDhakaGreeting()}!`}
-          </TextShimmer>
+          <Rise delay={0.2}>
+            <TextShimmer
+              as="h2"
+              duration={3}
+              className="text-5xl font-bold max-md:text-3xl"
+            >
+              {`${getDhakaGreeting()}!`}
+            </TextShimmer>
+          </Rise>
+          <Rise delay={0.28}>
           <p className="mt-2 text-base font-light text-black">
             Manage your operations and every profit under one roof.
           </p>
@@ -1562,6 +1597,7 @@ export default function Dashboard() {
               </div>
             </span>
           </DateRangePicker>
+          </Rise>
         </div>
           <div className="hidden md:block" />
         </div>
@@ -1569,9 +1605,9 @@ export default function Dashboard() {
 
       {/* ── Orders table card ────────────────────────────────────────────── */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.4 }}
+        transition={{ delay: 0.36, duration: 0.55, ease: RISE_EASE }}
         className="relative z-10 overflow-hidden rounded-xl border border-black/10 bg-white"
       >
         {/* Toolbar */}
