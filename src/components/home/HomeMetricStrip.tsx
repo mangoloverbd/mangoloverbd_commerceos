@@ -1,9 +1,14 @@
-import { useId, type ReactNode } from "react";
+import { lazy, Suspense, useId, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Format } from "@number-flow/react";
 import { MetricNumberFlow } from "@/components/ui/number-flow";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { RISE_EASE } from "./Rise";
-import type { HomeMetric } from "./types";
+import type { BucketUnit } from "./metricTrend";
+import type { HomeMetric, HomeSummary } from "./types";
+
+// Recharts loads on the first hover, keeping it out of Home's first paint.
+const MetricTrendCard = lazy(() => import("./MetricTrendCard"));
 
 type MetricKey = "sessions" | "sales" | "orders" | "conversion_rate";
 
@@ -115,6 +120,32 @@ function Appear({ children }: { children: ReactNode }) {
   );
 }
 
+// Hovering a metric opens its chart over the period, like Shopify's Home.
+function MetricTrend({ metricKey, metric, unit, range, children }: {
+  metricKey: MetricKey;
+  metric: HomeMetric | null;
+  unit: BucketUnit | null;
+  range: HomeSummary["range"];
+  children: ReactNode;
+}) {
+  // The wrapper stays mounted while loading: swapping it in when data arrives
+  // would remount the number and skip its roll-up from 0.
+  return (
+    <HoverCard openDelay={150} closeDelay={100} {...(metric ? {} : { open: false })}>
+      <HoverCardTrigger asChild>
+        <div className="cursor-default">{children}</div>
+      </HoverCardTrigger>
+      {metric && (
+        <HoverCardContent sideOffset={12} className="w-[min(560px,calc(100vw-24px))] rounded-2xl border-[#ECEAE4] bg-white p-6">
+          <Suspense fallback={<div className="h-[340px]" />}>
+            <MetricTrendCard metricKey={metricKey} metric={metric} unit={unit} range={range} />
+          </Suspense>
+        </HoverCardContent>
+      )}
+    </HoverCard>
+  );
+}
+
 function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: {
   label: string;
   metric: HomeMetric | null;
@@ -180,8 +211,12 @@ function LiveIndicator({ count, loading, pulse }: { count: number | null; loadin
   );
 }
 
-export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, isAdmin, scope }: {
+export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, isAdmin, scope, range, unit = null }: {
   metrics: Record<MetricKey, HomeMetric | null> | undefined;
+  /** The reported period, for the hover chart's dates. */
+  range?: HomeSummary["range"];
+  /** Hours for a single day, days for a span; null for all time. */
+  unit?: BucketUnit | null;
   /** No summary yet (first load). */
   loading: boolean;
   liveCount: number | null;
@@ -196,7 +231,9 @@ export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, is
       {scope}
       <div className="flex flex-wrap justify-center gap-x-9 gap-y-4 max-[1360px]:gap-x-6">
         {METRICS.map(({ key, label, prefix, suffix, format, adminOnly }) => (
-          <MetricItem key={key} label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
+          <MetricTrend key={key} metricKey={key} metric={adminOnly && !isAdmin ? null : metrics?.[key] ?? null} unit={unit} range={range}>
+            <MetricItem label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
+          </MetricTrend>
         ))}
       </div>
       <LiveIndicator count={liveCount} loading={loading} pulse={livePulse} />

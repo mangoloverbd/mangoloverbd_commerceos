@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.65] - 2026-10-06
+
+### Added
+
+- Hovering Sessions, Total sales, Orders or Conversion rate on Home opens a chart of that metric over the period, like Shopify: the figure and its change, what it measures, and each hour (or day) against the comparison period as a dotted line. The chart code loads on first hover, so Home's first load is unchanged.
+- Conversion rate is now tracked by the hour, so it has a sparkline and an hourly chart too. Needs the `20261006190000_website_report_hourly_conversion` migration (already applied to the Mango Lover BD database).
+
+### Fixed
+
+- Steadfast fraud history comes from Steadfast itself, using the shop's own Steadfast API keys, instead of FraudShield's copy, which sometimes showed 0 parcels for customers with Steadfast history. FraudShield still covers the other couriers and is used for Steadfast if Steadfast's API fails. Steadfast reports a range (e.g. "25+"), shown as such in the fraud panel and counted at its low end in totals.
+
 ## [0.1.0.64] - 2026-10-06
 
 ### Changed

@@ -98,14 +98,27 @@ describe("Home page", () => {
     let resolve: (response: Response) => void = () => {};
     apiFetch.mockImplementation(() => new Promise<Response>((done) => { resolve = done; }));
     renderHome();
-    expect(screen.getByText("৳0")).toBeInTheDocument();
+    const salesBeforeData = screen.getByText("৳0");
     expect(screen.getByText("0.00%")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Quick actions" })).not.toBeInTheDocument();
 
     resolve(new Response(JSON.stringify(summary), { status: 200 }));
-    expect(await screen.findByText("৳84,620")).toBeInTheDocument();
+    // The same element updates in place; a remount would skip the roll-up.
+    expect(await screen.findByText("৳84,620")).toBe(salesBeforeData);
     expect(screen.queryByText("৳0")).not.toBeInTheDocument();
     expect(await screen.findByRole("navigation", { name: "Quick actions" })).toBeInTheDocument();
+  });
+
+  it("opens a metric's chart over the period on hover", async () => {
+    renderHome();
+    await screen.findByText("৳84,620");
+    await userEvent.hover(screen.getByTestId("home-metric-Total sales"));
+
+    // The card code is lazy-loaded, which can be slow under a full parallel run.
+    const card = await screen.findByTestId("home-metric-trend-sales", {}, { timeout: 5000 });
+    expect(card).toHaveTextContent("৳84,620.00");
+    expect(card).toHaveTextContent("+24%");
+    expect(card).toHaveTextContent("Total sales over time");
   });
 
   it("hides money figures from team members", async () => {

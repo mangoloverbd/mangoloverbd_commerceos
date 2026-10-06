@@ -2,7 +2,7 @@ export type FraudLevel = "safe" | "caution" | "high" | "unknown";
 
 type FraudSummary = { success_rate?: number | null; fraud_risk?: string | null; total_parcels?: number | null } | null;
 type FraudPayload = {
-  courierData?: Record<string, { name?: string; logo?: string; total_parcel?: number; success_parcel?: number; success_ratio?: number }>;
+  courierData?: Record<string, { name?: string; logo?: string; total_parcel?: number; success_parcel?: number; success_ratio?: number; volume_range?: string | null }>;
   reviews?: Array<{ commenter_phone?: string; rating?: number; comment?: string; created_at?: string }>;
   fraudRiskScore?: { score?: number; level?: string; label?: string; breakdown?: Record<string, number> };
 } | null;
@@ -62,6 +62,8 @@ export function courierRows(payload: FraudPayload) {
         logo: courier.logo?.replace("fraudshieldbd.site", "fraudshield.bd") ?? null,
         total,
         success,
+        // Steadfast reports a volume range rather than an exact count.
+        countLabel: courier.volume_range ?? `${success}/${total}`,
         ratio: courier.success_ratio ?? (total > 0 ? Math.round((success / total) * 100) : 0),
       };
     });

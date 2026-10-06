@@ -9,6 +9,9 @@ export interface HomeMetric {
   series: number[] | null;
   /** The comparison period's running total over the same buckets. */
   previous_series: number[] | null;
+  /** Each bucket's own value, sent only for a rate (conversion) that can't be differenced. */
+  buckets?: number[] | null;
+  previous_buckets?: number[] | null;
 }
 
 export interface HomeLiveVisitor {

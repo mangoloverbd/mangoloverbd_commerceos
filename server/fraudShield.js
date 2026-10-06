@@ -143,6 +143,81 @@ export async function fetchFraudShield(cleanedPhone, apiKey, fetchImpl = fetch) 
   }
 }
 
+// ─── Steadfast's own fraud score ────────────────────────────────────────────
+// FraudShield sometimes reports zero Steadfast parcels for numbers Steadfast
+// itself knows well, so Steadfast is read with the merchant's own API keys and
+// overrides FraudShield's Steadfast row. Steadfast returns ratios and a volume
+// range ("25+", "6-20"), not exact counts.
+
+const STEADFAST_SCORE_URL = "https://portal.packzy.com/api/v1/fraud_check/score";
+const STEADFAST_TIMEOUT_MS = 8000;
+
+export async function fetchSteadfastScore(cleanedPhone, { apiKey, secretKey } = {}, fetchImpl = fetch) {
+  const key = String(apiKey || "").trim();
+  const secret = String(secretKey || "").trim();
+  if (!key || !secret) return { score: null, errorMessage: "Steadfast API keys not configured" };
+
+  try {
+    const response = await fetchImpl(`${STEADFAST_SCORE_URL}/${cleanedPhone}`, {
+      headers: { "Api-Key": key, "Secret-Key": secret, "Content-Type": "application/json", Accept: "application/json" },
+      signal: AbortSignal.timeout(STEADFAST_TIMEOUT_MS),
+    });
+    if (!response.ok) return { score: null, errorMessage: `Steadfast HTTP ${response.status}` };
+
+    const score = await response.json();
+    // An empty success body must not read as a clean customer.
+    if (!score || !("delivery_ratio" in score) || !("volume_band" in score)) {
+      return { score: null, errorMessage: "Steadfast returned no fraud score" };
+    }
+    return { score, errorMessage: null };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { score: null, errorMessage: `Steadfast network error: ${msg}` };
+  }
+}
+
+export function mergeSteadfastScore(payload, score) {
+  const existing = payload?.courierData?.steadfast || {};
+  // The lower bound of the range is the parcel count we can vouch for.
+  const total = score.volume_band === "none" ? 0 : parseInt(String(score.volume_range ?? ""), 10) || 0;
+  const share = (ratio) => (Number.isFinite(ratio) ? Math.round((total * ratio) / 100) : 0);
+
+  return {
+    ...payload,
+    courierData: {
+      ...payload?.courierData,
+      steadfast: {
+        name: existing.name ?? "Steadfast",
+        logo: existing.logo,
+        total_parcel: total,
+        success_parcel: share(score.delivery_ratio),
+        cancelled_parcel: share(score.cancellation_ratio),
+        success_ratio: score.delivery_ratio ?? 0,
+        volume_range: score.volume_range ?? null,
+        source: "steadfast",
+      },
+    },
+  };
+}
+
+// FraudShield stays the source for every other courier; a Steadfast failure
+// leaves FraudShield's Steadfast row in place.
+export async function fetchFraudSources(cleanedPhone, { fraudShieldKey, steadfast, fetchImpl = fetch }) {
+  const [fraudShield, steadfastResult] = await Promise.all([
+    fetchFraudShield(cleanedPhone, fraudShieldKey, fetchImpl),
+    fetchSteadfastScore(cleanedPhone, steadfast, fetchImpl),
+  ]);
+  if (fraudShield.errorMessage || !steadfastResult.score) {
+    if (steadfastResult.errorMessage && !fraudShield.errorMessage) {
+      console.warn(`[Steadfast] fraud score unavailable for ${cleanedPhone}: ${steadfastResult.errorMessage}`);
+    }
+    return fraudShield;
+  }
+
+  const payload = mergeSteadfastScore(fraudShield.payload, steadfastResult.score);
+  return { payload, summary: deriveFraudSummary(payload, cleanedPhone), errorMessage: null };
+}
+
 // ─── Cache policy ───────────────────────────────────────────────────────────
 
 export function cacheState(row, now) {

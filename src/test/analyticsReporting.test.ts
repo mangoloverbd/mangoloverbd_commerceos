@@ -129,7 +129,7 @@ describe("website report", () => {
     expect(report.totals).toMatchObject({ sessions: 3, visitors: 2, pageviews: 4, product_sessions: 2, cart_sessions: 1, checkout_sessions: 1,
       ordered_sessions: 2, orders: 2, delivered_sessions: 1, bounced_sessions: 2 });
     expect(report.daily).toEqual([{ day: "2026-10-02", sessions: 3, visitors: 2, pageviews: 4, ordered_sessions: 2 }]);
-    expect(report.hourly.find((row) => row.hour === 10)).toEqual({ hour: 10, sessions: 1 });
+    expect(report.hourly.find((row) => row.hour === 10)).toEqual({ hour: 10, sessions: 1, ordered_sessions: 1 });
     expect(report.sources[0]).toMatchObject({ source: "direct", sessions: 1, ordered_sessions: 1 });
     expect(report.products).toEqual([{ product_slug: "katimon-mango", name: "Katimon Mango", views: 2, sessions: 2, ordered_sessions: 1, orders: 1, delivered: 1 }]);
     expect(report.campaigns).toEqual([{ campaign: "himsagar-reel", sessions: 1, ordered_sessions: 1 }]);
