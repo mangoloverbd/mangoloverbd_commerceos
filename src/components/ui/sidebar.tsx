@@ -358,6 +358,9 @@ const Sidebar = React.forwardRef<
           variant === "floating" || variant === "inset"
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+var(--spacing)*4)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+          // A hover peek overlays the page instead of pushing it, so heavy pages
+          // (the Orders table) don't re-lay out on every frame of the animation.
+          "group-data-[peeking=true]:w-(--sidebar-width-icon)",
         )}
       />
       <div
