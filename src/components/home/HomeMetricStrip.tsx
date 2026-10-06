@@ -157,7 +157,7 @@ function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: 
   );
 }
 
-function LiveIndicator({ count, loading }: { count: number | null; loading: boolean }) {
+function LiveIndicator({ count, loading, pulse }: { count: number | null; loading: boolean; pulse: number }) {
   const reduceMotion = useReducedMotion();
   return (
     <div className="flex items-center gap-2 pt-1.5 text-[14px] text-[#55534E]" aria-live="polite">
@@ -165,21 +165,28 @@ function LiveIndicator({ count, loading }: { count: number | null; loading: bool
         ? <b className="font-semibold text-[#111110]">—</b>
         : <MetricNumberFlow value={count ?? 0} prefix="" className={`font-semibold tabular-nums text-[#111110] transition-opacity duration-300 ${loading ? "opacity-30" : ""}`} />}
       <span className="relative h-2.5 w-2.5 rounded-full border-2 border-[#3FA34D]" aria-hidden="true">
-        <motion.span
-          className="absolute -inset-[6px] rounded-full border border-dashed border-[#3FA34D]/50"
-          animate={reduceMotion ? undefined : { rotate: 360 }}
-          transition={{ duration: 6, ease: "linear", repeat: Infinity }}
-        />
+        {/* Spins once each time the globe's pin lands on a new place. */}
+        {pulse > 0 && !reduceMotion && (
+          <motion.span
+            key={pulse}
+            className="absolute -inset-[6px] rounded-full border border-dashed border-[#3FA34D]/60"
+            initial={{ opacity: 0, rotate: 0, scale: 0.7 }}
+            animate={{ opacity: [0, 1, 1, 0], rotate: 140, scale: 1 }}
+            transition={{ duration: 1.2, ease: "easeOut" }}
+          />
+        )}
       </span>
     </div>
   );
 }
 
-export function HomeMetricStrip({ metrics, loading, liveCount, isAdmin, scope }: {
+export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, isAdmin, scope }: {
   metrics: Record<MetricKey, HomeMetric | null> | undefined;
   /** No summary yet (first load). */
   loading: boolean;
   liveCount: number | null;
+  /** Bumped each time the globe's pin lands; spins the live ring once. */
+  livePulse?: number;
   isAdmin: boolean;
   /** The period and channel controls on the left. */
   scope: ReactNode;
@@ -192,7 +199,7 @@ export function HomeMetricStrip({ metrics, loading, liveCount, isAdmin, scope }:
           <MetricItem key={key} label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
         ))}
       </div>
-      <LiveIndicator count={liveCount} loading={loading} />
+      <LiveIndicator count={liveCount} loading={loading} pulse={livePulse} />
     </header>
   );
 }

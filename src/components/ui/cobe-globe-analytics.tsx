@@ -147,6 +147,7 @@ export function GlobeAnalytics({
       const width = canvas.offsetWidth;
       if (width === 0 || globe) return;
 
+      const headBefore = new Set(document.head.children);
       globe = createGlobe(canvas, {
         devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         width,
@@ -161,13 +162,22 @@ export function GlobeAnalytics({
         markerColor: [0.3, 0.85, 0.45],
         glowColor: [0.78, 0.77, 0.75],
         markerElevation: 0,
-        markers: initialMarkers.map((m) => ({ location: m.location, size: 0.04, id: m.id })),
+        // No marker `id`: cobe rewrites a :root <style> every frame for id'd
+        // markers (CSS anchor visibility), which restyles the whole page.
+        markers: initialMarkers.map((m) => ({ location: m.location, size: 0.04 })),
         arcs: [],
         arcColor: [0.25, 0.9, 0.5],
         arcWidth: 0.5,
         arcHeight: 0.25,
         opacity: 0.7,
       });
+      // cobe rewrites its own <style>:root{…}</style> on every frame, even when
+      // the text is unchanged, and each rewrite restyles the whole page (~45ms
+      // on Orders). We use no marker ids, so the sheet is always empty: detach
+      // it so those writes stop touching the document.
+      for (const el of Array.from(document.head.children)) {
+        if (el.tagName === "STYLE" && !headBefore.has(el)) el.remove();
+      }
 
       function animate() {
         if (!isPausedRef.current) phi += speed;
