@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.63] - 2026-10-06
+
+### Changed
+
+- The Ask Edith bar on Home has raised, beveled buttons: the Edith icon is a mango badge that lifts on hover, and the send button is black, faded until there's a question, lifting on hover and pressing in on click.
+
 ## [0.1.0.62] - 2026-10-06
 
 ### Changed
