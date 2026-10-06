@@ -106,13 +106,31 @@ export function buildHomeMetrics({ orders, windows, website, channel = "all" }) 
     }
   }
 
-  const sessionSeriesOf = (report, since) => {
-    const series = blank();
-    const rows = windows.bucket.unit === "hour"
-      ? (report?.hourly || []).map((row) => [Number(row.hour), row.sessions])
-      : (report?.daily || []).map((row) => [bucketOf(Date.parse(`${String(row.day).slice(0, 10)}T00:00:00+06:00`), windows, since), row.sessions]);
-    for (const [index, value] of rows) if (index >= 0 && index < count) series[index] = Number(value) || 0;
-    return cumulative(series);
+  // Each bucket's sessions, and its ordered sessions when the report has them.
+  const websiteBuckets = (report, since) => {
+    const rows = windows.bucket.unit === "hour" ? report?.hourly || [] : report?.daily || [];
+    const sessions = blank();
+    const ordered = rows.some((row) => "ordered_sessions" in row) ? blank() : null;
+    for (const row of rows) {
+      const index = windows.bucket.unit === "hour"
+        ? Number(row.hour)
+        : bucketOf(Date.parse(`${String(row.day).slice(0, 10)}T00:00:00+06:00`), windows, since);
+      if (!(index >= 0 && index < count)) continue;
+      sessions[index] = Number(row.sessions) || 0;
+      if (ordered) ordered[index] = Number(row.ordered_sessions) || 0;
+    }
+    return { sessions, ordered };
+  };
+  const percent = (part, whole) => (whole > 0 ? round2((part / whole) * 100) : 0);
+  // The running rate (so the sparkline ends at the headline) and each bucket's own rate.
+  const conversionSeries = (buckets) => {
+    if (!buckets.ordered) return { running: null, own: null };
+    const sessions = cumulative(buckets.sessions);
+    const ordered = cumulative(buckets.ordered);
+    return {
+      running: sessions.map((total, index) => percent(ordered[index], total)),
+      own: buckets.sessions.map((total, index) => percent(buckets.ordered[index], total)),
+    };
   };
 
   let sessions = null;
@@ -121,14 +139,23 @@ export function buildHomeMetrics({ orders, windows, website, channel = "all" }) 
     const totals = website.current.totals || {};
     const previousTotals = website.previous?.totals || null;
     const rate = (row) => (row.sessions > 0 ? round2((row.ordered_sessions / row.sessions) * 100) : 0);
+    const currentBuckets = windows.bucket ? websiteBuckets(website.current, windows.current.since) : null;
+    const previousBuckets = windows.bucket && website.previous ? websiteBuckets(website.previous, windows.previous.since) : null;
     sessions = metric(
       Number(totals.sessions) || 0,
       previousTotals ? Number(previousTotals.sessions) || 0 : null,
-      windows.bucket ? sessionSeriesOf(website.current, windows.current.since) : null,
-      windows.bucket && website.previous ? sessionSeriesOf(website.previous, windows.previous.since) : null,
+      currentBuckets && cumulative(currentBuckets.sessions),
+      previousBuckets && cumulative(previousBuckets.sessions),
     );
-    // Orders per visit by the hour isn't in the report, so conversion has no sparkline.
-    conversion = metric(rate(totals), previousTotals ? rate(previousTotals) : null);
+    // A rate can't be summed, so its hover chart reads `buckets` instead of
+    // differencing the running series. Absent until the report has ordered sessions per bucket.
+    const currentRate = currentBuckets ? conversionSeries(currentBuckets) : { running: null, own: null };
+    const previousRate = previousBuckets ? conversionSeries(previousBuckets) : { running: null, own: null };
+    conversion = {
+      ...metric(rate(totals), previousTotals ? rate(previousTotals) : null, currentRate.running, currentRate.running && previousRate.running),
+      buckets: currentRate.own,
+      previous_buckets: currentRate.own && previousRate.own,
+    };
   }
 
   const hasPrevious = Boolean(windows.previous);

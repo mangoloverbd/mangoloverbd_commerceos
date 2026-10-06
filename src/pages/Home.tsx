@@ -81,6 +81,8 @@ export default function Home() {
         liveCount={data?.live.count ?? null}
         livePulse={pinLandings}
         isAdmin={isAdmin}
+        range={data?.range}
+        unit={!range?.from ? null : !range.to || range.to.getTime() === range.from.getTime() ? "hour" : "day"}
         scope={<HomeScopeControls range={range} onRangeChange={setRange} channel={channel} onChannelChange={setChannel} />}
       />
 
