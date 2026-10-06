@@ -322,12 +322,12 @@ export function AppSidebar() {
                 <div data-testid="sidebar-brand">
                     <Link
                         to="/"
-                        className="flex h-10 w-full items-center gap-2 overflow-hidden rounded-[6px] border border-[#dcdbd7] bg-[#f9f8f6] p-px pr-2.5 shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-colors hover:bg-white focus-visible:ring-2 focus-visible:ring-black/15"
+                        className="flex h-10 w-full items-center gap-2 overflow-hidden rounded-[6px] border border-[#dcdbd7] bg-[#f9f8f6] p-px pr-2.5 shadow-[inset_0_1px_0_#fff,0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-[color,background-color,height] duration-200 ease-out hover:bg-white focus-visible:ring-2 focus-visible:ring-black/15 group-data-[collapsible=icon]:h-[31px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pr-px"
                     >
-                        <span data-testid="sidebar-brand-logo" className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+                        <span data-testid="sidebar-brand-logo" className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] transition-[width,height] duration-200 ease-out group-data-[collapsible=icon]:h-[27px] group-data-[collapsible=icon]:w-[27px] group-data-[collapsible=icon]:rounded-[5px]">
                             <img src="/brand/mango-lover-logo.webp" alt="Mango Lover BD" className="h-full w-full scale-110 object-contain" />
                         </span>
-                        <span className={cn("min-w-0 flex-1", railFade)}>
+                        <span className={cn("min-w-0 flex-1 group-data-[collapsible=icon]:hidden", railFade)}>
                             <span className="block truncate whitespace-nowrap font-sans text-[10.5px] leading-tight text-[#8d8c87]">Merchant Suite</span>
                             {orgLoading ? (
                                 <span className="mt-1 block h-3 w-24 animate-pulse rounded bg-black/10" />
@@ -335,7 +335,7 @@ export function AppSidebar() {
                                 <span className="mt-0.5 block truncate whitespace-nowrap font-sans text-[13px] font-medium leading-tight text-[#1b1b19]">{orgName || "Mango Lover BD"}</span>
                             )}
                         </span>
-                        <CaretUpDown aria-hidden="true" weight="light" size={14} className={cn("shrink-0 text-[#a3a29d]", railFade)} />
+                        <CaretUpDown aria-hidden="true" weight="light" size={14} className={cn("shrink-0 text-[#a3a29d] group-data-[collapsible=icon]:hidden", railFade)} />
                     </Link>
                 </div>
                 <SidebarSearch sections={navSections} />
