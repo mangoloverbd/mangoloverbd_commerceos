@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import Dashboard from "@/pages/Dashboard";
+import Dashboard, { prefetchOrdersPage } from "@/pages/Dashboard";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { resetOrdersSyncCursor } from "@/lib/ordersSync";
 
@@ -47,7 +47,7 @@ function jsonResponse(body: unknown, ok = true) {
   return { ok, json: async () => body };
 }
 
-describe("dashboard orders sync on open", () => {
+describe("orders page prefetch", () => {
   beforeEach(() => {
     // Courier refresh and Shopify sync both run on this visit.
     sessionStorage.clear();
@@ -68,8 +68,26 @@ describe("dashboard orders sync on open", () => {
     });
   });
 
-  it("loads the full order list once and picks up background refreshes by delta", async () => {
+  const calls = (match: (url: string) => boolean) => apiFetch.mock.calls.filter(([url]) => match(String(url)));
+
+  it("warms the order list and today's P&L in the background", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await prefetchOrdersPage(client, "user-1");
+
+    expect(calls((url) => url === "/api/orders")).toHaveLength(1);
+    expect(client.getQueryData(["/api/orders"])).toEqual([order]);
+    // This period and the one before it, as the P&L cards compare them.
+    expect(calls((url) => url.startsWith("/api/analytics"))).toHaveLength(2);
+
+    // Already warm: a second prefetch sends nothing.
+    apiFetch.mockClear();
+    await prefetchOrdersPage(client, "user-1");
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("opens Orders straight from the warm cache, with no loading state", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await prefetchOrdersPage(client, "user-1");
     render(
       <QueryClientProvider client={client}>
         <TooltipProvider>
@@ -79,15 +97,7 @@ describe("dashboard orders sync on open", () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-
-    const calls = (match: (url: string, init?: RequestInit) => boolean) =>
-      apiFetch.mock.calls.filter(([url, init]) => match(String(url), init as RequestInit | undefined));
-    await waitFor(() => {
-      expect(calls((url) => url === "/api/pathao/refresh-status")).toHaveLength(1);
-      expect(calls((url) => url === "/api/steadfast/refresh-status")).toHaveLength(1);
-      expect(calls((url) => url === "/api/fetch-shopify-orders")).toHaveLength(1);
-      expect(calls((url) => url.startsWith("/api/orders?changed_since=")).length).toBeGreaterThanOrEqual(1);
-    });
-    expect(calls((url, init) => url === "/api/orders" && !init?.method)).toHaveLength(1);
+    // On the first render, before any request for this visit has answered.
+    expect(screen.getAllByText("Test Customer").length).toBeGreaterThan(0);
   });
 });

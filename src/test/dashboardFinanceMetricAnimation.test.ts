@@ -62,21 +62,31 @@ describe("dashboard P&L metric animation", () => {
     );
   });
 
-  it("does not replay mini chart animations on remount", () => {
+  // Orders opens with Home's entrance on every visit; the numbers themselves still
+  // only roll when a value changes (see the NumberFlow tests above).
+  it("draws the mini charts in on each visit, like Home's sparklines", () => {
     const financeMetricStart = source.indexOf("const FinanceMetric");
     const dashboardStart = source.indexOf("export default function Dashboard");
     const financeMetricSource = source.slice(financeMetricStart, dashboardStart);
 
     expect(financeMetricSource).toContain("<StepSparkline");
-    expect(financeMetricSource).toContain("animateOnMount={false}");
+    expect(financeMetricSource).not.toContain("animateOnMount={false}");
   });
 
-  it("does not replay container fade animations when the P&L section remounts", () => {
+  it("opens with Home's cascade: P&L cards, greeting, then the orders table", () => {
     const panelStart = source.indexOf("{/* ── P&L Panel");
-    const panelEnd = source.indexOf("{/* ── Orders table card", panelStart);
-    const panelSource = source.slice(panelStart, panelEnd);
+    const tableStart = source.indexOf("{/* ── Orders table card", panelStart);
+    const panelSource = source.slice(panelStart, tableStart);
 
-    expect(panelSource).not.toContain("<motion.div");
+    expect(source).toContain('import { RISE_EASE, Rise } from "@/components/home/Rise";');
+    // The P&L cards rise as one row, all at the same time.
+    expect(panelSource).toContain('<Rise className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-3">');
+    expect(panelSource).not.toMatch(/<Rise delay=\{[\d.]+\} className="flex">/);
+    expect(panelSource).toContain("<Rise delay={0.2}>");
+    expect(panelSource).toContain("<Rise delay={0.28}>");
+    expect(source.slice(tableStart, tableStart + 400)).toContain("transition={{ delay: 0.36, duration: 0.55, ease: RISE_EASE }}");
+    // Reduced motion skips it, as on Home.
+    expect(source.slice(tableStart, tableStart + 400)).toContain("initial={reduceMotion ? false : { opacity: 0, y: 12 }}");
   });
 
   it("keeps the ৳ prefix and en-BD grouping identical to fmtBDT at rest", () => {

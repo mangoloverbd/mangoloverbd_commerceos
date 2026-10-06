@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => ({ apiFetch }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "user-1" } }) }));
 vi.mock("@/hooks/useUserRole", () => ({ useUserRole: () => ({ isAdmin: true, loading: false }) }));
 vi.mock("@/hooks/useLiveVisitors", () => ({
-  useLiveVisitors: () => ({ count: 0, details: { activeCarts: 0, checkingOut: 0, purchased: 0 } }),
+  useLiveVisitors: () => ({ count: 0, details: { activeCarts: 0, checkingOut: 0, purchased: 0 }, visitors: [] }),
 }));
 vi.mock("@/hooks/useMe", () => ({
   useMe: () => ({ data: { orgName: "Mango Lover BD" }, isLoading: false }),
@@ -22,7 +22,7 @@ vi.mock("@/hooks/useMe", () => ({
 vi.mock("@/hooks/useWarehouses", () => ({
   useWarehouses: () => ({ warehouses: [{ id: "main", name: "Main Warehouse" }] }),
 }));
-vi.mock("@/components/ui/cobe-globe-analytics", () => ({ GlobeAnalytics: () => null }));
+vi.mock("@/components/home/DottedGlobe", () => ({ DottedGlobe: () => null }));
 vi.mock("@/components/ui/glyph-matrix", () => ({ default: () => null }));
 vi.mock("@/components/ui/sonner", () => ({
   toast: { success: toastSuccess, error: toastError, custom: vi.fn() },
