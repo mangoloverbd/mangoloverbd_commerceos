@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0.62] - 2026-10-06
+
+### Changed
+
+- Every dashboard page opens instantly. Page code downloads in the background and opens with no loading screen; if a page isn't ready yet, only the page area shows a spinner and the sidebar stays. Hovering a sidebar link starts loading that page's data, and Overview, Customers, the social inboxes and Order Protection now show their last data at once when you come back.
+- Orders opens instantly too: its orders and today's P&L load in the background from any page.
+- Orders uses Home's dotted globe with your real live visitors (the old 3D globe showed demo locations) and is much lighter. The `cobe` package is removed.
+- Orders opens with Home's entrance: the P&L cards rise together and their charts draw in, then the greeting, then the orders table.
+
+### Fixed
+
+- Visits opened in a background tab (new tab, Messenger or Facebook in-app preload) are now counted once the tab is shown. Before, those shoppers counted as live visitors with no pin on the globe and were missing from sessions and website reports.
+- Crawlers that run JavaScript no longer count as live visitors.
+
 ## [0.1.0.61] - 2026-10-06
 
 ### Changed
