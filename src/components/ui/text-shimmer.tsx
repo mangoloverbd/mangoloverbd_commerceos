@@ -11,6 +11,19 @@ interface TextShimmerProps {
   spread?: number;
 }
 
+// One motion component per element type. Creating it during render made a new
+// component type every render, so any parent re-render remounted the text and
+// restarted the shimmer.
+const motionComponents = new Map<React.ElementType, React.ElementType>();
+function motionFor(as: React.ElementType): React.ElementType {
+  let component = motionComponents.get(as);
+  if (!component) {
+    component = motion(as as keyof JSX.IntrinsicElements) as React.ElementType;
+    motionComponents.set(as, component);
+  }
+  return component;
+}
+
 export function TextShimmer({
   children,
   as: Component = 'p',
@@ -18,7 +31,7 @@ export function TextShimmer({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) {
-  const MotionComponent = motion(Component as keyof JSX.IntrinsicElements);
+  const MotionComponent = motionFor(Component);
 
   const dynamicSpread = useMemo(() => {
     return children.length * spread;
