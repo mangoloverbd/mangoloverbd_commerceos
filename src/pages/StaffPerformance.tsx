@@ -24,6 +24,7 @@ import {
 } from "@/components/staff-performance/StaffCharts";
 import { StaffTable } from "@/components/staff-performance/StaffTable";
 import { apiFetch } from "@/lib/api";
+import { pageKeys } from "@/lib/pageQueries";
 import { useUserRole } from "@/hooks/useUserRole";
 import { sparklineOption } from "@/lib/businessReportCharts";
 import { extraRevenue } from "@/lib/staffPerformanceMetrics";
@@ -187,7 +188,7 @@ export default function StaffPerformance() {
   const selectedStaffKey = selectedUserIds.join(",");
 
   const reportQuery = useQuery({
-    queryKey: ["staff-performance", from, to, selectedStaffKey],
+    queryKey: pageKeys.staffReport(from, to, selectedStaffKey),
     retry: false,
     queryFn: async (): Promise<StaffReportResponse> => {
       const params = new URLSearchParams();

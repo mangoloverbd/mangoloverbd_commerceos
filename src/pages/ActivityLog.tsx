@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { apiFetch } from "@/lib/api";
+import { pageKeys } from "@/lib/pageQueries";
 import { readableActivitySummary } from "@/lib/orderActivityPresentation";
 import { cn } from "@/lib/utils";
 import {
@@ -303,7 +304,7 @@ export default function ActivityLog() {
   }, [from, to, selectedStaffKey, tableFilter, selectedActionsKey]);
 
   const activityQuery = useQuery({
-    queryKey: ["activity-log", from, to, selectedStaffKey, tableFilter, selectedActionsKey, page],
+    queryKey: pageKeys.activityLog(from, to, selectedStaffKey, tableFilter, selectedActionsKey, page),
     retry: false,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<ActivityLogResponse> => {

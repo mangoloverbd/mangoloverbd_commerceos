@@ -9,6 +9,8 @@ import {
     useSidebar,
 } from "@/components/ui/sidebar";
 import { Command as CommandPrimitive } from "cmdk";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchPageData } from "@/lib/pageQueries";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Dialog } from "@/components/ui/dialog";
@@ -148,6 +150,13 @@ function SidebarSearch({ sections }: { sections: NavSection[] }) {
 
 export function AppSidebar() {
     const { open, toggleSidebar } = useSidebar();
+    const queryClient = useQueryClient();
+    // Warm a page's data while the pointer rests on (or keyboard focus reaches) its
+    // link, so it opens with data. Repeat hovers reuse the in-flight or fresh request.
+    const prefetchLinkedPage = (event: React.SyntheticEvent) => {
+        const link = (event.target as Element).closest?.("a[href]") as HTMLAnchorElement | null;
+        if (link) void prefetchPageData(new URL(link.href).pathname, queryClient);
+    };
     const { isAdmin, role } = useUserRole();
     const { data: navCounts } = useNavCounts();
     const returnsPending = navCounts?.returns_pending ?? 0;
@@ -342,7 +351,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             {/* ── Navigation ──────────────────────────────── */}
-            <SidebarContent className="gap-0 overflow-x-hidden px-0.5 pb-1.5 pt-2.5">
+            <SidebarContent className="gap-0 overflow-x-hidden px-0.5 pb-1.5 pt-2.5" onPointerOver={prefetchLinkedPage} onFocus={prefetchLinkedPage}>
                 <DashboardNavigation sections={navSections} />
             </SidebarContent>
 

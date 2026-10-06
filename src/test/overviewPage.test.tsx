@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Overview from "../../src/pages/Overview";
+import { prefetchPageData } from "../../src/lib/pageQueries";
 
 vi.mock("../../src/lib/api", () => ({
   apiFetch: vi.fn(),
@@ -73,6 +75,14 @@ const mockOverviewData = {
   },
 };
 
+function renderOverview(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  return render(
+    <QueryClientProvider client={client}>
+      <Overview />
+    </QueryClientProvider>,
+  );
+}
+
 describe("Overview Page", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockResolvedValue({
@@ -82,7 +92,7 @@ describe("Overview Page", () => {
   });
 
   it("renders all KPI cards", async () => {
-    render(<Overview />);
+    renderOverview();
     await waitFor(() => {
       expect(screen.getByText("Total Orders")).toBeInTheDocument();
       expect(screen.getByText("Revenue")).toBeInTheDocument();
@@ -93,7 +103,7 @@ describe("Overview Page", () => {
   });
 
   it("renders chart titles", async () => {
-    render(<Overview />);
+    renderOverview();
     await waitFor(() => {
       expect(screen.getByText("Order Volume")).toBeInTheDocument();
       expect(screen.getByText("Revenue vs Costs")).toBeInTheDocument();
@@ -101,7 +111,7 @@ describe("Overview Page", () => {
   });
 
   it("renders panel titles", async () => {
-    render(<Overview />);
+    renderOverview();
     await waitFor(() => {
       expect(screen.getByText("Courier Performance")).toBeInTheDocument();
       expect(screen.getByText("Staff Performance")).toBeInTheDocument();
@@ -110,10 +120,28 @@ describe("Overview Page", () => {
   });
 
   it("displays correct KPI values", async () => {
-    render(<Overview />);
+    renderOverview();
     await waitFor(() => {
       expect(screen.getAllByText("245").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("12").length).toBeGreaterThanOrEqual(1);
     });
+  });
+
+  it("opens with data, and no loading screen, after the sidebar warmed it on hover", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await prefetchPageData("/overview", client);
+    renderOverview(client);
+    // First render: the cached numbers, not "Loading Overview".
+    expect(screen.queryByText("Loading Overview")).not.toBeInTheDocument();
+    expect(screen.getByText("Total Orders")).toBeInTheDocument();
+  });
+
+  it("shows the last numbers at once when coming back to it", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const first = renderOverview(client);
+    await screen.findByText("Total Orders");
+    first.unmount();
+    renderOverview(client);
+    expect(screen.getByText("Total Orders")).toBeInTheDocument();
   });
 });

@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { isVisibleRiskSignal } from "@/lib/orderRisk";
 import { useQueryClient } from "@tanstack/react-query";
 import { refreshNavCounts } from "@/hooks/useNavCounts";
+import { pageKeys } from "@/lib/pageQueries";
 
 type ContactStatus = "open" | "contacted";
 
@@ -83,41 +84,51 @@ function captureTime(createdAt: string) {
   return Number.isNaN(date.getTime()) ? "Captured recently" : `Captured ${format(date, "d MMM, h:mm a")}`;
 }
 
+function contactStatusOf(reviews: ProtectionReview[]) {
+  return reviews.reduce<Record<string, ContactStatus>>((current, review) => ({
+    ...current,
+    [review.id]: review.contact_status === "contacted" ? "contacted" : "open",
+  }), {});
+}
+
 export function OrderProtectionReviewQueue() {
-  const [reviews, setReviews] = useState<ProtectionReview[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const queryClient = useQueryClient();
+  // Each fetched queue is also kept in the query cache (the sidebar warms it on hover),
+  // so opening or coming back to Order Protection shows the held orders at once.
+  const cachedReviews = () => queryClient.getQueryData<{ reviews: ProtectionReview[] }>(pageKeys.protectionReviews)?.reviews;
+  const [reviews, setReviews] = useState<ProtectionReview[]>(() => cachedReviews() ?? []);
+  const [loading, setLoading] = useState(() => !cachedReviews());
+  const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [contactStatus, setContactStatus] = useState<Record<string, ContactStatus>>({});
+  const [contactStatus, setContactStatus] = useState<Record<string, ContactStatus>>(() => contactStatusOf(cachedReviews() ?? []));
   const [openStatusMenuId, setOpenStatusMenuId] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadReviews = useCallback(async () => {
-    setLoading(true);
+  // `quiet` refreshes a queue already on screen without the loading state.
+  const loadReviews = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError("");
     try {
       const response = await fetchProtectionReviews();
+      queryClient.setQueryData(pageKeys.protectionReviews, response);
       setReviews(response.reviews);
-      setContactStatus(response.reviews.reduce<Record<string, ContactStatus>>((current, review) => ({
-        ...current,
-        [review.id]: review.contact_status === "contacted" ? "contacted" : "open",
-      }), {}));
+      setContactStatus(contactStatusOf(response.reviews));
     } catch {
       setError("Could not load held orders. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
-    void loadReviews();
+    void loadReviews(Boolean(cachedReviews()));
     return () => {
       if (copiedTimer.current) clearTimeout(copiedTimer.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cache is read once, on open
   }, [loadReviews]);
 
   const markCopied = (key: string) => {

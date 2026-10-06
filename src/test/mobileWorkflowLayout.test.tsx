@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import OrderDetail from "@/pages/OrderDetail";
 import SocialInbox from "@/pages/SocialInbox";
+import { prefetchPageData } from "@/lib/pageQueries";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api", () => ({ apiFetch }));
@@ -52,10 +53,23 @@ describe("mobile workflow layout", () => {
       return Promise.resolve(response({}));
     });
 
-    render(createElement(SocialInbox, { platform: "facebook" }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(createElement(QueryClientProvider, { client }, createElement(SocialInbox, { platform: "facebook" })));
     await user.click(await screen.findByTestId("button-conversation-conversation-1"));
     await waitFor(() => expect(screen.getByRole("button", { name: /back to conversations/i })).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /back to conversations/i }));
     expect(screen.getByTestId("input-search-conversations")).toBeVisible();
+  });
+
+  it("shows an inbox's conversations at once when the sidebar warmed it on hover", async () => {
+    apiFetch.mockImplementation((url: string) => {
+      if (url === "/api/social/conversations/facebook") return Promise.resolve(response({ conversations: [{ id: "conversation-1", platform: "facebook", contact_id: "contact-1", contact_name: "Mango Buyer", last_message: "Hello", last_message_at: "2026-09-11T08:00:00Z", unread_count: 1 }] }));
+      return Promise.resolve(response({}));
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await prefetchPageData("/inbox/facebook", client);
+    render(createElement(QueryClientProvider, { client }, createElement(SocialInbox, { platform: "facebook" })));
+    // First render, before this visit's own request answers.
+    expect(screen.getByTestId("button-conversation-conversation-1")).toBeInTheDocument();
   });
 });

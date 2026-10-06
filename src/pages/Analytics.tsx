@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { pageKeys } from "@/lib/pageQueries";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type KeyboardEvent } from "react";
 import { format } from "date-fns";
@@ -119,7 +120,7 @@ export default function Analytics() {
   });
 
   const website = useQuery<WebsiteAnalyticsResponse, ReportError>({
-    queryKey: ["/api/analytics/website", from, to],
+    queryKey: pageKeys.websiteAnalytics(from, to),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (from && to) { params.set("from", from); params.set("to", to); }

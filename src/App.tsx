@@ -7,41 +7,43 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import {
+  Settings,
+  Analytics,
+  OrderChat,
+  Products,
+  Warehouses,
+  WarehouseDetail,
+  ProductNew,
+  ProductEdit,
+  OrderDetail,
+  NewOrder,
+  AbandonedDetail,
+  Customers,
+  CustomerDetail,
+  FacebookInbox,
+  InstagramInbox,
+  WhatsappInbox,
+  InboxOrders,
+  Studio,
+  Billing,
+  Returns,
+  OnlineStore,
+  Overview,
+  OrderProtection,
+  StaffPerformance,
+  BusinessReport,
+  ActivityLog,
+  CampaignLinks,
+  CampaignLinkDetail,
+} from "./dashboardPages";
 // All other routes are code-split so the dashboard's initial bundle stays
 // small (fast first load in production). Home and Dashboard stay eager.
 // Auth is split too — unauthenticated visitors only download it on demand.
 const Auth = lazy(() => import("./pages/Auth"));
-const Settings = lazy(() => import("./pages/Settings"));
-const Analytics = lazy(() => import("./pages/Analytics"));
-const OrderChat = lazy(() => import("./pages/OrderChat"));
-const Products = lazy(() => import("./pages/Products"));
-const Warehouses = lazy(() => import("./pages/Warehouses"));
-const WarehouseDetail = lazy(() => import("./pages/WarehouseDetail"));
-const ProductNew = lazy(() => import("./pages/ProductNew"));
-const ProductEdit = lazy(() => import("./pages/ProductEdit"));
-const OrderDetail = lazy(() => import("./pages/OrderDetail"));
-const NewOrder = lazy(() => import("./pages/NewOrder"));
-const AbandonedDetail = lazy(() => import("./pages/AbandonedDetail"));
-const Customers = lazy(() => import("./pages/Customers"));
-const CustomerDetail = lazy(() => import("./pages/CustomerDetail"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
-const FacebookInbox = lazy(() => import("./pages/FacebookInbox"));
-const InstagramInbox = lazy(() => import("./pages/InstagramInbox"));
-const WhatsappInbox = lazy(() => import("./pages/WhatsappInbox"));
-const InboxOrders = lazy(() => import("./pages/InboxOrders"));
-const Studio = lazy(() => import("./pages/Studio"));
-const Billing = lazy(() => import("./pages/Billing"));
-const Returns = lazy(() => import("./pages/Returns"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
-const OnlineStore = lazy(() => import("./pages/OnlineStore"));
-const Overview = lazy(() => import("./pages/Overview"));
-const OrderProtection = lazy(() => import("./pages/OrderProtection"));
-const StaffPerformance = lazy(() => import("./pages/StaffPerformance"));
-const BusinessReport = lazy(() => import("./pages/BusinessReport"));
-const ActivityLog = lazy(() => import("./pages/ActivityLog"));
-const CampaignLinks = lazy(() => import("./pages/CampaignLinks"));
-const CampaignLinkDetail = lazy(() => import("./pages/CampaignLinkDetail"));
 import { Spinner } from "@/components/ui/ios-spinner";
 
 function RouteFallback() {

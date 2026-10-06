@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { getJson, pageKeys, socialConversationsUrl } from "@/lib/pageQueries";
 import { useVisibleInterval } from "@/hooks/useVisibleInterval";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -127,9 +129,16 @@ function InboxStat({
 
 interface Props { platform: Platform; }
 
+type ConversationsResponse = { conversations?: Conversation[] };
+
 export default function SocialInbox({ platform }: Props) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  // Each fetched list is also kept in the query cache (the sidebar warms it on hover),
+  // so opening or coming back to an inbox shows its conversations at once.
+  const cachedConversations = () =>
+    queryClient.getQueryData<ConversationsResponse>(pageKeys.socialConversations(platform))?.conversations;
+  const [conversations, setConversations] = useState<Conversation[]>(() => cachedConversations() ?? []);
+  const [loading, setLoading] = useState(() => !cachedConversations());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [msgLoading, setMsgLoading] = useState(false);
@@ -147,21 +156,23 @@ export default function SocialInbox({ platform }: Props) {
   const cfg = PLATFORM_CONFIG[platform];
   const Icon = cfg.icon;
 
+  const loadConversations = () =>
+    getJson<ConversationsResponse>(socialConversationsUrl(platform))
+      .then((data) => {
+        queryClient.setQueryData(pageKeys.socialConversations(platform), data);
+        setConversations(data.conversations || []);
+      })
+      .catch(() => {});
+
   useEffect(() => {
-    setLoading(true);
-    apiFetch(`/api/social/conversations/${platform}`)
-      .then((r) => r.json())
-      .then((d) => setConversations(d.conversations || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const cached = cachedConversations();
+    setConversations(cached ?? []);
+    setLoading(!cached);
+    void loadConversations().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the inbox changes
   }, [platform]);
 
-  useVisibleInterval(() => {
-    apiFetch(`/api/social/conversations/${platform}`)
-      .then((r) => r.json())
-      .then((d) => setConversations(d.conversations || []))
-      .catch(() => {});
-  }, 2000);
+  useVisibleInterval(() => void loadConversations(), 2000);
 
   useEffect(() => {
     if (!selectedId) return;
