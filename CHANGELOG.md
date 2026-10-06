@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.64] - 2026-10-06
+
+### Changed
+
+- Home uses a lighter type scale: a smaller headline, normal-weight card titles and quick actions, and smaller metrics, Ask Edith text and globe card, so the page reads calmer and matches the rest of the app.
+
+### Fixed
+
+- Opening Orders from another page is smooth again. A 100-row table froze the page for about a second (5 frames in 1.5s), so the entrance jumped; the first 20 rows now show at once and the rest fill in after the entrance, and background order refreshes no longer freeze the page.
+- The "Good afternoon!" greeting on Orders no longer rebuilds itself (and restarts its shimmer) every time the page updates.
+
 ## [0.1.0.63] - 2026-10-06
 
 ### Changed
