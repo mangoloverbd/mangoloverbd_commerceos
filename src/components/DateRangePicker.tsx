@@ -124,7 +124,7 @@ function QuickSelect({
               type="button"
               onClick={() => onSelect(preset.range)}
               className={cn(
-                "flex w-full cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 ease",
+                "flex w-full cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-1 text-left text-[13px] transition-colors duration-150 ease",
                 active
                   ? "bg-[#e8f0fe] font-medium text-[#1a73e8]"
                   : "font-normal text-black hover:bg-black/[0.04]",
@@ -154,7 +154,7 @@ function Footer({
   onReset: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between pt-2 pr-2">
+    <div className="mt-auto flex items-center justify-between pt-2 pr-2">
       <div className="flex items-center gap-1.5">
         <AnimatePresence>
           {value && (
