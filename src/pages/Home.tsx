@@ -53,6 +53,7 @@ export default function Home() {
     return { from: today, to: today };
   });
   const [channel, setChannel] = useState<HomeChannel>("all");
+  const [pinLandings, setPinLandings] = useState(0);
   const url = summaryUrl(range, channel);
   const { data, isError } = useQuery({
     queryKey: [url],
@@ -78,12 +79,13 @@ export default function Home() {
         loading={!data}
         metrics={data?.metrics}
         liveCount={data?.live.count ?? null}
+        livePulse={pinLandings}
         isAdmin={isAdmin}
         scope={<HomeScopeControls range={range} onRangeChange={setRange} channel={channel} onChannelChange={setChannel} />}
       />
 
       <section className="relative -mt-20 flex min-h-[640px] flex-col items-center justify-center px-4 pb-20 pt-10 max-md:mt-0 max-md:min-h-[520px]">
-        <DottedGlobe visitors={data?.live.visitors ?? []} />
+        <DottedGlobe visitors={data?.live.visitors ?? []} onLand={() => setPinLandings((count) => count + 1)} />
         <Rise className="relative z-[2]">
           <h1 className="text-center text-[40px] font-medium leading-[1.2] tracking-[-0.02em] text-[#8C8A84] max-md:text-[28px]">
             {greeting}
