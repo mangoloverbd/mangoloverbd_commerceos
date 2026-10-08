@@ -34,6 +34,7 @@ const numbers = (row) => Object.fromEntries(Object.entries(row || {}).map(([key,
 const EMPTY_TOTALS = {
   sessions: 0, visitors: 0, new_visitors: 0, pageviews: 0, product_views: 0, engaged_seconds: 0, bounced_sessions: 0,
   product_sessions: 0, cart_sessions: 0, checkout_sessions: 0, ordered_sessions: 0, orders: 0, delivered_sessions: 0,
+  reached_product_sessions: 0, reached_checkout_sessions: 0,
 };
 
 // Fills every Dhaka day and hour so charts never skip quiet periods.

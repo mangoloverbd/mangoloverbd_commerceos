@@ -7482,7 +7482,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
     const now = new Date();
     const { data: draft, error: draftError } = await supabase
       .from("abandoned_checkouts")
-      .select(`${ABANDONED_CHECKOUT_DASHBOARD_FIELDS}, draft_key`)
+      .select(`${ABANDONED_CHECKOUT_DASHBOARD_FIELDS}, draft_key, analytics_session_id, analytics_captured_at`)
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
@@ -7655,6 +7655,8 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
       return res.status(409).json({ error: "Checkout changed before it could be converted" });
     }
+    // Attribution is frozen at the shopper's last capture, not at conversion.
+    await recordOrderAnalyticsFact(supabase, orgId, order.id, draft.analytics_session_id, draft.analytics_captured_at);
 
     const convertedStatusEvent = prepareStatusEvent({
       orgId,
@@ -8107,6 +8109,20 @@ app.patch("/api/orders/:id/items", async (req, res) => {
   }
 });
 
+// Remembers the visit behind the latest capture so a staff conversion can link
+// the order to it. Best effort: never fails or slows the capture much.
+async function rememberCaptureVisit(supabase, orgId, checkout, sessionId, now) {
+  if (!checkout || !sessionId) return;
+  try {
+    const { error } = await supabase.from("abandoned_checkouts")
+      .update({ analytics_session_id: sessionId, analytics_captured_at: now.toISOString() })
+      .eq("id", checkout.id).eq("org_id", orgId).abortSignal(AbortSignal.timeout(ANALYTICS_ORDER_TIMEOUT_MS));
+    if (error) throw error;
+  } catch {
+    console.warn("[Analytics] checkout visit not remembered");
+  }
+}
+
 async function persistAbandonedCheckoutCapture(supabase, orgId, capture, now) {
   const { data: existing, error: existingError } = await supabase
     .from("abandoned_checkouts")
@@ -8261,6 +8277,7 @@ app.post("/api/custom-orders/abandoned-checkouts", async (req, res) => {
     const now = new Date();
     const checkout = await persistAbandonedCheckoutCapture(supabase, orgId, capture, now);
     await attributeCapturedCampaign(req, supabase, orgId, checkout, now.toISOString());
+    await rememberCaptureVisit(supabase, orgId, checkout, analyticsSessionFromHeaders(req.headers), now);
     const draftKeyHash = hashAbandonedCheckoutDraftKey(capture.draftKey);
     if (checkout && draftKeyHash) {
       const { data: matchingOrder, error: matchingOrderError } = await supabase

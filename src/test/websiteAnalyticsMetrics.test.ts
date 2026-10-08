@@ -3,13 +3,19 @@ import { biggestDrop, funnelSteps, healthSummary, peakHour, percentDelta, source
 import { groupSlices, trafficOption } from "@/lib/websiteAnalyticsCharts";
 
 const totals: WebsiteTotals = { sessions: 200, visitors: 150, new_visitors: 120, pageviews: 600, product_views: 260, engaged_seconds: 0, bounced_sessions: 60,
-  product_sessions: 140, cart_sessions: 30, checkout_sessions: 20, ordered_sessions: 12, orders: 13, delivered_sessions: 8 };
+  product_sessions: 140, cart_sessions: 30, checkout_sessions: 20, ordered_sessions: 12, orders: 13, delivered_sessions: 8,
+  reached_product_sessions: 150, reached_checkout_sessions: 24 };
 
 describe("website analytics metrics", () => {
+  it("builds the funnel from cumulative stages and leaves the optional cart out", () => {
+    expect(funnelSteps(totals).map((step) => [step.key, step.value])).toEqual([
+      ["visits", 200], ["product", 150], ["checkout", 24], ["order", 12], ["delivered", 8],
+    ]);
+  });
   it("finds the website step that loses the most visits, ignoring delivery", () => {
-    expect(biggestDrop(funnelSteps(totals))).toEqual({ index: 1, kept: 30 / 140 });
+    expect(biggestDrop(funnelSteps(totals))).toEqual({ index: 1, kept: 24 / 150 });
     expect(biggestDrop(funnelSteps({ ...totals, delivered_sessions: 0 }))?.index).toBe(1);
-    expect(biggestDrop(funnelSteps({ ...totals, sessions: 0, product_sessions: 0, cart_sessions: 0, checkout_sessions: 0, ordered_sessions: 0 }))).toBeNull();
+    expect(biggestDrop(funnelSteps({ ...totals, sessions: 0, reached_product_sessions: 0, reached_checkout_sessions: 0, ordered_sessions: 0 }))).toBeNull();
   });
   it("shows no percentage change against an empty previous period", () => {
     expect(percentDelta(10, 0)).toBeNull();

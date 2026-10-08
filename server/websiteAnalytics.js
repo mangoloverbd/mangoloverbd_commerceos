@@ -46,8 +46,10 @@ export function normalizeAnalyticsPath(value) {
   return path || "/";
 }
 
+// /step/<slug> landing pages show one product with its order form, so they
+// count as product views; their /thank-you pages do not.
 export function productSlugFromPath(path) {
-  const match = typeof path === "string" ? path.match(/^\/products?\/([a-z0-9]+(?:-[a-z0-9]+)*)$/i) : null;
+  const match = typeof path === "string" ? path.match(/^\/(?:products?|step)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/i) : null;
   return match ? match[1].toLowerCase() : null;
 }
 

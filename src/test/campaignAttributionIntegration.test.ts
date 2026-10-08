@@ -29,7 +29,7 @@ function fixture(extra: Record<string, unknown> = {}, seed: Record<string, Recor
     sendError: (res: { status: (status: number) => { json: (body: unknown) => unknown } }, error: { statusCode?: number; message: string }) => res.status(error.statusCode || 500).json({ error: error.message }),
     ...extra,
   });
-  harness.load(["ABANDONED_CHECKOUT_DASHBOARD_FIELDS", "handlePublicHandleOrderSubmit", "persistAbandonedCheckoutCapture", "recoverCapturedCheckoutForOrder", "linkHeldReviewToAbandonedCheckout", "approveHeldProtectionReview", "closeHeldReviewForConvertedCheckout", "ANALYTICS_ORDER_TIMEOUT_MS", "recordOrderAnalyticsFact"], [
+  harness.load(["ABANDONED_CHECKOUT_DASHBOARD_FIELDS", "handlePublicHandleOrderSubmit", "persistAbandonedCheckoutCapture", "recoverCapturedCheckoutForOrder", "linkHeldReviewToAbandonedCheckout", "approveHeldProtectionReview", "closeHeldReviewForConvertedCheckout", "ANALYTICS_ORDER_TIMEOUT_MS", "recordOrderAnalyticsFact", "rememberCaptureVisit"], [
     'app.post("/api/public/v1/:handle/orders"', 'app.post("/api/custom-orders/abandoned-checkouts"', 'app.post("/api/abandoned-checkouts/:id/convert"', 'app.get("/api/orders/:id",',
     'app.patch("/api/order-protection/reviews/:id"',
   ]);
@@ -210,5 +210,26 @@ describe("website visit linkage through actual purchase HTTP handlers", () => {
       phone: body.phone, customer_name: body.customerName, address: body.address, items: body.items, analytics_session_id: visitId }] });
     expect((await http(app, "PATCH", `/api/order-protection/reviews/${uuid(50)}`, { action: "approve" })).status).toBe(200);
     expect(factCalls(db)).toEqual([expect.objectContaining({ p_order_id: db.tables.orders[0].id, p_session_id: visitId, p_submitted_at: submittedAt })]);
+  });
+  it("keeps the visit behind an abandoned checkout and links the staff-converted order at the capture time", async () => {
+    const captured = fixture();
+    expect((await http(captured.app, "POST", "/api/custom-orders/abandoned-checkouts", captureBody, { ...signedHeaders(), "x-mlbd-analytics-session-id": visitId })).status).toBe(201);
+    const checkout = captured.db.tables.abandoned_checkouts[0];
+    expect(checkout.analytics_session_id).toBe(visitId);
+    expect(typeof checkout.analytics_captured_at).toBe("string");
+    const capturedAt = "2026-10-08T09:03:00.000Z";
+    const { app, db } = fixture({}, { abandoned_checkouts: [{ id: uuid(31), org_id: orgId, draft_key: uuid(30), status: "open", expires_at: new Date(Date.now() + 86400000).toISOString(),
+      cart: captureBody.items, phone: body.phone, customer_name: body.customerName, address: body.address, delivery_rate: 0, analytics_session_id: visitId, analytics_captured_at: capturedAt }] });
+    expect((await http(app, "POST", `/api/abandoned-checkouts/${uuid(31)}/convert`, { status: "pending" })).status).toBe(201);
+    expect(factCalls(db)).toEqual([expect.objectContaining({ p_org_id: orgId, p_order_id: db.tables.orders[0].id, p_session_id: visitId, p_submitted_at: capturedAt })]);
+  });
+  it("captures and converts normally when the shopper has no visit cookie", async () => {
+    const { app, db } = fixture();
+    expect((await http(app, "POST", "/api/custom-orders/abandoned-checkouts", captureBody, signedHeaders())).status).toBe(201);
+    expect(db.tables.abandoned_checkouts[0]).not.toHaveProperty("analytics_session_id");
+    const converted = fixture({}, { abandoned_checkouts: [{ id: uuid(31), org_id: orgId, draft_key: uuid(30), status: "open", expires_at: new Date(Date.now() + 86400000).toISOString(),
+      cart: captureBody.items, phone: body.phone, customer_name: body.customerName, address: body.address, delivery_rate: 0 }] });
+    expect((await http(converted.app, "POST", `/api/abandoned-checkouts/${uuid(31)}/convert`, { status: "pending" })).status).toBe(201);
+    expect(factCalls(converted.db)).toHaveLength(0);
   });
 });
