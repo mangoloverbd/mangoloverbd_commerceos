@@ -157,7 +157,7 @@ describe("Home page", () => {
     renderHome();
     await screen.findByText("৳84,620");
     await user.click(screen.getByRole("button", { name: "Channel: All channels" }));
-    await user.click(await screen.findByRole("menuitemradio", { name: "Facebook" }));
+    await user.click(await screen.findByRole("button", { name: "Facebook" }));
     await waitFor(() => expect(apiFetch.mock.calls.at(-1)?.[0]).toMatch(/&channel=facebook$/));
     expect(screen.getByRole("button", { name: "Channel: Facebook" })).toBeInTheDocument();
   });

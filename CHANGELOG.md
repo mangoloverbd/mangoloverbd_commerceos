@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.0.66] - 2026-10-08
+
+### Added
+
+- Staff Performance shows each team member's handled orders by source (Website, Facebook, Instagram, WhatsApp, Phone, Telesales, Upsell, Manual / Other): handled, confirmed, cancelled, confirmation rate, delivered and value per source, with an outcome bar and an all-sources total. A source's confirmation rate is red when it is more than 5 points below the team's rate for that source, and green when it is the best on the team.
+- Home's Order Protection card lists the latest held checkouts with customer, product and risk score.
+
+### Changed
+
+- Home's attention cards are tighter: the order list follows the description, shows 3 rows that are never cut off, and full-width buttons sit below it without a shadow.
+- Home's channel filter uses the BoardUI dropdown with the brand logos from Settings, in a compact panel, and leaves no focus outline after a mouse close.
+
+### Fixed
+
+- Home loads in under a second again. Its sessions, conversion rate and their hourly/daily charts come from a new small database function (`analytics_home_sessions`, migrations `20261008083002` and `20261008085241`, both already applied to the Mango Lover BD database) instead of the full website report, which was timing out. If sessions are ever slow, Home shows "—" for them after 3 seconds instead of waiting.
+
 ## [0.1.0.65] - 2026-10-06
 
 ### Added

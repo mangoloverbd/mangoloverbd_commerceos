@@ -11,6 +11,17 @@ export type ProductDetail = {
   cancelled_kg: number;
 };
 
+// Handled orders for one order source, as the staff report splits them.
+export type SourceDetail = {
+  source: string;
+  handled_count: number;
+  confirmed_count: number;
+  confirmed_value: number;
+  cancelled_count: number;
+  delivered_count: number;
+  returned_count: number;
+};
+
 export type StaffMetrics = {
   assigned_count: number;
   // Handled basis: each regular order the member confirmed or cancelled,
@@ -49,6 +60,7 @@ export type StaffMetrics = {
   retained_upsell_count: number;
   retained_upsell_value: number;
   products: ProductDetail[];
+  sources: SourceDetail[];
 };
 
 export type AbandonedCartMetrics = {

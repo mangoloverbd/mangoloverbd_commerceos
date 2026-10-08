@@ -8896,9 +8896,32 @@ async function loadHomeSignals(supabase, orgId, { isAdmin, now, liveLocations })
   const [queues, protectionHolds, inboxUnread, inboxOrders, returnsPending, abandoned, topVarieties] = await Promise.all([
     settle("order queues", () => homeQueueCache.get(orgId, HOME_QUEUE_TTL_MS, async () => ({ value: await loadHomeQueues(supabase, orgId, now), cacheable: true }))),
     isAdmin
-      ? settle("order protection", async () => ({
-        count: count(await supabase.from("order_protection_reviews").select("id", { count: "exact", head: true }).eq("org_id", orgId).eq("status", "on_hold")),
-      }))
+      ? settle("order protection", async () => {
+        const { data, count: held, error } = await supabase
+          .from("order_protection_reviews")
+          .select("customer_name, items, score", { count: "exact" })
+          .eq("org_id", orgId)
+          .eq("status", "on_hold")
+          .order("created_at", { ascending: false })
+          .limit(HOME_QUEUE_PREVIEW);
+        if (error) throw error;
+        // Held carts store product ids only, so resolve names for the preview rows.
+        const productIds = [...new Set((data || []).map((row) => (Array.isArray(row.items) ? row.items[0]?.productId : null)).filter(Boolean))];
+        const names = new Map();
+        if (productIds.length) {
+          const { data: products, error: productError } = await supabase.from("products").select("id, name").eq("org_id", orgId).in("id", productIds);
+          if (productError) throw productError;
+          for (const product of products || []) names.set(product.id, product.name);
+        }
+        return {
+          count: held || 0,
+          rows: (data || []).map((row) => ({
+            title: row.customer_name || "Shopper",
+            detail: shortProductName(names.get(Array.isArray(row.items) ? row.items[0]?.productId : null) || ""),
+            tag: { label: `Risk ${Number(row.score) || 0}`, tone: "risk" },
+          })),
+        };
+      })
       : null,
     settle("inbox", async () => {
       const { data, count: unread, error } = await supabase
@@ -8970,13 +8993,18 @@ async function loadHomeSignals(supabase, orgId, { isAdmin, now, liveLocations })
   };
 }
 
-// The website report needs a bounded window, so all time reads the last year.
+// The session report needs a bounded window, so all time reads the last year.
 const HOME_WEBSITE_MAX_MS = 366 * 24 * 60 * 60 * 1000;
+// Backstop so a slow database never holds Home; sessions then read "—".
+const HOME_WEBSITE_TIMEOUT_MS = 3000;
 
+// Only the visit counts Home shows, not the full Website Analytics report.
 async function loadHomeWebsite(supabase, orgId, windows) {
   const report = async ({ since, until }) => {
     const p_since = since || new Date(Date.parse(until) - HOME_WEBSITE_MAX_MS).toISOString();
-    const { data, error } = await supabase.rpc("analytics_website_report", { p_org_id: orgId, p_since, p_until: until });
+    const { data, error } = await supabase
+      .rpc("analytics_home_sessions", { p_org_id: orgId, p_since, p_until: until })
+      .abortSignal(AbortSignal.timeout(HOME_WEBSITE_TIMEOUT_MS));
     if (error) throw error;
     return { totals: data?.totals || {}, hourly: data?.hourly || [], daily: data?.daily || [] };
   };
@@ -9073,10 +9101,11 @@ app.get("/api/home/summary", async (req, res) => {
     if (!isHomeChannel(channel)) return res.status(400).json({ error: "Unknown channel" });
     homeWindows(new Date(), range); // Rejects a bad range with 400 before anything is cached.
     const key = [orgId, isAdmin ? "admin" : "team", range.all ? "all" : `${range.from ?? ""}..${range.to ?? ""}`, channel].join(":");
-    const summary = await homeSummaryCache.get(key, HOME_SUMMARY_TTL_MS, async () => ({
-      value: await buildHomeSummary(supabase, orgId, isAdmin, { range, channel }),
-      cacheable: true,
-    }));
+    const summary = await homeSummaryCache.get(key, HOME_SUMMARY_TTL_MS, async () => {
+      const value = await buildHomeSummary(supabase, orgId, isAdmin, { range, channel });
+      // A summary missing its sessions is served but not cached, so the next load retries.
+      return { value, cacheable: value.metrics.sessions !== null };
+    });
     return res.json(summary);
   } catch (err) {
     return sendError(res, err);

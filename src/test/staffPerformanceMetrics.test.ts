@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AbandonedCartMetrics, StaffMetrics, StaffRow } from "@/lib/staffPerformancePresentation";
 import {
+  buildStaffSourceRows,
   buildStaffTableRows,
   buildTeamFunnel,
   extraRevenue,
@@ -17,7 +18,7 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
     average_order_value: null, cancelled_count: 0, cancelled_assigned_count: 0, cancelled_value: 0,
     cancellation_rate: null, delivered_count: 0, delivered_value: 0, delivered_rate: null, returned_count: 0,
     returned_value: 0, telesales_confirmed_count: 0, telesales_confirmed_value: 0, telesales_confirmed_kg: 0,
-    retained_upsell_count: 0, retained_upsell_value: 0, products: [], ...overrides,
+    retained_upsell_count: 0, retained_upsell_value: 0, products: [], sources: [], ...overrides,
   };
 }
 const carts = (overrides: Partial<AbandonedCartMetrics> = {}): AbandonedCartMetrics => ({
@@ -185,5 +186,36 @@ describe("groupStaffShare", () => {
 describe("extraRevenue", () => {
   it("adds telesales, retained upsell and converted cart value", () => {
     expect(extraRevenue(sadia)).toEqual({ telesales: 5000, upsell: 2000, carts: 1000, total: 8000 });
+  });
+});
+
+describe("buildStaffSourceRows", () => {
+  const source = (name: string, handled: number, confirmed: number, delivered = 0, returned = 0) => ({
+    source: name, handled_count: handled, confirmed_count: confirmed, confirmed_value: confirmed * 100,
+    cancelled_count: handled - confirmed, delivered_count: delivered, returned_count: returned,
+  });
+
+  it("labels each source and flags a confirmation rate against the team rate for that same source", () => {
+    const rows = [
+      row("a", "Abeda", { sources: [source("website", 10, 9, 6, 1), source("facebook", 10, 5)] }),
+      row("b", "Bashir", { sources: [source("website", 10, 7), source("facebook", 10, 9)] }),
+    ];
+
+    const result = buildStaffSourceRows(rows, "a");
+
+    expect(result.map((item) => item.label)).toEqual(["Website", "Facebook"]);
+    expect(result[0]).toMatchObject({ handled: 10, confirmed: 9, cancelled: 1, value: 900, confRate: 90, teamConfRate: 80, flag: "best" });
+    expect(result[0].yield).toEqual({ delivered: 6, inTransit: 2, returned: 1, cancelled: 1 });
+    // Facebook team rate is 70%; Abeda's 50% is 20 points below.
+    expect(result[1]).toMatchObject({ confRate: 50, teamConfRate: 70, flag: "worse" });
+  });
+
+  it("never marks a lone member best and skips sources with no handled orders", () => {
+    const rows = [row("a", "Abeda", { sources: [source("phone", 4, 3), source("whatsapp", 0, 0)] })];
+
+    const result = buildStaffSourceRows(rows, "a");
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ source: "phone", label: "Phone", flag: null });
   });
 });

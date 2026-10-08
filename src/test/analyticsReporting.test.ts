@@ -147,3 +147,32 @@ describe("website report", () => {
     expect(() => as(`select public.analytics_website_report('${newOrg()}','2024-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)).toThrow(/invalid range/);
   });
 });
+
+describe("home sessions", () => {
+  it("matches the website report's sessions, ordered sessions and per-hour / per-day counts", () => {
+    const org = newOrg();
+    const ad = visit(org, { at: "2026-10-02T04:00:00Z", source: "facebook", medium: "paid" });
+    link(org, order(org, { at: "2026-10-02T04:04:00Z" }), ad.session, "2026-10-02T04:04:00Z");
+    visit(org, { at: "2026-10-02T04:30:00Z" });
+    visit(org, { at: "2026-10-02T09:00:00Z" });
+    visit(org, { at: "2026-09-01T09:00:00Z" }); // outside the range
+    const range = `'${org}','2026-10-01T18:00:00Z','2026-10-02T18:00:00Z'`;
+
+    type Bucket = { sessions: number; ordered_sessions: number };
+    type Sessions = { totals: Record<string, number>; daily: Array<Bucket & { day: string }>; hourly: Array<Bucket & { hour: number }> };
+    const home = json<Sessions>(`select public.analytics_home_sessions(${range})`);
+    const full = json<Sessions>(`select public.analytics_website_report(${range})`);
+    expect(home.totals).toEqual({ sessions: 3, ordered_sessions: 1 });
+    expect(home.totals).toEqual({ sessions: full.totals.sessions, ordered_sessions: full.totals.ordered_sessions });
+    expect(home.daily).toEqual(full.daily.map(({ day, sessions, ordered_sessions }) => ({ day, sessions, ordered_sessions })));
+    expect(home.hourly).toEqual(full.hourly.map(({ hour, sessions, ordered_sessions }) => ({ hour, sessions, ordered_sessions })));
+    expect(home.hourly.find((row) => row.hour === 10)).toEqual({ hour: 10, sessions: 2, ordered_sessions: 1 });
+  });
+
+  it("is server-only and rejects unbounded ranges", () => {
+    for (const role of ["anon", "authenticated"]) {
+      expect(() => db.sql(`set role ${role}; select public.analytics_home_sessions('${newOrg()}', now() - interval '1 day', now());`)).toThrow(/permission denied/);
+    }
+    expect(() => as(`select public.analytics_home_sessions('${newOrg()}','2024-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)).toThrow(/invalid range/);
+  });
+});

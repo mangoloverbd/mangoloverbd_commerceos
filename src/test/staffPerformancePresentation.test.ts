@@ -38,6 +38,7 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
     retained_upsell_count: 0,
     retained_upsell_value: 0,
     products: [],
+    sources: [],
     ...overrides,
   };
 }

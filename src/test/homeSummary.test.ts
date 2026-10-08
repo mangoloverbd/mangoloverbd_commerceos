@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildHomeMetrics,
   homeWindows,
@@ -46,8 +46,15 @@ describe("home time windows", () => {
   });
 
   it("rejects ranges the Business Report would reject", () => {
-    expect(() => homeWindows(now, { from: "2026-10-07", to: "2026-10-08" })).toThrow();
-    expect(() => homeWindows(now, { from: "2026-10-06", to: "2026-10-01" })).toThrow();
+    // The future-date check reads the real clock, so pin it to this test's "now".
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    try {
+      expect(() => homeWindows(now, { from: "2026-10-07", to: "2026-10-08" })).toThrow();
+      expect(() => homeWindows(now, { from: "2026-10-06", to: "2026-10-01" })).toThrow();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

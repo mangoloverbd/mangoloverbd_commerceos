@@ -1114,6 +1114,31 @@ describe("buildStaffReport handled orders and product outcomes", () => {
     expect(report.rows[0].orders).not.toHaveProperty("confirmed_then_cancelled_count");
   });
 
+  it("splits a member's handled orders by order source, folding storefront into Website", () => {
+    const at = (hour: number) => `2026-09-18T0${hour}:00:00.000Z`;
+    const web = { id: "W", price: 1000, source: "storefront", courier_status: "delivered" };
+    const web2 = { id: "W2", price: 600, source: "website" };
+    const fb = { id: "F", price: 500, source: "facebook" };
+    const fbReturned = { id: "F2", price: 300, source: "facebook", return_status: "returned" };
+    const blank = { id: "N", price: 200 };
+    const report = buildStaffReport([], [], [], [], staff, {
+      ...interval,
+      regularActivities: [
+        { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: at(1), order_id: "W", order: web },
+        { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: at(1), order_id: "W2", order: web2 },
+        { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(2), order_id: "F", order: fb },
+        { action: "confirmed", actor_id: TEAM_MEMBER_ID, occurred_at: at(3), order_id: "F2", order: fbReturned },
+        { action: "cancelled", actor_id: TEAM_MEMBER_ID, occurred_at: at(4), order_id: "N", order: blank },
+      ],
+    });
+
+    expect(report.rows[0].orders.sources).toEqual([
+      { source: "website", handled_count: 2, confirmed_count: 2, confirmed_value: 1600, cancelled_count: 0, delivered_count: 1, returned_count: 0 },
+      { source: "facebook", handled_count: 2, confirmed_count: 1, confirmed_value: 300, cancelled_count: 1, delivered_count: 0, returned_count: 1 },
+      { source: "manual_other", handled_count: 1, confirmed_count: 0, confirmed_value: 0, cancelled_count: 1, delivered_count: 0, returned_count: 0 },
+    ]);
+  });
+
   it("counts each order once when a member re-confirms or cancels it again", () => {
     const orderB = { id: "B", price: 500, weight_kg: 2, courier_status: "delivered" };
     const orderD = { id: "D", price: 300, weight_kg: 1 };

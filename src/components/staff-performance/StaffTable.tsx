@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowDown, ArrowUp, CaretDown } from "@phosphor-icons/react";
 import { YIELD_COLORS, YIELD_KEYS, YIELD_LABELS } from "@/lib/staffPerformanceCharts";
-import { buildStaffTableRows, extraRevenue, sortStaffTableRows, STAFF_FLAG_POINTS, staffTeamAverages, type RateFlag, type SortDir, type StaffSortKey, type StaffTableRow } from "@/lib/staffPerformanceMetrics";
+import { buildStaffSourceRows, buildStaffTableRows, extraRevenue, sortStaffTableRows, STAFF_FLAG_POINTS, staffTeamAverages, type RateFlag, type SortDir, type StaffSortKey, type StaffSourceRow, type StaffTableRow } from "@/lib/staffPerformanceMetrics";
 import type { ProductDetail, StaffRow } from "@/lib/staffPerformancePresentation";
 
 const formatNumber = (value: number) => Number(value || 0).toLocaleString("en-BD");
@@ -84,8 +84,84 @@ function Tile({ label, value, sub, subRed }: { label: string; value: ReactNode; 
   );
 }
 
+function SourceBar({ row }: { row: StaffSourceRow }) {
+  return (
+    <span role="img" aria-label={`${row.label} outcomes: ${YIELD_KEYS.map((key) => `${YIELD_LABELS[key]} ${row.yield[key]}`).join(", ")}`} className="flex h-1 w-full gap-[2px] overflow-hidden rounded-full bg-black/[0.06]">
+      {YIELD_KEYS.map((key) => row.yield[key] > 0 && (
+        <span key={key} data-segment={key} className="block h-full min-w-[2px]" style={{ width: `${(row.yield[key] / row.handled) * 100}%`, background: YIELD_COLORS[key] }} />
+      ))}
+    </span>
+  );
+}
+
+function SourceBreakdown({ name, rows }: { name: string; rows: StaffSourceRow[] }) {
+  const total = rows.reduce((sum, row) => ({
+    handled: sum.handled + row.handled,
+    confirmed: sum.confirmed + row.confirmed,
+    cancelled: sum.cancelled + row.cancelled,
+    delivered: sum.delivered + row.delivered,
+    value: sum.value + row.value,
+  }), { handled: 0, confirmed: 0, cancelled: 0, delivered: 0, value: 0 });
+  const totalRate = total.handled > 0 ? (total.confirmed / total.handled) * 100 : null;
+  return (
+    <div data-testid="staff-performance-sources" className={`${CARD} flex flex-col gap-3`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className={EYEBROW}>{`By source · ${name}`}</p>
+        <p className="text-[12px] text-black/55 tabular-nums">{plural(total.handled, "handled order", "handled orders")}</p>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-[11px] text-black/55">No handled orders in this range.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table aria-label={`${name} orders by source`} className="w-full min-w-[640px] border-collapse text-[12px] tabular-nums">
+            <thead>
+              <tr className="border-b border-black/[0.08] text-[8px] uppercase tracking-[0.22em] text-black/55">
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-left font-medium">Source</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Handled</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Confirmed</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Cancelled</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Conf. rate</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Delivered</th>
+                <th scope="col" className="px-3 pb-2 pt-2.5 text-right font-medium">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.source} data-source={row.source} className="border-b border-black/[0.06]">
+                  <th scope="row" className="px-3 py-2 text-left font-normal">
+                    <span className="flex flex-col gap-1.5">
+                      <span>{row.label}</span>
+                      <SourceBar row={row} />
+                    </span>
+                  </th>
+                  <td className="px-3 py-2 text-right">{formatNumber(row.handled)}</td>
+                  <td className="px-3 py-2 text-right">{formatNumber(row.confirmed)}</td>
+                  <td className={`px-3 py-2 text-right ${row.cancelled > 0 ? RED : ""}`}>{formatNumber(row.cancelled)}</td>
+                  <td className="px-3 py-2 text-right" title={`Team ${formatPct(row.teamConfRate)} for ${row.label}`}><Rate value={row.confRate} flag={row.flag} /></td>
+                  <td className="px-3 py-2 text-right">{formatNumber(row.delivered)}</td>
+                  <td className="px-3 py-2 text-right">{formatTaka(row.value)}</td>
+                </tr>
+              ))}
+              <tr className="bg-black/[0.03] font-semibold">
+                <th scope="row" className="px-3 py-2 text-left">All sources</th>
+                <td className="px-3 py-2 text-right">{formatNumber(total.handled)}</td>
+                <td className="px-3 py-2 text-right">{formatNumber(total.confirmed)}</td>
+                <td className="px-3 py-2 text-right">{formatNumber(total.cancelled)}</td>
+                <td className="px-3 py-2 text-right">{formatPct(totalRate)}</td>
+                <td className="px-3 py-2 text-right">{formatNumber(total.delivered)}</td>
+                <td className="px-3 py-2 text-right">{formatTaka(total.value)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type ProfileProps = {
   item: StaffTableRow;
+  sourceRows: StaffSourceRow[];
   rank: number;
   shownCount: number;
   teamValue: number;
@@ -93,7 +169,7 @@ type ProfileProps = {
   averages: ReturnType<typeof staffTeamAverages>;
 };
 
-function Profile({ item, rank, shownCount, teamValue, teamAov, averages }: ProfileProps) {
+function Profile({ item, sourceRows, rank, shownCount, teamValue, teamAov, averages }: ProfileProps) {
   const m = item.row.orders;
   const carts = item.row.abandoned_checkouts;
   const extra = extraRevenue(item.row);
@@ -175,6 +251,8 @@ function Profile({ item, rank, shownCount, teamValue, teamAov, averages }: Profi
           ))}
         </div>
       </div>
+
+      <SourceBreakdown name={item.name} rows={sourceRows} />
 
       <div className="grid gap-3.5 md:grid-cols-2">
         <div className={`${CARD} flex flex-col gap-2 text-[12px] tabular-nums`}>
@@ -441,7 +519,7 @@ export function StaffTable({ rows }: { rows: StaffRow[] }) {
               transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
               className="flex flex-col gap-3.5 focus-visible:outline-none"
             >
-              <Profile item={selected} rank={rank.get(selected.key) ?? 0} shownCount={shownRows.length} teamValue={team.value} teamAov={teamAov} averages={averages} />
+              <Profile item={selected} sourceRows={buildStaffSourceRows(rows, selected.key)} rank={rank.get(selected.key) ?? 0} shownCount={shownRows.length} teamValue={team.value} teamAov={teamAov} averages={averages} />
             </motion.section>
           )}
         </div>

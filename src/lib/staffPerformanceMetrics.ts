@@ -1,4 +1,5 @@
-import type { StaffRow } from "@/lib/staffPerformancePresentation";
+import { orderSourceLabel } from "@/lib/orderSource";
+import type { SourceDetail, StaffRow } from "@/lib/staffPerformancePresentation";
 
 export const STAFF_FLAG_POINTS = 5;
 
@@ -160,4 +161,49 @@ export function groupStaffShare(rows: StaffRow[], maxSlices = 4): ShareSlice[] {
   const top = sorted.slice(0, shown).map((row) => ({ label: row.display_name, value: row.orders.confirmed_value }));
   const rest = sorted.slice(shown).reduce((sum, row) => sum + row.orders.confirmed_value, 0);
   return rest > 0 ? [...top, { label: "Other", value: rest }] : top;
+}
+
+export type StaffSourceRow = {
+  source: string;
+  label: string;
+  handled: number;
+  confirmed: number;
+  cancelled: number;
+  delivered: number;
+  returned: number;
+  value: number;
+  confRate: number | null;
+  teamConfRate: number | null;
+  yield: StaffYield;
+  flag: RateFlag;
+};
+
+// One member's handled orders by source, each confirmation rate flagged against the team's rate for that same source.
+export function buildStaffSourceRows(rows: StaffRow[], userId: string): StaffSourceRow[] {
+  const member = rows.find((row) => row.user_id === userId);
+  if (!member) return [];
+  const sourcesOf = (row: StaffRow) => row.orders.sources ?? [];
+  return sourcesOf(member).filter((detail) => detail.handled_count > 0).map((detail) => {
+    const peers = rows.map((row) => sourcesOf(row).find((other) => other.source === detail.source)).filter((other): other is SourceDetail => !!other && other.handled_count > 0);
+    const team = peers.reduce((sum, other) => ({ handled: sum.handled + other.handled_count, confirmed: sum.confirmed + other.confirmed_count }), { handled: 0, confirmed: 0 });
+    const rates = peers.map((other) => pct(other.confirmed_count, other.handled_count) as number);
+    const best = rates.length >= 2 && !rates.every((rate) => rate === rates[0]) ? Math.max(...rates) : null;
+    const confRate = pct(detail.confirmed_count, detail.handled_count);
+    const teamConfRate = pct(team.confirmed, team.handled);
+    const inTransit = Math.max(0, detail.confirmed_count - detail.delivered_count - detail.returned_count);
+    return {
+      source: detail.source,
+      label: orderSourceLabel(detail.source),
+      handled: detail.handled_count,
+      confirmed: detail.confirmed_count,
+      cancelled: detail.cancelled_count,
+      delivered: detail.delivered_count,
+      returned: detail.returned_count,
+      value: detail.confirmed_value,
+      confRate,
+      teamConfRate,
+      yield: { delivered: detail.delivered_count, inTransit, returned: detail.returned_count, cancelled: detail.cancelled_count },
+      flag: flagFor(confRate, teamConfRate, best, true, best !== null),
+    };
+  });
 }

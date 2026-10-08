@@ -1,3 +1,5 @@
+import { detectCustomerOrderSource } from "./customers.js";
+
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -130,6 +132,7 @@ function emptyMetrics() {
     retained_upsell_count: 0,
     retained_upsell_value: 0,
     products: [],
+    sources: [],
   };
 }
 
@@ -725,8 +728,16 @@ export function buildStaffReport(
     const handledRow = rowsByUserId.get(actorId);
     if (!handledRow) continue;
     const metrics = handledRow.orders;
+    // Handled orders split by order source, using the order form's source vocabulary.
+    const bySource = new Map();
     for (const { action, at, order, orderId } of entries.values()) {
       const value = toNumber(order.price);
+      const source = detectCustomerOrderSource(order, "order");
+      if (!bySource.has(source)) {
+        bySource.set(source, { source, handled_count: 0, confirmed_count: 0, confirmed_value: 0, cancelled_count: 0, delivered_count: 0, returned_count: 0 });
+      }
+      const sourceRow = bySource.get(source);
+      sourceRow.handled_count += 1;
       const addItems = (productRows) => addProductDetails(
         productRows,
         orderId ? itemsByOrderId.get(orderId) : undefined,
@@ -746,19 +757,24 @@ export function buildStaffReport(
       if (action === "cancelled") {
         metrics.handled_cancelled_count += 1;
         metrics.handled_cancelled_value += value;
+        sourceRow.cancelled_count += 1;
         addItems(outcomeProductsForMetrics(metrics, "cancelled"));
         continue;
       }
       metrics.handled_confirmed_count += 1;
       metrics.handled_confirmed_value += value;
+      sourceRow.confirmed_count += 1;
+      sourceRow.confirmed_value += value;
       metrics.handled_confirmed_kg += toNumber(order.weight_kg);
       addItems(productsForMetrics(metrics));
       if (outcome === "delivered" || outcome === "returned") {
         metrics[`handled_${outcome}_count`] += 1;
         metrics[`handled_${outcome}_value`] += value;
+        sourceRow[`${outcome}_count`] += 1;
         addItems(outcomeProductsForMetrics(metrics, outcome));
       }
     }
+    metrics.sources = [...bySource.values()].sort((a, b) => b.handled_count - a.handled_count || b.confirmed_value - a.confirmed_value);
   }
 
   for (const assignedKey of cancelledAssignedOrderKeys) {
