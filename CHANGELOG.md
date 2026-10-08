@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.0.64] - 2026-10-08
+
+### Added
+
+- Staff Performance shows each team member's handled orders by source (Website, Facebook, Instagram, WhatsApp, Phone, Telesales, Upsell, Manual / Other): handled, confirmed, cancelled, confirmation rate, delivered and value per source, with an outcome bar and an all-sources total. A source's confirmation rate is red when it is more than 5 points below the team's rate for that source, and green when it is the best on the team.
+- Home's Order Protection card lists the latest held checkouts with customer, product and risk score.
+
+### Changed
+
+- Home's attention cards are tighter: the order list follows the description, shows 3 rows that are never cut off, and full-width buttons sit below it without a shadow.
+- Home's channel filter uses the BoardUI dropdown with the brand logos from Settings, in a compact panel, and leaves no focus outline after a mouse close.
+
+### Fixed
+
+- Home loads in under a second again. Its session numbers come from a new small database function (`analytics_home_sessions`) instead of the full website report, which was timing out; if sessions are ever slow, Home shows "—" for them after 3 seconds instead of waiting.
+
 ## [0.1.0.63] - 2026-10-06
 
 ### Changed
