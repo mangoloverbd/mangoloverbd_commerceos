@@ -129,7 +129,7 @@ describe("website report", () => {
     expect(report.totals).toMatchObject({ sessions: 3, visitors: 2, pageviews: 4, product_sessions: 2, cart_sessions: 1, checkout_sessions: 1,
       ordered_sessions: 2, orders: 2, delivered_sessions: 1, bounced_sessions: 2 });
     expect(report.daily).toEqual([{ day: "2026-10-02", sessions: 3, visitors: 2, pageviews: 4, ordered_sessions: 2 }]);
-    expect(report.hourly.find((row) => row.hour === 10)).toEqual({ hour: 10, sessions: 1 });
+    expect(report.hourly.find((row) => row.hour === 10)).toEqual({ hour: 10, sessions: 1, ordered_sessions: 1 });
     expect(report.sources[0]).toMatchObject({ source: "direct", sessions: 1, ordered_sessions: 1 });
     expect(report.products).toEqual([{ product_slug: "katimon-mango", name: "Katimon Mango", views: 2, sessions: 2, ordered_sessions: 1, orders: 1, delivered: 1 }]);
     expect(report.campaigns).toEqual([{ campaign: "himsagar-reel", sessions: 1, ordered_sessions: 1 }]);
@@ -158,13 +158,15 @@ describe("home sessions", () => {
     visit(org, { at: "2026-09-01T09:00:00Z" }); // outside the range
     const range = `'${org}','2026-10-01T18:00:00Z','2026-10-02T18:00:00Z'`;
 
-    type Sessions = { totals: Record<string, number>; daily: Array<{ day: string; sessions: number }>; hourly: Array<{ hour: number; sessions: number }> };
+    type Bucket = { sessions: number; ordered_sessions: number };
+    type Sessions = { totals: Record<string, number>; daily: Array<Bucket & { day: string }>; hourly: Array<Bucket & { hour: number }> };
     const home = json<Sessions>(`select public.analytics_home_sessions(${range})`);
     const full = json<Sessions>(`select public.analytics_website_report(${range})`);
     expect(home.totals).toEqual({ sessions: 3, ordered_sessions: 1 });
     expect(home.totals).toEqual({ sessions: full.totals.sessions, ordered_sessions: full.totals.ordered_sessions });
-    expect(home.daily).toEqual(full.daily.map(({ day, sessions }) => ({ day, sessions })));
-    expect(home.hourly).toEqual(full.hourly.map(({ hour, sessions }) => ({ hour, sessions })));
+    expect(home.daily).toEqual(full.daily.map(({ day, sessions, ordered_sessions }) => ({ day, sessions, ordered_sessions })));
+    expect(home.hourly).toEqual(full.hourly.map(({ hour, sessions, ordered_sessions }) => ({ hour, sessions, ordered_sessions })));
+    expect(home.hourly.find((row) => row.hour === 10)).toEqual({ hour: 10, sessions: 2, ordered_sessions: 1 });
   });
 
   it("is server-only and rejects unbounded ranges", () => {

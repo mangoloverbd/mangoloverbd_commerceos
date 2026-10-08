@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { memo, startTransition, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueries, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
@@ -629,12 +629,21 @@ export default function Dashboard() {
   // orders, or { fresh: true } to pick up a known change without a full reload.
   const fetchOrders = useCallback(async (opts: { full?: boolean; fresh?: boolean } = {}) => {
     try {
+      // Orders already on screen means this is a refresh (see the transition below).
+      const isRefresh = Boolean(queryClient.getQueryData<Order[]>(["/api/orders"])?.length);
       // syncOrders writes ["/api/orders"] and ["/api/orders/count"].
       const nextOrders = await syncOrders<Order>(queryClient, opts);
       if (opts.full || opts.fresh) void queryClient.invalidateQueries({ queryKey: ["/api/orders?created-range"] });
       const nextTotalOrdersCount = queryClient.getQueryData<number>(["/api/orders/count"]) ?? nextOrders.length;
-      setOrders(nextOrders);
-      setTotalOrdersCount(nextTotalOrdersCount);
+      const apply = () => {
+        setOrders(nextOrders);
+        setTotalOrdersCount(nextTotalOrdersCount);
+      };
+      // A refresh re-renders the whole table; as a transition React renders it in
+      // slices, so it never freezes the page (or its entrance) for a few hundred ms.
+      // The first load applies at once, so the table never flashes empty.
+      if (isRefresh) startTransition(apply);
+      else apply();
       // Warm the product catalog cache in the background so the order
       // editor's catalog section renders instantly on open. No-op while fresh.
       void queryClient.prefetchQuery({

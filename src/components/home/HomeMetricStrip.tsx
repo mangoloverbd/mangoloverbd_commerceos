@@ -1,9 +1,14 @@
-import { useId, type ReactNode } from "react";
+import { lazy, Suspense, useId, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Format } from "@number-flow/react";
 import { MetricNumberFlow } from "@/components/ui/number-flow";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { RISE_EASE } from "./Rise";
-import type { HomeMetric } from "./types";
+import type { BucketUnit } from "./metricTrend";
+import type { HomeMetric, HomeSummary } from "./types";
+
+// Recharts loads on the first hover, keeping it out of Home's first paint.
+const MetricTrendCard = lazy(() => import("./MetricTrendCard"));
 
 type MetricKey = "sessions" | "sales" | "orders" | "conversion_rate";
 
@@ -115,6 +120,32 @@ function Appear({ children }: { children: ReactNode }) {
   );
 }
 
+// Hovering a metric opens its chart over the period, like Shopify's Home.
+function MetricTrend({ metricKey, metric, unit, range, children }: {
+  metricKey: MetricKey;
+  metric: HomeMetric | null;
+  unit: BucketUnit | null;
+  range: HomeSummary["range"];
+  children: ReactNode;
+}) {
+  // The wrapper stays mounted while loading: swapping it in when data arrives
+  // would remount the number and skip its roll-up from 0.
+  return (
+    <HoverCard openDelay={150} closeDelay={100} {...(metric ? {} : { open: false })}>
+      <HoverCardTrigger asChild>
+        <div className="cursor-default">{children}</div>
+      </HoverCardTrigger>
+      {metric && (
+        <HoverCardContent sideOffset={12} className="w-[min(560px,calc(100vw-24px))] rounded-2xl border-[#ECEAE4] bg-white p-6">
+          <Suspense fallback={<div className="h-[340px]" />}>
+            <MetricTrendCard metricKey={metricKey} metric={metric} unit={unit} range={range} />
+          </Suspense>
+        </HoverCardContent>
+      )}
+    </HoverCard>
+  );
+}
+
 function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: {
   label: string;
   metric: HomeMetric | null;
@@ -127,23 +158,23 @@ function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: 
 }) {
   return (
     <div className="flex flex-col items-center gap-2" data-testid={`home-metric-${label}`}>
-      <span className="text-[15px] text-[#55534E]">{label}</span>
+      <span className="text-[13px] text-[#55534E]">{label}</span>
       {locked ? (
-        <span title="Admins only" aria-label={`${label}: admins only`} className="select-none text-[15px] font-semibold text-[#111110] blur-[6px]">
+        <span title="Admins only" aria-label={`${label}: admins only`} className="select-none text-[14px] font-medium text-[#111110] blur-[6px]">
           ৳00,000
         </span>
       ) : (
-        <div className="flex items-center gap-2 text-[15px]">
+        <div className="flex items-center gap-2 text-[14px]">
           {loading || metric ? (
             <MetricNumberFlow
               value={metric?.value ?? 0}
               prefix={prefix}
               suffix={suffix}
               format={format}
-              className={`font-semibold tabular-nums text-[#111110] transition-opacity duration-300 ${loading ? "opacity-30" : ""}`}
+              className={`font-medium tabular-nums text-[#111110] transition-opacity duration-300 ${loading ? "opacity-30" : ""}`}
             />
           ) : (
-            <b className="font-semibold text-[#111110]">—</b>
+            <b className="font-medium text-[#111110]">—</b>
           )}
           {metric?.series && <Sparkline series={metric.series} />}
           {metric?.change != null && (
@@ -160,10 +191,10 @@ function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: 
 function LiveIndicator({ count, loading, pulse }: { count: number | null; loading: boolean; pulse: number }) {
   const reduceMotion = useReducedMotion();
   return (
-    <div className="flex items-center gap-2 pt-1.5 text-[14px] text-[#55534E]" aria-live="polite">
+    <div className="flex items-center gap-2 pt-1.5 text-[13px] text-[#55534E]" aria-live="polite">
       Live visitors {count === null && !loading
-        ? <b className="font-semibold text-[#111110]">—</b>
-        : <MetricNumberFlow value={count ?? 0} prefix="" className={`font-semibold tabular-nums text-[#111110] transition-opacity duration-300 ${loading ? "opacity-30" : ""}`} />}
+        ? <b className="font-medium text-[#111110]">—</b>
+        : <MetricNumberFlow value={count ?? 0} prefix="" className={`font-medium tabular-nums text-[#111110] transition-opacity duration-300 ${loading ? "opacity-30" : ""}`} />}
       <span className="relative h-2.5 w-2.5 rounded-full border-2 border-[#3FA34D]" aria-hidden="true">
         {/* Spins once each time the globe's pin lands on a new place. */}
         {pulse > 0 && !reduceMotion && (
@@ -180,8 +211,12 @@ function LiveIndicator({ count, loading, pulse }: { count: number | null; loadin
   );
 }
 
-export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, isAdmin, scope }: {
+export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, isAdmin, scope, range, unit = null }: {
   metrics: Record<MetricKey, HomeMetric | null> | undefined;
+  /** The reported period, for the hover chart's dates. */
+  range?: HomeSummary["range"];
+  /** Hours for a single day, days for a span; null for all time. */
+  unit?: BucketUnit | null;
   /** No summary yet (first load). */
   loading: boolean;
   liveCount: number | null;
@@ -196,7 +231,9 @@ export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, is
       {scope}
       <div className="flex flex-wrap justify-center gap-x-9 gap-y-4 max-[1360px]:gap-x-6">
         {METRICS.map(({ key, label, prefix, suffix, format, adminOnly }) => (
-          <MetricItem key={key} label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
+          <MetricTrend key={key} metricKey={key} metric={adminOnly && !isAdmin ? null : metrics?.[key] ?? null} unit={unit} range={range}>
+            <MetricItem label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
+          </MetricTrend>
         ))}
       </div>
       <LiveIndicator count={liveCount} loading={loading} pulse={livePulse} />

@@ -30,7 +30,7 @@ export function AskEdithBar() {
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="Ask Edith — which orders are risky today?"
           aria-label="Ask Edith"
-          className="min-w-0 flex-1 bg-transparent text-[17.5px] text-[#111110] outline-none placeholder:text-[#8C8A84]"
+          className="min-w-0 flex-1 bg-transparent text-[15px] text-[#111110] outline-none placeholder:text-[#8C8A84]"
         />
         <button
           type="button"

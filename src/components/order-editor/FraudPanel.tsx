@@ -207,7 +207,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
                 <li key={courier.key} className="flex items-center gap-2.5">
                   <CourierLogo key={`${courier.key}-${data?.checkedAt ?? "none"}`} src={courier.logo} />
                   <span className="min-w-0 flex-1 truncate text-[13px] text-black">{courier.name}</span>
-                  <span className="text-[12px] tabular-nums text-black/50">{courier.success}/{courier.total}</span>
+                  <span className="text-[12px] tabular-nums text-black/50">{courier.countLabel}</span>
                   <span className="flex w-14 justify-end">
                     <Chip variant="caption" color={courier.ratio >= 70 ? "lime" : courier.ratio >= 50 ? "yellow" : "rose"} className="tabular-nums">
                       {courier.ratio}%
@@ -227,7 +227,7 @@ export function FraudPanel({ phone, className = "", defaultExpanded = false, com
                       <li key={courier.key} className="flex items-center gap-2">
                         <CourierLogo src={courier.logo} />
                         <span className="min-w-0 flex-1 truncate text-[12px] text-black">{courier.name}</span>
-                        <span className="text-[11px] tabular-nums text-black/45">{courier.success}/{courier.total}</span>
+                        <span className="text-[11px] tabular-nums text-black/45">{courier.countLabel}</span>
                       </li>
                     ))}
                   </ul>

@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0.64] - 2026-10-08
+## [0.1.0.66] - 2026-10-08
 
 ### Added
 
@@ -14,7 +14,29 @@
 
 ### Fixed
 
-- Home loads in under a second again. Its session numbers come from a new small database function (`analytics_home_sessions`) instead of the full website report, which was timing out; if sessions are ever slow, Home shows "—" for them after 3 seconds instead of waiting.
+- Home loads in under a second again. Its sessions, conversion rate and their hourly/daily charts come from a new small database function (`analytics_home_sessions`, migrations `20261008083002` and `20261008085241`, both already applied to the Mango Lover BD database) instead of the full website report, which was timing out. If sessions are ever slow, Home shows "—" for them after 3 seconds instead of waiting.
+
+## [0.1.0.65] - 2026-10-06
+
+### Added
+
+- Hovering Sessions, Total sales, Orders or Conversion rate on Home opens a chart of that metric over the period, like Shopify: the figure and its change, what it measures, and each hour (or day) against the comparison period as a dotted line. The chart code loads on first hover, so Home's first load is unchanged.
+- Conversion rate is now tracked by the hour, so it has a sparkline and an hourly chart too. Needs the `20261006190000_website_report_hourly_conversion` migration (already applied to the Mango Lover BD database).
+
+### Fixed
+
+- Steadfast fraud history comes from Steadfast itself, using the shop's own Steadfast API keys, instead of FraudShield's copy, which sometimes showed 0 parcels for customers with Steadfast history. FraudShield still covers the other couriers and is used for Steadfast if Steadfast's API fails. Steadfast reports a range (e.g. "25+"), shown as such in the fraud panel and counted at its low end in totals.
+
+## [0.1.0.64] - 2026-10-06
+
+### Changed
+
+- Home uses a lighter type scale: a smaller headline, normal-weight card titles and quick actions, and smaller metrics, Ask Edith text and globe card, so the page reads calmer and matches the rest of the app.
+
+### Fixed
+
+- Opening Orders from another page is smooth again. A 100-row table froze the page for about a second (5 frames in 1.5s), so the entrance jumped; the first 20 rows now show at once and the rest fill in after the entrance, and background order refreshes no longer freeze the page.
+- The "Good afternoon!" greeting on Orders no longer rebuilds itself (and restarts its shimmer) every time the page updates.
 
 ## [0.1.0.63] - 2026-10-06
 

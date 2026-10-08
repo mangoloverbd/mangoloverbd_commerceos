@@ -59,3 +59,16 @@ describe("relativeAge", () => {
     expect(relativeAge(null, now)).toBe("—");
   });
 });
+
+describe("courierRows count label", () => {
+  it("shows Steadfast's volume range instead of an exact count", () => {
+    const rows = courierRows({
+      courierData: {
+        steadfast: { name: "SteadFast", total_parcel: 25, success_parcel: 25, success_ratio: 100, volume_range: "25+" },
+        pathao: { name: "Pathao", total_parcel: 13, success_parcel: 12 },
+      },
+    });
+
+    expect(rows.map((row) => row.countLabel)).toEqual(["25+", "12/13"]);
+  });
+});

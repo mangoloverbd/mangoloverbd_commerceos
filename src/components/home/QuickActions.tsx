@@ -11,12 +11,12 @@ export function QuickActions({ actions }: { actions: HomeQuickAction[] }) {
           key={action.key}
           to={action.to}
           state={action.state}
-          className="flex items-center gap-3 rounded-full border border-[#ECEAE4] bg-white py-2 pl-5 pr-2.5 text-[16px] font-medium text-[#111110] transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-px hover:shadow-[0_1px_2px_rgba(17,17,16,0.04),0_8px_24px_rgba(17,17,16,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+          className="flex items-center gap-3 rounded-full border border-[#ECEAE4] bg-white py-1.5 pl-4 pr-2 text-[14px] font-normal text-[#111110] transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-px hover:shadow-[0_1px_2px_rgba(17,17,16,0.04),0_8px_24px_rgba(17,17,16,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
         >
           {action.label}
           <span
             className={cn(
-              "rounded-full px-2.5 py-1 text-[14px] font-medium tabular-nums",
+              "rounded-full px-2 py-0.5 text-[12.5px] font-medium tabular-nums",
               action.tone === "warn" && (action.count ?? 0) > 0 ? "bg-[#FDEFD9] text-[#E0861B]" : "bg-[#F2F1EC] text-[#55534E]",
             )}
           >

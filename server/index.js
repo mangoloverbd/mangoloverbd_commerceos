@@ -109,6 +109,7 @@ import {
   FRAUD_WARM_LOOKBACK_DAYS,
   cacheState,
   fetchFraudShield,
+  fetchFraudSources,
   resolveFraudCheck,
   selectPhonesToWarm,
   shouldWarm,
@@ -11105,7 +11106,13 @@ async function runFraudCheck(supabase, orgId, phone, force = false) {
     force,
     readCache: () => readFraudCache(supabase, orgId, phone),
     writeCache: (patch) => writeFraudCache(supabase, orgId, phone, patch),
-    callApi: () => fetchFraudShield(phone, apiKey),
+    callApi: async () => {
+      const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
+      return fetchFraudSources(phone, {
+        fraudShieldKey: apiKey,
+        steadfast: { apiKey: cfg.steadfast_api_key, secretKey: cfg.steadfast_secret_key },
+      });
+    },
   });
 }
 

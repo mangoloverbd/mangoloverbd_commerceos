@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { useProgressiveCount } from "@/hooks/useProgressiveCount";
 import SteadfastLogo from "@/components/SteadfastLogo";
 import PathaoLogo from "@/components/PathaoLogo";
 import {
@@ -674,6 +675,9 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
   });
   const { orgName } = useOrgName();
   const { warehouses } = useWarehouses();
+  // A 100-row page renders its first rows at once and the rest after the page's
+  // entrance, so opening Orders doesn't freeze; print renders everything.
+  const renderedRowCount = useProgressiveCount(orders.length, { enabled: !isPrintView });
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [sendingPathaoIds, setSendingPathaoIds] = useState<Set<string>>(new Set());
@@ -1344,7 +1348,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
           </TableRow>
         </TableHeader>
         <TableBody>
-            {orders.map((order, idx) => {
+            {orders.slice(0, renderedRowCount).map((order, idx) => {
               const { primary, lines, names } = productSummary(order);
               const statusOptions = isPrintStatus(order.status)
                 ? ["print", "confirmed", "processing", "on_hold", "cancelled"]

@@ -100,6 +100,38 @@ describe("home metrics", () => {
     expect(websiteOnly.orders).toMatchObject({ value: 1, previous: 1 });
   });
 
+  it("charts conversion by hour once the report carries ordered sessions", () => {
+    const windows = homeWindows(now);
+    const metrics = buildHomeMetrics({
+      orders: [],
+      windows,
+      website: {
+        current: { totals: { sessions: 200, ordered_sessions: 4 }, hourly: [{ hour: 1, sessions: 50, ordered_sessions: 3 }, { hour: 9, sessions: 150, ordered_sessions: 1 }], daily: [] },
+        previous: { totals: { sessions: 100, ordered_sessions: 4 }, hourly: [{ hour: 2, sessions: 100, ordered_sessions: 4 }], daily: [] },
+      },
+    });
+
+    // The sparkline is the running rate, ending at the headline value.
+    expect(metrics.conversion_rate.series).toEqual([0, 6, 6, 6, 6, 6, 6, 6, 6, 2, 2]);
+    expect(metrics.conversion_rate.series.at(-1)).toBe(metrics.conversion_rate.value);
+    // The hover chart shows each hour's own rate.
+    expect(metrics.conversion_rate.buckets).toEqual([0, 6, 0, 0, 0, 0, 0, 0, 0, 0.67, 0]);
+    expect(metrics.conversion_rate.previous_buckets).toEqual([0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("charts conversion by day from the daily rows", () => {
+    const metrics = buildHomeMetrics({
+      orders: [],
+      windows: homeWindows(now, { from: "2026-10-04", to: "2026-10-06" }),
+      website: {
+        current: { totals: { sessions: 30, ordered_sessions: 3 }, hourly: [], daily: [{ day: "2026-10-05", sessions: 30, ordered_sessions: 3 }] },
+        previous: null,
+      },
+    });
+    expect(metrics.conversion_rate.buckets).toEqual([0, 10, 0]);
+    expect(metrics.conversion_rate.previous_buckets).toBeNull();
+  });
+
   it("buckets a multi-day range by Dhaka day", () => {
     const windows = homeWindows(now, { from: "2026-10-04", to: "2026-10-06" });
     const metrics = buildHomeMetrics({
