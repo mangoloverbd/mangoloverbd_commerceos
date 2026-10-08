@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ORDER_SOURCE_OPTIONS,
+  canChangeOrderSource,
   normalizeOrderSource,
   orderSourceLabel,
 } from "@/lib/orderSource";
@@ -41,5 +42,18 @@ describe("order source", () => {
     const server = readFileSync(`${process.cwd()}/server/index.js`, "utf8");
     const line = server.split("\n").find((row) => row.startsWith("const ORDER_SOURCE_VALUES"));
     for (const { value } of ORDER_SOURCE_OPTIONS) expect(line).toContain(`"${value}"`);
+  });
+});
+
+describe("canChangeOrderSource", () => {
+  it("allows only orders a staff member made with Create order", () => {
+    expect(canChangeOrderSource({ origin_actor_kind: "user", origin_source: "facebook" })).toBe(true);
+    expect(canChangeOrderSource({ origin_actor_kind: "user", origin_source: "manual_other" })).toBe(true);
+    // Abandoned-checkout conversions, storefront, inbox and pre-history orders stay locked.
+    expect(canChangeOrderSource({ origin_actor_kind: "user", origin_source: "abandoned_checkout" })).toBe(false);
+    expect(canChangeOrderSource({ origin_actor_kind: "customer", origin_source: "website" })).toBe(false);
+    expect(canChangeOrderSource({ origin_actor_kind: "system", origin_source: "social_facebook" })).toBe(false);
+    expect(canChangeOrderSource({ origin_actor_kind: null, origin_source: null })).toBe(false);
+    expect(canChangeOrderSource(null)).toBe(false);
   });
 });

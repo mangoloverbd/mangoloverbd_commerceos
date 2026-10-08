@@ -35,3 +35,9 @@ export function isAbandonedCheckoutOrder(source: string | null | undefined, orig
 export function orderSourceDisplayLabel(source: string | null | undefined, originSource: string | null | undefined): string {
   return isAbandonedCheckoutOrder(source, originSource) ? "Abandoned" : orderSourceLabel(source);
 }
+
+// Only orders a staff member entered through Create order can have their source
+// changed later. Mirrors canChangeOrderSource in server/index.js.
+export function canChangeOrderSource(order: { origin_actor_kind?: string | null; origin_source?: string | null } | null | undefined): boolean {
+  return order?.origin_actor_kind === "user" && ORDER_SOURCE_OPTIONS.some((option) => option.value === order?.origin_source);
+}

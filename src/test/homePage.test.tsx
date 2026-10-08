@@ -183,16 +183,14 @@ describe("globe projection", () => {
 });
 
 describe("sparkline curve", () => {
-  it("passes through every point without overshooting a flat stretch", () => {
-    const d = smoothPath([[0, 10], [10, 2], [20, 2], [30, 2]]);
+  it("starts and ends on the first and last points and stays within their range", () => {
+    const d = smoothPath([[0, 10], [10, 2], [20, 8], [30, 2]]);
     expect(d.startsWith("M0.00,10.00")).toBe(true);
-    expect(d).toContain(" 10.00,2.00");
-    expect(d).toContain(" 30.00,2.00");
-    // Control points on the flat part stay on the line (y = 2), so it never bulges above it.
-    const controls = [...d.matchAll(/C([\d.]+),([\d.]+) ([\d.]+),([\d.]+)/g)].slice(1);
-    for (const [, , y1, , y2] of controls) {
-      expect(Number(y1)).toBeGreaterThanOrEqual(2);
-      expect(Number(y2)).toBeGreaterThanOrEqual(2);
+    expect(d.endsWith(" 30.00,2.00")).toBe(true);
+    const ys = [...d.matchAll(/[\d.]+,([\d.]+)/g)].map(([, y]) => Number(y));
+    for (const y of ys) {
+      expect(y).toBeGreaterThanOrEqual(2);
+      expect(y).toBeLessThanOrEqual(10);
     }
   });
 });

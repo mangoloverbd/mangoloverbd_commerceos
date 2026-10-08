@@ -25,6 +25,7 @@ import SmsBubbleIcon from "@/components/SmsBubbleIcon";
 import { IndividualSmsDialog } from "@/components/order-editor/IndividualSmsDialog";
 import { FraudPanel } from "@/components/order-editor/FraudPanel";
 import { normalizeOrderSource, orderSourceDisplayLabel, type OrderSource } from "@/lib/orderSource";
+import { OrderSourceSelect } from "./OrderSourceSelect";
 
 export type CustomerDraft = {
   customerName: string;
@@ -70,6 +71,8 @@ type CustomerPanelProps = {
   onApply: (customer: CustomerDraft) => void;
   source?: OrderSource;
   originSource?: string | null;
+  /** Set only for orders made with Create order; turns the source chip into a picker. */
+  onSourceChange?: (source: OrderSource) => void;
   smsAmount?: number | null;
   smsAdvancePaid?: number | null;
 };
@@ -205,7 +208,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
   }
 }
 
-export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source, originSource, smsAmount, smsAdvancePaid }: CustomerPanelProps) {
+export function CustomerPanel({ order, customer, disabled = false, history = [], historyLoading = false, onOpenOrder, onApply, source, originSource, onSourceChange, smsAmount, smsAdvancePaid }: CustomerPanelProps) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(customer);
   const [copied, setCopied] = useState(false);
@@ -277,7 +280,13 @@ export function CustomerPanel({ order, customer, disabled = false, history = [],
               <ArrowUpRight weight="light" size={13} aria-hidden="true" className="shrink-0 transition-transform group-hover:-translate-y-px group-hover:translate-x-px" />
             </a>
           )}
-          {source && (
+          {source && onSourceChange && (
+            <div data-testid="order-source-control" className="flex min-w-0 items-center gap-2">
+              <p className={metaChipLabelClass}>Order source</p>
+              <OrderSourceSelect value={source} onChange={onSourceChange} disabled={disabled} compact />
+            </div>
+          )}
+          {source && !onSourceChange && (
             <div data-testid="order-source-control" className={`flex ${metaChipClass}`}>
               <SourceIcon weight="light" size={14} aria-hidden="true" className="shrink-0" />
               <p className={metaChipLabelClass}>Order source</p>

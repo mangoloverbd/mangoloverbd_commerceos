@@ -1,0 +1,431 @@
+<title>Staff Performance Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #FAFAF8; --ink: #0B0B0A; --ink-2: rgba(11,11,10,.62); --ink-3: rgba(11,11,10,.42);
+    --panel: rgba(11,11,10,.04); --rule: rgba(11,11,10,.09); --track: rgba(11,11,10,.08); --card: #FFFFFF;
+    --s1: #0B0B0A; --s2: #4A4A47; --s3: #8A8A85; --s4: #C4C4BE; --s5: #E0E0DA;
+    --good: #2F7A55; --warn: #B7862F; --bad: #B4473A; --muted: #7A5C86;
+    --chip-bg: #FFF4DA; --chip-ink: #7A5410;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111110; --ink: #F2F2EE; --ink-2: rgba(242,242,238,.66); --ink-3: rgba(242,242,238,.44);
+      --panel: rgba(242,242,238,.05); --rule: rgba(242,242,238,.1); --track: rgba(242,242,238,.1); --card: #1A1A19;
+      --s1: #F2F2EE; --s2: #B9B9B3; --s3: #7E7E78; --s4: #4A4A46; --s5: #333331;
+      --good: #5BB288; --warn: #D9A94E; --bad: #E0705F; --muted: #B08CC0;
+      --chip-bg: #3A2E14; --chip-ink: #F1CD85;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111110; --ink: #F2F2EE; --ink-2: rgba(242,242,238,.66); --ink-3: rgba(242,242,238,.44);
+    --panel: rgba(242,242,238,.05); --rule: rgba(242,242,238,.1); --track: rgba(242,242,238,.1); --card: #1A1A19;
+    --s1: #F2F2EE; --s2: #B9B9B3; --s3: #7E7E78; --s4: #4A4A46; --s5: #333331;
+    --good: #5BB288; --warn: #D9A94E; --bad: #E0705F; --muted: #B08CC0;
+    --chip-bg: #3A2E14; --chip-ink: #F1CD85;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 28px 16px 64px; display: flex; flex-direction: column; gap: 14px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: "Geist Mono", ui-monospace, Menlo, monospace; }
+  header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; padding-bottom: 6px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+  .sub { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); max-width: 64ch; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--panel); font-size: 12px; }
+  .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 500; background: var(--chip-bg); color: var(--chip-ink); }
+  .label { font-size: 8px; font-weight: 500; letter-spacing: .3em; text-transform: uppercase; color: var(--ink); }
+  .panel { background: var(--panel); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .panel-title { font-size: 15px; font-weight: 600; margin: 4px 0 0; }
+  .note { font-size: 10px; color: var(--ink-3); line-height: 1.5; border-top: 1px dashed var(--rule); padding-top: 10px; margin-top: auto; }
+  .note b { color: var(--ink-2); font-weight: 500; }
+  .note .new { color: var(--warn); font-weight: 500; }
+  .tiles { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; }
+  .tile { background: var(--panel); border-radius: 16px; padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .tile .value { font-size: 24px; font-weight: 300; letter-spacing: -.04em; }
+  .tile .meta { font-size: 11px; color: var(--ink-2); }
+  .up { color: var(--good); font-weight: 500; } .down { color: var(--bad); font-weight: 500; }
+  .spark { height: 30px; width: 100%; }
+  .row-2 { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); gap: 12px; }
+  .row-3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+  .chart { width: 100%; }
+  .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .legend li { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 8px; align-items: center; font-size: 12px; }
+  .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .legend .pct { color: var(--ink-3); min-width: 36px; text-align: right; }
+  .keyrow { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--ink-2); }
+  .keyrow span { display: inline-flex; gap: 6px; align-items: center; }
+  .funnel { display: grid; gap: 10px; }
+  .fstep { display: grid; grid-template-columns: 92px 1fr 64px; gap: 10px; align-items: center; font-size: 12px; }
+  .fbar { height: 22px; border-radius: 6px; background: var(--ink); display: flex; align-items: center; padding-left: 8px; color: var(--bg); font-size: 11px; font-weight: 500; }
+  .fdrop { font-size: 11px; color: var(--bad); padding-left: 102px; margin-top: -4px; }
+  /* Staff table */
+  .sp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sp-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .sp-head .div { width: 1px; height: 14px; background: var(--rule); }
+  .sp-head .hint { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+  .btn { border: 0; cursor: pointer; font: inherit; font-size: 12px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--panel); color: var(--ink); }
+  .btn:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+  .scroll { overflow-x: auto; margin: 0 -6px; padding: 0 6px; }
+  table.st { width: 100%; min-width: 1000px; border-collapse: collapse; font-size: 12px; }
+  .st th { text-align: left; font-weight: 500; font-size: 8px; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2); padding: 0 10px 10px; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+  .st th.r, .st td.r { text-align: right; }
+  .st th button { all: unset; cursor: pointer; }
+  .st th button:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+  .st th button[aria-sort] { color: var(--ink); }
+  .st td { padding: 12px 10px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; vertical-align: middle; }
+  .st tr.row { cursor: pointer; transition: background .15s; }
+  .st tr.row:hover, .st tr.row.open { background: var(--panel); }
+  .st tr.row:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; }
+  .who { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; }
+  .rank { width: 20px; height: 20px; border-radius: 6px; display: inline-grid; place-items: center; font-size: 10px; font-weight: 600; background: var(--panel); color: var(--ink-2); }
+  .rank.first { background: var(--ink); color: var(--bg); }
+  .caret { color: var(--ink-3); font-size: 10px; transition: transform .25s; display: inline-block; }
+  tr.row.open .caret { transform: rotate(90deg); }
+  .former { font-size: 10px; font-weight: 400; color: var(--ink-3); }
+  .mix { display: flex; width: 150px; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; }
+  .mix i { display: block; height: 100%; }
+  .flag { color: var(--bad); font-weight: 500; } .flag::after { content: " ▲"; font-size: 8px; vertical-align: 1px; }
+  .flag.low::after { content: " ▼"; }
+  .best { color: var(--good); font-weight: 500; }
+  tr.detail > td { padding: 0; background: var(--panel); white-space: normal; }
+  .dwrap { overflow: hidden; transition: height .28s cubic-bezier(.22,1,.36,1), opacity .28s; }
+  .dinner { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .dgrid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+  .dcard { background: var(--card); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .dcard .label { color: var(--ink-2); }
+  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+  .kv span:first-child { color: var(--ink-2); }
+  .kv.total { border-top: 1px solid var(--rule); padding-top: 8px; font-weight: 500; }
+  .mini { display: grid; gap: 7px; }
+  .mini .bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .mini .bar i { display: block; height: 100%; border-radius: 3px; }
+  .mini .lab { display: flex; justify-content: space-between; font-size: 11px; }
+  .mini .lab span:first-child { color: var(--ink-2); }
+  table.pt { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 12px; background: var(--card); border-radius: 12px; overflow: hidden; }
+  .pt th { font-size: 8px; font-weight: 500; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-2); text-align: left; padding: 10px 12px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  .pt td { padding: 9px 12px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pt th.r, .pt td.r { text-align: right; }
+  .pt tr.total td { font-weight: 600; background: var(--panel); border-bottom: 0; }
+  .pt .pp { color: var(--ink-3); font-size: 10px; margin-left: 6px; }
+  .pbar { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; width: 100%; min-width: 80px; }
+  .pbar i { display: block; height: 100%; background: var(--ink); border-radius: 2px; }
+  .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--ink-3); }
+  .locked { position: relative; }
+  .locked-note { font-size: 11px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
+  @media (max-width: 980px) { .tiles { grid-template-columns: repeat(3, minmax(0,1fr)); } .row-2, .row-3 { grid-template-columns: minmax(0,1fr); } }
+  @media (max-width: 560px) { .tiles { grid-template-columns: repeat(2, minmax(0,1fr)); } .dgrid { grid-template-columns: minmax(0,1fr); } .fstep { grid-template-columns: 80px 1fr 56px; } .fdrop { padding-left: 90px; } }
+  @media (prefers-reduced-motion: reduce) { .dwrap, .caret { transition: none; } }
+</style>
+
+<div class="page">
+  <header class="top">
+    <div>
+      <h1>Staff Performance</h1>
+      <p class="sub">Confirmation, delivery and extra revenue for each team member, using Asia/Dhaka dates. Proposed layout in the Business Report style.</p>
+    </div>
+    <div class="controls">
+      <span class="chip">Sample figures</span>
+      <span class="pill">All staff ▾</span>
+      <span class="pill num">1 Sep – 28 Sep 2026</span>
+    </div>
+  </header>
+
+  <section class="tiles" aria-label="Team summary">
+    <div class="tile"><span class="label">Confirmed value</span><span class="value num">৳12,10,600</span><span class="meta"><span class="up">+7.9%</span> vs previous period</span><div class="spark" data-spark="0"></div></div>
+    <div class="tile"><span class="label">Confirmed orders</span><span class="value num">1,239</span><span class="meta">of 1,530 assigned · <span class="up">+5.1%</span></span><div class="spark" data-spark="1"></div></div>
+    <div class="tile"><span class="label">Confirmation rate</span><span class="value num">81.0%</span><span class="meta">Confirmed ÷ assigned · <span class="up">+1.8 pts</span></span><div class="spark" data-spark="2"></div></div>
+    <div class="tile"><span class="label">Delivered rate</span><span class="value num">86.8%</span><span class="meta">Delivered ÷ confirmed · <span class="down">−0.6 pts</span></span><div class="spark" data-spark="3"></div></div>
+    <div class="tile"><span class="label">Extra revenue</span><span class="value num">৳2,46,100</span><span class="meta">Telesales, upsells and saved carts</span><div class="spark" data-spark="4"></div></div>
+  </section>
+  <p class="locked-note">🔒 Team members see these five tiles blurred, as today. Every chart and the table below stay visible to the whole team.</p>
+
+  <section class="row-2">
+    <div class="panel">
+      <div class="panel-head">
+        <div><span class="label">Leaderboard</span><p class="panel-title">Confirmed value by staff</p></div>
+        <div style="text-align:right"><div class="label" style="color:var(--ink-2)">Top this period</div><div style="font-size:22px;font-weight:300;letter-spacing:-.03em" class="num" id="top-name">—</div></div>
+      </div>
+      <div id="c-board" class="chart" style="height:250px" role="img" aria-label="Confirmed value per staff member, split into delivered, in transit and returned"></div>
+      <p class="note">Ranked by confirmed value · labels show value, orders and AOV · Data <b>confirmed_value, confirmed_count, average_order_value</b> (already returned)</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div><span class="label">Order yield</span><p class="panel-title">Where every assigned order ended up</p></div>
+        <span class="pill num" style="height:26px">Team delivered 70.3%</span>
+      </div>
+      <div id="c-yield" class="chart" style="height:250px" role="img" aria-label="For each staff member, the share of assigned orders that were delivered, in transit, returned, cancelled or not confirmed"></div>
+      <div class="keyrow"><span><i class="sw" style="background:var(--good)"></i>Delivered</span><span><i class="sw" style="background:var(--s4)"></i>In transit</span><span><i class="sw" style="background:var(--muted)"></i>RTO</span><span><i class="sw" style="background:var(--bad)"></i>Cancelled</span><span><i class="sw" style="background:var(--s5)"></i>Not confirmed</span></div>
+      <p class="note">Sorted by delivered ÷ assigned · dashed line = team average · Data <b>assigned, delivered, returned, cancelled, confirmed counts</b> (already returned)</p>
+    </div>
+  </section>
+
+  <section class="row-3">
+    <div class="panel">
+      <div><span class="label">Team funnel</span><p class="panel-title">From assigned to delivered</p></div>
+      <div class="funnel" id="funnel"></div>
+      <div class="mini" id="conf-by-staff" style="border-top:1px solid var(--rule);padding-top:10px"></div>
+      <p class="note">Data <b>assigned, confirmed, delivered, cancelled, returned counts</b> (already returned)</p>
+    </div>
+    <div class="panel">
+      <div><span class="label">Share of confirmed value</span><p class="panel-title">Team contribution</p></div>
+      <div id="c-donut" class="chart" style="height:180px" role="img" aria-label="Share of confirmed value per staff member"></div>
+      <ul class="legend" id="donut-legend"></ul>
+      <p class="note">Block <b>market-share-echarts-pie-chart</b> · Data <b>confirmed_value</b></p>
+    </div>
+    <div class="panel">
+      <div><span class="label">Extra revenue</span><p class="panel-title">Telesales, upsells and saved carts</p></div>
+      <div id="c-extra" class="chart" style="height:220px" role="img" aria-label="Telesales, retained upsell and converted cart value per staff member"></div>
+      <div class="keyrow"><span><i class="sw" style="background:var(--s1)"></i>Telesales</span><span><i class="sw" style="background:var(--s3)"></i>Upsell kept</span><span><i class="sw" style="background:var(--s4)"></i>Carts converted</span></div>
+      <p class="note">Data <b>telesales_confirmed_value, retained_upsell_value, abandoned_checkouts.converted_value</b></p>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="st-title">
+    <div class="sp-head">
+      <h2 id="st-title">Team performance</h2>
+      <div class="div"></div>
+      <span style="font-size:13px;color:var(--ink-2)">5 members</span>
+      <span class="hint">Click a column to sort · click a row for details</span>
+      <button type="button" class="btn" id="st-all">Expand all</button>
+    </div>
+    <div class="scroll">
+      <table class="st" id="st">
+        <thead><tr>
+          <th><button type="button" data-sort="name">Staff</button></th>
+          <th class="r"><button type="button" data-sort="assigned">Assigned</button></th>
+          <th class="r"><button type="button" data-sort="confirmed">Confirmed</button></th>
+          <th class="r"><button type="button" data-sort="value">Confirmed value</button></th>
+          <th>Outcome mix</th>
+          <th class="r"><button type="button" data-sort="confRate">Conf. rate</button></th>
+          <th class="r"><button type="button" data-sort="cancelRate">Cancel rate</button></th>
+          <th class="r"><button type="button" data-sort="delRate">Delivered</button></th>
+          <th class="r"><button type="button" data-sort="aov">AOV</button></th>
+          <th class="r"><button type="button" data-sort="kg">Weight</button></th>
+          <th class="r"><button type="button" data-sort="extra">Extra revenue</button></th>
+        </tr></thead>
+        <tbody id="st-body"></tbody>
+      </table>
+    </div>
+    <div class="keyrow"><span><i class="sw" style="background:var(--good)"></i>Delivered</span><span><i class="sw" style="background:var(--s4)"></i>In transit</span><span><i class="sw" style="background:var(--muted)"></i>RTO</span><span><i class="sw" style="background:var(--bad)"></i>Cancelled</span><span><span class="flag">Red</span>&nbsp;= more than 5 pts worse than team average</span><span><span class="best">Green</span>&nbsp;= best on the team</span></div>
+    <div class="foot"><span>Conf. rate = confirmed ÷ assigned · Delivered = delivered ÷ confirmed · AOV = confirmed value ÷ confirmed orders</span><span>Weight recorded on 1,212 of 1,239 confirmed orders</span></div>
+    <p class="note">Replaces the stacked staff cards · Data <b>rows[].orders, abandoned_checkouts, orders.products</b> (already returned) · <span class="new">Per-product outcome split needs a small API addition</span></p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script>
+(function () {
+  const inr = new Intl.NumberFormat("en-IN");
+  const taka = (n) => "৳" + inr.format(Math.round(n));
+  const pct = (v) => v.toFixed(1) + "%";
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const staff = [
+    { name: "Nusrat", assigned: 420, confirmed: 356, value: 352400, cancelled: 38, delivered: 318, returned: 14, kg: 890,
+      tele: [42, 41000], upsell: [31, 18600], carts: { contacted: 64, dismissed: 21, reopened: 9, converted: 12, value: 11400 },
+      products: [["Himsagar", 71, 355], ["Langra", 44, 220], ["Amrapali", 36, 180], ["Fazli", 15, 75], ["Gopalbhog", 12, 60]] },
+    { name: "Tanvir", assigned: 380, confirmed: 290, value: 279300, cancelled: 61, delivered: 238, returned: 29, kg: 700,
+      tele: [20, 19500], upsell: [12, 7300], carts: { contacted: 48, dismissed: 25, reopened: 4, converted: 6, value: 5800 },
+      products: [["Himsagar", 58, 290], ["Langra", 36, 180], ["Amrapali", 24, 120], ["Fazli", 14, 70], ["Gopalbhog", 8, 40]] },
+    { name: "Sadia", assigned: 310, confirmed: 271, value: 268900, cancelled: 22, delivered: 250, returned: 8, kg: 680,
+      tele: [55, 53600], upsell: [44, 26100], carts: { contacted: 71, dismissed: 18, reopened: 11, converted: 19, value: 18200 },
+      products: [["Himsagar", 52, 260], ["Langra", 34, 170], ["Amrapali", 30, 150], ["Fazli", 12, 60], ["Gopalbhog", 8, 40]] },
+    { name: "Rahim", assigned: 240, confirmed: 172, value: 164200, cancelled: 44, delivered: 139, returned: 21, kg: 410,
+      tele: [9, 8700], upsell: [6, 3500], carts: { contacted: 22, dismissed: 14, reopened: 2, converted: 2, value: 1900 },
+      products: [["Himsagar", 34, 170], ["Langra", 22, 110], ["Amrapali", 14, 70], ["Fazli", 8, 40], ["Gopalbhog", 4, 20]] },
+    { name: "Farhan", assigned: 180, confirmed: 150, value: 145800, cancelled: 17, delivered: 131, returned: 7, kg: 365, former: true,
+      tele: [14, 13600], upsell: [18, 10400], carts: { contacted: 30, dismissed: 9, reopened: 3, converted: 7, value: 6500 },
+      products: [["Himsagar", 30, 150], ["Langra", 18, 90], ["Amrapali", 13, 65], ["Fazli", 8, 40], ["Gopalbhog", 4, 20]] },
+  ].map((s) => {
+    const aov = s.value / s.confirmed;
+    const deliveredValue = Math.round(s.delivered * aov);
+    const returnedValue = Math.round(s.returned * aov);
+    return Object.assign(s, {
+      aov, deliveredValue, returnedValue, transitValue: s.value - deliveredValue - returnedValue,
+      confRate: s.confirmed / s.assigned * 100, cancelRate: s.cancelled / s.assigned * 100, delRate: s.delivered / s.confirmed * 100,
+      extra: s.tele[1] + s.upsell[1] + s.carts.value,
+    });
+  });
+  const T = staff.reduce((t, s) => ({ assigned: t.assigned + s.assigned, confirmed: t.confirmed + s.confirmed, value: t.value + s.value, cancelled: t.cancelled + s.cancelled, delivered: t.delivered + s.delivered, returned: t.returned + s.returned }), { assigned: 0, confirmed: 0, value: 0, cancelled: 0, delivered: 0, returned: 0 });
+  const avgConf = T.confirmed / T.assigned * 100, avgCancel = T.cancelled / T.assigned * 100, avgDel = T.delivered / T.confirmed * 100;
+
+  const charts = [];
+  const tok = () => { const cs = getComputedStyle(document.documentElement); const g = (k) => cs.getPropertyValue(k).trim(); return { ink: g("--ink"), ink2: g("--ink-2"), ink3: g("--ink-3"), track: g("--track"), rule: g("--rule"), bg: g("--bg"), s1: g("--s1"), s2: g("--s2"), s3: g("--s3"), s4: g("--s4"), s5: g("--s5"), good: g("--good"), warn: g("--warn"), bad: g("--bad"), muted: g("--muted") }; };
+  const font = '"Geist", ui-sans-serif, system-ui, sans-serif';
+  const tip = (t, extra) => Object.assign({ backgroundColor: t.bg, borderColor: t.rule, borderWidth: 1, padding: [6, 10], textStyle: { color: t.ink, fontFamily: font, fontSize: 12 }, extraCssText: "box-shadow:none;border-radius:8px;" }, extra || {});
+  const mount = (el, option) => { const c = echarts.init(el, null, { renderer: "svg" }); c.setOption(Object.assign({ animation: !reduce, textStyle: { fontFamily: font } }, option)); charts.push(c); };
+  function series(seed, n, base, swing) { let x = seed; const o = []; for (let i = 0; i < n; i++) { x = (x * 9301 + 49297) % 233280; o.push(base + Math.sin(i / 2.2) * swing * .6 + (x / 233280 - .5) * swing + i * swing * .04); } return o; }
+
+  function renderCharts() {
+    charts.splice(0).forEach((c) => c.dispose());
+    const t = tok();
+    const shades = [t.s1, t.s2, t.s3, t.s4, t.s5];
+
+    document.querySelectorAll("[data-spark]").forEach((el) => {
+      const data = series(3 + Number(el.dataset.spark) * 4, 14, 40, 14);
+      mount(el, { grid: { left: 0, right: 4, top: 4, bottom: 2 }, xAxis: { type: "category", show: false, boundaryGap: false, data: data.map((_, i) => i) }, yAxis: { type: "value", show: false, min: "dataMin" },
+        series: [{ type: "line", data, smooth: .35, symbol: "none", lineStyle: { width: 1.4, color: t.ink }, areaStyle: { color: t.track }, markPoint: { symbol: "circle", symbolSize: 5, itemStyle: { color: t.ink }, label: { show: false }, data: [{ coord: [data.length - 1, data[data.length - 1]] }] } }] });
+    });
+
+    const byValue = [...staff].sort((a, b) => b.value - a.value);
+    document.getElementById("top-name").textContent = byValue[0].name;
+    mount(document.getElementById("c-board"), {
+      grid: { left: 8, right: 8, top: 44, bottom: 46 },
+      tooltip: tip(t, { trigger: "axis", axisPointer: { type: "none" }, formatter: (p) => { const s = byValue[p[0].dataIndex]; return `<b>#${p[0].dataIndex + 1} ${s.name}</b><br>${taka(s.value)} confirmed<br>${inr.format(s.confirmed)} orders · AOV ${taka(s.aov)}`; } }),
+      xAxis: { type: "category", data: byValue.map((s, i) => `#${i + 1}  ${s.name}`), axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: t.ink, fontSize: 12, fontWeight: 500, margin: 12, formatter: (v) => v.replace("  ", "\n") , lineHeight: 16 } },
+      yAxis: { type: "value", show: false },
+      series: [{
+        type: "bar", barWidth: "46%",
+        data: byValue.map((s, i) => ({ value: s.value, itemStyle: { color: i === 0 ? t.ink : t.s4, borderRadius: [10, 10, 10, 10], ...(i === 0 ? { shadowBlur: 16, shadowColor: t.ink3 } : {}) } })),
+        label: { show: true, position: "top", distance: 8, formatter: (p) => `{v|${taka(byValue[p.dataIndex].value)}}\n{m|${inr.format(byValue[p.dataIndex].confirmed)} orders · ${taka(byValue[p.dataIndex].aov)}}`,
+          rich: { v: { color: t.ink, fontSize: 13, fontWeight: 500, lineHeight: 18 }, m: { color: t.ink3, fontSize: 10, lineHeight: 14 } } },
+      }],
+    });
+
+    const yieldRows = staff.map((s) => {
+      const parts = [s.delivered, s.confirmed - s.delivered - s.returned, s.returned, s.cancelled, s.assigned - s.confirmed - s.cancelled];
+      return { s, pct: parts.map((v) => v / s.assigned * 100), counts: parts };
+    }).sort((a, b) => a.pct[0] - b.pct[0]);
+    const teamYield = T.delivered / T.assigned * 100;
+    const yieldNames = ["Delivered", "In transit", "RTO", "Cancelled", "Not confirmed"];
+    const yieldColors = [t.good, t.s4, t.muted, t.bad, t.s5];
+    mount(document.getElementById("c-yield"), {
+      grid: { left: 64, right: 58, top: 6, bottom: 22 },
+      tooltip: tip(t, { trigger: "axis", axisPointer: { type: "none" }, formatter: (p) => { const r = yieldRows[p[0].dataIndex]; return `<b>${r.s.name}</b> · ${inr.format(r.s.assigned)} assigned<br>` + yieldNames.map((n, i) => `${n} ${inr.format(r.counts[i])} (${pct(r.pct[i])})`).join("<br>"); } }),
+      xAxis: { type: "value", max: 100, axisLabel: { color: t.ink3, fontSize: 10, formatter: "{value}%" }, splitLine: { show: false }, axisLine: { show: false }, axisTick: { show: false } },
+      yAxis: { type: "category", data: yieldRows.map((r) => r.s.name), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: t.ink, fontSize: 12, fontWeight: 500 } },
+      series: yieldNames.map((name, i) => ({
+        name, type: "bar", stack: "y", barWidth: 18,
+        data: yieldRows.map((r) => r.pct[i]),
+        itemStyle: { color: yieldColors[i], borderRadius: i === 0 ? [4, 0, 0, 4] : i === 4 ? [0, 4, 4, 0] : 0, borderColor: t.bg, borderWidth: 1 },
+        ...(i === 0 ? { markLine: { silent: true, symbol: "none", lineStyle: { color: t.ink, type: "dashed", width: 1 }, label: { show: true, position: "end", formatter: "team", color: t.ink3, fontSize: 10 }, data: [{ xAxis: teamYield }] } } : {}),
+        ...(i === 4 ? { label: { show: true, position: "right", color: t.ink, fontSize: 11, fontWeight: 500, formatter: (p) => pct(yieldRows[p.dataIndex].pct[0]) } } : {}),
+      })),
+    });
+
+    const donut = [...staff].sort((a, b) => b.value - a.value);
+    mount(document.getElementById("c-donut"), {
+      tooltip: tip(t, { formatter: (p) => `${p.name}<br><b>${taka(p.value)}</b> · ${p.percent}%` }),
+      series: [{ type: "pie", radius: ["55%", "92%"], padAngle: 1.5, itemStyle: { borderColor: t.bg, borderWidth: 2 }, label: { show: false },
+        data: donut.map((s, i) => ({ name: s.name, value: s.value, itemStyle: { color: shades[i] } })) }],
+      graphic: [{ type: "text", left: "center", top: "42%", style: { text: "৳12.1L", fill: t.ink, font: `400 18px ${font}`, textAlign: "center" } }],
+    });
+    document.getElementById("donut-legend").innerHTML = donut.map((s, i) => `<li><i class="sw" style="background:${shades[i]}"></i><span>${s.name}</span><span class="num">${taka(s.value)}</span><span class="pct num">${Math.round(s.value / T.value * 100)}%</span></li>`).join("");
+
+    const byExtra = [...staff].sort((a, b) => a.extra - b.extra);
+    mount(document.getElementById("c-extra"), {
+      grid: { left: 58, right: 56, top: 4, bottom: 4 },
+      tooltip: tip(t, { trigger: "axis", axisPointer: { type: "none" }, formatter: (p) => { const s = byExtra[p[0].dataIndex]; return `<b>${s.name}</b> · ${taka(s.extra)}<br>Telesales ${taka(s.tele[1])} (${s.tele[0]} orders)<br>Upsell kept ${taka(s.upsell[1])} (${s.upsell[0]} items)<br>Carts converted ${taka(s.carts.value)} (${s.carts.converted})`; } }),
+      xAxis: { type: "value", show: false },
+      yAxis: { type: "category", data: byExtra.map((s) => s.name), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: t.ink, fontSize: 12 } },
+      series: [
+        { type: "bar", stack: "e", barWidth: 14, data: byExtra.map((s) => s.tele[1]), itemStyle: { color: t.s1, borderRadius: [3, 0, 0, 3] } },
+        { type: "bar", stack: "e", data: byExtra.map((s) => s.upsell[1]), itemStyle: { color: t.s3 } },
+        { type: "bar", stack: "e", data: byExtra.map((s) => s.carts.value), itemStyle: { color: t.s4, borderRadius: [0, 3, 3, 0] }, label: { show: true, position: "right", color: t.ink2, fontSize: 11, formatter: (p) => taka(byExtra[p.dataIndex].extra) } },
+      ],
+    });
+  }
+
+  // Funnel (HTML)
+  const steps = [["Assigned", T.assigned], ["Confirmed", T.confirmed], ["Delivered", T.delivered]];
+  document.getElementById("funnel").innerHTML =
+    `<div class="fstep"><span>Assigned</span><div class="fbar num" style="width:100%">${inr.format(T.assigned)}</div><span class="num" style="text-align:right;color:var(--ink-3)">100%</span></div>` +
+    `<div class="fdrop num">− ${T.assigned - T.confirmed} not confirmed (${T.cancelled} cancelled)</div>` +
+    `<div class="fstep"><span>Confirmed</span><div class="fbar num" style="width:${T.confirmed / T.assigned * 100}%">${inr.format(T.confirmed)}</div><span class="num" style="text-align:right">${pct(avgConf)}</span></div>` +
+    `<div class="fdrop num">− ${T.returned} RTO · ${T.confirmed - T.delivered - T.returned} in transit</div>` +
+    `<div class="fstep"><span>Delivered</span><div class="fbar num" style="width:${T.delivered / T.assigned * 100}%;background:var(--good)">${inr.format(T.delivered)}</div><span class="num" style="text-align:right">${pct(T.delivered / T.assigned * 100)}</span></div>`;
+
+  document.getElementById("conf-by-staff").innerHTML = `<span class="label" style="color:var(--ink-2)">Confirmation rate by staff</span>` +
+    [...staff].sort((a, b) => b.confRate - a.confRate).map((s) => `<div><div class="lab"><span>${s.name}</span><span class="num ${s.confRate < avgConf - 5 ? "flag low" : ""}">${pct(s.confRate)}</span></div><div class="bar"><i style="width:${s.confRate}%;background:${s.confRate < avgConf - 5 ? "var(--bad)" : "var(--ink)"}"></i></div></div>`).join("");
+
+  // Staff table
+  const best = { confRate: Math.max(...staff.map((s) => s.confRate)), delRate: Math.max(...staff.map((s) => s.delRate)), cancelRate: Math.min(...staff.map((s) => s.cancelRate)) };
+  let sort = { key: "value", dir: -1 };
+  const open = new Set(["Nusrat"]);
+  const rankOf = new Map([...staff].sort((a, b) => b.value - a.value).map((s, i) => [s.name, i + 1]));
+
+  function cell(v, isBest, isBad, low) { return `<span class="${isBest ? "best" : isBad ? (low ? "flag low" : "flag") : ""}">${pct(v)}</span>`; }
+  function detail(s) {
+    const totalKg = s.products.reduce((a, p) => a + p[2], 0), totalPacks = s.products.reduce((a, p) => a + p[1], 0), maxKg = Math.max(...s.products.map((p) => p[2]));
+    const bar = (label, v, max, color) => `<div><div class="lab"><span>${label}</span><span class="num">${inr.format(v)}</span></div><div class="bar"><i style="width:${v / max * 100}%;background:${color}"></i></div></div>`;
+    return `<tr class="detail"><td colspan="11"><div class="dwrap"><div class="dinner">
+      <div class="dgrid">
+        <div class="dcard"><span class="label">Order funnel</span><div class="mini">
+          ${bar("Assigned", s.assigned, s.assigned, "var(--ink)")}${bar("Confirmed", s.confirmed, s.assigned, "var(--ink)")}${bar("Delivered", s.delivered, s.assigned, "var(--good)")}${bar("Cancelled", s.cancelled, s.assigned, "var(--bad)")}${bar("RTO", s.returned, s.assigned, "var(--muted)")}
+        </div></div>
+        <div class="dcard"><span class="label">Extra revenue</span>
+          <div class="kv"><span>Telesales · ${s.tele[0]} orders</span><span class="num">${taka(s.tele[1])}</span></div>
+          <div class="kv"><span>Upsell kept · ${s.upsell[0]} items</span><span class="num">${taka(s.upsell[1])}</span></div>
+          <div class="kv"><span>Carts converted · ${s.carts.converted}</span><span class="num">${taka(s.carts.value)}</span></div>
+          <div class="kv total"><span>Total</span><span class="num">${taka(s.extra)}</span></div>
+        </div>
+        <div class="dcard"><span class="label">Abandoned carts</span>
+          <div class="kv"><span>Contacted</span><span class="num">${s.carts.contacted}</span></div>
+          <div class="kv"><span>Dismissed</span><span class="num">${s.carts.dismissed}</span></div>
+          <div class="kv"><span>Reopened</span><span class="num">${s.carts.reopened}</span></div>
+          <div class="kv total"><span>Converted</span><span class="num">${s.carts.converted} · ${pct(s.carts.converted / s.carts.contacted * 100)}</span></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><span class="label">Confirmed products · ${s.name}</span><span style="font-size:10px;color:var(--ink-3)">packs and kg confirmed by ${s.name}</span></div>
+      <div class="scroll"><table class="pt"><thead><tr><th>Product</th><th class="r">Packs</th><th class="r">Weight</th><th style="width:40%">Share of ${s.name}'s kg</th></tr></thead><tbody>
+        ${s.products.map((p) => `<tr><td>${p[0]}</td><td class="r">${p[1]}</td><td class="r">${inr.format(p[2])} kg</td><td><div style="display:flex;align-items:center;gap:8px"><div class="pbar"><i style="width:${p[2] / maxKg * 100}%"></i></div><span class="pp num">${Math.round(p[2] / totalKg * 100)}%</span></div></td></tr>`).join("")}
+        <tr class="total"><td>All products</td><td class="r">${totalPacks}</td><td class="r">${inr.format(totalKg)} kg</td><td></td></tr>
+      </tbody></table></div>
+    </div></div></td></tr>`;
+  }
+  function renderTable() {
+    const rows = [...staff].sort((a, b) => (sort.key === "name" ? a.name.localeCompare(b.name) : a[sort.key] - b[sort.key]) * sort.dir);
+    document.getElementById("st-body").innerHTML = rows.map((s) => {
+      const isOpen = open.has(s.name), rank = rankOf.get(s.name), mixT = s.delivered + (s.confirmed - s.delivered - s.returned) + s.returned + s.cancelled;
+      const mix = [[s.delivered, "var(--good)"], [s.confirmed - s.delivered - s.returned, "var(--s4)"], [s.returned, "var(--muted)"], [s.cancelled, "var(--bad)"]];
+      return `<tr class="row${isOpen ? " open" : ""}" tabindex="0" data-name="${s.name}" aria-expanded="${isOpen}">
+        <td><span class="who"><span class="caret" aria-hidden="true">▸</span><span class="rank${rank === 1 ? " first" : ""}">${rank}</span>${s.name}${s.former ? ' <span class="former">· Former staff</span>' : ""}</span></td>
+        <td class="r">${inr.format(s.assigned)}</td><td class="r">${inr.format(s.confirmed)}</td><td class="r">${taka(s.value)}</td>
+        <td><div class="mix" role="img" aria-label="Delivered ${s.delivered}, in transit ${s.confirmed - s.delivered - s.returned}, RTO ${s.returned}, cancelled ${s.cancelled}">${mix.map(([v, c]) => `<i style="width:${v / mixT * 100}%;background:${c}"></i>`).join("")}</div></td>
+        <td class="r">${cell(s.confRate, s.confRate === best.confRate, s.confRate < avgConf - 5, true)}</td>
+        <td class="r">${cell(s.cancelRate, s.cancelRate === best.cancelRate, s.cancelRate > avgCancel + 5, false)}</td>
+        <td class="r">${cell(s.delRate, s.delRate === best.delRate, s.delRate < avgDel - 5, true)}</td>
+        <td class="r">${taka(s.aov)}</td><td class="r">${inr.format(s.kg)} kg</td><td class="r">${taka(s.extra)}</td>
+      </tr>${isOpen ? detail(s) : ""}`;
+    }).join("");
+    document.querySelectorAll(".st th button").forEach((b) => { if (b.dataset.sort === sort.key) { b.setAttribute("aria-sort", sort.dir < 0 ? "descending" : "ascending"); b.dataset.arrow = sort.dir < 0 ? " ▾" : " ▴"; b.textContent = b.textContent.replace(/ [▾▴]$/, "") + b.dataset.arrow; } else { b.removeAttribute("aria-sort"); b.textContent = b.textContent.replace(/ [▾▴]$/, ""); } });
+    document.getElementById("st-all").textContent = staff.every((s) => open.has(s.name)) ? "Collapse all" : "Expand all";
+  }
+  function animateOpen(name) {
+    const tr = document.querySelector(`tr.row[data-name="${name}"]`);
+    const wrap = tr && tr.nextElementSibling && tr.nextElementSibling.querySelector(".dwrap");
+    if (!wrap || reduce) return;
+    const h = wrap.scrollHeight; wrap.style.height = "0px"; wrap.style.opacity = "0";
+    requestAnimationFrame(() => { wrap.style.height = h + "px"; wrap.style.opacity = "1"; setTimeout(() => { wrap.style.height = ""; }, 300); });
+  }
+  function toggle(name) {
+    if (open.has(name)) {
+      const wrap = document.querySelector(`tr.row[data-name="${name}"]`)?.nextElementSibling?.querySelector(".dwrap");
+      if (wrap && !reduce) { wrap.style.height = wrap.scrollHeight + "px"; requestAnimationFrame(() => { wrap.style.height = "0px"; wrap.style.opacity = "0"; }); setTimeout(() => { open.delete(name); renderTable(); }, 280); return; }
+      open.delete(name); renderTable();
+    } else { open.add(name); renderTable(); animateOpen(name); }
+  }
+  document.querySelectorAll(".st th button").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.sort; sort = sort.key === k ? { key: k, dir: -sort.dir } : { key: k, dir: k === "name" || k === "cancelRate" ? 1 : -1 }; renderTable(); }));
+  const body = document.getElementById("st-body");
+  body.addEventListener("click", (e) => { const tr = e.target.closest("tr.row"); if (tr) toggle(tr.dataset.name); });
+  body.addEventListener("keydown", (e) => { const tr = e.target.closest("tr.row"); if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(tr.dataset.name); } });
+  document.getElementById("st-all").addEventListener("click", () => { const all = staff.every((s) => open.has(s.name)); staff.forEach((s) => (all ? open.delete(s.name) : open.add(s.name))); renderTable(); });
+  renderTable();
+
+  function start() {
+    renderCharts();
+    let raf; window.addEventListener("resize", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => charts.forEach((c) => c.resize())); });
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderCharts);
+    new MutationObserver(renderCharts).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(start); else start();
+})();
+</script>

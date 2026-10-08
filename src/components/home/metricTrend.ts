@@ -36,7 +36,7 @@ function hourLabel(hour: number) {
 }
 
 // The summary sends running totals (for the sparkline); the chart shows each bucket.
-const perBucket = (series: number[] | null) =>
+export const perBucket = (series: number[] | null) =>
   series?.map((value, index) => Math.round((value - (index > 0 ? series[index - 1] : 0)) * 100) / 100) ?? null;
 
 export function trendPoints(metric: Pick<HomeMetric, "series" | "previous_series" | "buckets" | "previous_buckets">, unit: BucketUnit, since: string): TrendPoint[] {

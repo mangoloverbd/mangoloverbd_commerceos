@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.67] - 2026-10-08
+
+### Added
+
+- Orders made with Create order can change their source later from the order page (Order source picker, saved with Save changes). Storefront, inbox and abandoned-checkout orders keep the source they arrived with, and the server rejects source changes on them.
+- Every source change is logged with who made it and when: the order's Logs show "Order source: Phone → Facebook" and the Activity Log shows "Changed source from Phone to Facebook".
+
+### Changed
+
+- Home's metric sparklines look like Shopify's: each hour's (or day's) own value as a soft wave instead of a running total, a green (up) or red (down) gradient line that fades in from the left and ends in a dot, and the % change in the same colour. The hour still in progress is left out of the sparkline so it doesn't dip at the end.
+
 ## [0.1.0.66] - 2026-10-08
 
 ### Added

@@ -1,0 +1,930 @@
+<title>Business Report Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #FAFAF8;
+    --ink: #0B0B0A;
+    --ink-2: rgba(11, 11, 10, 0.62);
+    --ink-3: rgba(11, 11, 10, 0.42);
+    --panel: rgba(11, 11, 10, 0.04);
+    --rule: rgba(11, 11, 10, 0.09);
+    --track: rgba(11, 11, 10, 0.08);
+    --s1: #0B0B0A;
+    --s2: #4A4A47;
+    --s3: #8A8A85;
+    --s4: #C4C4BE;
+    --good: #2F7A55;
+    --warn: #B7862F;
+    --bad: #B4473A;
+    --muted: #7A5C86;
+    --chip-bg: #FFF4DA;
+    --chip-ink: #7A5410;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111110;
+      --ink: #F2F2EE;
+      --ink-2: rgba(242, 242, 238, 0.66);
+      --ink-3: rgba(242, 242, 238, 0.44);
+      --panel: rgba(242, 242, 238, 0.05);
+      --rule: rgba(242, 242, 238, 0.1);
+      --track: rgba(242, 242, 238, 0.1);
+      --s1: #F2F2EE;
+      --s2: #B9B9B3;
+      --s3: #7E7E78;
+      --s4: #4A4A46;
+      --good: #5BB288;
+      --warn: #D9A94E;
+      --bad: #E0705F;
+      --muted: #B08CC0;
+      --chip-bg: #3A2E14;
+      --chip-ink: #F1CD85;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111110;
+    --ink: #F2F2EE;
+    --ink-2: rgba(242, 242, 238, 0.66);
+    --ink-3: rgba(242, 242, 238, 0.44);
+    --panel: rgba(242, 242, 238, 0.05);
+    --rule: rgba(242, 242, 238, 0.1);
+    --track: rgba(242, 242, 238, 0.1);
+    --s1: #F2F2EE;
+    --s2: #B9B9B3;
+    --s3: #7E7E78;
+    --s4: #4A4A46;
+    --good: #5BB288;
+    --warn: #D9A94E;
+    --bad: #E0705F;
+    --muted: #B08CC0;
+    --chip-bg: #3A2E14;
+    --chip-ink: #F1CD85;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 28px 16px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .mono { font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header.top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 6px;
+  }
+  h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
+  .sub { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); max-width: 62ch; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 12px; border-radius: 999px;
+    background: var(--panel); font-size: 12px; color: var(--ink);
+  }
+  .chip {
+    display: inline-flex; align-items: center; height: 24px; padding: 0 10px;
+    border-radius: 999px; font-size: 11px; font-weight: 500;
+    background: var(--chip-bg); color: var(--chip-ink);
+  }
+
+  .label {
+    font-size: 8px; font-weight: 500; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink);
+  }
+  .panel {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .panel-title { font-size: 15px; font-weight: 600; margin: 4px 0 0; }
+  .source-note {
+    font-size: 10px; color: var(--ink-3); line-height: 1.5;
+    border-top: 1px dashed var(--rule); padding-top: 10px;
+  }
+  .source-note b { color: var(--ink-2); font-weight: 500; }
+
+  /* KPI tiles */
+  .tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  .tile { background: var(--panel); border-radius: 16px; padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .tile .value { font-size: 24px; font-weight: 300; letter-spacing: -0.04em; }
+  .tile .meta { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--ink-2); flex-wrap: wrap; }
+  .delta-up { color: var(--good); font-weight: 500; }
+  .delta-down { color: var(--bad); font-weight: 500; }
+  .spark { height: 30px; width: 100%; }
+
+  .row-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 12px; }
+  .row-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+
+  .stat-pair { display: flex; gap: 28px; flex-wrap: wrap; }
+  .stat-pair .v { font-size: 26px; font-weight: 300; letter-spacing: -0.03em; margin-top: 4px; }
+  .grid-meta { text-align: right; font-size: 10px; color: var(--ink-3); line-height: 1.6; }
+  .grid-meta b { color: var(--ink); font-weight: 500; }
+
+  .chart { width: 100%; }
+  .h-grid { height: 250px; }
+  .h-sankey { height: 250px; }
+  .h-donut { height: 200px; }
+  .h-gauge { height: 190px; }
+  .h-line { height: 220px; }
+  .h-rings { height: 110px; }
+
+  .sankey-wrap { position: relative; }
+  .sankey-center {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none;
+  }
+  .sankey-center .k { font-size: 11px; color: var(--ink-2); }
+  .sankey-center .v { font-size: 28px; font-weight: 400; letter-spacing: -0.03em; }
+  .sankey-center .s { font-size: 11px; color: var(--ink-3); }
+
+  .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+  .legend li { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 8px; align-items: center; font-size: 12px; }
+  .sw { width: 9px; height: 9px; border-radius: 2px; }
+  .legend .amt { font-variant-numeric: tabular-nums; }
+  .legend .pct { color: var(--ink-3); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
+
+  .gauge-foot { display: flex; flex-direction: column; gap: 6px; }
+  .scale { display: grid; grid-template-columns: 60fr 15fr 15fr 10fr; gap: 3px; }
+  .scale span { height: 4px; border-radius: 2px; }
+  .scale-labels { display: grid; grid-template-columns: 60fr 15fr 15fr 10fr; font-size: 10px; color: var(--ink-3); }
+
+  .econ { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; margin: 0; }
+  .econ dt { font-size: 10px; color: var(--ink-2); }
+  .econ dd { margin: 4px 0 0; font-size: 18px; font-weight: 300; letter-spacing: -0.04em; }
+  .econ .full { grid-column: 1 / -1; border-top: 1px solid var(--rule); padding-top: 12px; }
+  .econ .full dd { font-size: 22px; }
+
+  .line-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .line-head .v { font-size: 28px; font-weight: 300; letter-spacing: -0.03em; }
+  .key { display: flex; gap: 14px; font-size: 11px; color: var(--ink-2); }
+  .key i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--ink); vertical-align: middle; margin-right: 5px; }
+  .key i.dot { border-top: 2px dotted var(--s3); }
+
+  .prod-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .prod-list li {
+    display: grid; grid-template-columns: 10px 44px minmax(0, 1fr) auto auto; gap: 10px; align-items: center;
+    padding: 8px 10px; border-radius: 8px; font-size: 12px;
+  }
+  .prod-list li:nth-child(odd) { background: var(--panel); }
+  .prod-list .pct { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .prod-list .kg { font-variant-numeric: tabular-nums; }
+  .prod-list .ok { color: var(--ink-3); font-variant-numeric: tabular-nums; font-size: 11px; }
+
+  .placeholder {
+    border: 1px dashed var(--rule); border-radius: 16px; padding: 18px;
+    color: var(--ink-3); font-size: 12px; text-align: center;
+  }
+
+
+  /* Source performance table */
+  .sp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sp-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .sp-head .div { width: 1px; height: 14px; background: var(--rule); }
+  .sp-head .count { font-size: 13px; color: var(--ink-2); }
+  .sp-head .hint { font-size: 11px; color: var(--ink-3); margin-left: auto; }
+  .sp-scroll { overflow-x: auto; margin: 0 -6px; padding: 0 6px; }
+  table.sp { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 12px; }
+  .sp th {
+    text-align: left; font-weight: 500; font-size: 8px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--ink-2); padding: 0 10px 10px; white-space: nowrap; border-bottom: 1px solid var(--rule);
+  }
+  .sp th.r, .sp td.r { text-align: right; }
+  .sp th button {
+    all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; border-radius: 4px;
+  }
+  .sp th button:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+  .sp th button[aria-sort] { color: var(--ink); }
+  .sp th .arr { font-size: 9px; letter-spacing: 0; opacity: 0; }
+  .sp th button[aria-sort] .arr { opacity: 1; }
+  .sp td { padding: 12px 10px; border-bottom: 1px solid var(--rule); vertical-align: middle; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sp tr.row { cursor: pointer; transition: background 0.15s; }
+  .sp tr.row:hover { background: var(--panel); }
+  .sp tr.row:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; }
+  .sp .name { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+  .sp .caret { width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 5px; background: var(--panel); color: var(--ink-2); font-size: 10px; transition: transform 0.2s; }
+  .sp tr.row[aria-expanded="true"] .caret { transform: rotate(90deg); }
+  .sp .share { display: flex; align-items: center; gap: 8px; }
+  .sp .share-track { width: 70px; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+  .sp .share-fill { height: 100%; background: var(--ink); border-radius: 2px; }
+  .sp .share span { color: var(--ink-2); width: 28px; }
+  .mix { display: flex; width: 170px; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; }
+  .mix i { display: block; height: 100%; }
+  .flag { color: var(--bad); font-weight: 500; }
+  .flag::after { content: " ▲"; font-size: 8px; vertical-align: 1px; }
+  .flag.low::after { content: " ▼"; }
+  .neg { color: var(--bad); }
+  .pos { color: var(--good); }
+  .sp tr.detail > td { padding: 0 0 14px; background: var(--panel); white-space: normal; }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; padding: 14px 14px 0; }
+  .dcard { background: var(--bg); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .dcard .label { color: var(--ink-2); }
+  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+  .kv span:first-child { color: var(--ink-2); }
+  .kv.total { border-top: 1px solid var(--rule); padding-top: 8px; font-weight: 500; }
+  .lp { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; font-size: 12px; align-items: center; }
+  .lp .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; }
+  .lp .muted { color: var(--ink-3); }
+  .detail-products { padding: 12px 14px 0; display: flex; flex-direction: column; gap: 8px; }
+  .pbars { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .pbar { display: flex; flex-direction: column; gap: 5px; font-size: 11px; min-width: 0; }
+  .pbar .top { display: flex; justify-content: space-between; gap: 6px; }
+  .pbar .top span:last-child { color: var(--ink-2); }
+  .pbar .t { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+  .pbar .t i { display: block; height: 100%; background: var(--ink); border-radius: 2px; }
+  .sp-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: var(--ink-2); }
+  .sp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sp-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--ink-3); }
+
+  .pt-scroll { overflow-x: auto; }
+  table.pt { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 12px; background: var(--bg); border-radius: 12px; overflow: hidden; }
+  .pt th { font-size: 8px; font-weight: 500; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-2); text-align: left; padding: 10px 12px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  .pt td { padding: 9px 12px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pt th.r, .pt td.r { text-align: right; }
+  .pt .pp { color: var(--ink-3); font-size: 10px; margin-left: 6px; display: inline-block; min-width: 26px; text-align: right; }
+  .pt tr.pt-total td { font-weight: 600; border-bottom: 0; background: var(--panel); }
+  @media (max-width: 760px) {
+    .detail-grid { grid-template-columns: minmax(0, 1fr); }
+    .pbars { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @media (max-width: 980px) {
+    .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .row-2, .row-3 { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .prod-list li { grid-template-columns: 10px 40px minmax(0, 1fr) auto; }
+    .prod-list .ok { display: none; }
+    .h-sankey { height: 340px; }
+  }
+</style>
+
+<div class="page">
+  <header class="top">
+    <div>
+      <h1>Business Report</h1>
+      <p class="sub">Regular-order intake and operating totals, using Asia/Dhaka dates. Proposed chart layout built from evilcharts ECharts blocks.</p>
+    </div>
+    <div class="controls">
+      <span class="chip">Sample figures</span>
+      <span class="pill num">1 Sep – 28 Sep 2026</span>
+    </div>
+  </header>
+
+  <section class="tiles" aria-label="Summary">
+    <div class="tile">
+      <span class="label">Intake</span>
+      <span class="value num">1,284</span>
+      <span class="meta"><span class="delta-up">+6.2%</span> vs prev 28 days</span>
+      <div class="spark" data-spark="intake"></div>
+    </div>
+    <div class="tile">
+      <span class="label">Order value</span>
+      <span class="value num">৳12,48,300</span>
+      <span class="meta"><span class="delta-up">+8.4%</span> vs prev 28 days</span>
+      <div class="spark" data-spark="value"></div>
+    </div>
+    <div class="tile">
+      <span class="label">Weight</span>
+      <span class="value num">3,210 kg</span>
+      <span class="meta">On 1,262 of 1,284 orders</span>
+      <div class="spark" data-spark="kg"></div>
+    </div>
+    <div class="tile">
+      <span class="label">Approved</span>
+      <span class="value num">1,021</span>
+      <span class="meta">79.5% of intake · <span class="delta-up">+2.1 pts</span></span>
+      <div class="spark" data-spark="approved"></div>
+    </div>
+    <div class="tile">
+      <span class="label">Cancelled</span>
+      <span class="value num">143</span>
+      <span class="meta">11.1% of intake · <span class="delta-down">+0.8 pts</span></span>
+      <div class="spark" data-spark="cancelled"></div>
+    </div>
+  </section>
+
+  <section class="row-2">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <span class="label">Intake rhythm</span>
+          <p class="panel-title">When orders arrive</p>
+        </div>
+        <div class="grid-meta mono">// CELL: <b>10 ORDERS</b><br>// BUCKET: <b>HOUR</b></div>
+      </div>
+      <div class="stat-pair mono">
+        <div><div class="label" style="font-family:inherit">[Σ] Total</div><div class="v num">1,284</div></div>
+        <div><div class="label" style="font-family:inherit">[⬆] Peak</div><div class="v num">21:00</div></div>
+      </div>
+      <div id="c-grid" class="chart h-grid" role="img" aria-label="Orders by hour of day, peaking at 21:00 with 130 orders"></div>
+      <p class="source-note">Block <b>grid-echarts-bar-chart</b> · Data <b>series.buckets</b> (already returned) · Replaces the current intake strip</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <span class="label">Order outcomes</span>
+          <p class="panel-title">Where each channel's orders end up</p>
+        </div>
+        <span class="pill num" style="height:26px">4 sources · 4 outcomes</span>
+      </div>
+      <div class="stat-pair">
+        <div><div class="label">Total booked</div><div class="v num">৳12,48,300</div></div>
+        <div><div class="label">Delivered or moving</div><div class="v num">80.0%</div></div>
+      </div>
+      <div id="c-sankey" class="chart h-sankey" role="img" aria-label="Order value flowing from four sources to approved, pending, cancelled and returned"></div>
+      <p class="source-note">Block <b>pipeline-echarts-sankey-chart</b> · Data <b>sources[].approved_value / pending_value / cancelled_value / returned_value</b> (already returned)</p>
+    </div>
+  </section>
+
+  <section class="row-3">
+    <div class="panel">
+      <div>
+        <span class="label">Source mix</span>
+        <p class="panel-title">Order value by channel</p>
+      </div>
+      <div id="c-donut" class="chart h-donut" role="img" aria-label="Order value share by source"></div>
+      <ul class="legend" id="donut-legend"></ul>
+      <p class="source-note">Block <b>market-share-echarts-pie-chart</b> · Data <b>sources[].order_value</b></p>
+    </div>
+
+    <div class="panel">
+      <div>
+        <span class="label">Approval health</span>
+        <p class="panel-title">Approval rate</p>
+      </div>
+      <div id="c-gauge" class="chart h-gauge" role="img" aria-label="Approval rate 79.5 percent, in the healthy band"></div>
+      <div class="gauge-foot">
+        <div class="scale"><span style="background:var(--bad)"></span><span style="background:var(--warn)"></span><span style="background:var(--good);opacity:.6"></span><span style="background:var(--good)"></span></div>
+        <div class="scale-labels num"><span>0</span><span>60%</span><span>75%</span><span>90%</span></div>
+      </div>
+      <p class="source-note">Block <b>reliability-score-echarts-pie-chart</b> · Data <b>summary.approved_count ÷ intake_count</b></p>
+    </div>
+
+    <div class="panel">
+      <div>
+        <span class="label">Delivery economics</span>
+        <p class="panel-title">Kept as-is</p>
+      </div>
+      <dl class="econ">
+        <div><dt>Delivery charged</dt><dd class="num">৳1,43,640</dd></div>
+        <div><dt>Courier fees recorded</dt><dd class="num">৳1,27,810</dd></div>
+        <div class="full"><dt>Net delivery position</dt><dd class="num">৳15,830</dd></div>
+      </dl>
+      <p class="source-note" style="margin-top:auto">Courier fee coverage: 1,197 of 1,284 orders · Numbers read best as numbers here, so no chart</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <span class="label">Best day</span>
+        <div class="line-head" style="margin-top:6px">
+          <span class="v num" id="best-value">৳0</span>
+          <span style="font-size:13px;color:var(--ink-2)" id="best-label">order value</span>
+        </div>
+      </div>
+      <div class="key" style="flex-direction:column;gap:6px;align-items:flex-start">
+        <span><span class="sw" style="display:inline-block;background:var(--ink);margin-right:6px"></span>Social &amp; manual</span>
+        <span><span class="sw" style="display:inline-block;background:var(--s3);margin-right:6px"></span>Website</span>
+      </div>
+    </div>
+    <div id="c-line" class="chart h-line" role="img" aria-label="Daily order value split by website and social, with the best day highlighted"></div>
+    <p class="source-note">Block <b>peak-echarts-bar-chart</b> · Data <b>series.buckets</b> + <b>per-source value in each bucket</b> (small addition to the report API)</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <span class="label">Product weight</span>
+        <p class="panel-title">What sold, by kg</p>
+      </div>
+      <span class="num" style="font-size:13px;color:var(--ink-2)">3,210 kg · 5 products</span>
+    </div>
+    <div id="c-rings" class="chart h-rings" role="img" aria-label="Share of weight by product"></div>
+    <ul class="prod-list" id="prod-list"></ul>
+    <p class="source-note">Block <b>budget-echarts-radial-chart</b> · Data <b>products[].kg / approved_kg</b> (already returned) · Replaces the product weight cards</p>
+  </section>
+
+  <section class="panel" aria-labelledby="sp-title">
+    <div class="sp-head">
+      <h2 id="sp-title">Source performance</h2>
+      <div class="div"></div>
+      <span class="count">4 sources</span>
+      <span class="hint">Click a column to sort · click a row for its product breakdown</span>
+      <button type="button" class="pill" id="sp-all" style="border:0;cursor:pointer;font:inherit;font-size:12px">Expand all</button>
+    </div>
+    <div class="sp-scroll">
+      <table class="sp" id="sp-table">
+        <thead>
+          <tr>
+            <th scope="col"><button type="button" data-sort="name">Source <span class="arr">▾</span></button></th>
+            <th scope="col" class="r"><button type="button" data-sort="orders">Orders <span class="arr">▾</span></button></th>
+            <th scope="col" class="r"><button type="button" data-sort="value">Order value <span class="arr">▾</span></button></th>
+            <th scope="col">Share</th>
+            <th scope="col">Outcome mix</th>
+            <th scope="col" class="r"><button type="button" data-sort="approval">Approval <span class="arr">▾</span></button></th>
+            <th scope="col" class="r"><button type="button" data-sort="loss">Loss <span class="arr">▾</span></button></th>
+            <th scope="col" class="r"><button type="button" data-sort="aov">AOV <span class="arr">▾</span></button></th>
+            <th scope="col" class="r"><button type="button" data-sort="kg">Weight <span class="arr">▾</span></button></th>
+            <th scope="col" class="r"><button type="button" data-sort="netPer">Net delivery / order <span class="arr">▾</span></button></th>
+          </tr>
+        </thead>
+        <tbody id="sp-body"></tbody>
+      </table>
+    </div>
+    <div class="sp-legend">
+      <span><span class="sw" style="background:var(--good)"></span>Approved</span>
+      <span><span class="sw" style="background:var(--warn)"></span>Pending</span>
+      <span><span class="sw" style="background:var(--bad)"></span>Cancelled</span>
+      <span><span class="sw" style="background:var(--muted)"></span>Returned (RTO)</span>
+      <span><span class="flag">Red</span>&nbsp;= more than 3 pts worse than the all-source average</span>
+    </div>
+    <div class="sp-foot">
+      <span>Loss = cancelled + returned, by value · AOV = order value ÷ orders</span>
+      <span>Courier fees recorded on 1,197 of 1,284 orders · weight on 1,262</span>
+    </div>
+    <p class="source-note">Data <b>sources[]</b> (already returned) · Rates are worked out in the page, no backend change · Replaces the stacked source cards</p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script>
+(function () {
+  const inr = new Intl.NumberFormat("en-IN");
+  const taka = (n) => "৳" + inr.format(Math.round(n));
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- sample data (internally consistent) ----
+  const hourly = [18, 9, 5, 3, 2, 4, 10, 22, 38, 52, 61, 68, 64, 58, 55, 60, 66, 74, 82, 104, 122, 130, 114, 63];
+  const sources = [
+    { name: "Website", approved: 402100, pending: 38200, cancelled: 34600, returned: 11500 },
+    { name: "Facebook", approved: 288300, pending: 36500, cancelled: 54200, returned: 13800 },
+    { name: "WhatsApp", approved: 183900, pending: 14100, cancelled: 11800, returned: 4800 },
+    { name: "Manual", approved: 124700, pending: 19000, cancelled: 7300, returned: 3500 },
+  ].map((s) => ({ ...s, total: s.approved + s.pending + s.cancelled + s.returned }));
+  const grand = sources.reduce((a, s) => a + s.total, 0);
+  const products = [
+    { name: "Himsagar", kg: 1220, ok: 1012 },
+    { name: "Langra", kg: 770, ok: 615 },
+    { name: "Amrapali", kg: 578, ok: 465 },
+    { name: "Fazli", kg: 385, ok: 279 },
+    { name: "Gopalbhog", kg: 257, ok: 194 },
+  ];
+  const kgTotal = products.reduce((a, p) => a + p.kg, 0);
+
+  function series(seed, n, base, swing) {
+    let x = seed;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      x = (x * 9301 + 49297) % 233280;
+      const r = x / 233280;
+      out.push(base + Math.sin(i / 2.3) * swing * 0.6 + (r - 0.5) * swing + i * swing * 0.04);
+    }
+    return out;
+  }
+  function scaleTo(arr, total) {
+    const s = arr.reduce((a, b) => a + b, 0);
+    return arr.map((v) => Math.round((v / s) * total));
+  }
+  const days = Array.from({ length: 28 }, (_, i) => String(i + 1));
+  const thisPeriod = scaleTo(series(7, 28, 40000, 16000), 1248300);
+  const prevPeriod = scaleTo(series(31, 28, 38000, 14000), 1151500);
+
+  const sparks = {
+    intake: series(3, 14, 40, 14),
+    value: series(5, 14, 40, 16),
+    kg: series(9, 14, 40, 12),
+    approved: series(11, 14, 40, 10),
+    cancelled: series(13, 14, 40, 14),
+  };
+
+  const charts = [];
+  const tok = () => {
+    const cs = getComputedStyle(document.documentElement);
+    const g = (k) => cs.getPropertyValue(k).trim();
+    return {
+      ink: g("--ink"), ink2: g("--ink-2"), ink3: g("--ink-3"), track: g("--track"), rule: g("--rule"),
+      s1: g("--s1"), s2: g("--s2"), s3: g("--s3"), s4: g("--s4"),
+      good: g("--good"), warn: g("--warn"), bad: g("--bad"), muted: g("--muted"), bg: g("--bg"),
+    };
+  };
+  const font = '"Geist", ui-sans-serif, system-ui, sans-serif';
+  const mono = '"Geist Mono", ui-monospace, Menlo, monospace';
+  function tooltip(t) {
+    return {
+      backgroundColor: t.bg, borderColor: t.rule, borderWidth: 1, padding: [6, 10],
+      textStyle: { color: t.ink, fontFamily: font, fontSize: 12 }, extraCssText: "box-shadow:none;border-radius:8px;",
+    };
+  }
+  function mount(el, option) {
+    const c = echarts.init(el, null, { renderer: "svg" });
+    c.setOption(Object.assign({ animation: !reduce, textStyle: { fontFamily: font } }, option));
+    charts.push(c);
+    return c;
+  }
+
+  function renderAll() {
+    charts.splice(0).forEach((c) => c.dispose());
+    const t = tok();
+
+    // Sparklines
+    document.querySelectorAll("[data-spark]").forEach((el) => {
+      const data = sparks[el.dataset.spark];
+      mount(el, {
+        grid: { left: 0, right: 4, top: 4, bottom: 2 },
+        xAxis: { type: "category", show: false, data: data.map((_, i) => i), boundaryGap: false },
+        yAxis: { type: "value", show: false, min: "dataMin" },
+        series: [{
+          type: "line", data, smooth: 0.35, symbol: "none",
+          lineStyle: { width: 1.4, color: t.ink },
+          areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: t.track }, { offset: 1, color: "rgba(0,0,0,0)" }]) },
+          markPoint: { symbol: "circle", symbolSize: 5, itemStyle: { color: t.ink }, label: { show: false }, data: [{ coord: [data.length - 1, data[data.length - 1]] }] },
+        }],
+      });
+    });
+
+    // ① Grid bar
+    const cells = 14;
+    const hours = hourly.map((_, i) => String(i).padStart(2, "0") + ":00");
+    mount(document.getElementById("c-grid"), {
+      grid: { left: 14, right: 6, top: 4, bottom: 22 },
+      tooltip: Object.assign(tooltip(t), { trigger: "axis", axisPointer: { type: "none" }, formatter: (p) => `${p[0].name}<br><b>${hourly[p[0].dataIndex]}</b> orders` }),
+      xAxis: {
+        type: "category", data: hours, axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: t.ink3, fontFamily: mono, fontSize: 9, interval: 3 },
+      },
+      yAxis: { type: "value", max: cells * 10, show: false },
+      series: [
+        {
+          type: "pictorialBar", symbol: "rect", symbolRepeat: "fixed", symbolClip: false,
+          symbolSize: ["62%", 11], symbolMargin: 3, symbolBoundingData: cells * 10, z: 1,
+          itemStyle: { color: t.track }, data: hourly.map(() => cells * 10), silent: true,
+        },
+        {
+          type: "pictorialBar", symbol: "rect", symbolRepeat: true, symbolClip: true,
+          symbolSize: ["62%", 11], symbolMargin: 3, symbolBoundingData: cells * 10, z: 2,
+          itemStyle: { color: t.ink },
+          data: hourly.map((v, i) => ({ value: v, itemStyle: { color: i === 21 ? t.ink : t.s3 } })),
+        },
+      ],
+    });
+
+    // ② Sankey
+    const outcomes = [
+      { key: "approved", name: "Approved", color: t.good },
+      { key: "pending", name: "Pending", color: t.warn },
+      { key: "cancelled", name: "Cancelled", color: t.bad },
+      { key: "returned", name: "Returned", color: t.muted },
+    ];
+    const srcShades = [t.s1, t.s2, t.s3, t.s4];
+    const nodes = [
+      ...sources.map((s, i) => ({ name: s.name, depth: 0, itemStyle: { color: srcShades[i] }, value: s.total })),
+      ...outcomes.map((o) => ({ name: o.name, depth: 1, itemStyle: { color: o.color }, value: sources.reduce((a, s) => a + s[o.key], 0) })),
+    ];
+    const links = [];
+    sources.forEach((s) => outcomes.forEach((o) => links.push({ source: s.name, target: o.name, value: s[o.key] })));
+    const narrow = document.getElementById("c-sankey").clientWidth < 460;
+    mount(document.getElementById("c-sankey"), {
+      tooltip: Object.assign(tooltip(t), {
+        formatter: (p) => p.dataType === "edge"
+          ? `${p.data.source} → ${p.data.target}<br><b>${taka(p.data.value)}</b>`
+          : `${p.name}<br><b>${taka(p.value)}</b> · ${(p.value / grand * 100).toFixed(1)}%`,
+      }),
+      series: [{
+        type: "sankey", left: narrow ? 70 : 92, right: narrow ? 78 : 104, top: 8, bottom: 8,
+        nodeWidth: 7, nodeGap: 14, layoutIterations: 0, draggable: false,
+        emphasis: { focus: "adjacency" },
+        data: nodes, links,
+        lineStyle: { color: "gradient", opacity: 0.22, curveness: 0.5 },
+        itemStyle: { borderWidth: 0, borderRadius: 3 },
+        label: {
+          color: t.ink, fontSize: 11, fontFamily: font,
+          formatter: (p) => `{n|${p.name}}\n{v|${taka(p.value)}}`,
+          rich: { n: { color: t.ink, fontSize: 11, lineHeight: 15 }, v: { color: t.ink3, fontSize: 10, fontFamily: mono } },
+        },
+        levels: [
+          { depth: 0, label: { position: "left", align: "right" } },
+          { depth: 1, label: { position: "right", align: "left" } },
+        ],
+      }],
+    });
+
+    // ③ Donut
+    const donutData = sources.map((s, i) => ({ name: s.name, value: s.total, itemStyle: { color: srcShades[i] }, label: { color: i < 2 ? t.bg : t.ink } }));
+    mount(document.getElementById("c-donut"), {
+      tooltip: Object.assign(tooltip(t), { formatter: (p) => `${p.name}<br><b>${taka(p.value)}</b> · ${p.percent}%` }),
+      series: [{
+        type: "pie", radius: ["54%", "92%"], center: ["50%", "50%"], padAngle: 1.5,
+        itemStyle: { borderColor: t.bg, borderWidth: 2 },
+        label: { show: true, position: "inside", formatter: (p) => Math.round(p.percent) + "%", color: t.bg, fontSize: 10, fontWeight: 500 },
+        labelLine: { show: false }, data: donutData,
+      }],
+      graphic: [
+        { type: "text", left: "center", top: "40%", style: { text: "৳12.48L", fill: t.ink, font: `400 20px ${font}`, textAlign: "center" } },
+        { type: "text", left: "center", top: "55%", style: { text: "Order value", fill: t.ink3, font: `400 10px ${font}`, textAlign: "center" } },
+      ],
+    });
+    // label contrast for light slices
+    const legend = document.getElementById("donut-legend");
+    legend.innerHTML = sources.map((s, i) =>
+      `<li><span class="sw" style="background:${srcShades[i]}"></span><span>${s.name}</span><span class="amt">${taka(s.total)}</span><span class="pct">${(s.total / grand * 100).toFixed(0)}%</span></li>`
+    ).join("");
+
+    // ④ Gauge
+    const rate = 79.5;
+    mount(document.getElementById("c-gauge"), {
+      series: [
+        {
+          type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100, radius: "96%", center: ["50%", "62%"],
+          splitNumber: 20,
+          axisLine: { lineStyle: { width: 10, color: [[0.6, t.bad], [0.75, t.warn], [0.9, t.good], [1, t.good]] } },
+          progress: { show: false },
+          pointer: { show: true, icon: "circle", length: "10%", width: 12, offsetCenter: [0, "-88%"], itemStyle: { color: t.bg, borderColor: t.ink, borderWidth: 2.5 } },
+          anchor: { show: false },
+          axisTick: { show: false },
+          splitLine: { show: true, length: 10, distance: -10, lineStyle: { color: t.bg, width: 3 } },
+          axisLabel: { show: false },
+          title: { show: true, offsetCenter: [0, "32%"], color: t.ink2, fontSize: 11, fontFamily: font },
+          detail: { valueAnimation: !reduce, offsetCenter: [0, "0%"], formatter: (v) => v.toFixed(1) + "%", color: t.ink, fontSize: 30, fontWeight: 300, fontFamily: font },
+          data: [{ value: rate, name: "Healthy · 1,021 of 1,284" }],
+        },
+      ],
+    });
+
+    // ⑤ Peak Week style: daily bars, best day highlighted
+    const webShare = series(17, 28, 0.39, 0.12).map((v) => Math.min(0.55, Math.max(0.25, v)));
+    const web = thisPeriod.map((v, i) => Math.round(v * webShare[i]));
+    const other = thisPeriod.map((v, i) => v - web[i]);
+    const best = thisPeriod.indexOf(Math.max(...thisPeriod));
+    document.getElementById("best-value").textContent = taka(thisPeriod[best]);
+    document.getElementById("best-label").textContent = `on ${best + 1} Sep · ${Math.round(web[best] / thisPeriod[best] * 100)}% website`;
+    const barGap = {};
+    const spacer = Math.max(...thisPeriod) * 0.018;
+    const peakGlow = { shadowBlur: 14, shadowColor: t.ink3 };
+    mount(document.getElementById("c-line"), {
+      grid: { left: 4, right: 4, top: 12, bottom: 24 },
+      tooltip: Object.assign(tooltip(t), {
+        trigger: "axis", axisPointer: { type: "none" },
+        formatter: (p) => `${p[0].name} Sep · <b>${taka(thisPeriod[p[0].dataIndex])}</b><br>Social &amp; manual ${taka(p[2].value)}<br>Website ${taka(p[0].value)}`,
+      }),
+      xAxis: {
+        type: "category", data: days, axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { color: t.ink3, fontSize: 10, interval: (i) => i % 7 === 0 || i === best, formatter: (v) => v + " Sep" },
+      },
+      yAxis: { type: "value", show: false },
+      series: [
+        {
+          name: "Website", type: "bar", stack: "d", barWidth: "62%",
+          data: web.map((v, i) => ({ value: v, itemStyle: Object.assign({ color: i === best ? t.s3 : t.track, borderRadius: 5 }, barGap, i === best ? peakGlow : {}) })),
+        },
+        {
+          name: "gap", type: "bar", stack: "d", silent: true, tooltip: { show: false },
+          data: days.map(() => spacer), itemStyle: { color: "rgba(0,0,0,0)" },
+        },
+        {
+          name: "Social & manual", type: "bar", stack: "d",
+          data: other.map((v, i) => ({ value: v, itemStyle: Object.assign({ color: i === best ? t.ink : t.track, borderRadius: 5, opacity: i === best ? 1 : 0.75 }, barGap, i === best ? peakGlow : {}) })),
+        },
+      ],
+    });
+
+    // ⑥ Product rings
+    const ringEl = document.getElementById("c-rings");
+    const n = products.length;
+    const ringR = Math.min(34, ringEl.clientWidth / (n * 2.6));
+    mount(ringEl, {
+      tooltip: Object.assign(tooltip(t), { formatter: (p) => p.name === "rest" ? "" : `${p.name}<br><b>${inr.format(p.value)} kg</b>` }),
+      series: products.map((p, i) => ({
+        type: "pie", silent: false, radius: [ringR - 5, ringR], center: [`${(i + 0.5) * (100 / n)}%`, "40%"],
+        startAngle: 90, label: { show: false }, emphasis: { scale: false },
+        data: [
+          { name: p.name, value: p.kg, itemStyle: { color: srcShades[Math.min(i, 3)] } },
+          { name: "rest", value: kgTotal - p.kg, itemStyle: { color: t.track }, tooltip: { show: false } },
+        ],
+      })),
+      graphic: products.map((p, i) => ({
+        type: "text", left: `${(i + 0.5) * (100 / n)}%`, top: "82%",
+        style: { text: p.name, fill: t.ink2, font: `400 11px ${font}`, textAlign: "center" },
+      })),
+    });
+    document.getElementById("prod-list").innerHTML = products.map((p, i) =>
+      `<li><span class="sw" style="background:${srcShades[Math.min(i, 3)]}"></span><span class="pct">${(p.kg / kgTotal * 100).toFixed(0)}%</span><span>${p.name}</span><span class="ok">${inr.format(p.ok)} kg approved</span><span class="kg">${inr.format(p.kg)} kg</span></li>`
+    ).join("");
+  }
+
+
+  // ---- Source performance table ----
+  const spRows = [
+    { name: "Website", orders: 498, approvedN: 412, pendingN: 30, cancelledN: 42, returnedN: 14, kg: 1310, net: 6900,
+      detail: {
+        charged: 58200, fees: 51300,
+        weight: { approved: 1090, pending: 80, cancelled: 100, returned: 40 },
+        pages: [["/himsagar-5kg", 212, 178], ["/langra-offer", 141, 111], ["/", 88, 71], ["Other pages", 57, 52]],
+        products: [["Himsagar", 520], ["Langra", 310], ["Amrapali", 240], ["Fazli", 150], ["Gopalbhog", 90]],
+      } },
+    { name: "Facebook", orders: 412, approvedN: 302, pendingN: 32, cancelledN: 64, returnedN: 14, kg: 1020, net: -2470,
+      detail: {
+        charged: 49400, fees: 51870,
+        weight: { approved: 740, pending: 80, cancelled: 160, returned: 40 },
+        pages: null,
+        products: [["Himsagar", 390], ["Langra", 250], ["Amrapali", 180], ["Fazli", 130], ["Gopalbhog", 70]],
+      } },
+    { name: "WhatsApp", orders: 221, approvedN: 189, pendingN: 12, cancelledN: 16, returnedN: 4, kg: 520, net: 7200,
+      detail: {
+        charged: 22100, fees: 14900,
+        weight: { approved: 450, pending: 28, cancelled: 34, returned: 8 },
+        pages: null,
+        products: [["Himsagar", 200], ["Langra", 130], ["Amrapali", 100], ["Fazli", 60], ["Gopalbhog", 30]],
+      } },
+    { name: "Manual", orders: 153, approvedN: 118, pendingN: 12, cancelledN: 21, returnedN: 2, kg: 360, net: 4200,
+      detail: {
+        charged: 13940, fees: 9740,
+        weight: { approved: 285, pending: 30, cancelled: 40, returned: 5 },
+        pages: null,
+        products: [["Himsagar", 110], ["Langra", 80], ["Amrapali", 58], ["Fazli", 45], ["Gopalbhog", 67]],
+      } },
+  ].map((r) => {
+    const src = sources.find((s) => s.name === r.name);
+    return Object.assign(r, {
+      value: src.total,
+      mix: [src.approved, src.pending, src.cancelled, src.returned],
+      approval: (r.approvedN / r.orders) * 100,
+      loss: ((src.cancelled + src.returned) / src.total) * 100,
+      aov: src.total / r.orders,
+      netPer: r.net / r.orders,
+    });
+  });
+  const productOutcomeKg = {"Website": [[445, 31, 32, 12], [258, 19, 24, 9], [201, 14, 18, 7], [115, 9, 18, 8], [71, 7, 8, 4]], "Facebook": [[299, 30, 49, 12], [181, 20, 39, 10], [131, 14, 29, 6], [82, 10, 30, 8], [47, 6, 13, 4]], "WhatsApp": [[177, 11, 10, 2], [112, 7, 9, 2], [87, 5, 7, 1], [49, 3, 6, 2], [25, 2, 2, 1]], "Manual": [[91, 9, 9, 1], [64, 6, 9, 1], [46, 5, 6, 1], [33, 4, 7, 1], [51, 6, 9, 1]]};
+  const productNames = ["Himsagar", "Langra", "Amrapali", "Fazli", "Gopalbhog"];
+  const avgApproval = 1021 / 1284 * 100;
+  const avgLoss = (107900 + 33600) / grand * 100;
+  let spSort = { key: "value", dir: -1 };
+  const spOpen = new Set(["Website"]);
+  const pct = (v) => v.toFixed(1) + "%";
+  const signedTaka = (v) => (v >= 0 ? "+" : "−") + "৳" + inr.format(Math.abs(Math.round(v)));
+
+  function productTable(r) {
+    const m = productOutcomeKg[r.name];
+    const rows = productNames.map((n, i) => {
+      const [ap, pe, ca, rt] = m[i];
+      return { n, ap, pe, ca, rt, tot: ap + pe + ca + rt };
+    });
+    const T = rows.reduce((o, x) => ({ ap: o.ap + x.ap, pe: o.pe + x.pe, ca: o.ca + x.ca, rt: o.rt + x.rt, tot: o.tot + x.tot }), { ap: 0, pe: 0, ca: 0, rt: 0, tot: 0 });
+    const srcLoss = (T.ca + T.rt) / T.tot * 100;
+    const max = Math.max(...rows.map((x) => x.tot));
+    const colors = ["var(--good)", "var(--warn)", "var(--bad)", "var(--muted)"];
+    const cell = (v, tot) => v ? `${inr.format(v)}<span class="pp">${Math.round(v / tot * 100)}%</span>` : `<span class="pp">—</span>`;
+    const line = (x, isTotal) => {
+      const loss = (x.ca + x.rt) / x.tot * 100;
+      const bar = [x.ap, x.pe, x.ca, x.rt].map((v, i) => `<i style="width:${v / x.tot * 100}%;background:${colors[i]}"></i>`).join("");
+      return `<tr class="${isTotal ? "pt-total" : ""}">
+        <td>${x.n}</td>
+        <td class="r">${inr.format(x.tot)} kg</td>
+        <td><div class="mix" style="width:${isTotal ? 100 : Math.max(18, x.tot / max * 100)}%">${bar}</div></td>
+        <td class="r">${cell(x.ap, x.tot)}</td>
+        <td class="r">${cell(x.pe, x.tot)}</td>
+        <td class="r">${cell(x.ca, x.tot)}</td>
+        <td class="r">${cell(x.rt, x.tot)}</td>
+        <td class="r"><span class="${!isTotal && loss > srcLoss + 5 ? "flag" : ""}">${loss.toFixed(1)}%</span></td>
+      </tr>`;
+    };
+    return `<table class="pt">
+      <thead><tr>
+        <th>Product</th><th class="r">Ordered</th><th style="width:26%">Outcome split</th>
+        <th class="r">Approved</th><th class="r">Pending</th><th class="r">Cancelled</th><th class="r">RTO</th><th class="r">Loss</th>
+      </tr></thead>
+      <tbody>${rows.map((x) => line(x, false)).join("")}${line(Object.assign({ n: "All products" }, T), true)}</tbody>
+    </table>`;
+  }
+
+  function spDetail(r) {
+    const d = r.detail;
+    const net = d.charged - d.fees;
+    const third = d.pages
+      ? `<div class="dcard"><span class="label">Landing pages</span>
+          ${d.pages.map(([path, n, ok]) => `<div class="lp"><span class="path" title="${path}">${path}</span><span class="num">${n} orders</span><span class="num ${ok / n * 100 < avgApproval - 3 ? "flag low" : "muted"}">${pct(ok / n * 100)}</span></div>`).join("")}
+        </div>`
+      : `<div class="dcard"><span class="label">Order outcomes</span>
+          <div class="kv"><span>Approved</span><span class="num">${r.approvedN}</span></div>
+          <div class="kv"><span>Pending</span><span class="num">${r.pendingN}</span></div>
+          <div class="kv"><span>Cancelled</span><span class="num">${r.cancelledN}</span></div>
+          <div class="kv"><span>Returned (RTO)</span><span class="num">${r.returnedN}</span></div>
+        </div>`;
+    return `<tr class="detail"><td colspan="10">
+      <div class="detail-grid">
+        <div class="dcard"><span class="label">Delivery economics</span>
+          <div class="kv"><span>Delivery charged</span><span class="num">${taka(d.charged)}</span></div>
+          <div class="kv"><span>Courier fees</span><span class="num">${taka(d.fees)}</span></div>
+          <div class="kv total"><span>Net</span><span class="num ${net < 0 ? "neg" : ""}">${signedTaka(net)}</span></div>
+        </div>
+        ${third}
+      </div>
+      <div class="detail-products">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+          <span class="label">Products by outcome · ${r.name}</span>
+          <span style="font-size:10px;color:var(--ink-3)">kg · Loss = cancelled + RTO kg ÷ ordered kg · red = 5+ pts above this source's loss</span>
+        </div>
+        <div class="pt-scroll">${productTable(r)}</div>
+      </div>
+    </td></tr>`;
+  }
+
+  function renderTable() {
+    const rows = [...spRows].sort((a, b) => {
+      const k = spSort.key;
+      const v = k === "name" ? a.name.localeCompare(b.name) : a[k] - b[k];
+      return v * spSort.dir;
+    });
+    document.getElementById("sp-body").innerHTML = rows.map((r) => {
+      const open = spOpen.has(r.name);
+      const mixT = r.mix.reduce((x, y) => x + y, 0);
+      const colors = ["var(--good)", "var(--warn)", "var(--bad)", "var(--muted)"];
+      const labels = ["Approved", "Pending", "Cancelled", "Returned"];
+      return `<tr class="row" tabindex="0" data-name="${r.name}" aria-expanded="${open}">
+        <td><span class="name"><span class="caret" aria-hidden="true">▸</span>${r.name}</span></td>
+        <td class="r">${inr.format(r.orders)}</td>
+        <td class="r">${taka(r.value)}</td>
+        <td><div class="share"><div class="share-track"><div class="share-fill" style="width:${r.value / grand * 100}%"></div></div><span>${Math.round(r.value / grand * 100)}%</span></div></td>
+        <td><div class="mix" role="img" aria-label="${labels.map((l, i) => `${l} ${Math.round(r.mix[i] / mixT * 100)}%`).join(", ")}">${r.mix.map((v, i) => `<i title="${labels[i]} ${taka(v)}" style="width:${v / mixT * 100}%;background:${colors[i]}"></i>`).join("")}</div></td>
+        <td class="r"><span class="${r.approval < avgApproval - 3 ? "flag low" : ""}">${pct(r.approval)}</span></td>
+        <td class="r"><span class="${r.loss > avgLoss + 3 ? "flag" : ""}">${pct(r.loss)}</span></td>
+        <td class="r">${taka(r.aov)}</td>
+        <td class="r">${inr.format(r.kg)} kg</td>
+        <td class="r"><span class="${r.netPer < 0 ? "neg" : ""}">${signedTaka(r.netPer)}</span></td>
+      </tr>${open ? spDetail(r) : ""}`;
+    }).join("");
+    document.querySelectorAll(".sp th button").forEach((b) => {
+      if (b.dataset.sort === spSort.key) {
+        b.setAttribute("aria-sort", spSort.dir < 0 ? "descending" : "ascending");
+        b.querySelector(".arr").textContent = spSort.dir < 0 ? "▾" : "▴";
+      } else b.removeAttribute("aria-sort");
+    });
+    const allB = document.getElementById("sp-all");
+    if (allB) allB.textContent = spRows.every((r) => spOpen.has(r.name)) ? "Collapse all" : "Expand all";
+  }
+
+  document.querySelectorAll(".sp th button").forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.sort;
+    spSort = spSort.key === k ? { key: k, dir: -spSort.dir } : { key: k, dir: k === "name" ? 1 : -1 };
+    renderTable();
+  }));
+  const spBody = document.getElementById("sp-body");
+  function toggleRow(tr) {
+    const n = tr.dataset.name;
+    spOpen.has(n) ? spOpen.delete(n) : spOpen.add(n);
+    renderTable();
+    const again = spBody.querySelector(`tr.row[data-name="${n}"]`);
+    if (again) again.focus();
+  }
+  spBody.addEventListener("click", (e) => { const tr = e.target.closest("tr.row"); if (tr) toggleRow(tr); });
+  spBody.addEventListener("keydown", (e) => {
+    const tr = e.target.closest("tr.row");
+    if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleRow(tr); }
+  });
+  const allBtn = document.getElementById("sp-all");
+  allBtn.addEventListener("click", () => {
+    const allOpen = spRows.every((r) => spOpen.has(r.name));
+    spRows.forEach((r) => (allOpen ? spOpen.delete(r.name) : spOpen.add(r.name)));
+    renderTable();
+  });
+  renderTable();
+
+  function start() {
+    renderAll();
+    let raf;
+    window.addEventListener("resize", () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => charts.forEach((c) => c.resize()));
+    });
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+    new MutationObserver(renderAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(start); else start();
+})();
+</script>

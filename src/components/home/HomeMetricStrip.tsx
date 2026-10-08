@@ -4,7 +4,7 @@ import type { Format } from "@number-flow/react";
 import { MetricNumberFlow } from "@/components/ui/number-flow";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { RISE_EASE } from "./Rise";
-import type { BucketUnit } from "./metricTrend";
+import { perBucket, type BucketUnit } from "./metricTrend";
 import type { HomeMetric, HomeSummary } from "./types";
 
 // Recharts loads on the first hover, keeping it out of Home's first paint.
@@ -22,84 +22,105 @@ const METRICS: { key: MetricKey; label: string; prefix: string; suffix?: string;
 
 const CHANGE_FORMAT: Format = { maximumFractionDigits: 0, signDisplay: "exceptZero" };
 
-const SPARK_W = 34;
-const SPARK_H = 16;
-const SPARK_PAD = 1.5;
+const SPARK_W = 32;
+const SPARK_H = 20;
+const SPARK_PAD = 2;
+// Buckets are averaged down to this many points so the wave stays legible at sparkline size.
+const SPARK_POINTS = 6;
+
+// Shopify's tones: green when up, red when down, grey with no baseline.
+const TONES = {
+  up: { from: "#C9EBC2", to: "#2F9A3E", text: "text-[#3FA34D]" },
+  down: { from: "#F6CBC8", to: "#D23F3F", text: "text-[#D64545]" },
+  flat: { from: "#D6D4CE", to: "#A9A7A1", text: "text-[#6F6D68]" },
+} as const;
+type Tone = keyof typeof TONES;
+
+const toneOf = (change: number | null): Tone => (change == null || change === 0 ? "flat" : change > 0 ? "up" : "down");
+
+// Averages consecutive buckets into at most `count` points.
+function downsample(values: number[], count = SPARK_POINTS) {
+  if (values.length <= count) return values;
+  return Array.from({ length: count }, (_, i) => {
+    const group = values.slice(Math.floor((i * values.length) / count), Math.floor(((i + 1) * values.length) / count));
+    return group.reduce((sum, value) => sum + value, 0) / group.length;
+  });
+}
 
 /**
- * Smooth path through the points that never overshoots between them
- * (monotone cubic, Fritsch–Carlson), so a running total never appears to dip.
+ * Uniform cubic B-spline through the points' hull (d3's curveBasis): it starts and
+ * ends on the first and last points and rounds every turn in between, which gives
+ * the soft wave of Shopify's sparklines. It never leaves the points' range.
  */
 export function smoothPath(points: [number, number][]) {
   if (points.length < 2) return "";
-  const n = points.length;
-  const slopes = points.slice(0, -1).map(([x, y], i) => (points[i + 1][1] - y) / (points[i + 1][0] - x));
-  const tangents = points.map((_, i) => {
-    if (i === 0) return slopes[0];
-    if (i === n - 1) return slopes[n - 2];
-    return slopes[i - 1] * slopes[i] <= 0 ? 0 : (slopes[i - 1] + slopes[i]) / 2;
-  });
-  for (let i = 0; i < n - 1; i++) {
-    if (slopes[i] === 0) { tangents[i] = 0; tangents[i + 1] = 0; continue; }
-    const a = tangents[i] / slopes[i];
-    const b = tangents[i + 1] / slopes[i];
-    const h = a * a + b * b;
-    if (h > 9) {
-      const t = 3 / Math.sqrt(h);
-      tangents[i] = t * a * slopes[i];
-      tangents[i + 1] = t * b * slopes[i];
-    }
-  }
-  let d = `M${points[0][0].toFixed(2)},${points[0][1].toFixed(2)}`;
-  for (let i = 0; i < n - 1; i++) {
-    const [x0, y0] = points[i];
-    const [x1, y1] = points[i + 1];
-    const dx = (x1 - x0) / 3;
-    d += `C${(x0 + dx).toFixed(2)},${(y0 + tangents[i] * dx).toFixed(2)} ${(x1 - dx).toFixed(2)},${(y1 - tangents[i + 1] * dx).toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)}`;
+  const f = (n: number) => n.toFixed(2);
+  const [x0, y0] = points[0];
+  let d = `M${f(x0)},${f(y0)}`;
+  if (points.length === 2) return `${d}L${f(points[1][0])},${f(points[1][1])}`;
+  // Pad the ends so the curve meets the first and last points.
+  const p = [points[0], points[0], ...points, points[points.length - 1], points[points.length - 1]];
+  for (let i = 1; i < p.length - 2; i++) {
+    const [bx, by] = p[i];
+    const [cx, cy] = p[i + 1];
+    const [dx, dy] = p[i + 2];
+    d += `C${f((2 * bx + cx) / 3)},${f((2 * by + cy) / 3)} ${f((bx + 2 * cx) / 3)},${f((by + 2 * cy) / 3)} ${f((bx + 4 * cx + dx) / 6)},${f((by + 4 * cy + dy) / 6)}`;
   }
   return d;
 }
 
-// The running total as a soft grey curve over a fading fill, like Shopify's metric strip.
-export function Sparkline({ series }: { series: number[] }) {
+// Each period's own value as a short wave, stroked in a fading green or red, like Shopify's metric strip.
+export function Sparkline({ values: raw, tone }: { values: number[]; tone: Tone }) {
   const gradientId = useId();
   const reduceMotion = useReducedMotion();
-  if (!series.length) return null;
-  // A running total is 0 when the period starts, so the curve rises from the baseline.
-  const values = [0, ...series];
-  const max = Math.max(...values);
-  const bottom = SPARK_H - SPARK_PAD;
+  if (!raw.length) return null;
+  const values = downsample(raw.length === 1 ? [raw[0], raw[0]] : raw);
+  const min = Math.min(...values);
+  const span = Math.max(...values) - min;
   const points = values.map((value, index): [number, number] => [
     SPARK_PAD + (index / (values.length - 1)) * (SPARK_W - SPARK_PAD * 2),
-    max > 0 ? bottom - (value / max) * (SPARK_H - SPARK_PAD * 2) : bottom,
+    span > 0 ? SPARK_H - SPARK_PAD - ((value - min) / span) * (SPARK_H - SPARK_PAD * 2) : SPARK_H / 2,
   ]);
-  const line = smoothPath(points);
-  const area = `${line}L${points[points.length - 1][0].toFixed(2)},${SPARK_H}L${points[0][0].toFixed(2)},${SPARK_H}Z`;
+  const { from, to } = TONES[tone];
+  const [endX, endY] = points[points.length - 1];
   return (
     <svg aria-hidden="true" width={SPARK_W} height={SPARK_H} viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} className="shrink-0 overflow-visible">
       <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#B5B3AD" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="#B5B3AD" stopOpacity="0" />
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={from} />
+          <stop offset="100%" stopColor={to} />
         </linearGradient>
+        {/* The line tapers in from nothing on the left, so the eye lands on today's end. */}
+        <linearGradient id={`${gradientId}-fade`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0" />
+          <stop offset="35%" stopColor="#fff" stopOpacity="1" />
+        </linearGradient>
+        <mask id={`${gradientId}-mask`} maskUnits="userSpaceOnUse" x="-2" y="-2" width={SPARK_W + 4} height={SPARK_H + 4}>
+          <rect x="-2" y="-2" width={SPARK_W + 4} height={SPARK_H + 4} fill={`url(#${gradientId}-fade)`} />
+        </mask>
       </defs>
       <motion.path
-        d={area}
-        fill={`url(#${gradientId})`}
-        initial={reduceMotion ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.5 }}
-      />
-      <motion.path
-        d={line}
+        mask={`url(#${gradientId}-mask)`}
+        d={smoothPath(points)}
         fill="none"
-        stroke="#A9A7A1"
-        strokeWidth="1.75"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
         initial={reduceMotion ? false : { pathLength: 0 }}
         animate={{ pathLength: 1 }}
         transition={{ duration: 0.9, ease: RISE_EASE }}
+      />
+      {/* The latest value, capping the line. */}
+      <motion.circle
+        cx={endX}
+        cy={endY}
+        r="2.5"
+        fill={to}
+        initial={reduceMotion ? false : { scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.35, delay: 0.8, ease: RISE_EASE }}
+        style={{ transformOrigin: `${endX}px ${endY}px` }}
       />
     </svg>
   );
@@ -146,7 +167,18 @@ function MetricTrend({ metricKey, metric, unit, range, children }: {
   );
 }
 
-function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: {
+const BUCKET_MS = { hour: 60 * 60 * 1000, day: 24 * 60 * 60 * 1000 } as const;
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+
+// Each bucket's own value, leaving out one still in progress so the wave doesn't dip at the end.
+function sparkValuesOf(metric: HomeMetric | null, unit: BucketUnit | null, until: string | undefined) {
+  const values = metric?.buckets ?? perBucket(metric?.series ?? null);
+  if (!values || !unit || !until || values.length < 3) return values;
+  const inProgress = (Date.parse(until) + DHAKA_OFFSET_MS) % BUCKET_MS[unit] !== 0;
+  return inProgress ? values.slice(0, -1) : values;
+}
+
+function MetricItem({ label, metric, loading, prefix, suffix, format, locked, sparkValues }: {
   label: string;
   metric: HomeMetric | null;
   /** First load: show 0 so the value rolls up when it arrives. */
@@ -155,7 +187,9 @@ function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: 
   suffix?: string;
   format?: Format;
   locked: boolean;
+  sparkValues: number[] | null;
 }) {
+  const tone = toneOf(metric?.change ?? null);
   return (
     <div className="flex flex-col items-center gap-2" data-testid={`home-metric-${label}`}>
       <span className="text-[13px] text-[#55534E]">{label}</span>
@@ -176,10 +210,10 @@ function MetricItem({ label, metric, loading, prefix, suffix, format, locked }: 
           ) : (
             <b className="font-medium text-[#111110]">—</b>
           )}
-          {metric?.series && <Sparkline series={metric.series} />}
+          {sparkValues && <Sparkline values={sparkValues} tone={tone} />}
           {metric?.change != null && (
             <Appear>
-              <MetricNumberFlow value={metric.change} prefix="" suffix="%" format={CHANGE_FORMAT} className="tabular-nums text-[#6F6D68]" />
+              <MetricNumberFlow value={metric.change} prefix="" suffix="%" format={CHANGE_FORMAT} className={`tabular-nums ${TONES[tone].text}`} />
             </Appear>
           )}
         </div>
@@ -232,7 +266,7 @@ export function HomeMetricStrip({ metrics, loading, liveCount, livePulse = 0, is
       <div className="flex flex-wrap justify-center gap-x-9 gap-y-4 max-[1360px]:gap-x-6">
         {METRICS.map(({ key, label, prefix, suffix, format, adminOnly }) => (
           <MetricTrend key={key} metricKey={key} metric={adminOnly && !isAdmin ? null : metrics?.[key] ?? null} unit={unit} range={range}>
-            <MetricItem label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} />
+            <MetricItem label={label} metric={metrics?.[key] ?? null} loading={loading} prefix={prefix} suffix={suffix} format={format} locked={adminOnly && !isAdmin} sparkValues={sparkValuesOf(metrics?.[key] ?? null, unit, range?.until)} />
           </MetricTrend>
         ))}
       </div>
