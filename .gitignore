@@ -41,3 +41,4 @@ supabase/.temp/
 
 # Amp portal metadata
 .amp/portals/*
+.open-edit/

@@ -22,13 +22,15 @@ describe("order source route wiring", () => {
     expect(patchRoute).toContain('"source"');
   });
 
-  it("rejects order source changes after the order exists", () => {
+  it("lets only Create order orders change their source, and logs the change", () => {
     const patchStart = serverSource.indexOf('app.patch("/api/orders/:id"');
     const patchEnd = serverSource.indexOf('app.post("/api/orders/:id/send-sms"', patchStart);
     const patchRoute = serverSource.slice(patchStart, patchEnd);
 
-    expect(patchRoute).toContain("update.source !== orderCheck.source");
-    expect(patchRoute).toContain('return res.status(409).json({ error: "Order source cannot be changed after creation", code: "order_source_locked" });');
+    expect(serverSource).toContain('return order?.origin_actor_kind === "user" && isCanonicalOrderSource(order?.origin_source);');
+    expect(patchRoute).toContain("update.source !== orderCheck.source && !canChangeOrderSource(orderCheck)");
+    expect(patchRoute).toContain('code: "order_source_locked"');
+    expect(patchRoute).toContain("Order source changed from ${sourceChange.before");
   });
 
   it("sets Website at public storefront insertion boundaries", () => {

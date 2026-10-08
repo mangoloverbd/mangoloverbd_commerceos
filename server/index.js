@@ -849,6 +849,13 @@ function isCanonicalOrderSource(value) {
   return typeof value === "string" && ORDER_SOURCE_VALUES.has(value.trim().toLowerCase());
 }
 
+// Only orders a staff member entered through Create order (POST /api/orders) may
+// have their source corrected later; storefront, inbox and abandoned-checkout
+// orders keep the source they arrived with. Mirrors canChangeOrderSource in src/lib/orderSource.ts.
+function canChangeOrderSource(order) {
+  return order?.origin_actor_kind === "user" && isCanonicalOrderSource(order?.origin_source);
+}
+
 const LANDING_PAGE_PATH_RE = /^\/step\/[a-z0-9]+(?:-[a-z0-9]+)*$/i;
 
 function normalizeLandingPagePath(value) {
@@ -9890,8 +9897,8 @@ app.patch("/api/orders/:id", async (req, res) => {
     // Verify org ownership — tenant can only update their own orders.
     const { data: orderCheck } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     if (!orderCheck) return res.status(404).json({ error: "Order not found" });
-    if (update.source !== undefined && update.source !== orderCheck.source) {
-      return res.status(409).json({ error: "Order source cannot be changed after creation", code: "order_source_locked" });
+    if (update.source !== undefined && update.source !== orderCheck.source && !canChangeOrderSource(orderCheck)) {
+      return res.status(409).json({ error: "Only orders made with Create order can change their source", code: "order_source_locked" });
     }
     const isApprovalTransition = update.status !== undefined
       && isApprovedStatus(update.status)
@@ -10079,6 +10086,7 @@ app.patch("/api/orders/:id", async (req, res) => {
 
     const { data } = await supabase.from("orders").select("*").eq("id", req.params.id).eq("org_id", orgId).single();
     const changes = buildOrderChanges({ beforeOrder: orderCheck, afterOrder: data });
+    const sourceChange = changes.find((change) => change.field === "source");
     if (changes.length || update.status !== undefined || holdMetadataTouched) {
       let eventType = update.status !== undefined ? "order.status_changed" : "order.edited";
       if (isStaffCancellation) eventType = "order.cancelled";
@@ -10088,7 +10096,7 @@ app.patch("/api/orders/:id", async (req, res) => {
         ? { from_status: orderCheck.status, to_status: update.status, legacy_status_event_id: statusEvent?.id }
         : {};
       if (holdActivity?.holdUntilDate) activityMetadata.hold_until_date = holdActivity.holdUntilDate;
-      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: req.params.id, orderTable: "orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "order_editor", summary: isStaffCancellation ? "Cancelled order" : isReopening ? "Reopened order" : update.status !== undefined ? `Status changed to ${update.status}` : "Edited order", reasonCode: cancellationReason?.code || holdActivity?.reasonCode, reasonNote: cancellationReason?.note || holdActivity?.reasonNote, changes, metadata: activityMetadata, occurredAt: transitionAt || undefined }));
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: req.params.id, orderTable: "orders", eventType, category: update.status !== undefined ? "status" : "edit", actorId: user.id, actorKind: "user", groupId: activityGroupId, requestId, sourceSurface: "order_editor", summary: isStaffCancellation ? "Cancelled order" : isReopening ? "Reopened order" : update.status !== undefined ? `Status changed to ${update.status}` : sourceChange ? `Order source changed from ${sourceChange.before || "none"} to ${sourceChange.after}` : "Edited order", reasonCode: cancellationReason?.code || holdActivity?.reasonCode, reasonNote: cancellationReason?.note || holdActivity?.reasonNote, changes, metadata: activityMetadata, occurredAt: transitionAt || undefined }));
     }
     await labelOrderRiskAttempt(supabase, orgId, data);
     return res.json({ success: true, order: data });

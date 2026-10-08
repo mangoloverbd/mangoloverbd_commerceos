@@ -29,7 +29,7 @@ import {
   type DiscountType,
   type OrderEditorItem,
 } from "@/lib/orderEditor";
-import { normalizeOrderSource } from "@/lib/orderSource";
+import { canChangeOrderSource, normalizeOrderSource, type OrderSource } from "@/lib/orderSource";
 import { CANCELLATION_REASON_OPTIONS, createActivityGroupId, orderItemActivityKey, orderViewSurface, type AdditionReason, type CancellationReason } from "@/lib/orderActivity";
 import { prefetchOrderActivity, refreshOrderActivity } from "@/lib/orderActivityQuery";
 import { isOnHoldStatus } from "@/lib/orderTransitions";
@@ -44,6 +44,7 @@ type Order = {
   address?: string | null;
   source?: string | null;
   origin_source?: string | null;
+  origin_actor_kind?: string | null;
   landing_page_path?: string | null;
   campaign_link_id?: string | null;
   notes?: string | null;
@@ -211,6 +212,7 @@ export default function OrderDetail() {
   const [deliveryOn, setDeliveryOn] = useState(true);
   const [deliveryRate, setDeliveryRate] = useState(DEFAULT_DELIVERY_FEE);
   const [statusDraft, setStatusDraft] = useState<string | null>(null);
+  const [sourceDraft, setSourceDraft] = useState<OrderSource | null>(null);
   const [holdDetailsDraft, setHoldDetailsDraft] = useState<OrderHoldMetadata>({
     hold_reason_code: null,
     hold_reason_detail: null,
@@ -277,6 +279,7 @@ export default function OrderDetail() {
     setDeliveryRate(savedDeliveryRate > 0 ? savedDeliveryRate : DEFAULT_DELIVERY_FEE);
     setDeliveryOn(savedDeliveryRate > 0);
     setStatusDraft(detailQuery.data.order.status ?? null);
+    setSourceDraft(normalizeOrderSource(detailQuery.data.order.source));
     setHoldDetailsDraft({
       hold_reason_code: detailQuery.data.order.hold_reason_code ?? null,
       hold_reason_detail: detailQuery.data.order.hold_reason_detail ?? null,
@@ -329,6 +332,8 @@ export default function OrderDetail() {
       || advanceReferenceDraft.trim() !== (order?.advance_payment_reference ?? ""));
   const deliveryChanged = deliveryFee !== (Number(order?.delivery_rate) || 0);
   const statusChanged = statusDraft !== (order?.status ?? null);
+  const sourceEditable = canChangeOrderSource(order);
+  const sourceChanged = sourceEditable && sourceDraft !== null && sourceDraft !== normalizeOrderSource(order?.source);
   const holdDetailsChanged = holdDetailsDraft.hold_reason_code !== (order?.hold_reason_code ?? null)
     || holdDetailsDraft.hold_reason_detail !== (order?.hold_reason_detail ?? null)
     || holdDetailsDraft.hold_until_date !== (order?.hold_until_date ?? null);
@@ -377,7 +382,7 @@ export default function OrderDetail() {
   async function save() {
     if (!detail || !order || !id || detailQuery.isPlaceholderData || saving) return;
     const originalCustomer = customerFromOrder(order);
-    const detailsChanged = JSON.stringify(customer) !== JSON.stringify(originalCustomer);
+    const detailsChanged = JSON.stringify(customer) !== JSON.stringify(originalCustomer) || sourceChanged;
     const cartChanged = !cartsMatch(draft, detail.items);
     if (!detailsChanged && !cartChanged && !overallChanged && !deliveryChanged && !advanceChanged && !proofChanged && !statusChanged && !holdDetailsChanged) {
       if (!hasQueueNav) goBack();
@@ -433,6 +438,7 @@ export default function OrderDetail() {
             customer_name: customer.customerName.trim(),
             phone: customer.phone.trim(),
             address: customer.address.trim(),
+            ...(sourceChanged ? { source: sourceDraft } : {}),
             activity_group_id: activityGroupId,
             ...(expectedVersion ? { expected_updated_at: expectedVersion } : {}),
           }),
@@ -501,6 +507,7 @@ export default function OrderDetail() {
       setDeliveryRate(savedDeliveryRate > 0 ? savedDeliveryRate : DEFAULT_DELIVERY_FEE);
       setDeliveryOn(savedDeliveryRate > 0);
       setStatusDraft(currentOrder.status ?? null);
+      setSourceDraft(normalizeOrderSource(currentOrder.source));
       setHoldDetailsDraft({
         hold_reason_code: currentOrder.hold_reason_code ?? null,
         hold_reason_detail: currentOrder.hold_reason_detail ?? null,
@@ -559,7 +566,7 @@ export default function OrderDetail() {
             }
             details={
               <div className="flex min-h-0 flex-col gap-px overflow-hidden rounded-xl bg-black/[0.07] ring-1 ring-black/[0.07]">
-                <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={normalizeOrderSource(order.source)} originSource={order.origin_source} smsAmount={amountDue} smsAdvancePaid={clampedAdvance} />
+                <CustomerPanel order={order} customer={customer} disabled={saving} history={history} historyLoading={historyQuery.isPending} onOpenOrder={(orderId) => navigate(`/orders/${orderId}`, siblingState ? { state: siblingState } : undefined)} onApply={setCustomer} source={sourceEditable && sourceDraft ? sourceDraft : normalizeOrderSource(order.source)} originSource={order.origin_source} onSourceChange={sourceEditable ? setSourceDraft : undefined} smsAmount={amountDue} smsAdvancePaid={clampedAdvance} />
                 <div data-testid="order-editor-workspace" data-mobile-layout="single-column" className="grid min-h-0 grid-cols-1 items-start gap-px bg-black/[0.07] xl:h-[100vh] xl:min-h-[560px] xl:grid-cols-2">
                   <CatalogPanel products={productsQuery.data?.products || []} search={catalogSearch} loading={productsQuery.isPending} error={productsQuery.isError} canEdit={canEditCart} locked={cartLocked} onSearch={setCatalogSearch} onRetry={() => { void productsQuery.refetch(); }} onAdd={addCatalogItem} />
                   <CartPanel items={draft} totals={totals} canEdit={canEditCart} locked={cartLocked} saving={saving} saveDisabled={detailQuery.isPlaceholderData} error={saveError} overallDiscountType={overallType} overallDiscountValue={overallValue} deliveryOn={deliveryOn} advance={clampedAdvance} onAdvanceChange={setAdvanceDraft} advanceMethod={advanceMethodDraft} advanceReference={advanceReferenceDraft} onAdvanceMethodChange={setAdvanceMethodDraft} onAdvanceReferenceChange={setAdvanceReferenceDraft} status={statusDraft} onStatusChange={setStatusDraft} holdDetails={holdDetailsDraft} onHoldDetailsChange={setHoldDetailsDraft} onToggleDelivery={setDeliveryOn} onOverallDiscount={(type, value) => { setOverallType(type); setOverallValue(value); }} onRemoveOverallDiscount={() => { setOverallType(null); setOverallValue(0); }} onQuantity={updateQuantity} onRemove={(itemId) => setDraft((items) => items.filter((item) => item.id !== itemId))} onDiscount={updateDiscount} onSave={() => { void save(); }} onCancel={goBack} requiredAdditionReasonKeys={requiredAdditionReasonKeys} additionReasons={additionReasons} onAdditionReasonChange={(key, reason) => setAdditionReasons((current) => ({ ...current, [key]: reason }))} cancellationRequired={cancellationRequired} cancellationReasonCode={cancellationReasonCode} cancellationReasonNote={cancellationReasonNote} onCancellationReasonChange={setCancellationReasonCode} onCancellationReasonNoteChange={setCancellationReasonNote} />

@@ -125,4 +125,12 @@ describe("CustomerPanel order source label", () => {
     render(<CustomerPanel order={baseOrder} customer={baseCustomer} onApply={vi.fn()} source="website" />);
     expect(screen.getByTestId("order-source-control")).toHaveTextContent("Website");
   });
+
+  it("offers a source picker only when the order allows a source change", () => {
+    const { rerender } = render(<CustomerPanel order={baseOrder} customer={baseCustomer} onApply={vi.fn()} source="facebook" />);
+    expect(screen.queryByRole("button", { name: /Order source/ })).toBeNull();
+    rerender(<CustomerPanel order={baseOrder} customer={baseCustomer} onApply={vi.fn()} source="facebook" onSourceChange={vi.fn()} />);
+    expect(screen.getByTestId("order-source-control")).toHaveTextContent("Facebook");
+    expect(screen.getByRole("button", { name: /Order source/ })).toBeInTheDocument();
+  });
 });

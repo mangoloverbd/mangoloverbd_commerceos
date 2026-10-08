@@ -208,3 +208,11 @@ describe("readableActivitySummary", () => {
     expect(readableActivitySummary(null, "Updated")).toBe("Updated");
   });
 });
+
+describe("order source changes in activity", () => {
+  it("shows both sources by name", () => {
+    expect(readableActivitySummary("Order source changed from facebook to phone")).toBe("Changed source from Facebook to Phone");
+    expect(formatActivityFieldValue("source", "manual_other")).toBe("Manual / Other");
+    expect(formatActivityFieldValue("source", "whatsapp")).toBe("WhatsApp");
+  });
+});

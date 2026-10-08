@@ -1,6 +1,7 @@
 import { formatTaka } from "@/lib/orderEditor";
 import type { OrderActivityChange } from "@/lib/orderActivityQuery";
 import { normalizeBusinessStatus } from "@/lib/orderTransitions";
+import { orderSourceLabel } from "@/lib/orderSource";
 import { ORDER_HOLD_REASONS } from "../../shared/orderHold.js";
 
 export type ActivityChipColor = "lime" | "rose" | "yellow" | "cyan" | "blue" | "purple" | "neutral";
@@ -132,6 +133,9 @@ export function readableActivitySummary(summary: string | null | undefined, fall
   const created = text.match(/^Order created through (\S+)$/i);
   if (created) return `Created order · ${ORDER_SOURCE_LABELS[created[1]] || humanize(created[1])}`;
   if (/^Order created from abandoned checkout$/i.test(text)) return "Created order from abandoned cart";
+
+  const source = text.match(/^Order source changed from (\S+) to (\S+)$/i);
+  if (source) return `Changed source from ${orderSourceLabel(source[1])} to ${orderSourceLabel(source[2])}`;
 
   const checkout = text.match(/^Checkout marked (\S+)$/i);
   if (checkout) return CHECKOUT_FOLLOW_UP_LABELS[checkout[1]] || `Marked cart ${humanize(checkout[1]).toLowerCase()}`;
@@ -352,6 +356,7 @@ export function isMoneyField(field?: string): boolean {
 export function formatActivityFieldValue(field: string | undefined, value: unknown): string {
   if (isEmpty(value)) return "Not set";
   if (field === "status") return activityStatusLabel(value);
+  if (field === "source") return orderSourceLabel(String(value));
   if (isMoneyField(field) && Number.isFinite(Number(value))) return formatTaka(Number(value));
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
