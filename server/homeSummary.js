@@ -174,7 +174,7 @@ const ATTENTION_CARDS = [
     cta: { label: "Review flagged", to: "/orders", state: { fulfillmentTab: "flagged" } },
   },
   {
-    kind: "protection_holds", signal: "protectionHolds", adminOnly: true, preview: null,
+    kind: "protection_holds", signal: "protectionHolds", adminOnly: true, preview: "orders",
     title: (n) => `${plural(n, "checkout")} held by Order Protection`,
     body: "Storefront orders that scored as risky are waiting for your approval before they become orders.",
     cta: { label: "Open Order Protection", to: "/order-protection" },

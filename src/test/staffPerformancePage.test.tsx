@@ -71,6 +71,7 @@ function metrics(overrides: Partial<StaffMetrics> = {}): StaffMetrics {
     retained_upsell_count: 0,
     retained_upsell_value: 0,
     products: [],
+    sources: [],
     ...overrides,
   };
 }
@@ -513,6 +514,32 @@ describe("StaffPerformance", () => {
     expect(within(tile(profile, "Cancel rate")).getByText("40%")).toHaveAttribute("data-flag", "worse");
     expect(tile(profile, "Confirmation rate")).toHaveTextContent(/^Confirmation rate60%5\.1 pts below team$/);
     expect(within(tile(profile, "Confirmation rate")).getByText("60%")).toHaveAttribute("data-flag", "worse");
+  });
+
+  it("breaks the selected member's handled orders down by source with an all-sources total", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(response(reportResponse({
+      rows: [
+        reportRow({
+          orders: metrics({
+            handled_count: 5, handled_confirmed_count: 3, handled_cancelled_count: 2, handled_confirmed_value: 1500, handled_delivered_count: 1,
+            sources: [
+              { source: "website", handled_count: 3, confirmed_count: 2, confirmed_value: 1200, cancelled_count: 1, delivered_count: 1, returned_count: 0 },
+              { source: "telesales", handled_count: 2, confirmed_count: 1, confirmed_value: 300, cancelled_count: 1, delivered_count: 0, returned_count: 0 },
+            ],
+          }),
+        }),
+      ],
+    })));
+
+    renderPage();
+
+    const card = await screen.findByTestId("staff-performance-sources");
+    expect(card).toHaveTextContent("By source · Rafi");
+    const table = within(card).getByRole("table", { name: "Rafi orders by source" });
+    const website = within(table).getByRole("row", { name: /Website/ });
+    expect(website).toHaveTextContent(/Website\s*3\s*2\s*1\s*66\.7%\s*1\s*৳1,200/);
+    expect(within(table).getByRole("row", { name: /Telesales/ })).toHaveTextContent(/Telesales\s*2\s*1\s*1\s*50%\s*0\s*৳300/);
+    expect(within(table).getByRole("row", { name: /All sources/ })).toHaveTextContent(/All sources\s*5\s*3\s*2\s*60%\s*1\s*৳1,500/);
   });
 
   it("shows a plain team comparison for a member who is not flagged", async () => {

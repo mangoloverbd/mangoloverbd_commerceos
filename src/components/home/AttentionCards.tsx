@@ -13,12 +13,14 @@ const TAG_TONES: Record<HomeTagTone, string> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = { facebook: "Messenger", instagram: "Instagram", whatsapp: "WhatsApp" };
+// Rows shown in an order preview; the rest live behind the card's button.
+const ORDER_ROWS_SHOWN = 3;
 
 function OrderRows({ rows }: { rows: HomeOrderRow[] }) {
   return (
-    <div className="absolute -bottom-2.5 -right-5 left-7 h-[210px] rounded-tl-[18px] border border-[#ECEAE4] bg-[#F6F5F1] p-[18px]">
-      {rows.map((row) => (
-        <div key={row.title} className="mb-2 grid grid-cols-[1.3fr_1fr_0.8fr] items-center gap-2.5 rounded-[10px] bg-white px-3.5 py-2.5 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+    <div className="flex flex-col gap-2 rounded-[18px] border border-[#ECEAE4] bg-[#F6F5F1] p-3">
+      {rows.slice(0, ORDER_ROWS_SHOWN).map((row) => (
+        <div key={row.title} className="grid grid-cols-[1.3fr_1fr_0.8fr] items-center gap-2.5 rounded-[10px] bg-white px-3.5 py-2.5 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
           <span className="truncate text-[#111110]">{row.title}</span>
           <span className="truncate text-[#8C8A84]">{row.detail}</span>
           <span className={cn("justify-self-start whitespace-nowrap rounded-full px-2 py-[3px] text-[11px] font-medium", TAG_TONES[row.tag.tone])}>
@@ -32,7 +34,7 @@ function OrderRows({ rows }: { rows: HomeOrderRow[] }) {
 
 function ChatBubbles({ rows }: { rows: HomeChatRow[] }) {
   return (
-    <div className="absolute bottom-[74px] right-[30px] flex max-w-[calc(100%-60px)] flex-col items-end gap-2.5">
+    <div className="flex flex-col gap-2.5">
       {rows.map((row, index) => (
         <div
           key={`${row.name}-${index}`}
@@ -52,7 +54,7 @@ function Bars({ rows }: { rows: { label: string; value: number }[] }) {
   const reduceMotion = useReducedMotion();
   const max = Math.max(...rows.map((row) => row.value), 1);
   return (
-    <div className="absolute bottom-0 right-10 flex items-end gap-2.5">
+    <div className="flex h-[200px] items-end justify-end gap-2.5 pr-3">
       {rows.map((row, index) => (
         <div key={row.label} className="relative flex w-[58px] flex-col items-center">
           <span className="mb-1.5 w-[72px] truncate text-center text-[11px] text-[#55534E]" title={row.label}>{row.label}</span>
@@ -71,7 +73,7 @@ function Bars({ rows }: { rows: { label: string; value: number }[] }) {
 
 function Places({ rows }: { rows: { city: string; count: number }[] }) {
   return (
-    <ul className="absolute bottom-[74px] left-7 right-7 flex flex-col gap-2">
+    <ul className="flex flex-col gap-2">
       {rows.map((row) => (
         <li key={row.city} className="flex items-center gap-2.5 rounded-[10px] bg-[#F6F5F1] px-3.5 py-2.5 text-[13px]">
           <span className="h-2 w-2 rounded-full bg-[#F2A93B]" aria-hidden="true" />
@@ -84,10 +86,10 @@ function Places({ rows }: { rows: { city: string; count: number }[] }) {
 }
 
 const KIND_ICONS: Record<string, ReactNode> = {
-  protection_holds: <ShieldCheck weight="light" size={132} />,
-  inbox_orders: <ChatsCircle weight="light" size={132} />,
-  returns: <ArrowUUpLeft weight="light" size={132} />,
-  all_clear: <CheckCircle weight="light" size={132} />,
+  protection_holds: <ShieldCheck weight="light" size={96} />,
+  inbox_orders: <ChatsCircle weight="light" size={96} />,
+  returns: <ArrowUUpLeft weight="light" size={96} />,
+  all_clear: <CheckCircle weight="light" size={96} />,
 };
 
 function Preview({ preview, kind }: { preview: HomePreview | null; kind: string }) {
@@ -96,8 +98,8 @@ function Preview({ preview, kind }: { preview: HomePreview | null; kind: string 
   if (preview?.type === "bars" && preview.rows.length) return <Bars rows={preview.rows} />;
   if (preview?.type === "places" && preview.rows.length) return <Places rows={preview.rows} />;
   return (
-    <div aria-hidden="true" className="absolute bottom-6 right-7 text-[#F2A93B]/70">
-      {KIND_ICONS[kind] ?? <CheckCircle weight="light" size={132} />}
+    <div aria-hidden="true" className="flex justify-end text-[#F2A93B]/70">
+      {KIND_ICONS[kind] ?? <CheckCircle weight="light" size={96} />}
     </div>
   );
 }
@@ -110,20 +112,20 @@ export function AttentionCards({ cards }: { cards: HomeAttentionCard[] }) {
         <motion.article
           key={card.kind}
           data-testid={`home-card-${card.kind}`}
-          className="relative flex min-h-[440px] flex-col overflow-hidden rounded-[26px] border border-[#ECEAE4] bg-white px-7 pt-7"
+          className="relative flex flex-col overflow-hidden rounded-[26px] border border-[#ECEAE4] bg-white p-7"
           initial={reduceMotion ? false : { opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 + index * 0.08, ease: RISE_EASE }}
         >
           <h3 className="max-w-[440px] text-[21px] font-medium leading-[1.3] tracking-[-0.01em] text-[#111110]">{card.title}</h3>
           <p className="mt-2.5 max-w-[470px] text-[14.5px] leading-[1.6] text-[#55534E]">{card.body}</p>
-          <div className="relative mt-auto h-[240px]">
+          <div className="mb-6 mt-5">
             <Preview preview={card.preview} kind={card.kind} />
           </div>
           <Link
             to={card.cta.to}
             state={card.cta.state}
-            className="absolute bottom-6 left-7 z-[2] rounded-full border border-[#ECEAE4] bg-white px-[18px] py-2.5 text-[14px] font-medium text-[#111110] shadow-[0_1px_2px_rgba(17,17,16,0.04),0_8px_24px_rgba(17,17,16,0.05)] transition-transform duration-150 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
+            className="mt-auto block w-full rounded-full border text-center border-[#ECEAE4] bg-white px-[18px] py-2.5 text-[14px] font-medium text-[#111110] transition-transform duration-150 ease-out hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
           >
             {card.cta.label}
           </Link>
