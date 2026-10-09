@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { database, handlers, http, orgId, uuid } from "./campaignHandlerHarness";
 import { planSteadfastDeliveryUpdate, steadfastCourierNote, verifySteadfastRequest } from "../../server/steadfastWebhook.js";
+import { isDeliveryProblemNote } from "../../shared/orderStatus.js";
 
 // The real /api/webhooks/steadfast handler, run against the in-memory database.
 const secret = "shared-token_123";
@@ -14,7 +15,7 @@ function fixture(seed: Record<string, unknown> = {}) {
     getOrgSettings: async () => ({ courier_webhook_secret: secret }),
     labelOrderRiskAttempt: async () => {}, recordStatusEvent: async () => {}, buildStatusEvent: () => ({}),
     recordOrderActivity: activity, buildDetailedActivityEvent: (event: unknown) => event,
-    planSteadfastDeliveryUpdate, steadfastCourierNote, verifySteadfastRequest,
+    planSteadfastDeliveryUpdate, steadfastCourierNote, verifySteadfastRequest, isDeliveryProblemNote,
   });
   // Production keeps the raw body through express.json's verify hook.
   harness.app.use((req, _res, next) => { (req as typeof req & { rawBody: Buffer }).rawBody = Buffer.from(JSON.stringify(req.body)); next(); });
@@ -66,6 +67,15 @@ describe("Steadfast webhook route", () => {
     const repeat = fixture({ courier_status: "in_transit", courier_note: "Customer not reachable" });
     expect((await send(repeat.app, { ...event("tracking_update"), tracking_message: "Customer not reachable" })).status).toBe(200);
     expect(repeat.db.calls.some(call => call.method === "update")).toBe(false);
+  });
+
+  it("keeps a rider's delivery problem for Follow up, and a routine step never clears it", async () => {
+    const { app, db } = fixture({ courier_status: "in_transit" });
+    expect((await send(app, { ...event("tracking_update"), tracking_message: 'Rider Note: "কাস্টমার ফোন রিসিভ করেনি"' })).status).toBe(200);
+    expect(db.tables.orders[0]).toMatchObject({ courier_problem: 'Rider Note: "কাস্টমার ফোন রিসিভ করেনি"', courier_status: "in_transit", status: "processing" });
+    expect(typeof db.tables.orders[0].courier_problem_at).toBe("string");
+    expect((await send(app, { ...event("tracking_update"), tracking_message: "Consignment sent to SAVAR WAREHOUSE." })).status).toBe(200);
+    expect(db.tables.orders[0]).toMatchObject({ courier_note: "Consignment sent to SAVAR WAREHOUSE.", courier_problem: 'Rider Note: "কাস্টমার ফোন রিসিভ করেনি"' });
   });
 
   it("acknowledges and ignores every other event", async () => {

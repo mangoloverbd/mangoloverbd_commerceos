@@ -21,6 +21,7 @@ import { PlasticButton } from "@/components/ui/plastic-button";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
@@ -35,7 +36,7 @@ import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldChe
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { classifyOrderStatus, canShowConsignmentCopy, stuckReason } from "@/lib/orderStatusFilters";
+import { classifyOrderStatus, canShowConsignmentCopy, followUpDetails } from "@/lib/orderStatusFilters";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isOnHoldStatus, isPrintStatus } from "@/lib/orderTransitions";
@@ -1694,8 +1695,26 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       )}
                     </div>
                     {(() => {
-                      const reason = stuckReason(order);
-                      return reason ? <p className="mt-1 text-center text-[10px] font-medium text-rose-600" data-testid={`stuck-reason-${order.id}`}>{reason}</p> : null;
+                      const details = followUpDetails(order);
+                      if (!details) return null;
+                      // The other reasons already say how many days.
+                      const waitedDays = (details.key === "delivery_problem" || details.key === "courier_unknown") && details.since
+                        ? Math.floor((Date.now() - Date.parse(details.since)) / 86_400_000) : null;
+                      return (
+                        <>
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <p className="mx-auto mt-1 line-clamp-2 max-w-[220px] text-center text-[10px] font-medium text-rose-600" data-testid={`stuck-reason-${order.id}`}>{details.label}</p>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs whitespace-normal text-[12px] leading-relaxed">{details.label}</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          {waitedDays !== null && (
+                            <p className="mt-0.5 text-center text-[10px] text-black/45">{waitedDays < 1 ? "Reported today" : `Waiting ${waitedDays} ${waitedDays === 1 ? "day" : "days"}`}</p>
+                          )}
+                        </>
+                      );
                     })()}
                   </TableCell>
                   </>)}

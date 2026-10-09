@@ -4,8 +4,10 @@ import {
   canShowConsignmentCopy,
   countOrdersByStatus,
   filterOrdersByStatus,
+  followUpDetails,
   stuckReason,
 } from "@/lib/orderStatusFilters";
+import { isDeliveryProblemNote } from "../../shared/orderStatus.js";
 
 type TestOrder = {
   id: string;
@@ -16,6 +18,9 @@ type TestOrder = {
   sent_to_courier?: boolean | null;
   processing_at?: string | null;
   courier_status_at?: string | null;
+  courier_problem?: string | null;
+  courier_problem_at?: string | null;
+  followed_up_at?: string | null;
   fraud_checked?: boolean | null;
   fraud_data?: {
     total_parcels: number;
@@ -211,6 +216,53 @@ describe("order status filters", () => {
       expect(classifyOrderStatus(steadfast({ status: "cancelled", processing_at: daysAgo(30) }), now)).toBe("cancelled");
       expect(classifyOrderStatus(steadfast({ status: "print", processing_at: daysAgo(30) }), now)).toBe("print");
       expect(classifyOrderStatus(order("approved", { status: "confirmed", processing_at: daysAgo(30) }), now)).toBe("approved");
+    });
+
+    it("lists a parcel the rider reported a problem with, until Steadfast confirms the outcome", () => {
+      const problem = { courier_problem: 'Rider Note: "কাস্টমার ফোন রিসিভ করেনি"', courier_problem_at: daysAgo(0.1) };
+      expect(classifyOrderStatus(steadfast({ ...problem, processing_at: daysAgo(1) }), now)).toBe("stuck");
+      expect(classifyOrderStatus(steadfast({ ...problem, courier_status: "in_transit", courier_status_at: daysAgo(0.05) }), now)).toBe("stuck");
+      expect(classifyOrderStatus(steadfast({ ...problem, courier_status: "delivered" }), now)).toBe("delivered");
+      expect(classifyOrderStatus(steadfast({ ...problem, courier_status: "cancelled" }), now)).toBe("cancelled");
+    });
+
+    it("shows the rider's own words for a delivery problem", () => {
+      expect(stuckReason(steadfast({ courier_problem: 'Rider Note: "কাস্টমার ফোন রিসিভ করেনি"', courier_problem_at: daysAgo(0.1) }), now))
+        .toBe("Delivery problem: কাস্টমার ফোন রিসিভ করেনি");
+      expect(stuckReason(steadfast({ courier_problem: 'Delivery attempt failed: the receiver does not want the parcel. Rider note: "কাস্টমার বলেছে নেব না"', courier_problem_at: daysAgo(0.1) }), now))
+        .toBe("Delivery problem: কাস্টমার বলেছে নেব না");
+      expect(stuckReason(steadfast({ courier_problem: "Delivery attempt failed: the receiver could not be reached.", courier_problem_at: daysAgo(0.1) }), now))
+        .toBe("Delivery problem: the receiver could not be reached");
+    });
+
+    it("recognises Steadfast's delivery-problem messages", () => {
+      for (const note of ['Rider Note: "Phone richip kore na customer"', "Delivery attempt failed: the receiver could not be reached.", '  rider note: "Rtn hobe"']) {
+        expect(isDeliveryProblemNote(note)).toBe(true);
+      }
+      for (const note of ["Consignment sent to SAVAR WAREHOUSE.", "Assigned to rider.", "Your package has been delivered successfully.", "", null]) {
+        expect(isDeliveryProblemNote(note)).toBe(false);
+      }
+    });
+
+    it("groups each parcel by reason and dates how long it has waited", () => {
+      expect(followUpDetails(steadfast({ courier_problem: 'Rider Note: "Rtn hobe"', courier_problem_at: daysAgo(1), processing_at: daysAgo(6) }), now))
+        .toEqual({ key: "delivery_problem", label: "Delivery problem: Rtn hobe", since: daysAgo(1) });
+      expect(followUpDetails(steadfast({ processing_at: daysAgo(5) }), now)).toMatchObject({ key: "no_movement", since: daysAgo(5) });
+      expect(followUpDetails(steadfast({ courier_status: "in_transit", courier_status_at: daysAgo(7) }), now)).toMatchObject({ key: "in_transit_long", since: daysAgo(7) });
+      expect(followUpDetails(steadfast({ courier_status: "unknown", courier_status_at: daysAgo(20) }), now)).toMatchObject({ key: "courier_unknown", since: daysAgo(20) });
+      expect(followUpDetails(steadfast({ processing_at: daysAgo(1) }), now)).toBeNull();
+    });
+
+    it("leaves Follow up for 2 days once someone followed up, unless the rider reports something new", () => {
+      const waiting = steadfast({ processing_at: daysAgo(6) });
+      expect(classifyOrderStatus({ ...waiting, followed_up_at: daysAgo(1) }, now)).toBe("processing");
+      expect(stuckReason({ ...waiting, followed_up_at: daysAgo(1) }, now)).toBeNull();
+      expect(classifyOrderStatus({ ...waiting, followed_up_at: daysAgo(2.1) }, now)).toBe("stuck");
+      const unknown = steadfast({ courier_status: "unknown", followed_up_at: daysAgo(1) });
+      expect(classifyOrderStatus(unknown, now)).toBe("processing");
+      const problem = { courier_problem: 'Rider Note: "নেব না"', courier_problem_at: daysAgo(0.5) };
+      expect(classifyOrderStatus(steadfast({ ...problem, followed_up_at: daysAgo(1) }), now)).toBe("stuck");
+      expect(classifyOrderStatus(steadfast({ ...problem, followed_up_at: daysAgo(0.2) }), now)).toBe("processing");
     });
 
     it("says why a parcel is stuck", () => {

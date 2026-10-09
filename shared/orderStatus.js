@@ -76,24 +76,72 @@ function daysSince(value, now) {
   return Number.isFinite(time) ? (now - time) / DAY_MS : null;
 }
 
-// Stuck: in Processing too long without moving, in transit too long without
-// delivery, or a courier status nobody can act on. processing_at and
+// Steadfast reports a failed delivery as "Delivery attempt failed: …" or a
+// free-text "Rider Note: …" (Bangla or Banglish); riders only write notes when
+// something went wrong, so either one is a delivery problem.
+export function isDeliveryProblemNote(note) {
+  return typeof note === "string" && /^(delivery attempt failed|rider note)\b/i.test(note.trim());
+}
+
+// The rider's own words when present, otherwise Steadfast's reason.
+function problemText(note) {
+  const text = String(note || "").trim();
+  const rider = text.match(/rider note:\s*"?([^"]*)"?\s*$/i);
+  if (rider && rider[1].trim()) return rider[1].trim();
+  return text.replace(/^delivery attempt failed:\s*/i, "").replace(/\.$/, "");
+}
+
+const ACTIVE_STAGES = new Set(["processing", "in_transit"]);
+// After someone follows up, the parcel leaves Follow up for this long.
+export const FOLLOW_UP_SNOOZE_DAYS = 2;
+
+// Why a parcel needs a follow-up, ignoring whether someone already followed up:
+// a delivery problem the rider reported (until Steadfast confirms the outcome),
+// in Processing too long without moving, in transit too long without delivery,
+// or a status Steadfast itself does not know. processing_at and
 // courier_status_at are stamped by the database; when unknown, never stuck.
+function followUpNeed(order, stage, now) {
+  if (ACTIVE_STAGES.has(stage) && order.courier_problem_at) {
+    return { key: "delivery_problem", label: `Delivery problem: ${problemText(order.courier_problem)}`, since: order.courier_problem_at };
+  }
+  // Steadfast's guide: "unknown" means it does not know either; ask its support.
+  if (stage === "stuck") {
+    return { key: "courier_unknown", label: "Steadfast doesn't know: ask Steadfast support", since: order.courier_status_at || order.processing_at || null };
+  }
+  const days = daysSince(stage === "processing" ? order.processing_at : stage === "in_transit" ? order.courier_status_at : null, now);
+  if (stage === "processing" && days > STUCK_PROCESSING_DAYS) {
+    return { key: "no_movement", label: `No movement for ${Math.floor(days)} days`, since: order.processing_at };
+  }
+  if (stage === "in_transit" && days > STUCK_TRANSIT_DAYS) {
+    return { key: "in_transit_long", label: `In transit for ${Math.floor(days)} days`, since: order.courier_status_at };
+  }
+  return null;
+}
+
+// Followed up recently, and the rider has reported nothing new since.
+function followedUpRecently(order, now) {
+  const days = daysSince(order.followed_up_at, now);
+  if (days === null || days > FOLLOW_UP_SNOOZE_DAYS) return false;
+  return !(order.courier_problem_at && Date.parse(order.courier_problem_at) > Date.parse(order.followed_up_at));
+}
+
+// The Follow up tab's reason, group and waiting time, or null when the parcel
+// does not need a follow-up now.
+export function followUpDetails(order, now = Date.now()) {
+  const need = followUpNeed(order, classifyStage(order), now);
+  return need && !followedUpRecently(order, now) ? need : null;
+}
+
 export function classifyOrderStatus(order, now = Date.now()) {
   const stage = classifyStage(order);
-  if (stage === "processing" && daysSince(order.processing_at, now) > STUCK_PROCESSING_DAYS) return "stuck";
-  if (stage === "in_transit" && daysSince(order.courier_status_at, now) > STUCK_TRANSIT_DAYS) return "stuck";
-  return stage;
+  const need = followUpNeed(order, stage, now);
+  if (need && !followedUpRecently(order, now)) return "stuck";
+  // A followed-up "unknown" parcel waits in Processing until it comes back.
+  return stage === "stuck" ? "processing" : stage;
 }
 
 export function stuckReason(order, now = Date.now()) {
-  const stage = classifyStage(order);
-  // Steadfast's guide: "unknown" means it does not know either; ask its support.
-  if (stage === "stuck") return "Steadfast doesn't know: ask Steadfast support";
-  const days = daysSince(stage === "processing" ? order.processing_at : stage === "in_transit" ? order.courier_status_at : null, now);
-  if (stage === "processing" && days > STUCK_PROCESSING_DAYS) return `No movement for ${Math.floor(days)} days`;
-  if (stage === "in_transit" && days > STUCK_TRANSIT_DAYS) return `In transit for ${Math.floor(days)} days`;
-  return null;
+  return followUpDetails(order, now)?.label ?? null;
 }
 
 function classifyStage(order) {

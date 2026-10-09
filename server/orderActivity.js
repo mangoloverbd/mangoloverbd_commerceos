@@ -42,6 +42,7 @@ export const ORDER_ACTIVITY_EVENT_TYPES = Object.freeze([
   "courier.failed",
   "courier.status_changed",
   "document.printed",
+  "order.followed_up",
 ]);
 
 export const ORDER_ACTIVITY_SURFACES = Object.freeze([
@@ -54,6 +55,7 @@ export const ORDER_ACTIVITY_SURFACES = Object.freeze([
   "abandoned_queue",
   "inbox_orders",
   "order_editor",
+  "follow_up_queue",
   "system",
 ]);
 
