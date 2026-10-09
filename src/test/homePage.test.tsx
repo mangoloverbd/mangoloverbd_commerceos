@@ -37,7 +37,7 @@ const summary: HomeSummary = {
   live: { count: 17, visitors: [{ city: "Dhaka", country: "BD", path: "/", last_seen_at: "2026-10-06T04:29:00.000Z", latitude: 23.81, longitude: 90.41 }] },
   quick_actions: [
     { key: "send_to_courier", label: "Send to courier", count: 24, to: "/orders", state: { fulfillmentTab: "approved" } },
-    { key: "review_fraud_flags", label: "Review fraud flags", count: 3, to: "/orders", state: { fulfillmentTab: "flagged" }, tone: "warn" },
+    { key: "check_stuck_parcels", label: "Follow up parcels", count: 3, to: "/orders", state: { fulfillmentTab: "stuck" }, tone: "warn" },
   ],
   attention: [
     {
@@ -148,8 +148,8 @@ describe("Home page", () => {
 
   it("opens the matching Orders queue from a quick action", async () => {
     renderHome();
-    fireEvent.click(await screen.findByRole("link", { name: /Review fraud flags/ }));
-    expect(screen.getByTestId("location")).toHaveTextContent('/orders {"fulfillmentTab":"flagged"}');
+    fireEvent.click(await screen.findByRole("link", { name: /Follow up parcels/ }));
+    expect(screen.getByTestId("location")).toHaveTextContent('/orders {"fulfillmentTab":"stuck"}');
   });
 
   it("reloads the metrics for the chosen channel", async () => {

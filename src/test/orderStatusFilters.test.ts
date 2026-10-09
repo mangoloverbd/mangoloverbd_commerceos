@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyOrderStatus,
+  canShowConsignmentCopy,
   countOrdersByStatus,
   filterOrdersByStatus,
+  stuckReason,
 } from "@/lib/orderStatusFilters";
 
 type TestOrder = {
@@ -12,6 +14,8 @@ type TestOrder = {
   courier_status?: string | null;
   courier_name?: string | null;
   sent_to_courier?: boolean | null;
+  processing_at?: string | null;
+  courier_status_at?: string | null;
   fraud_checked?: boolean | null;
   fraud_data?: {
     total_parcels: number;
@@ -63,10 +67,11 @@ describe("order status filters", () => {
     [order("legacy-steadfast-transit", { status: "print", sent_to_courier: true, courier_message: "Sent to Steadfast successfully", courier_status: "In Transit" }), "in_transit"],
     [order("ready", { status: "confirmed", fulfillment_status: "fulfilled" }), "ready_to_ship"],
     [order("explicit-ready", { status: "ready-to-ship" }), "ready_to_ship"],
-    [order("flagged", {
+    // A risky customer keeps its High Risk badge in its normal tab.
+    [order("risky-customer", {
       fraud_checked: true,
       fraud_data: { total_parcels: 10, total_delivered: 4, total_cancel: 6 },
-    }), "flagged"],
+    }), "pending"],
     [order("approved", { status: "confirmed" }), "approved"],
     [order("pending"), "pending"],
   ] as const)("classifies $id into %s", (input, expected) => {
@@ -82,7 +87,7 @@ describe("order status filters", () => {
     }))).toBe("delivered");
   });
 
-  it("lets a Steadfast exception override an active transit state after manual processing", () => {
+  it("keeps a moving parcel In transit even for a risky customer", () => {
     expect(classifyOrderStatus(order("steadfast-transit-fraud", {
       status: "processing",
       sent_to_courier: true,
@@ -90,7 +95,7 @@ describe("order status filters", () => {
       courier_status: "in_transit",
       fraud_checked: true,
       fraud_data: { total_parcels: 10, total_delivered: 4, total_cancel: 6 },
-    }))).toBe("flagged");
+    }))).toBe("in_transit");
   });
 
   it("keeps Print until manual handoff, except for terminal courier outcomes", () => {
@@ -129,12 +134,12 @@ describe("order status filters", () => {
       courier_status: "Picked Up",
     }))).toBe("in_transit");
 
-    expect(classifyOrderStatus(order("manual-flagged", {
+    expect(classifyOrderStatus(order("courier-unclear", {
       status: "processing",
       sent_to_courier: true,
       courier_name: "steadfast",
       courier_status: "Unknown Approval Pending",
-    }))).toBe("flagged");
+    }))).toBe("stuck");
   });
 
   it("keeps non-Steadfast processing behavior unchanged", () => {
@@ -160,7 +165,7 @@ describe("order status filters", () => {
       ready_to_ship: 1,
       in_transit: 1,
       delivered: 0,
-      flagged: 0,
+      stuck: 0,
       cancelled: 1,
     });
   });
@@ -173,5 +178,46 @@ describe("order status filters", () => {
 
     expect(filterOrdersByStatus(orders, "all").map(({ id }) => id)).toEqual(["pending", "delivered"]);
     expect(filterOrdersByStatus(orders, "delivered").map(({ id }) => id)).toEqual(["delivered"]);
+  });
+
+  it("hides the extra consignment copy button in the Stuck tab", () => {
+    expect(canShowConsignmentCopy(order("stuck", { status: "processing", sent_to_courier: true, courier_name: "steadfast", courier_status: "unknown" }))).toBe(false);
+  });
+
+  describe("stuck parcels", () => {
+    const now = Date.parse("2026-10-09T12:00:00Z");
+    const daysAgo = (days: number) => new Date(now - days * 86400000).toISOString();
+    const steadfast = (overrides: Partial<TestOrder>) =>
+      order("parcel", { status: "processing", sent_to_courier: true, courier_name: "steadfast", courier_status: "in_review", ...overrides });
+
+    it("is stuck after more than 4 days in Processing without moving", () => {
+      expect(classifyOrderStatus(steadfast({ processing_at: daysAgo(4.1) }), now)).toBe("stuck");
+      expect(classifyOrderStatus(steadfast({ processing_at: daysAgo(3.9) }), now)).toBe("processing");
+      // Orders whose Processing date is unknown are never guessed stuck.
+      expect(classifyOrderStatus(steadfast({ processing_at: null }), now)).toBe("processing");
+      // Any courier, not only Steadfast.
+      expect(classifyOrderStatus(order("pathao", { status: "processing", sent_to_courier: true, courier_name: "pathao", courier_status: "Pending", processing_at: daysAgo(5) }), now)).toBe("stuck");
+    });
+
+    it("is stuck after more than 5 days in transit without delivery", () => {
+      expect(classifyOrderStatus(steadfast({ courier_status: "in_transit", processing_at: daysAgo(9), courier_status_at: daysAgo(5.1) }), now)).toBe("stuck");
+      // Moving recently: not stuck, however long ago it entered Processing.
+      expect(classifyOrderStatus(steadfast({ courier_status: "in_transit", processing_at: daysAgo(9), courier_status_at: daysAgo(4) }), now)).toBe("in_transit");
+      expect(classifyOrderStatus(steadfast({ courier_status: "in_transit", courier_status_at: null }), now)).toBe("in_transit");
+    });
+
+    it("never marks delivered, cancelled, print or approved orders stuck", () => {
+      expect(classifyOrderStatus(steadfast({ courier_status: "delivered", courier_status_at: daysAgo(30) }), now)).toBe("delivered");
+      expect(classifyOrderStatus(steadfast({ status: "cancelled", processing_at: daysAgo(30) }), now)).toBe("cancelled");
+      expect(classifyOrderStatus(steadfast({ status: "print", processing_at: daysAgo(30) }), now)).toBe("print");
+      expect(classifyOrderStatus(order("approved", { status: "confirmed", processing_at: daysAgo(30) }), now)).toBe("approved");
+    });
+
+    it("says why a parcel is stuck", () => {
+      expect(stuckReason(steadfast({ processing_at: daysAgo(4.5) }), now)).toBe("No movement for 4 days");
+      expect(stuckReason(steadfast({ courier_status: "in_transit", courier_status_at: daysAgo(6) }), now)).toBe("In transit for 6 days");
+      expect(stuckReason(steadfast({ courier_status: "Unknown Approval Pending" }), now)).toBe("Steadfast doesn't know: ask Steadfast support");
+      expect(stuckReason(steadfast({ processing_at: daysAgo(3) }), now)).toBeNull();
+    });
   });
 });

@@ -20,7 +20,8 @@ const PROCESSING_STATES = new Set([
   "processing",
   "picked_up",
 ]);
-const STEADFAST_FLAGGED_STATES = new Set([
+// Courier statuses that need someone to look: the parcel's state is unclear.
+const COURIER_UNCLEAR_STATES = new Set([
   "unknown",
   "unknown_approval_pending",
   "cancelled_approval_pending",
@@ -65,14 +66,37 @@ function isSteadfastProcessingStatus(status) {
     status.includes("received_by_sender");
 }
 
-function isFraudFlagged(order) {
-  if (!order.fraud_checked || !order.fraud_data) return false;
-  const total = Number(order.fraud_data.total_parcels) || 0;
-  const delivered = Number(order.fraud_data.total_delivered) || 0;
-  return total > 0 && delivered / total < 0.5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A parcel is stuck when it has not moved for longer than this many days.
+export const STUCK_PROCESSING_DAYS = 4;
+export const STUCK_TRANSIT_DAYS = 5;
+
+function daysSince(value, now) {
+  const time = value ? Date.parse(value) : NaN;
+  return Number.isFinite(time) ? (now - time) / DAY_MS : null;
 }
 
-export function classifyOrderStatus(order) {
+// Stuck: in Processing too long without moving, in transit too long without
+// delivery, or a courier status nobody can act on. processing_at and
+// courier_status_at are stamped by the database; when unknown, never stuck.
+export function classifyOrderStatus(order, now = Date.now()) {
+  const stage = classifyStage(order);
+  if (stage === "processing" && daysSince(order.processing_at, now) > STUCK_PROCESSING_DAYS) return "stuck";
+  if (stage === "in_transit" && daysSince(order.courier_status_at, now) > STUCK_TRANSIT_DAYS) return "stuck";
+  return stage;
+}
+
+export function stuckReason(order, now = Date.now()) {
+  const stage = classifyStage(order);
+  // Steadfast's guide: "unknown" means it does not know either; ask its support.
+  if (stage === "stuck") return "Steadfast doesn't know: ask Steadfast support";
+  const days = daysSince(stage === "processing" ? order.processing_at : stage === "in_transit" ? order.courier_status_at : null, now);
+  if (stage === "processing" && days > STUCK_PROCESSING_DAYS) return `No movement for ${Math.floor(days)} days`;
+  if (stage === "in_transit" && days > STUCK_TRANSIT_DAYS) return `In transit for ${Math.floor(days)} days`;
+  return null;
+}
+
+function classifyStage(order) {
   const business = normalizeStatus(order.status);
   const fulfillment = normalizeStatus(order.fulfillment_status);
   const courier = normalizeStatus(order.courier_status);
@@ -82,9 +106,7 @@ export function classifyOrderStatus(order) {
   if ([business, fulfillment, courier].some((value) => DELIVERED_STATES.has(value))) return "delivered";
   if (isSteadfastOrder(order)) {
     if (isExplicitSteadfastOrder && business === "print") return "print";
-    if (business === "flagged" || STEADFAST_FLAGGED_STATES.has(courier) || isFraudFlagged(order)) {
-      return "flagged";
-    }
+    if (COURIER_UNCLEAR_STATES.has(courier)) return "stuck";
     if ([business, fulfillment, courier].some((value) => HOLD_STATES.has(value))) return "on_hold";
     if (isSteadfastTransitStatus(courier)) return "in_transit";
     if (business === "processing" || isSteadfastProcessingStatus(courier)) {
@@ -108,7 +130,6 @@ export function classifyOrderStatus(order) {
     return "ready_to_ship";
   }
 
-  if (business === "flagged" || isFraudFlagged(order)) return "flagged";
   if (business === "approved" || business === "confirmed") return "approved";
   return "pending";
 }

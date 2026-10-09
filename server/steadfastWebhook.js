@@ -14,6 +14,16 @@ const OUTCOMES = new Set(["delivered", "partial_delivered", "cancelled"]);
 // "returned" is our own label; Steadfast reports those parcels as cancelled.
 const FINAL_STATUSES = new Set([...OUTCOMES, "returned"]);
 
+const MAX_NOTE_LENGTH = 500;
+
+// The courier's free-text note on a parcel event, trimmed, or null.
+export function steadfastCourierNote(payload) {
+  const type = payload?.notification_type;
+  if (type !== "delivery_status" && type !== "tracking_update") return null;
+  const note = typeof payload.tracking_message === "string" ? payload.tracking_message.replace(/\s+/g, " ").trim() : "";
+  return note ? note.slice(0, MAX_NOTE_LENGTH) : null;
+}
+
 export const isFinalCourierStatus = (status) => FINAL_STATUSES.has(normalize(status));
 
 export function planSteadfastDeliveryUpdate(payload, currentCourierStatus) {

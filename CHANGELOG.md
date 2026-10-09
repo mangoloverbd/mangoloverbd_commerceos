@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0.69] - 2026-10-09
+
+### Added
+
+- Orders has a **Follow up** tab (between In-Transit and Delivered) for parcels that need a call: in Processing for more than 4 days without moving, in transit for more than 5 days without delivery, or marked "unknown" by Steadfast. Each one says why ("No movement for 4 days", "In transit for 6 days", "Steadfast doesn't know: ask Steadfast support"). Home's attention card and quick action point to it ("N parcels to follow up").
+- The Steadfast webhook keeps the courier's latest note on each parcel (for example "Customer not reachable"), without changing any status, so delivery problems can be added to Follow up once their wording is known.
+- Orders record when they entered Processing and when their courier status last changed, stamped by the database and backfilled from history (migration `20261009074910`, already applied to the Mango Lover BD database).
+
+### Removed
+
+- The Flagged tab. Risky customers keep the red High Risk badge in their normal tab; parcels Steadfast marks "unknown" move to Follow up.
+
 ## [0.1.0.68] - 2026-10-09
 
 ### Changed

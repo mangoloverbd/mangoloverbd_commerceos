@@ -55,8 +55,8 @@ const STATUS_PRESENTATION: Record<FulfillmentQueueTab, StatusPresentation> = {
     label: "Delivered",
     dotClassName: "bg-emerald-500",
   },
-  flagged: {
-    label: "Flagged",
+  stuck: {
+    label: "Follow up",
     dotClassName: "bg-rose-500",
   },
   cancelled: {

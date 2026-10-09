@@ -13,11 +13,17 @@ const counts = {
   ready_to_ship: 57432,
   in_transit: 2,
   delivered: 37678,
-  flagged: 1342,
+  stuck: 1342,
   cancelled: 30676,
 };
 
 describe("OrderStatusSegmentedControl", () => {
+  it("places Follow up between In-Transit and Delivered", () => {
+    render(<OrderStatusSegmentedControl counts={counts} abandonedCount={15} value="all" onChange={vi.fn()} />);
+    const labels = screen.getAllByRole("radio").map((radio) => radio.getAttribute("aria-label")?.split(":")[0]);
+    expect(labels.slice(labels.indexOf("In-Transit"), labels.indexOf("In-Transit") + 3)).toEqual(["In-Transit", "Follow up", "Delivered"]);
+  });
+
   it("renders Abandoned immediately after All Orders without adding it to order status counts", () => {
     render(<OrderStatusSegmentedControl counts={counts} abandonedCount={15} value="all" onChange={vi.fn()} />);
 
@@ -27,6 +33,8 @@ describe("OrderStatusSegmentedControl", () => {
     expect(screen.getByRole("radio", { name: /Ready To Ship.*57,432/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /In-Transit.*2/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Cancelled.*30,676/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /^Follow up:.*1,342/ })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Flagged/ })).not.toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Print.*0/ })).toBeInTheDocument();
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(12);
