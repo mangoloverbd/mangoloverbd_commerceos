@@ -152,7 +152,7 @@ describe("website report", () => {
     const landing = visit(org, { at: "2026-10-04T04:00:00Z", path: "/step/katimon-mango" });
     step(org, landing, "page_view", "2026-10-04T04:01:00Z", "/step/katimon-mango");
     step(org, landing, "page_view", "2026-10-04T04:02:00Z", "/step/katimon-mango/thank-you");
-    const backfill = readFileSync(join(import.meta.dirname, "../../supabase/migrations/20261008180000_analytics_funnel_reach.sql"), "utf8");
+    const backfill = readFileSync(join(import.meta.dirname, "../../supabase/migrations/20261009065448_analytics_funnel_reach.sql"), "utf8");
     const check = () => as(`select s.product_views || ':' || coalesce((select string_agg(p.product_slug || '=' || p.views, ',') from public.analytics_session_products p where p.session_id = s.id), '')
       || ':' || (select count(*) from public.analytics_events e where e.session_id = s.id and e.product_slug = 'katimon-mango')
       from public.analytics_sessions s where s.id = '${landing.session}'`);

@@ -37,6 +37,18 @@ const EMPTY_TOTALS = {
   reached_product_sessions: 0, reached_checkout_sessions: 0,
 };
 
+// Funnel reach comes from the database. Until its migration is applied, estimate
+// it from the raw steps (a lower bound) so the funnel never shows empty stages.
+function withFunnelReach(totals, raw) {
+  const checkout = Math.max(totals.checkout_sessions, totals.ordered_sessions);
+  return {
+    ...totals,
+    reached_checkout_sessions: "reached_checkout_sessions" in raw ? totals.reached_checkout_sessions : checkout,
+    reached_product_sessions: "reached_product_sessions" in raw ? totals.reached_product_sessions
+      : Math.max(totals.product_sessions, totals.cart_sessions, checkout),
+  };
+}
+
 // Fills every Dhaka day and hour so charts never skip quiet periods.
 export function normalizeWebsiteReport(raw, range) {
   const report = raw || {};
@@ -44,7 +56,7 @@ export function normalizeWebsiteReport(raw, range) {
   const byHour = new Map((report.hourly || []).map((row) => [num(row.hour), num(row.sessions)]));
   const acquisition = report.acquisition || {};
   return {
-    totals: { ...EMPTY_TOTALS, ...numbers(report.totals) },
+    totals: withFunnelReach({ ...EMPTY_TOTALS, ...numbers(report.totals) }, report.totals || {}),
     daily: rangeDays(range).map((day) => ({ sessions: 0, visitors: 0, pageviews: 0, ordered_sessions: 0, ...byDay.get(day), day })),
     hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, sessions: byHour.get(hour) || 0 })),
     sources: (report.sources || []).map(numbers),

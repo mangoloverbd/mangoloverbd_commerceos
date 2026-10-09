@@ -753,23 +753,20 @@ export default function Dashboard() {
       // Load orders from DB immediately — don't wait for Shopify sync
       fetchOrders();
 
-      // Refresh Pathao and Steadfast courier statuses in background, at most
-      // once per 10 minutes per browser tab session. The timestamp is only
-      // recorded when both refreshes succeed, so failures retry on next mount.
+      // Refresh Pathao courier statuses in background, at most once per 10
+      // minutes per browser tab session. The timestamp is only recorded when
+      // the refresh succeeds, so a failure retries on next mount. Steadfast
+      // statuses arrive only through its webhook.
       const courierRefreshKey = `courier_refresh_at_${user.id}`;
       if (!courierRefreshRanRecently(courierRefreshKey)) {
-        const refreshCourier = (path: string) =>
-          apiFetch(path, { method: "POST" })
-            .then((res) => res.ok)
-            .catch(() => false);
-        void Promise.all([
-          refreshCourier("/api/pathao/refresh-status"),
-          refreshCourier("/api/steadfast/refresh-status"),
-        ]).then((results) => {
-          // One delta after both finish picks up every status they changed.
-          fetchOrders({ fresh: true });
-          if (results.every(Boolean)) markCourierRefreshRan(courierRefreshKey);
-        });
+        void apiFetch("/api/pathao/refresh-status", { method: "POST" })
+          .then((res) => res.ok)
+          .catch(() => false)
+          .then((ok) => {
+            // One delta afterwards picks up every status it changed.
+            fetchOrders({ fresh: true });
+            if (ok) markCourierRefreshRan(courierRefreshKey);
+          });
       }
 
       // Sync Shopify in the background without blocking the UI

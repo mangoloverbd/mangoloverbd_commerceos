@@ -29,6 +29,17 @@ describe("analytics report shaping", () => {
     expect(report.totals).toMatchObject({ sessions: 3, orders: 0 });
     expect(report.acquisition.last[0]).toMatchObject({ source: "facebook", delivered_value: 1200.5 });
   });
+
+  it("estimates funnel reach from the raw steps when the database has not added it yet", () => {
+    const range = { from: "2026-10-08", to: "2026-10-08" };
+    const raw = { sessions: 3106, product_sessions: 1736, cart_sessions: 18, checkout_sessions: 146, ordered_sessions: 77 };
+    expect(normalizeWebsiteReport({ totals: raw }, range).totals).toMatchObject({ reached_product_sessions: 1736, reached_checkout_sessions: 146 });
+    expect(normalizeWebsiteReport({ totals: { ...raw, checkout_sessions: 10, product_sessions: 5 } }, range).totals)
+      .toMatchObject({ reached_product_sessions: 77, reached_checkout_sessions: 77 });
+    // The database's exact numbers always win.
+    expect(normalizeWebsiteReport({ totals: { ...raw, reached_product_sessions: 3037, reached_checkout_sessions: 147 } }, range).totals)
+      .toMatchObject({ reached_product_sessions: 3037, reached_checkout_sessions: 147 });
+  });
   it("reports collection freshness, rollup state and order coverage", () => {
     const current = normalizeWebsiteReport({ totals: { sessions: 10 }, sources: [{ source: "direct", medium: "none", sessions: 4 }], acquisition: { website_orders: 8, matched_orders: 6 } }, { from: "2026-10-03", to: "2026-10-03" });
     expect(buildDataHealth({ latestEventAt: "2026-10-03T05:30:00Z", job: { last_succeeded_at: "2026-10-02T20:35:00Z" }, current }, now))
