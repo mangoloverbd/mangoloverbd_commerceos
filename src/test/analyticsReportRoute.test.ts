@@ -12,7 +12,9 @@ describe("analytics report request", () => {
     expect(previousRequest).toMatchObject({ range: { from: "2026-08-05", to: "2026-09-03" }, since: "2026-08-04T18:00:00.000Z", until: "2026-09-03T06:00:00.000Z" });
   });
   it("rejects half, future and oversized ranges with 400", () => {
-    for (const query of [{ from: "2026-10-01" }, { from: "2026-10-01", to: "2026-10-09" }, { from: "2025-01-01", to: "2026-10-01" }]) {
+    // "Future" is judged against the real clock, so the test date must be too.
+    const future = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+    for (const query of [{ from: "2026-10-01" }, { from: future, to: future }, { from: "2025-01-01", to: "2026-10-01" }]) {
       expect(() => resolveAnalyticsReportRequest(query, now)).toThrow(expect.objectContaining({ statusCode: 400 }));
     }
   });
