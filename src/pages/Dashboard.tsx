@@ -69,6 +69,7 @@ import {
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DATE_FILTER_TABS, filterOrdersByDateRange, orderDateRangeBounds } from "@/lib/orderDateFilter";
 import { CancellationInsights } from "@/components/orders/CancellationInsights";
+import { FollowUpPanel, sortFollowUpNewestFirst } from "@/components/orders/FollowUpPanel";
 import {
   cancellationDate,
   filterCancelledByDate,
@@ -83,6 +84,8 @@ import { StepSparkline } from "@/components/charts/StepSparkline";
 import {
   countOrdersByStatus,
   filterOrdersByStatus,
+  followUpDetails,
+  type FollowUpReasonKey,
   type OrderStatusFilter,
 } from "@/lib/orderStatusFilters";
 import { planBulkStatusChange } from "@/lib/orderTransitions";
@@ -1117,6 +1120,9 @@ export default function Dashboard() {
   const [cancelCustomRange, setCancelCustomRange] = useState<DateRange | null>(null);
   const [cancelBasis, setCancelBasis] = useState<CancellationDateBasis>("cancelled");
   const [cancelReasons, setCancelReasons] = useState<ReadonlySet<CancellationReasonKey>>(new Set());
+  // Follow up tab: the reasons picked in the breakdown.
+  const isFollowUpTab = activeOrderStatusFilter === "stuck";
+  const [followUpReasons, setFollowUpReasons] = useState<ReadonlySet<FollowUpReasonKey>>(new Set());
   // Each of the Processing and Delivered tabs keeps its own order-date range; both clear when leaving them.
   const [ordersDateRanges, setOrdersDateRanges] = useState<Partial<Record<OrderStatusFilter, DateRange | null>>>({});
   const showOrdersDateFilter = DATE_FILTER_TABS.includes(activeOrderStatusFilter);
@@ -1207,6 +1213,43 @@ export default function Dashboard() {
     () => filterCancelledByReasons(cancelledRangeOrders, cancelReasons),
     [cancelReasons, cancelledRangeOrders],
   );
+  // Follow up: newest orders first, then the reasons picked in the tiles.
+  const followUpOrders = useMemo(
+    () => (isFollowUpTab ? sortFollowUpNewestFirst(filteredOrders) : []),
+    [filteredOrders, isFollowUpTab],
+  );
+  const followUpReasonCounts = useMemo(() => {
+    const counts: Record<FollowUpReasonKey, number> = { delivery_problem: 0, no_movement: 0, in_transit_long: 0, courier_unknown: 0 };
+    for (const order of followUpOrders) {
+      const key = followUpDetails(order)?.key;
+      if (key) counts[key] += 1;
+    }
+    return counts;
+  }, [followUpOrders]);
+  const followUpListOrders = useMemo(
+    () => (followUpReasons.size === 0 ? followUpOrders : followUpOrders.filter((order) => {
+      const key = followUpDetails(order)?.key;
+      return key ? followUpReasons.has(key) : false;
+    })),
+    [followUpOrders, followUpReasons],
+  );
+  const markFollowedUp = async (note: string) => {
+    const ids = followUpListOrders.filter((order) => selectedOrderIds.has(order.id)).map((order) => order.id);
+    if (!ids.length) return;
+    const res = await apiFetch("/api/orders/follow-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_ids: ids, note }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast.error(body.error || "Could not mark the parcels as followed up");
+      return;
+    }
+    toast.success(`${ids.length} ${ids.length === 1 ? "parcel" : "parcels"} marked followed up`);
+    setSelectedOrderIds(new Set());
+    fetchOrders({ fresh: true });
+  };
   const allCancelledOrders = useMemo(
     () => (isCancelledTab ? filterOrdersByStatus(orders, "cancelled") : []),
     [isCancelledTab, orders],
@@ -1234,8 +1277,9 @@ export default function Dashboard() {
 
   const dateFilteredOrders = useMemo(() => {
     if (isCancelledTab) return cancelledListOrders;
+    if (isFollowUpTab) return followUpListOrders;
     return showOrdersDateFilter ? filterOrdersByDateRange(filteredOrders, ordersDateRange) : filteredOrders;
-  }, [cancelledListOrders, filteredOrders, isCancelledTab, ordersDateRange, showOrdersDateFilter]);
+  }, [cancelledListOrders, filteredOrders, followUpListOrders, isCancelledTab, isFollowUpTab, ordersDateRange, showOrdersDateFilter]);
 
   const districtFilteredOrders = useMemo(() => {
     if (activeOrderStatusFilter !== "approved" || districtFilter === "all") return dateFilteredOrders;
@@ -1879,6 +1923,7 @@ export default function Dashboard() {
             setDistrictFilter("all");
             if (nextTab === "abandoned" || !DATE_FILTER_TABS.includes(nextTab)) setOrdersDateRanges({});
             if (nextTab !== "cancelled") setCancelReasons(new Set());
+            if (nextTab !== "stuck") setFollowUpReasons(new Set());
             setSelectedAbandonedIds(new Set());
             if (nextTab === "abandoned") setSelectedOrderIds(new Set());
           }}
@@ -1932,6 +1977,25 @@ export default function Dashboard() {
                   setOrderPage(0);
                 }}
                 onClearReasons={() => { setCancelReasons(new Set()); setOrderPage(0); }}
+              />
+            )}
+            {isFollowUpTab && (
+              <FollowUpPanel
+                reasonCounts={followUpReasonCounts}
+                listCount={followUpListOrders.length}
+                selectedCount={followUpListOrders.filter((order) => selectedOrderIds.has(order.id)).length}
+                reasons={followUpReasons}
+                onToggleReason={(reason) => {
+                  setFollowUpReasons((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(reason)) next.delete(reason);
+                    else next.add(reason);
+                    return next;
+                  });
+                  setOrderPage(0);
+                }}
+                onClearReasons={() => { setFollowUpReasons(new Set()); setOrderPage(0); }}
+                onMarkFollowedUp={markFollowedUp}
               />
             )}
             <OrdersTable

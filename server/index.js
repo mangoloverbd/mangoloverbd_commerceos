@@ -147,7 +147,7 @@ import {
   validateCancellationReason,
 } from "./orderActivity.js";
 import { getBangladeshDateKey, validateOrderHoldDetails } from "../shared/orderHold.js";
-import { classifyOrderStatus, stuckReason } from "../shared/orderStatus.js";
+import { classifyOrderStatus, isDeliveryProblemNote, stuckReason } from "../shared/orderStatus.js";
 import { buildHomeMetrics, homeWindows, isHomeChannel, rankAttentionCards, shortProductName, topProducts } from "./homeSummary.js";
 import { visitorLocation } from "./bdPlaces.js";
 import { releaseDueOrderHolds } from "./orderHoldMaintenance.js";
@@ -7696,6 +7696,48 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
   }
 });
 
+// Follow up tab: someone called the customer or the courier. The parcel leaves
+// Follow up for two days (shared/orderStatus.js), unless the rider reports a
+// new problem. Status is never changed here.
+const FOLLOW_UP_NOTE_MAX = 300;
+const FOLLOW_UP_BATCH_MAX = 500;
+const ORDER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+app.post("/api/orders/follow-up", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const ids = req.body?.order_ids;
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > FOLLOW_UP_BATCH_MAX || !ids.every((id) => typeof id === "string" && ORDER_ID_RE.test(id))) {
+      return res.status(400).json({ error: "Choose the orders to mark as followed up" });
+    }
+    const rawNote = req.body?.note;
+    if (rawNote !== undefined && rawNote !== null && typeof rawNote !== "string") return res.status(400).json({ error: "Invalid note" });
+    const note = typeof rawNote === "string" ? rawNote.replace(/\s+/g, " ").trim() : "";
+    if (note.length > FOLLOW_UP_NOTE_MAX) return res.status(400).json({ error: `Keep the note under ${FOLLOW_UP_NOTE_MAX} characters` });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const followedUpAt = new Date().toISOString();
+    const { data: updated, error } = await supabase
+      .from("orders")
+      .update({ followed_up_at: followedUpAt, followed_up_by: user.id, follow_up_note: note || null })
+      .in("id", [...new Set(ids)])
+      .eq("org_id", orgId)
+      .select("id");
+    if (error) throw error;
+
+    for (const { id } of updated || []) {
+      await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: id, orderTable: "orders", eventType: "order.followed_up",
+        category: "communication", actorId: user.id, actorKind: "user", sourceSurface: "follow_up_queue",
+        summary: note ? `Followed up: ${note}` : "Followed up", occurredAt: followedUpAt }));
+    }
+    return res.json({ updated: (updated || []).length, followed_up_at: followedUpAt });
+  } catch (e) {
+    return sendError(res, e);
+  }
+});
+
 app.get("/api/orders/recent-notifications", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -10636,7 +10678,7 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     // Find the order by consignment_id
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, org_id, courier_status, status, risk_attempt_id, courier_note")
+      .select("id, org_id, courier_status, status, risk_attempt_id, courier_note, courier_problem")
       .eq("consignment_id", consignmentId)
       .eq("sent_to_courier", true)
       .maybeSingle();
@@ -10656,8 +10698,14 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     const plan = planSteadfastDeliveryUpdate(payload, order.courier_status);
     // The courier's latest note ("Customer not reachable") is kept even when the
     // status does not change; it never changes the status itself.
+    // A rider's delivery problem is also kept apart, for Follow up, so a later
+    // routine tracking step does not hide it.
     const note = steadfastCourierNote(payload);
-    const notePatch = note && note !== order.courier_note ? { courier_note: note, courier_note_at: new Date().toISOString() } : null;
+    const notedAt = new Date().toISOString();
+    const notePatch = note && (note !== order.courier_note || (isDeliveryProblemNote(note) && note !== order.courier_problem)) ? {
+      courier_note: note, courier_note_at: notedAt,
+      ...(isDeliveryProblemNote(note) ? { courier_problem: note, courier_problem_at: notedAt } : {}),
+    } : null;
     if (plan.action === "ignore" && !notePatch) return res.status(200).json({ ok: true, skipped: plan.reason });
     if (plan.action === "ignore") {
       const { error: noteError } = await supabase.from("orders").update(notePatch).eq("id", order.id).eq("org_id", order.org_id);

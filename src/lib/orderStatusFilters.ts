@@ -1,4 +1,4 @@
-import { classifyOrderStatus as classifyOrderStatusShared, stuckReason as stuckReasonShared } from "../../shared/orderStatus.js";
+import { classifyOrderStatus as classifyOrderStatusShared, followUpDetails as followUpDetailsShared, stuckReason as stuckReasonShared } from "../../shared/orderStatus.js";
 
 export const ORDER_STATUS_FILTERS = [
   "all",
@@ -26,6 +26,9 @@ export interface StatusFilterOrder {
   sent_to_courier?: boolean | null;
   processing_at?: string | null;
   courier_status_at?: string | null;
+  courier_problem?: string | null;
+  courier_problem_at?: string | null;
+  followed_up_at?: string | null;
   fraud_checked?: boolean | null;
   fraud_data?: {
     total_parcels?: number | null;
@@ -40,6 +43,13 @@ export function classifyOrderStatus(order: StatusFilterOrder, now: number = Date
 
 export function stuckReason(order: StatusFilterOrder, now: number = Date.now()): string | null {
   return stuckReasonShared(order, now);
+}
+
+export type FollowUpReasonKey = "delivery_problem" | "no_movement" | "in_transit_long" | "courier_unknown";
+export type FollowUpDetails = { key: FollowUpReasonKey; label: string; since: string | null };
+
+export function followUpDetails(order: StatusFilterOrder, now: number = Date.now()): FollowUpDetails | null {
+  return followUpDetailsShared(order, now) as FollowUpDetails | null;
 }
 
 export function filterOrdersByStatus<T extends StatusFilterOrder>(orders: T[], filter: OrderStatusFilter): T[] {

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0.70] - 2026-10-09
+
+### Added
+
+- Follow up lists **delivery problems**: when Steadfast reports "Delivery attempt failed" or a rider writes a note ("কাস্টমার ফোন রিসিভ করেনি", "Rtn hobe"), the parcel shows in Follow up with the rider's own words until Steadfast confirms it Delivered or Cancelled. Hover a note to read it in full; each row also says how long it has waited.
+- Follow up has four reason tiles (Delivery problem, No movement, In transit too long, Steadfast doesn't know) with a count and bar each; click to filter, Show all to reset. The list is newest first.
+- **Mark followed up**: tick the parcels you called, add an optional note, and they leave Follow up for 2 days (sooner if the rider reports something new). The order's log records who, when and the note; the status is never changed.
+- A one-time catch-up from Steadfast's tracking history (`scripts/steadfast-tracking-catchup.mjs`, already run) marked 180 parcels that were really moving as In transit and recorded 100 rider-reported problems.
+
+### Database
+
+- Migrations `20261009121557` (rider problem note, and keeping a supplied movement time) and `20261009123421` (who followed up, when, note), both additive and already applied to the Mango Lover BD database.
+
 ## [0.1.0.69] - 2026-10-09
 
 ### Added

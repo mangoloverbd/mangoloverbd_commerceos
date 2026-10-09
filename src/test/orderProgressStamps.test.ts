@@ -60,4 +60,28 @@ describe("order progress stamps", () => {
     expect(as(`select courier_note || '|' || status || '|' || courier_status from public.orders where id = '${id}'`))
       .toBe("Customer not reachable|processing|in_transit");
   });
+
+  it("keeps a real movement time given with the courier status change", () => {
+    db.sql(readFileSync(join(import.meta.dirname, "../../supabase/migrations/20261009121557_courier_problem.sql"), "utf8"));
+    const id = order("processing", "pending");
+    as(`update public.orders set courier_status = 'in_transit', courier_status_at = '2026-10-05T06:00:00Z' where id = '${id}'`);
+    expect(stamps(id).split("|")[1]).toBe("2026-10-05T06:00:00.000000");
+    // Without a given time, a change is stamped now.
+    as(`update public.orders set courier_status = 'delivered' where id = '${id}'`);
+    expect(stamps(id).split("|")[1] > "2026-10-05T06:00:00.000000").toBe(true);
+  });
+
+  it("stores the rider's delivery problem without touching the status", () => {
+    const id = order("processing", "in_transit");
+    as(`update public.orders set courier_problem = 'Rider Note: "Rtn hobe"', courier_problem_at = '2026-10-09T10:00:00Z' where id = '${id}'`);
+    expect(as(`select courier_problem || '|' || status || '|' || courier_status from public.orders where id = '${id}'`))
+      .toBe('Rider Note: "Rtn hobe"|processing|in_transit');
+  });
+
+  it("records a follow-up without touching the status", () => {
+    const id = order("processing", "in_transit");
+    as(`update public.orders set followed_up_at = '2026-10-09T10:00:00Z', followed_up_by = '${org}', follow_up_note = 'Call again tomorrow' where id = '${id}'`);
+    expect(as(`select follow_up_note || '|' || status || '|' || courier_status from public.orders where id = '${id}'`)).toBe("Call again tomorrow|processing|in_transit");
+  });
 });
+
