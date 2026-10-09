@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
 import { countsAsLivePresence, normalizeTrackerKind, shouldForwardTrackerHit } from "./trackerHits.js";
 import { analyticsSessionFromHeaders, isAnalyticsId, parseTrackerAnalyticsHit } from "./websiteAnalytics.js";
+import { planSteadfastDeliveryUpdate, verifySteadfastRequest } from "./steadfastWebhook.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { isIP } from "node:net";
@@ -7482,7 +7483,7 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
     const now = new Date();
     const { data: draft, error: draftError } = await supabase
       .from("abandoned_checkouts")
-      .select(`${ABANDONED_CHECKOUT_DASHBOARD_FIELDS}, draft_key`)
+      .select(`${ABANDONED_CHECKOUT_DASHBOARD_FIELDS}, draft_key, analytics_session_id, analytics_captured_at`)
       .eq("id", req.params.id)
       .eq("org_id", orgId)
       .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
@@ -7655,6 +7656,8 @@ app.post("/api/abandoned-checkouts/:id/convert", async (req, res) => {
       await supabase.from("orders").delete().eq("id", order.id).eq("org_id", orgId);
       return res.status(409).json({ error: "Checkout changed before it could be converted" });
     }
+    // Attribution is frozen at the shopper's last capture, not at conversion.
+    await recordOrderAnalyticsFact(supabase, orgId, order.id, draft.analytics_session_id, draft.analytics_captured_at);
 
     const convertedStatusEvent = prepareStatusEvent({
       orgId,
@@ -8107,6 +8110,20 @@ app.patch("/api/orders/:id/items", async (req, res) => {
   }
 });
 
+// Remembers the visit behind the latest capture so a staff conversion can link
+// the order to it. Best effort: never fails or slows the capture much.
+async function rememberCaptureVisit(supabase, orgId, checkout, sessionId, now) {
+  if (!checkout || !sessionId) return;
+  try {
+    const { error } = await supabase.from("abandoned_checkouts")
+      .update({ analytics_session_id: sessionId, analytics_captured_at: now.toISOString() })
+      .eq("id", checkout.id).eq("org_id", orgId).abortSignal(AbortSignal.timeout(ANALYTICS_ORDER_TIMEOUT_MS));
+    if (error) throw error;
+  } catch {
+    console.warn("[Analytics] checkout visit not remembered");
+  }
+}
+
 async function persistAbandonedCheckoutCapture(supabase, orgId, capture, now) {
   const { data: existing, error: existingError } = await supabase
     .from("abandoned_checkouts")
@@ -8261,6 +8278,7 @@ app.post("/api/custom-orders/abandoned-checkouts", async (req, res) => {
     const now = new Date();
     const checkout = await persistAbandonedCheckoutCapture(supabase, orgId, capture, now);
     await attributeCapturedCampaign(req, supabase, orgId, checkout, now.toISOString());
+    await rememberCaptureVisit(supabase, orgId, checkout, analyticsSessionFromHeaders(req.headers), now);
     const draftKeyHash = hashAbandonedCheckoutDraftKey(capture.draftKey);
     if (checkout && draftKeyHash) {
       const { data: matchingOrder, error: matchingOrderError } = await supabase
@@ -10605,153 +10623,42 @@ app.post("/api/pathao/refresh-status", async (req, res) => {
   }
 });
 
-// ── Steadfast: refresh courier status for all active Steadfast orders ─────────
-app.post("/api/steadfast/refresh-status", async (req, res) => {
-  try {
-    const { user } = await getUser(getToken(req));
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-
-    const supabase = getServiceSupabase();
-    const { orgId } = await getUserOrg(supabase, user.id);
-
-    const cfg = await getOrgSettings(orgId, ["steadfast_api_key", "steadfast_secret_key"]);
-    const apiKey = cfg["steadfast_api_key"];
-    const secretKey = cfg["steadfast_secret_key"];
-    if (!apiKey || !secretKey) return res.json({ updated: 0, error: "Steadfast not configured" });
-
-    const finalStatuses = ["delivered", "partial_delivered", "cancelled", "returned"];
-    const { data: sfOrders } = await supabase
-      .from("orders")
-      .select("id, consignment_id, tracking_code, courier_status, status, courier_name, courier_message, risk_attempt_id")
-      .eq("org_id", orgId)
-      .eq("sent_to_courier", true);
-
-    if (!sfOrders?.length) return res.json({ updated: 0 });
-
-    // Filter to Steadfast orders only
-    const activeOrders = sfOrders.filter((o) => {
-      const isSteadfast = o.courier_name === "steadfast" ||
-        (!o.courier_name && (o.courier_message || "").toLowerCase().includes("steadfast"));
-      const hasId = o.consignment_id || o.tracking_code;
-      const notFinal = !finalStatuses.includes((o.courier_status || "").toLowerCase());
-      return isSteadfast && hasId && notFinal;
-    });
-
-    if (!activeOrders.length) return res.json({ updated: 0 });
-
-    console.log(`[Steadfast Refresh] Polling ${activeOrders.length} active orders for org=${orgId}`);
-    let updated = 0;
-    for (const order of activeOrders) {
-      try {
-        const sfPollId = order.consignment_id || order.tracking_code;
-        const statusRes = await fetch(
-          `https://portal.packzy.com/api/v1/status_by_cid/${sfPollId}`,
-          {
-            headers: {
-              "Api-Key": apiKey,
-              "Secret-Key": secretKey,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        if (!statusRes.ok) {
-          console.log(`[Steadfast Refresh] API returned ${statusRes.status} for cid=${sfPollId}`);
-          continue;
-        }
-        const statusData = await statusRes.json();
-        const newStatus = statusData?.delivery_status;
-        if (!newStatus) {
-          console.log(`[Steadfast Refresh] No delivery_status in response for cid=${sfPollId}:`, JSON.stringify(statusData).slice(0, 200));
-          continue;
-        }
-
-        const normalizedStatus = newStatus.toLowerCase();
-        if (normalizedStatus === (order.courier_status || "").toLowerCase()) continue;
-
-        const patch = { courier_status: newStatus };
-
-        // Map Steadfast statuses to order status updates
-        if (normalizedStatus === "delivered" || normalizedStatus === "partial_delivered") {
-          patch.status = "confirmed";
-          patch.fulfillment_status = "delivered";
-        } else if (normalizedStatus === "cancelled") {
-          patch.status = "cancelled";
-        } else if (normalizedStatus.includes("return") || normalizedStatus === "partial_delivered_approval_pending") {
-          patch.courier_status = "returned";
-          patch.status = "cancelled";
-        }
-
-        console.log(`[Steadfast Refresh] Order ${order.id} cid=${sfPollId}: ${order.courier_status} → ${newStatus}`);
-        await supabase.from("orders").update(patch).eq("id", order.id).eq("org_id", orgId);
-        await labelOrderRiskAttempt(supabase, orgId, { ...order, ...patch });
-        await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId, orderId: order.id, orderTable: "orders", eventType: "courier.status_changed", category: "courier", actorId: user.id, actorKind: "user", sourceSurface: "system", summary: `Steadfast status changed to ${newStatus}`, metadata: { courier: "steadfast", from_status: order.courier_status, to_status: newStatus } }));
-        updated++;
-      } catch (err) {
-        console.error(`[Steadfast Refresh] Error polling cid=${order.consignment_id}:`, err.message);
-      }
-    }
-    console.log(`[Steadfast Refresh] Done. Updated ${updated}/${activeOrders.length} orders.`);
-    return res.json({ updated, total: activeOrders.length });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
-});
-
 // ── Steadfast: webhook for real-time delivery status updates ─────────────────
 app.post("/api/webhooks/steadfast", async (req, res) => {
   try {
     const supabase = getServiceSupabase();
     const payload = req.body;
-    const consignmentId = String(payload?.consignment_id || "");
-    const status = payload?.status || payload?.delivery_status || "";
-    const trackingMessage = String(payload?.tracking_message || payload?.message || "").trim();
-    const effectiveStatus = String(status || trackingMessage).trim();
-    if (!consignmentId || !effectiveStatus) {
-      return res.status(400).json({ error: "Missing consignment_id or status" });
+    // Only delivery status and tracking (in transit) change an order; acknowledge
+    // everything else so Steadfast does not report it as a failed delivery.
+    if (payload?.notification_type !== "delivery_status" && payload?.notification_type !== "tracking_update") {
+      return res.status(200).json({ ok: true, ignored: "not_parcel_status" });
     }
-
-    // Verify bearer token against stored webhook secret
-    const authHeader = req.headers.authorization || "";
-    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    const consignmentId = String(payload?.consignment_id ?? "").trim();
+    if (!consignmentId) return res.status(200).json({ ok: true, ignored: "no_consignment" });
 
     // Find the order by consignment_id
-    const { data: order } = await supabase
+    const { data: order, error: orderError } = await supabase
       .from("orders")
       .select("id, org_id, courier_status, status, risk_attempt_id")
       .eq("consignment_id", consignmentId)
       .eq("sent_to_courier", true)
       .maybeSingle();
+    if (orderError) throw orderError;
 
     if (!order) {
       return res.status(200).json({ ok: true, skipped: "order not found" });
     }
 
-    // Verify webhook secret if configured. An omitted token must not bypass a
-    // configured secret.
+    // The shared token must match, and the raw body must carry its signature.
     const cfg = await getOrgSettings(order.org_id, ["courier_webhook_secret"]);
-    const secret = cfg["courier_webhook_secret"];
-    if (secret && bearerToken !== secret) {
+    if (!verifySteadfastRequest({ secret: cfg["courier_webhook_secret"], authorization: req.headers.authorization,
+      signature: req.headers["x-signature"], rawBody: req.rawBody })) {
       return res.status(401).json({ error: "Invalid webhook token" });
     }
 
-    const normalizedStatus = effectiveStatus.toLowerCase();
-    if (!trackingMessage && normalizedStatus === (order.courier_status || "").toLowerCase()) {
-      return res.status(200).json({ ok: true, skipped: "status unchanged" });
-    }
-
-    const patch = {
-      courier_status: status || "in_transit",
-      ...(trackingMessage ? { courier_message: trackingMessage } : {}),
-    };
-    if (normalizedStatus === "delivered" || normalizedStatus === "partial_delivered") {
-      patch.status = "confirmed";
-      patch.fulfillment_status = "delivered";
-    } else if (normalizedStatus === "cancelled") {
-      patch.status = "cancelled";
-    } else if (normalizedStatus.includes("return") || normalizedStatus === "partial_delivered_approval_pending") {
-      patch.courier_status = "returned";
-      patch.status = "cancelled";
-    }
+    const plan = planSteadfastDeliveryUpdate(payload, order.courier_status);
+    if (plan.action === "ignore") return res.status(200).json({ ok: true, skipped: plan.reason });
+    const { patch } = plan;
 
     const { data: updatedOrder, error: updateError } = await supabase
       .from("orders")
@@ -10778,11 +10685,12 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
       }));
     }
     await recordOrderActivity(supabase, buildDetailedActivityEvent({ orgId: order.org_id, orderId: order.id, orderTable: "orders", eventType: "courier.status_changed", category: "courier", actorId: null, actorKind: "courier_webhook", sourceSurface: "system", summary: `Courier status changed to ${patch.courier_status}`, metadata: { courier: "steadfast", from_status: order.courier_status, to_status: patch.courier_status } }));
-    console.log(`[Steadfast Webhook] Order ${order.id} status updated: ${order.courier_status} → ${status}`);
+    console.log(`[Steadfast Webhook] Order ${order.id} status updated: ${order.courier_status} → ${patch.courier_status}`);
     return res.status(200).json({ ok: true, updated: true });
   } catch (e) {
+    // A 5xx makes Steadfast retry after 30 seconds and 2 minutes.
     console.error("[Steadfast Webhook] error:", e.message);
-    return res.status(200).json({ ok: true, error: e.message });
+    return res.status(500).json({ error: "Could not apply delivery status" });
   }
 });
 

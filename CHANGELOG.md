@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.0.68] - 2026-10-09
+
+### Changed
+
+- Steadfast now updates orders only through its webhook, and only to In transit, Delivered or Cancelled. A tracking update marks the parcel In transit; a confirmed delivery or partial delivery marks it Delivered; a confirmed cancellation marks it Cancelled and cancels the order like a manual cancel. The team's own statuses (approved, print, processing) are never changed, and every other Steadfast status or event (pending, in review, the rider's unconfirmed reports, cancel/return requests, payouts) is ignored. A delivered or cancelled order never moves back.
+- The webhook checks both the shared token and Steadfast's signature, and answers with an error when the database fails so Steadfast retries the update instead of losing it.
+- Home no longer refreshes Steadfast statuses when it opens (Pathao's refresh stays); it reached only a handful of orders a day and could undo the team's statuses.
+- The Analytics funnel goes Visits → Product → Checkout → Order → Delivered, and each stage counts visits that reached it or went further, so it never goes backwards. Add to cart is shown on its own, because Buy now and landing pages skip the cart. The biggest-drop advice follows the new stages.
+
+### Fixed
+
+- Landing pages (/step/...) count as product views; past landing-page views were backfilled (migration `20261009065448`, already applied to the Mango Lover BD database).
+- Orders staff create from an abandoned checkout are linked to the shopper's website visit, so they show in the funnel and source reports (migration `20261008173522`, already applied). Needs the matching storefront change, which forwards the visit with each checkout capture.
+- The Funnel tab says how many website orders in the range are not linked to a visit.
+- A one-time catch-up (`scripts/steadfast-status-catchup.mjs`) applied the missed Delivered and Cancelled outcomes from before the webhook was connected: 1,184 orders updated, none of the team's statuses changed.
+
 ## [0.1.0.67] - 2026-10-08
 
 ### Added

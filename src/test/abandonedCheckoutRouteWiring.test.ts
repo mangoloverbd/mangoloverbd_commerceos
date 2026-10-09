@@ -181,4 +181,18 @@ describe("abandoned checkout route wiring", () => {
 
     expect(queuePatch).toContain("req.body?.action");
   });
+
+  it("links orders converted from a checkout to the website visit that captured it", () => {
+    const capture = routeSection('app.post("/api/custom-orders/abandoned-checkouts"', 'app.post("/api/custom-orders/webhook"');
+    const remember = routeSection("async function rememberCaptureVisit", "async function persistAbandonedCheckoutCapture");
+    const convert = routeSection('app.post("/api/abandoned-checkouts/:id/convert"', 'app.get("/api/orders/recent-notifications"');
+    expect(capture).toContain("rememberCaptureVisit(supabase, orgId, checkout, analyticsSessionFromHeaders(req.headers), now)");
+    expect(remember).toContain('.from("abandoned_checkouts")');
+    expect(remember).toContain('.eq("org_id", orgId)');
+    expect(remember).toContain("analytics_session_id: sessionId, analytics_captured_at: now.toISOString()");
+    expect(convert).toContain("analytics_session_id, analytics_captured_at");
+    // Attribution is frozen at the shopper's last capture, after recovery succeeded.
+    expect(convert.indexOf("recordOrderAnalyticsFact(supabase, orgId, order.id, draft.analytics_session_id, draft.analytics_captured_at)"))
+      .toBeGreaterThan(convert.indexOf("if (!recovered)"));
+  });
 });

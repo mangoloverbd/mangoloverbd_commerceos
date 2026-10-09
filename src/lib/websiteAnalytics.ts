@@ -5,6 +5,8 @@ export type WebsiteTotals = {
   sessions: number; visitors: number; new_visitors: number; pageviews: number; product_views: number; engaged_seconds: number;
   bounced_sessions: number; product_sessions: number; cart_sessions: number; checkout_sessions: number;
   ordered_sessions: number; orders: number; delivered_sessions: number;
+  // Cumulative funnel stages: visits that reached the stage or any later one.
+  reached_product_sessions: number; reached_checkout_sessions: number;
 };
 export type DailyRow = { day: string; sessions: number; visitors: number; pageviews: number; ordered_sessions: number };
 export type HourRow = { hour: number; sessions: number };
@@ -88,12 +90,12 @@ export function pointsDelta(current: number, previous: number | undefined, previ
 
 export type FunnelStep = { key: string; label: string; value: number };
 
+// The cart is optional (Buy now and landing pages skip it), so it is not a stage.
 export function funnelSteps(totals: WebsiteTotals): FunnelStep[] {
   return [
     { key: "visits", label: "Visits", value: totals.sessions },
-    { key: "product", label: "Product", value: totals.product_sessions },
-    { key: "cart", label: "Cart", value: totals.cart_sessions },
-    { key: "checkout", label: "Checkout", value: totals.checkout_sessions },
+    { key: "product", label: "Product", value: totals.reached_product_sessions },
+    { key: "checkout", label: "Checkout", value: totals.reached_checkout_sessions },
     { key: "order", label: "Order", value: totals.ordered_sessions },
     { key: "delivered", label: "Delivered", value: totals.delivered_sessions },
   ];

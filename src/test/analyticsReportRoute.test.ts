@@ -12,7 +12,9 @@ describe("analytics report request", () => {
     expect(previousRequest).toMatchObject({ range: { from: "2026-08-05", to: "2026-09-03" }, since: "2026-08-04T18:00:00.000Z", until: "2026-09-03T06:00:00.000Z" });
   });
   it("rejects half, future and oversized ranges with 400", () => {
-    for (const query of [{ from: "2026-10-01" }, { from: "2026-10-01", to: "2026-10-09" }, { from: "2025-01-01", to: "2026-10-01" }]) {
+    // "Future" is judged against the real clock, so the test date must be too.
+    const future = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+    for (const query of [{ from: "2026-10-01" }, { from: future, to: future }, { from: "2025-01-01", to: "2026-10-01" }]) {
       expect(() => resolveAnalyticsReportRequest(query, now)).toThrow(expect.objectContaining({ statusCode: 400 }));
     }
   });
@@ -28,6 +30,17 @@ describe("analytics report shaping", () => {
     expect(report.hourly[10]).toEqual({ hour: 10, sessions: 3 });
     expect(report.totals).toMatchObject({ sessions: 3, orders: 0 });
     expect(report.acquisition.last[0]).toMatchObject({ source: "facebook", delivered_value: 1200.5 });
+  });
+
+  it("estimates funnel reach from the raw steps when the database has not added it yet", () => {
+    const range = { from: "2026-10-08", to: "2026-10-08" };
+    const raw = { sessions: 3106, product_sessions: 1736, cart_sessions: 18, checkout_sessions: 146, ordered_sessions: 77 };
+    expect(normalizeWebsiteReport({ totals: raw }, range).totals).toMatchObject({ reached_product_sessions: 1736, reached_checkout_sessions: 146 });
+    expect(normalizeWebsiteReport({ totals: { ...raw, checkout_sessions: 10, product_sessions: 5 } }, range).totals)
+      .toMatchObject({ reached_product_sessions: 77, reached_checkout_sessions: 77 });
+    // The database's exact numbers always win.
+    expect(normalizeWebsiteReport({ totals: { ...raw, reached_product_sessions: 3037, reached_checkout_sessions: 147 } }, range).totals)
+      .toMatchObject({ reached_product_sessions: 3037, reached_checkout_sessions: 147 });
   });
   it("reports collection freshness, rollup state and order coverage", () => {
     const current = normalizeWebsiteReport({ totals: { sessions: 10 }, sources: [{ source: "direct", medium: "none", sessions: 4 }], acquisition: { website_orders: 8, matched_orders: 6 } }, { from: "2026-10-03", to: "2026-10-03" });

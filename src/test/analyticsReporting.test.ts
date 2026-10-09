@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { startCampaignPostgres } from "./helpers/campaignPostgres";
 import { customerOrderOutcome } from "../../server/customerOutcomes.js";
 
@@ -127,7 +129,9 @@ describe("website report", () => {
     };
     const report = json<Report>(`select public.analytics_website_report('${org}','2026-10-01T18:00:00Z','2026-10-02T18:00:00Z')`);
     expect(report.totals).toMatchObject({ sessions: 3, visitors: 2, pageviews: 4, product_sessions: 2, cart_sessions: 1, checkout_sessions: 1,
-      ordered_sessions: 2, orders: 2, delivered_sessions: 1, bounced_sessions: 2 });
+      ordered_sessions: 2, orders: 2, delivered_sessions: 1, bounced_sessions: 2,
+      // Cumulative stages: the direct revisit ordered, so it reached product and checkout too.
+      reached_product_sessions: 3, reached_checkout_sessions: 2 });
     expect(report.daily).toEqual([{ day: "2026-10-02", sessions: 3, visitors: 2, pageviews: 4, ordered_sessions: 2 }]);
     expect(report.hourly.find((row) => row.hour === 10)).toEqual({ hour: 10, sessions: 1, ordered_sessions: 1 });
     expect(report.sources[0]).toMatchObject({ source: "direct", sessions: 1, ordered_sessions: 1 });
@@ -141,6 +145,22 @@ describe("website report", () => {
     expect(report.acquisition.first[0]).toMatchObject({ source: "facebook", orders: 2 });
     expect(report.acquisition).toMatchObject({ website_orders: 3, matched_orders: 2 });
     expect(browse.session).toBeTruthy();
+  });
+
+  it("backfills landing-page views recorded before they counted as product views, once", () => {
+    const org = newOrg();
+    const landing = visit(org, { at: "2026-10-04T04:00:00Z", path: "/step/katimon-mango" });
+    step(org, landing, "page_view", "2026-10-04T04:01:00Z", "/step/katimon-mango");
+    step(org, landing, "page_view", "2026-10-04T04:02:00Z", "/step/katimon-mango/thank-you");
+    const backfill = readFileSync(join(import.meta.dirname, "../../supabase/migrations/20261009065448_analytics_funnel_reach.sql"), "utf8");
+    const check = () => as(`select s.product_views || ':' || coalesce((select string_agg(p.product_slug || '=' || p.views, ',') from public.analytics_session_products p where p.session_id = s.id), '')
+      || ':' || (select count(*) from public.analytics_events e where e.session_id = s.id and e.product_slug = 'katimon-mango')
+      from public.analytics_sessions s where s.id = '${landing.session}'`);
+    expect(check()).toBe("0::0");
+    db.sql(backfill);
+    expect(check()).toBe("2:katimon-mango=2:2");
+    db.sql(backfill);
+    expect(check()).toBe("2:katimon-mango=2:2");
   });
 
   it("rejects unbounded ranges", () => {

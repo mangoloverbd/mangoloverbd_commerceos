@@ -84,7 +84,8 @@ describe("dashboard orders sync on open", () => {
       apiFetch.mock.calls.filter(([url, init]) => match(String(url), init as RequestInit | undefined));
     await waitFor(() => {
       expect(calls((url) => url === "/api/pathao/refresh-status")).toHaveLength(1);
-      expect(calls((url) => url === "/api/steadfast/refresh-status")).toHaveLength(1);
+      // Steadfast statuses arrive only through its webhook.
+      expect(calls((url) => url === "/api/steadfast/refresh-status")).toHaveLength(0);
       expect(calls((url) => url === "/api/fetch-shopify-orders")).toHaveLength(1);
       expect(calls((url) => url.startsWith("/api/orders?changed_since=")).length).toBeGreaterThanOrEqual(1);
     });

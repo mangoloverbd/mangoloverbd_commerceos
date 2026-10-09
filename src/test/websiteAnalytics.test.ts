@@ -25,7 +25,9 @@ describe("website analytics paths", () => {
   it("recognises product pages in both URL styles", () => {
     expect(productSlugFromPath("/product/katimon-mango")).toBe("katimon-mango");
     expect(productSlugFromPath("/products/Himsagar-Mango")).toBe("himsagar-mango");
-    expect(productSlugFromPath("/step/katimon-mango")).toBeNull();
+    // Landing pages show one product with its order form.
+    expect(productSlugFromPath("/step/katimon-mango")).toBe("katimon-mango");
+    expect(productSlugFromPath("/step/katimon-mango/thank-you")).toBeNull();
     expect(productSlugFromPath("/product/katimon-mango/reviews")).toBeNull();
   });
 });

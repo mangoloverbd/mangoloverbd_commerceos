@@ -365,8 +365,7 @@ export function ProductsTab({ data, reduceMotion }: TabProps) {
 
 const DROP_ADVICE: Record<string, string> = {
   visits: "Most visitors leave before opening a product. Check that ads and links land on the right product or landing page.",
-  product: "Most visitors look at a product but never add it to the cart. Try a clearer price per kg, the delivery charge up front, or a stronger Buy now button.",
-  cart: "Many carts never reach checkout. Make the checkout button obvious and keep the cart short.",
+  product: "Most visitors look at a product but never start ordering. Try a clearer price per kg, the delivery charge up front, or a stronger Buy now button.",
   checkout: "Many checkouts never become orders. Check the form on a phone and look at abandoned checkouts.",
 };
 
@@ -376,11 +375,13 @@ export function FunnelTab({ data, reduceMotion }: TabProps) {
   const drop = biggestDrop(steps);
   const deviceRows = data.current.devices;
   const devices = useMemo(() => deviceConversionOption(deviceRows), [deviceRows]);
+  const { health } = data;
+  const unlinked = Math.max(0, health.website_orders - health.matched_orders);
 
   if (totals.sessions === 0) return <NoVisits />;
   return (
     <div className="space-y-3">
-      <Panel eyebrow="Funnel" title="From visit to delivered" aside={<span className="text-[11px] text-black/55">Each stage counts visits that reached it</span>}>
+      <Panel eyebrow="Funnel" title="From visit to delivered" aside={<span className="text-[11px] text-black/55">Each stage counts visits that reached it or went further</span>}>
         <WebsiteFunnel data={data} wide />
         <div className="flex flex-wrap gap-1.5 text-[11px] tabular-nums text-black/60">
           {steps.slice(1).map((step, index) => (
@@ -392,7 +393,7 @@ export function FunnelTab({ data, reduceMotion }: TabProps) {
         <div className="grid grid-cols-1 gap-2 border-t border-black/[0.09] pt-3 text-[11px] text-black/60 sm:grid-cols-3">
           <div>Visit → order<strong className="block text-[18px] font-light tabular-nums tracking-[-0.03em] text-black">{formatPct(rate(totals.ordered_sessions, totals.sessions))}</strong></div>
           <div>Order → delivered<strong className="block text-[18px] font-light tabular-nums tracking-[-0.03em] text-black">{formatPct(rate(totals.delivered_sessions, totals.ordered_sessions))}</strong></div>
-          <div>Cart → order<strong className="block text-[18px] font-light tabular-nums tracking-[-0.03em] text-black">{totals.cart_sessions ? formatPct(rate(totals.ordered_sessions, totals.cart_sessions)) : "—"}</strong></div>
+          <div>Used Add to cart<strong className="block text-[18px] font-light tabular-nums tracking-[-0.03em] text-black">{formatNumber(totals.cart_sessions)}</strong></div>
         </div>
       </Panel>
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -409,7 +410,10 @@ export function FunnelTab({ data, reduceMotion }: TabProps) {
           <EChart option={devices} ariaLabel="Share of visits with an order, by device" className="h-[180px] w-full" animate={!reduceMotion} />
         </Panel>
       </div>
-      <p className="text-[11px] text-black/50">Cart and checkout use the steps the website already reports. Checkout failure reasons and recovered checkouts arrive in Release 2.</p>
+      <p className="text-[11px] text-black/50">
+        Add to cart is shown on its own: Buy now and landing pages go straight to the order form.
+        {unlinked > 0 && <> {formatNumber(unlinked)} of {formatNumber(health.website_orders)} website orders in this range are not linked to a visit, so Order and Delivered are slightly low. Data health explains why.</>}
+      </p>
     </div>
   );
 }
@@ -448,7 +452,7 @@ export function HealthTab({ data, comparison }: { data: WebsiteAnalyticsResponse
           <HealthCell label="Updated" value={timeAgo(data.generated_at)} />
         </div>
         <p className="text-[11px] leading-relaxed text-black/55">
-          Orders placed before 3 October 2026, from phones opted out with ?ms_exclude=1, or where the shopper's visit expired are not linked to a visit. Bots and team browsers are never recorded.
+          Orders placed before 3 October 2026, orders staff created from abandoned checkouts before 9 October 2026, orders from phones opted out with ?ms_exclude=1, and orders where the shopper's visit expired are not linked to a visit. Bots and team browsers are never recorded.
         </p>
       </Panel>
       {comparison && (

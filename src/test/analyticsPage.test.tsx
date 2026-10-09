@@ -27,7 +27,8 @@ const behavior = {
   dropOff: null, productDemand: [], trafficSources: [],
 };
 const totals = { sessions: 200, visitors: 150, new_visitors: 120, pageviews: 600, product_views: 260, engaged_seconds: 18000, bounced_sessions: 60,
-  product_sessions: 140, cart_sessions: 30, checkout_sessions: 20, ordered_sessions: 12, orders: 13, delivered_sessions: 8 };
+  product_sessions: 140, cart_sessions: 30, checkout_sessions: 20, ordered_sessions: 12, orders: 13, delivered_sessions: 8,
+  reached_product_sessions: 150, reached_checkout_sessions: 24 };
 const acquisition = { source: "facebook", medium: "paid", orders: 9, placed_value: 9000, delivered: 6, delivered_value: 7200, partial_delivered: 0, returned: 1, cancelled: 1, active: 1 };
 const report = {
   totals,
@@ -120,7 +121,10 @@ describe("Analytics page", () => {
     expect(screen.getByText("/step/katimon-mango")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Funnel & checkout" }));
     expect(screen.getByTestId("funnel-chart")).toBeInTheDocument();
-    expect(screen.getByText(/Biggest drop: product → cart/)).toBeInTheDocument();
+    expect(screen.getByText(/Biggest drop: product → checkout/)).toBeInTheDocument();
+    expect(screen.queryByText(/→ cart/)).not.toBeInTheDocument();
+    expect(screen.getByText("Used Add to cart")).toBeInTheDocument();
+    expect(screen.getByText(/3 of 16 website orders in this range are not linked to a visit/)).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Data health" }));
     expect(screen.getByText("Can you trust these numbers?")).toBeInTheDocument();
     expect(screen.getByText("13 of 16")).toBeInTheDocument();

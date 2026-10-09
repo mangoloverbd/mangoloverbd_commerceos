@@ -86,4 +86,16 @@ describe("analytics order facts", () => {
     expect(() => as(`update public.analytics_order_facts set last_source = 'x';`)).toThrow(/permission denied/);
     expect(as(`select relrowsecurity from pg_class where relname = 'analytics_order_facts'`)).toBe("t");
   });
+
+  it("links an order converted from an abandoned checkout to the visit that captured it", () => {
+    const shopper = visit({ at: "2026-10-04T09:00:00Z", source: "facebook", medium: "paid", path: "/step/homemade-pumpkin-bori" });
+    const checkout = as(`insert into public.abandoned_checkouts(org_id,draft_key,source,source_path,analytics_session_id,analytics_captured_at)
+      values ('${org}','${randomUUID()}','storefront','/checkout','${shopper.session}','2026-10-04T09:03:00Z') returning id`).split("\n").at(-1)!;
+    const draft = as(`select analytics_session_id || '|' || analytics_captured_at from public.abandoned_checkouts where id = '${checkout}'`).split("|");
+    // Staff convert it hours later; the visit is linked at the capture time.
+    const id = order();
+    expect(record(id, draft[0], draft[1])).toBe("recorded");
+    expect(fact(id, "last_source, last_medium")).toBe("facebook|paid");
+  });
 });
+

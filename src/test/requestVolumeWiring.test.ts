@@ -26,14 +26,14 @@ describe("background request volume guards", () => {
     expect(fn).toContain("AbortSignal.timeout(LIVE_PRESENCE_TIMEOUT_MS)");
   });
 
-  it("marks the courier refresh throttle only after both refresh POSTs succeed", () => {
+  it("marks the courier refresh throttle only after the Pathao refresh succeeds", () => {
     const dashboard = readFileSync(resolve(process.cwd(), "src/pages/Dashboard.tsx"), "utf8");
     const start = dashboard.indexOf("courierRefreshRanRecently(courierRefreshKey)");
     const block = dashboard.slice(start, dashboard.indexOf("// Sync Shopify", start));
     expect(start).toBeGreaterThan(-1);
     expect(block).toContain("res.ok");
-    expect(block).toContain("results.every(Boolean)");
-    expect(block).toContain("markCourierRefreshRan(courierRefreshKey)");
+    expect(block).toContain("if (ok) markCourierRefreshRan(courierRefreshKey)");
+    expect(block).not.toContain("steadfast/refresh-status");
   });
 
   it("pings every 20 s so one lost ping does not drop a visitor from the 60 s window", () => {
