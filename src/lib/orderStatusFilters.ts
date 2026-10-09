@@ -1,4 +1,4 @@
-import { classifyOrderStatus as classifyOrderStatusShared } from "../../shared/orderStatus.js";
+import { classifyOrderStatus as classifyOrderStatusShared, stuckReason as stuckReasonShared } from "../../shared/orderStatus.js";
 
 export const ORDER_STATUS_FILTERS = [
   "all",
@@ -9,8 +9,8 @@ export const ORDER_STATUS_FILTERS = [
   "processing",
   "ready_to_ship",
   "in_transit",
+  "stuck",
   "delivered",
-  "flagged",
   "cancelled",
 ] as const;
 
@@ -24,6 +24,8 @@ export interface StatusFilterOrder {
   courier_name?: string | null;
   courier_message?: string | null;
   sent_to_courier?: boolean | null;
+  processing_at?: string | null;
+  courier_status_at?: string | null;
   fraud_checked?: boolean | null;
   fraud_data?: {
     total_parcels?: number | null;
@@ -32,8 +34,12 @@ export interface StatusFilterOrder {
   } | null;
 }
 
-export function classifyOrderStatus(order: StatusFilterOrder): OperationalOrderStatus {
-  return classifyOrderStatusShared(order) as OperationalOrderStatus;
+export function classifyOrderStatus(order: StatusFilterOrder, now: number = Date.now()): OperationalOrderStatus {
+  return classifyOrderStatusShared(order, now) as OperationalOrderStatus;
+}
+
+export function stuckReason(order: StatusFilterOrder, now: number = Date.now()): string | null {
+  return stuckReasonShared(order, now);
 }
 
 export function filterOrdersByStatus<T extends StatusFilterOrder>(orders: T[], filter: OrderStatusFilter): T[] {
@@ -48,7 +54,7 @@ export function filterOrdersByStatus<T extends StatusFilterOrder>(orders: T[], f
 const CONSIGNMENT_COPY_HIDDEN_TABS: ReadonlySet<OperationalOrderStatus> = new Set([
   "in_transit",
   "delivered",
-  "flagged",
+  "stuck",
   "cancelled",
 ]);
 
@@ -67,7 +73,7 @@ export function countOrdersByStatus(orders: StatusFilterOrder[]): Record<OrderSt
     ready_to_ship: 0,
     in_transit: 0,
     delivered: 0,
-    flagged: 0,
+    stuck: 0,
     cancelled: 0,
   };
 

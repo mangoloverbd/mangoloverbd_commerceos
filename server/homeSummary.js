@@ -195,10 +195,10 @@ const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one :
 // Most urgent first. A card shows only when it has something to do.
 const ATTENTION_CARDS = [
   {
-    kind: "fraud_flags", signal: "flagged", preview: "orders",
-    title: (n) => `${plural(n, "order")} flagged for review`,
-    body: "Customers with a poor delivery record, or parcels the courier marked unclear. Check them before they go out.",
-    cta: { label: "Review flagged", to: "/orders", state: { fulfillmentTab: "flagged" } },
+    kind: "stuck_parcels", signal: "stuck", preview: "orders",
+    title: (n) => `${plural(n, "parcel")} to follow up`,
+    body: "In Processing for more than 4 days without moving, in transit for more than 5 days, or a courier status nobody can act on. Call the courier or the customer.",
+    cta: { label: "Follow up parcels", to: "/orders", state: { fulfillmentTab: "stuck" } },
   },
   {
     kind: "protection_holds", signal: "protectionHolds", adminOnly: true, preview: "orders",

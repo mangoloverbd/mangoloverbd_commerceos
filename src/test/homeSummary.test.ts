@@ -169,7 +169,7 @@ describe("home metrics", () => {
 
 describe("attention cards", () => {
   const signals = {
-    flagged: { count: 2, rows: [] },
+    stuck: { count: 2, rows: [] },
     protectionHolds: { count: 1 },
     readyForCourier: { count: 24, rows: [] },
     inboxUnread: { count: 0, rows: [] },
@@ -183,16 +183,16 @@ describe("attention cards", () => {
 
   it("shows the three most urgent cards that have something to do", () => {
     expect(rankAttentionCards(signals, { isAdmin: true }).map((card) => card.kind))
-      .toEqual(["fraud_flags", "protection_holds", "ready_for_courier"]);
+      .toEqual(["stuck_parcels", "protection_holds", "ready_for_courier"]);
   });
 
   it("hides admin-only cards from team members", () => {
     expect(rankAttentionCards(signals, { isAdmin: false }).map((card) => card.kind))
-      .toEqual(["fraud_flags", "ready_for_courier", "to_confirm"]);
+      .toEqual(["stuck_parcels", "ready_for_courier", "to_confirm"]);
   });
 
   it("fills quiet days with insights, then an all-clear card", () => {
-    const quiet = { ...signals, flagged: { count: 0, rows: [] }, protectionHolds: { count: 0 }, readyForCourier: { count: 0, rows: [] }, toConfirm: { count: 0, rows: [] }, abandoned: { count: 0, rows: [] } };
+    const quiet = { ...signals, stuck: { count: 0, rows: [] }, protectionHolds: { count: 0 }, readyForCourier: { count: 0, rows: [] }, toConfirm: { count: 0, rows: [] }, abandoned: { count: 0, rows: [] } };
     expect(rankAttentionCards(quiet, { isAdmin: true }).map((card) => card.kind))
       .toEqual(["top_varieties", "live_now", "all_clear"]);
     expect(rankAttentionCards({ ...quiet, topVarieties: [], liveCities: [] }, { isAdmin: true }).map((card) => card.kind))
@@ -200,8 +200,9 @@ describe("attention cards", () => {
   });
 
   it("links each card to the page that resolves it", () => {
-    const [fraud, , courier] = rankAttentionCards(signals, { isAdmin: true });
-    expect(fraud.cta).toEqual({ label: "Review flagged", to: "/orders", state: { fulfillmentTab: "flagged" } });
+    const [stuck, , courier] = rankAttentionCards(signals, { isAdmin: true });
+    expect(stuck.title).toBe("2 parcels to follow up");
+    expect(stuck.cta).toEqual({ label: "Follow up parcels", to: "/orders", state: { fulfillmentTab: "stuck" } });
     expect(courier.cta).toEqual({ label: "Dispatch batch", to: "/orders", state: { fulfillmentTab: "approved" } });
     expect(courier.title).toBe("24 orders are ready for dispatch");
   });

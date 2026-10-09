@@ -35,7 +35,7 @@ import { AlertTriangle, CheckCircle2, Clock3, HelpCircle, ShieldAlert, ShieldChe
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { classifyOrderStatus, canShowConsignmentCopy } from "@/lib/orderStatusFilters";
+import { classifyOrderStatus, canShowConsignmentCopy, stuckReason } from "@/lib/orderStatusFilters";
 import { formatProductLine } from "@/lib/orderItemDisplay";
 import { formatTooltipProductLine } from "@/lib/orderItemDisplay";
 import { canEnterPrint, courierSendBlockReason, displayStatusLabel, isOnHoldStatus, isPrintStatus } from "@/lib/orderTransitions";
@@ -1693,6 +1693,10 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                         })()
                       )}
                     </div>
+                    {(() => {
+                      const reason = stuckReason(order);
+                      return reason ? <p className="mt-1 text-center text-[10px] font-medium text-rose-600" data-testid={`stuck-reason-${order.id}`}>{reason}</p> : null;
+                    })()}
                   </TableCell>
                   </>)}
                 </TableRow>

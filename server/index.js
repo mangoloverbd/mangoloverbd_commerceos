@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { convertMetaSpendToBdt } from "./metaAdCurrency.js";
 import { countsAsLivePresence, normalizeTrackerKind, shouldForwardTrackerHit } from "./trackerHits.js";
 import { analyticsSessionFromHeaders, isAnalyticsId, parseTrackerAnalyticsHit } from "./websiteAnalytics.js";
-import { planSteadfastDeliveryUpdate, verifySteadfastRequest } from "./steadfastWebhook.js";
+import { planSteadfastDeliveryUpdate, steadfastCourierNote, verifySteadfastRequest } from "./steadfastWebhook.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { isIP } from "node:net";
@@ -147,7 +147,7 @@ import {
   validateCancellationReason,
 } from "./orderActivity.js";
 import { getBangladeshDateKey, validateOrderHoldDetails } from "../shared/orderHold.js";
-import { classifyOrderStatus } from "../shared/orderStatus.js";
+import { classifyOrderStatus, stuckReason } from "../shared/orderStatus.js";
 import { buildHomeMetrics, homeWindows, isHomeChannel, rankAttentionCards, shortProductName, topProducts } from "./homeSummary.js";
 import { visitorLocation } from "./bdPlaces.js";
 import { releaseDueOrderHolds } from "./orderHoldMaintenance.js";
@@ -8861,7 +8861,7 @@ async function loadHomeQueues(supabase, orgId, now) {
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase
       .from("orders")
-      .select("id, status, fulfillment_status, courier_status, courier_name, courier_message, sent_to_courier, fraud_checked, fraud_total:fraud_data->total_parcels, fraud_delivered:fraud_data->total_delivered")
+      .select("id, status, fulfillment_status, courier_status, courier_name, courier_message, sent_to_courier, processing_at, courier_status_at, fraud_checked, fraud_total:fraud_data->total_parcels, fraud_delivered:fraud_data->total_delivered")
       .eq("org_id", orgId)
       .gte("created_at", since)
       .or("status.is.null,status.not.in.(cancelled,canceled,rejected)")
@@ -8873,10 +8873,10 @@ async function loadHomeQueues(supabase, orgId, now) {
     rows.push(...(data || []));
     if (!data || data.length < 1000) break;
   }
-  const queues = { pending: [], approved: [], flagged: [] };
+  const queues = { pending: [], approved: [], stuck: [] };
   for (const order of rows) {
     const fraud = { total_parcels: order.fraud_total, total_delivered: order.fraud_delivered };
-    const status = classifyOrderStatus({ ...order, fraud_data: order.fraud_checked ? fraud : null });
+    const status = classifyOrderStatus({ ...order, fraud_data: order.fraud_checked ? fraud : null }, now.getTime());
     if (queues[status]) queues[status].push({ order, fraud });
   }
 
@@ -8901,12 +8901,9 @@ async function loadHomeQueues(supabase, orgId, now) {
         return share === null ? { label: "Confirmed", tone: "ok" } : { label: `${share}% delivered`, tone: share < 50 ? "risk" : "ok" };
       }),
     },
-    flagged: {
-      count: queues.flagged.length,
-      rows: preview(queues.flagged, (order, fraud) => {
-        const share = deliveredShare(fraud);
-        return { label: share === null ? "Check courier" : `${share}% delivered`, tone: "risk" };
-      }),
+    stuck: {
+      count: queues.stuck.length,
+      rows: preview(queues.stuck, (order) => ({ label: stuckReason(order, now.getTime()) || "Follow up", tone: "risk" })),
     },
   };
 }
@@ -9106,7 +9103,7 @@ async function buildHomeSummary(supabase, orgId, isAdmin, { range, channel }) {
     quick_actions: [
       { key: "send_to_courier", label: "Send to courier", count: signals.readyForCourier?.count ?? null, to: "/orders", state: { fulfillmentTab: "approved" } },
       { key: "reply_to_inbox", label: "Reply to inbox", count: signals.inboxUnread?.count ?? null, to: "/inbox/facebook" },
-      { key: "review_fraud_flags", label: "Review fraud flags", count: signals.flagged?.count ?? null, to: "/orders", state: { fulfillmentTab: "flagged" }, tone: "warn" },
+      { key: "check_stuck_parcels", label: "Follow up parcels", count: signals.stuck?.count ?? null, to: "/orders", state: { fulfillmentTab: "stuck" }, tone: "warn" },
     ],
     attention: rankAttentionCards(signals, { isAdmin }),
   };
@@ -10639,7 +10636,7 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     // Find the order by consignment_id
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, org_id, courier_status, status, risk_attempt_id")
+      .select("id, org_id, courier_status, status, risk_attempt_id, courier_note")
       .eq("consignment_id", consignmentId)
       .eq("sent_to_courier", true)
       .maybeSingle();
@@ -10657,12 +10654,21 @@ app.post("/api/webhooks/steadfast", async (req, res) => {
     }
 
     const plan = planSteadfastDeliveryUpdate(payload, order.courier_status);
-    if (plan.action === "ignore") return res.status(200).json({ ok: true, skipped: plan.reason });
+    // The courier's latest note ("Customer not reachable") is kept even when the
+    // status does not change; it never changes the status itself.
+    const note = steadfastCourierNote(payload);
+    const notePatch = note && note !== order.courier_note ? { courier_note: note, courier_note_at: new Date().toISOString() } : null;
+    if (plan.action === "ignore" && !notePatch) return res.status(200).json({ ok: true, skipped: plan.reason });
+    if (plan.action === "ignore") {
+      const { error: noteError } = await supabase.from("orders").update(notePatch).eq("id", order.id).eq("org_id", order.org_id);
+      if (noteError) throw noteError;
+      return res.status(200).json({ ok: true, noted: true });
+    }
     const { patch } = plan;
 
     const { data: updatedOrder, error: updateError } = await supabase
       .from("orders")
-      .update(patch)
+      .update({ ...patch, ...notePatch })
       .eq("id", order.id)
       .eq("org_id", order.org_id)
       .select("id, status")

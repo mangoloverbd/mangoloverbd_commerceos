@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { database, handlers, http, orgId, uuid } from "./campaignHandlerHarness";
-import { planSteadfastDeliveryUpdate, verifySteadfastRequest } from "../../server/steadfastWebhook.js";
+import { planSteadfastDeliveryUpdate, steadfastCourierNote, verifySteadfastRequest } from "../../server/steadfastWebhook.js";
 
 // The real /api/webhooks/steadfast handler, run against the in-memory database.
 const secret = "shared-token_123";
@@ -14,7 +14,7 @@ function fixture(seed: Record<string, unknown> = {}) {
     getOrgSettings: async () => ({ courier_webhook_secret: secret }),
     labelOrderRiskAttempt: async () => {}, recordStatusEvent: async () => {}, buildStatusEvent: () => ({}),
     recordOrderActivity: activity, buildDetailedActivityEvent: (event: unknown) => event,
-    planSteadfastDeliveryUpdate, verifySteadfastRequest,
+    planSteadfastDeliveryUpdate, steadfastCourierNote, verifySteadfastRequest,
   });
   // Production keeps the raw body through express.json's verify hook.
   harness.app.use((req, _res, next) => { (req as typeof req & { rawBody: Buffer }).rawBody = Buffer.from(JSON.stringify(req.body)); next(); });
@@ -48,6 +48,24 @@ describe("Steadfast webhook route", () => {
     const delivered = fixture({ courier_status: "delivered", status: "confirmed" });
     expect((await send(delivered.app, event("tracking_update"))).status).toBe(200);
     expect(delivered.db.tables.orders[0]).toMatchObject({ courier_status: "delivered", status: "confirmed" });
+  });
+
+  it("keeps the courier's latest note, even when the status itself does not change", async () => {
+    const moving = fixture();
+    expect((await send(moving.app, { ...event("tracking_update"), tracking_message: "  Customer not reachable  " })).status).toBe(200);
+    expect(moving.db.tables.orders[0]).toMatchObject({ courier_status: "in_transit", courier_note: "Customer not reachable", status: "processing" });
+    expect(typeof moving.db.tables.orders[0].courier_note_at).toBe("string");
+
+    // Already delivered: the note is kept, the delivery is not undone, and no status change is logged.
+    const delivered = fixture({ courier_status: "delivered", status: "processing" });
+    expect((await send(delivered.app, { ...event("tracking_update"), tracking_message: "Rider complained: wrong address" })).status).toBe(200);
+    expect(delivered.db.tables.orders[0]).toMatchObject({ courier_status: "delivered", courier_note: "Rider complained: wrong address" });
+    expect(delivered.activity).not.toHaveBeenCalled();
+
+    // The same note again changes nothing.
+    const repeat = fixture({ courier_status: "in_transit", courier_note: "Customer not reachable" });
+    expect((await send(repeat.app, { ...event("tracking_update"), tracking_message: "Customer not reachable" })).status).toBe(200);
+    expect(repeat.db.calls.some(call => call.method === "update")).toBe(false);
   });
 
   it("acknowledges and ignores every other event", async () => {
