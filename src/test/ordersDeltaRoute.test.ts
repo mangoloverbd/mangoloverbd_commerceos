@@ -92,4 +92,27 @@ describe("GET /api/orders delta sync", () => {
     expect(attach).toMatch(/await Promise\.all\(\s*batches\.slice\(i, i \+ ITEM_BATCH_CONCURRENCY\)/);
     expect(attach).not.toMatch(/for \(const idBatch of chunkIds\(orderIds\)\) \{\s*const \{ data: batchItems/);
   });
+
+  it("reads a whole workspace's items in 1000-row pages on the unfiltered full list", () => {
+    const route = ordersListHandler();
+    const attach = route.slice(route.indexOf("const attachOrderItems"), route.indexOf("const enrichedItems"));
+    expect(attach).toContain("if (wholeWorkspace)");
+    expect(attach).toMatch(/from\("order_items"\)\.select\("order_id, [^"]*updated_at[^"]*"\)\.eq\("org_id", orgId\)\.order\("created_at", \{ ascending: true \}\)\.order\("id", \{ ascending: true \}\)\.range\(itemOffset, itemOffset \+ itemPageSize - 1\)/);
+    // Items of orders not in the loaded list are dropped, not attached or counted.
+    expect(attach).toContain("loadedIds.has(item.order_id)");
+    const full = route.slice(route.indexOf("// Full list:"));
+    expect(full).toContain("await attachOrderItems(allOrders, { wholeWorkspace: !warehouseFilter })");
+  });
+
+  it("shares one in-flight full-list load per workspace and warehouse filter", () => {
+    expect(source).toContain("const fullOrdersListInFlight = new Map();");
+    const route = ordersListHandler();
+    expect(route).toContain("const fullListKey = `${orgId}:${warehouseFilter}`;");
+    expect(route).toContain("fullOrdersListInFlight.get(fullListKey)");
+    expect(route).toContain("fullOrdersListInFlight.set(fullListKey, fullList);");
+    // Cleared on success and failure, and only if still the current load.
+    expect(route).toContain("fullList.then(clear, clear);");
+    expect(route).toContain("if (fullOrdersListInFlight.get(fullListKey) === fullList) fullOrdersListInFlight.delete(fullListKey);");
+    expect(route).toContain("return res.json(await fullList);");
+  });
 });

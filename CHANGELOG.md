@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.0.71] - 2026-10-10
+
+### Fixed
+
+- The dashboard no longer freezes for up to two minutes when several staff have Orders open. Overlapping full order loads used up every database connection, so other pages, including the login check, waited until they finished.
+  - A full Orders load now reads order items in pages of 1,000, about 8 database queries instead of about 38.
+  - When several staff tabs ask for the full list at the same moment, the server reads it once and sends everyone the same result.
+  - Open tabs reload the whole list every 30 minutes instead of 10 and fetch only changed orders in between. A deleted order still triggers a full reload right away.
+
+### Database
+
+- Migration `20261010091516` adds indexes on orders and order items by last change, so the per-minute check for changed orders no longer reads every order. Additive and already applied to the Mango Lover BD database.
+
 ## [0.1.0.70] - 2026-10-09
 
 ### Added

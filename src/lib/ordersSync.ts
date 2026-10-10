@@ -23,7 +23,8 @@ interface OrdersResponse<T> {
   delta?: boolean;
 }
 
-const FULL_REFRESH_MS = 10 * 60_000;
+// Deletes are caught by the count check on every delta; this is only a safety net.
+const FULL_REFRESH_MS = 30 * 60_000;
 
 // Cursor for the list currently held in the ["/api/orders"] cache.
 let cursor: { syncedAt: string; fullAt: number } | null = null;

@@ -90,11 +90,22 @@ describe("syncOrders", () => {
     expect(apiFetch).toHaveBeenLastCalledWith("/api/orders");
   });
 
-  it("does a full fetch when the last full load is older than 10 minutes", async () => {
+  it("keeps using deltas for 30 minutes after a full load", async () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [a], totalCount: 1, syncedAt: "2026-09-24T00:00:00.000Z" }));
     await syncOrders(queryClient);
-    now.mockReturnValue(1_000_000 + 10 * 60_000 + 1);
+    now.mockReturnValue(1_000_000 + 20 * 60_000);
+    apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [], totalCount: 1, syncedAt: "2026-09-24T00:00:00.000Z", delta: true }));
+    await syncOrders(queryClient);
+    expect(apiFetch).toHaveBeenLastCalledWith(`/api/orders?changed_since=${encodeURIComponent("2026-09-24T00:00:00.000Z")}`);
+    now.mockRestore();
+  });
+
+  it("does a full fetch when the last full load is older than 30 minutes", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [a], totalCount: 1, syncedAt: "2026-09-24T00:00:00.000Z" }));
+    await syncOrders(queryClient);
+    now.mockReturnValue(1_000_000 + 30 * 60_000 + 1);
     apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [a], totalCount: 1, syncedAt: "2026-09-24T00:11:00.000Z" }));
     await syncOrders(queryClient);
     expect(apiFetch).toHaveBeenLastCalledWith("/api/orders");
