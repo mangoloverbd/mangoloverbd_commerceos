@@ -6669,6 +6669,9 @@ app.post("/api/fetch-shopify-orders", async (req, res) => {
 // keeps URLs at ~4KB).
 const ITEM_BATCH_CONCURRENCY = 4;
 
+// GET /api/orders full-list loads in progress, keyed by workspace and warehouse filter.
+const fullOrdersListInFlight = new Map();
+
 function chunkIds(ids, size = 100) {
   const chunks = [];
   for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
@@ -6708,23 +6711,37 @@ app.get("/api/orders", async (req, res) => {
     };
 
     // Returns orders with items attached and the latest item updated_at seen.
-    const attachOrderItems = async (allOrders) => {
+    // `wholeWorkspace` means allOrders is every workspace order: items are then
+    // read in 1000-row pages (a handful of queries) instead of 100-id batches.
+    const attachOrderItems = async (allOrders, { wholeWorkspace = false } = {}) => {
       const orderIds = allOrders.map((order) => order.id).filter(Boolean);
       const itemRows = [];
       const itemUpdatedAts = [];
-      // A few batches at a time: one after another made a full load wait on
-      // every round trip. Batch order is kept, so each order's items stay in order.
-      const batches = chunkIds(orderIds);
       const batchResults = [];
-      for (let i = 0; i < batches.length; i += ITEM_BATCH_CONCURRENCY) {
-        const group = await Promise.all(
-          batches.slice(i, i + ITEM_BATCH_CONCURRENCY).map(async (idBatch) => {
-            const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity, updated_at").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
-            if (itemsError) throw itemsError;
-            return batchItems || [];
-          }),
-        );
-        batchResults.push(...group);
+      if (wholeWorkspace) {
+        const loadedIds = new Set(orderIds);
+        const itemPageSize = 1000;
+        for (let itemOffset = 0; ; itemOffset += itemPageSize) {
+          const { data: pageItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity, updated_at").eq("org_id", orgId).order("created_at", { ascending: true }).order("id", { ascending: true }).range(itemOffset, itemOffset + itemPageSize - 1);
+          if (itemsError) throw itemsError;
+          // Items of orders created after the order pages were read wait for the next delta.
+          batchResults.push((pageItems || []).filter((item) => loadedIds.has(item.order_id)));
+          if (!pageItems || pageItems.length < itemPageSize) break;
+        }
+      } else {
+        // A few batches at a time: one after another made a full load wait on
+        // every round trip. Batch order is kept, so each order's items stay in order.
+        const batches = chunkIds(orderIds);
+        for (let i = 0; i < batches.length; i += ITEM_BATCH_CONCURRENCY) {
+          const group = await Promise.all(
+            batches.slice(i, i + ITEM_BATCH_CONCURRENCY).map(async (idBatch) => {
+              const { data: batchItems, error: itemsError } = await supabase.from("order_items").select("order_id, product_id, variant_id, product_name, variant_name, unit_price, quantity, updated_at").in("order_id", idBatch).eq("org_id", orgId).order("created_at", { ascending: true });
+              if (itemsError) throw itemsError;
+              return batchItems || [];
+            }),
+          );
+          batchResults.push(...group);
+        }
       }
       for (const batchItems of batchResults) {
         // updated_at only feeds the cursor; keep the item payload unchanged.
@@ -6858,56 +6875,71 @@ app.get("/api/orders", async (req, res) => {
       return res.json({ orders: rangeOrders, totalCount: rangeOrders.length });
     }
 
-    // Full list: PostgREST returns at most 1000 rows per request, so page
-    // until a short page. A capped list never matches the exact count, which
-    // made every delta poll fall back to a full reload.
-    const pageSize = 1000;
-    const byId = new Map();
-    const orderPage = async (offset, withCount) => {
-      let pageQuery = supabase
-        .from("orders")
-        .select("*", withCount ? { count: "exact" } : undefined)
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: true })
-        .range(offset, offset + pageSize - 1);
-      if (warehouseFilter) {
-        pageQuery = pageQuery.eq("warehouse_id", warehouseFilter);
-      }
-      const { data, count: pageCount, error } = await pageQuery;
-      if (error) throw error;
-      // An insert between pages shifts rows down; keep the first copy.
-      for (const row of data || []) if (!byId.has(row.id)) byId.set(row.id, row);
-      return { length: data?.length ?? 0, count: pageCount };
-    };
-    const first = await orderPage(0, true);
-    const count = first.count;
-    let lastLength = first.length;
-    let offset = pageSize;
-    if (lastLength === pageSize) {
-      // The exact count says which pages exist, so fetch them together.
-      const offsets = [];
-      for (let pageOffset = pageSize; pageOffset < (count ?? 0); pageOffset += pageSize) offsets.push(pageOffset);
-      const pages = await Promise.all(offsets.map((pageOffset) => orderPage(pageOffset, false)));
-      if (pages.length) lastLength = pages[pages.length - 1].length;
-      offset += offsets.length * pageSize;
-    }
-    // Orders added after the count can push rows past the counted pages.
-    while (lastLength === pageSize) {
-      lastLength = (await orderPage(offset, false)).length;
-      offset += pageSize;
-    }
+    // One full-list load per workspace (and warehouse filter) at a time.
+    // Staff tabs that ask while it runs share it instead of each reading
+    // every order again, which used to exhaust the database connections.
+    const fullListKey = `${orgId}:${warehouseFilter}`;
+    let fullList = fullOrdersListInFlight.get(fullListKey);
+    if (!fullList) {
+      fullList = (async () => {
+        // Full list: PostgREST returns at most 1000 rows per request, so page
+        // until a short page. A capped list never matches the exact count, which
+        // made every delta poll fall back to a full reload.
+        const pageSize = 1000;
+        const byId = new Map();
+        const orderPage = async (offset, withCount) => {
+          let pageQuery = supabase
+            .from("orders")
+            .select("*", withCount ? { count: "exact" } : undefined)
+            .eq("org_id", orgId)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (warehouseFilter) {
+            pageQuery = pageQuery.eq("warehouse_id", warehouseFilter);
+          }
+          const { data, count: pageCount, error } = await pageQuery;
+          if (error) throw error;
+          // An insert between pages shifts rows down; keep the first copy.
+          for (const row of data || []) if (!byId.has(row.id)) byId.set(row.id, row);
+          return { length: data?.length ?? 0, count: pageCount };
+        };
+        const first = await orderPage(0, true);
+        const count = first.count;
+        let lastLength = first.length;
+        let offset = pageSize;
+        if (lastLength === pageSize) {
+          // The exact count says which pages exist, so fetch them together.
+          const offsets = [];
+          for (let pageOffset = pageSize; pageOffset < (count ?? 0); pageOffset += pageSize) offsets.push(pageOffset);
+          const pages = await Promise.all(offsets.map((pageOffset) => orderPage(pageOffset, false)));
+          if (pages.length) lastLength = pages[pages.length - 1].length;
+          offset += offsets.length * pageSize;
+        }
+        // Orders added after the count can push rows past the counted pages.
+        while (lastLength === pageSize) {
+          lastLength = (await orderPage(offset, false)).length;
+          offset += pageSize;
+        }
 
-    const allOrders = [...byId.values()];
-    const { ordersWithItems: orders, itemsMaxUpdatedAt } = await attachOrderItems(allOrders);
-    // null for an empty workspace: the client then does a full sync next time.
-    const syncedAt = maxUpdatedAt([
-      ...allOrders.map((order) => order.updated_at),
-      itemsMaxUpdatedAt,
-    ]);
+        const allOrders = [...byId.values()];
+        const { ordersWithItems: orders, itemsMaxUpdatedAt } = await attachOrderItems(allOrders, { wholeWorkspace: !warehouseFilter });
+        // null for an empty workspace: the client then does a full sync next time.
+        const syncedAt = maxUpdatedAt([
+          ...allOrders.map((order) => order.updated_at),
+          itemsMaxUpdatedAt,
+        ]);
 
-    console.log(`[Orders] total=${allOrders.length}`);
-    return res.json({ orders, totalCount: count ?? allOrders.length, syncedAt });
+        console.log(`[Orders] total=${allOrders.length}`);
+        return { orders, totalCount: count ?? allOrders.length, syncedAt };
+      })();
+      fullOrdersListInFlight.set(fullListKey, fullList);
+      const clear = () => {
+        if (fullOrdersListInFlight.get(fullListKey) === fullList) fullOrdersListInFlight.delete(fullListKey);
+      };
+      fullList.then(clear, clear);
+    }
+    return res.json(await fullList);
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
