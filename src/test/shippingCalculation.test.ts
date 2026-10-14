@@ -200,6 +200,18 @@ describe("cartHasFreeDeliveryProduct", () => {
     ])).toBe(true);
   });
 
+  it("returns true for the Homemade Pumpkin Bori ২ কেজি pack", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "db9134d3-4771-4f66-960c-7fac1fb782e1", variantId: "d41d8476-8738-4aeb-aef8-4496f1ebd1dc", productName: "হোমমেড কুমড়ো বড়ি | Homemade Pumpkin Bori" },
+    ])).toBe(true);
+  });
+
+  it("returns false for the Homemade Pumpkin Bori ১ কেজি pack", () => {
+    expect(cartHasFreeDeliveryProduct([
+      { productId: "db9134d3-4771-4f66-960c-7fac1fb782e1", variantId: "c5d6dba4-4a34-4980-9a55-e05b273ad673", productName: "হোমমেড কুমড়ো বড়ি | Homemade Pumpkin Bori" },
+    ])).toBe(false);
+  });
+
   it("returns false for empty, null, or undefined input", () => {
     expect(cartHasFreeDeliveryProduct([])).toBe(false);
     expect(cartHasFreeDeliveryProduct(null)).toBe(false);

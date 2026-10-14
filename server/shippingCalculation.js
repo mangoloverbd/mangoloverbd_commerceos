@@ -70,15 +70,20 @@ export const FREE_DELIVERY_PRODUCT_IDS = [
 ];
 export const FREE_DELIVERY_PRODUCT_SLUGS = ["black-seed-flower-honey", "litchi-flower-honey", "kalojira-mixed"];
 const FREE_DELIVERY_PRODUCT_NAME_FRAGMENTS = ["কালোজিরা ফুলের মধু", "লিচু ফুলের মধু", "কালোজিরা মিক্সড"];
+// Single packs that ship free while the product's other packs pay delivery.
+export const FREE_DELIVERY_VARIANT_IDS = [
+  "d41d8476-8738-4aeb-aef8-4496f1ebd1dc", // হোমমেড কুমড়ো বড়ি — ২ কেজি
+];
 
 /**
- * @param {Array<{productId?: unknown, productName?: unknown}> | null | undefined} orderItems
- * @returns {boolean} true when any item is the free-delivery product.
+ * @param {Array<{productId?: unknown, variantId?: unknown, productName?: unknown}> | null | undefined} orderItems
+ * @returns {boolean} true when any item is a free-delivery product or pack.
  */
 export function cartHasFreeDeliveryProduct(orderItems) {
   if (!Array.isArray(orderItems) || orderItems.length === 0) return false;
   return orderItems.some((item) => {
     if (!item || typeof item !== "object") return false;
+    if (item.variantId != null && FREE_DELIVERY_VARIANT_IDS.includes(String(item.variantId))) return true;
     if (item.productId != null && FREE_DELIVERY_PRODUCT_IDS.includes(String(item.productId))) return true;
     const name = String(item.productName ?? "");
     if (!name) return false;
