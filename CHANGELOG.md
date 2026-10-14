@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.72] - 2026-10-14
+
+### Changed
+
+- Homemade Pumpkin Bori **২ কেজি** orders from the storefront now ship free: the order total is the product price only, with no ৳100 delivery charge. The ১ কেজি pack still pays ৳100. As with the free-delivery honey and Kalojira Mixed, a cart that contains the ২ কেজি pack ships free.
+
 ## [0.1.0.71] - 2026-10-10
 
 ### Fixed
