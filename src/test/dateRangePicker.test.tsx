@@ -19,24 +19,21 @@ function ControlledPicker() {
 }
 
 describe("DateRangePicker", () => {
-  it("seeds the calendar's pending range from the committed value, applies a custom range on Apply, and clears after All Time", async () => {
+  it("seeds the date fields from the committed value and only clears after All time + Apply", async () => {
     const user = userEvent.setup();
     render(<ControlledPicker />);
 
     await user.click(screen.getByTestId("button-date-range-picker"));
-    expect(await screen.findByText("18 days selected")).toBeInTheDocument();
-    expect(screen.getByLabelText("Start date")).toHaveValue("01/09/2026");
-    expect(screen.getByLabelText("End date")).toHaveValue("18/09/2026");
+    expect(await screen.findByLabelText("Start date")).toHaveValue("September 1, 2026");
+    expect(screen.getByLabelText("End date")).toHaveValue("September 18, 2026");
 
-    await user.click(screen.getByRole("button", { name: "All Time" }));
+    await user.click(screen.getByRole("button", { name: "All time" }));
+    // Staged only — the trigger still shows the original range.
+    expect(screen.getByTestId("button-date-range-picker")).toHaveTextContent("Sep 1 – Sep 18, 2026");
 
+    await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => {
-      expect(screen.getByTestId("button-date-range-picker")).toHaveTextContent("All Time");
-    });
-
-    await user.click(screen.getByTestId("button-date-range-picker"));
-    await waitFor(() => {
-      expect(screen.queryByText(/days? selected/)).not.toBeInTheDocument();
+      expect(screen.getByTestId("button-date-range-picker")).toHaveTextContent("All time");
     });
   });
 
@@ -45,12 +42,12 @@ describe("DateRangePicker", () => {
     render(<ControlledPicker />);
 
     await user.click(screen.getByTestId("button-date-range-picker"));
-    await screen.findByText("18 days selected");
+    await screen.findByLabelText("Start date");
 
     await user.click(screen.getByRole("button", { name: /September 15, 2026/ }));
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /September 20, 2026/ }));
-    expect(await screen.findByText("6 days selected")).toBeInTheDocument();
-    // Not yet committed — the trigger still shows the original range.
+    expect(screen.getByLabelText("End date")).toHaveValue("September 20, 2026");
     expect(screen.getByTestId("button-date-range-picker")).toHaveTextContent("Sep 1 – Sep 18, 2026");
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
