@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.0.74] - 2026-10-16
+
+### Changed
+
+- New date picker on every date-range filter. A grey preset list sits on the left, with sliding sub-lists for "Last", "Period to date" and "Quarters", plus Eid and Pohela Boishakh presets. Start and end dates can be typed. Nothing changes on the page until Apply, and Cancel discards the choice. Phones show one month.
+- The customer profile's single date picker uses the same look, with Clear and Today buttons.
+- "All Time" now reads "All time", and picking it waits for Apply like any other choice.
+
 ## [0.1.0.73] - 2026-10-16
 
 ### Fixed

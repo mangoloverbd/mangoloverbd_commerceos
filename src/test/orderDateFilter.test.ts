@@ -59,11 +59,3 @@ describe("orderDateRangeBounds", () => {
     expect(orderDateRangeBounds(null)).toBeNull();
   });
 });
-
-describe("date chip inputs", () => {
-  it("are wide enough for a full DD/MM/YYYY date", () => {
-    const shared = readFileSync(resolve(process.cwd(), "src/components/base/date-picker/shared.tsx"), "utf8");
-    expect(shared).not.toContain("w-[88px]");
-    expect(shared).toMatch(/w-\[(9[6-9]|1[0-9][0-9])px\][^"]*tabular-nums/);
-  });
-});

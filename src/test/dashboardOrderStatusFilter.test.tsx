@@ -181,14 +181,14 @@ describe("dashboard order status filter", () => {
     // Delivered's count follows its own dates; Processing keeps its own (unset) range.
     expect(screen.getByRole("radio", { name: /Delivered.*2/ })).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: /Processing/ }));
-    expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("All Time");
+    expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("All time");
     // Switching back restores Delivered's range.
     await user.click(screen.getByRole("radio", { name: /Delivered/ }));
     expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("Sep 1 – Sep 3, 2026");
     // Leaving the date tabs clears both.
     await user.click(screen.getByRole("radio", { name: /All Orders/ }));
     await user.click(screen.getByRole("radio", { name: /Delivered/ }));
-    expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("All Time");
+    expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("All time");
   });
 
   it("shows the exact All Orders total without changing which orders are loaded", async () => {
