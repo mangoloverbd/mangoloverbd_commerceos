@@ -54,5 +54,7 @@ export function detectSignals(ctx, facts, config = {}) {
   if (telemetry.pastedFields.includes("phone") && telemetry.pastedFields.includes("address")) add("phone_pasted", "Phone and address were pasted during checkout");
   if (/\d/.test(customer.name) || customer.name.length === 1 || customer.name.toLowerCase() === customer.address.toLowerCase()) add("name_suspicious", "Customer name needs a closer look");
   if (ctx.items.some(item => item.quantity > THRESHOLDS.unusualLineQuantity)) add("quantity_unusual", "A line quantity exceeds the normal threshold");
+  const totalUnits = ctx.items.reduce((sum, item) => sum + item.quantity, 0);
+  if (totalUnits > THRESHOLDS.bulkOrderUnits) add("quantity_bulk", `The order has ${totalUnits} units in total`);
   return signals;
 }

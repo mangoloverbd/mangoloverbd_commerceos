@@ -23,6 +23,12 @@ describe("risk detectors", () => {
     expect(codes(ctx, { ...facts, links: { ...facts.links, networkPhones24h: 4 } })).not.toContain("network_many_phones");
   });
 
+  it("flags bulk orders by total units across lines", () => {
+    expect(codes({ ...ctx, items: [{ quantity: 20 }] })).not.toContain("quantity_bulk");
+    expect(codes({ ...ctx, items: [{ quantity: 10 }, { quantity: 11 }] })).toContain("quantity_bulk");
+    expect(codes({ ...ctx, items: [{ quantity: 100 }] })).toEqual(expect.arrayContaining(["quantity_unusual", "quantity_bulk"]));
+  });
+
   it("treats all four districts as location evidence, not an automatic block", () => {
     expect(codes({ ...ctx, customer: { ...ctx.customer, address: "House 1 Road 2 Rajshahi" } })).toContain("hater_region_address");
     expect(codes({ ...ctx, customer: { ...ctx.customer, address: "House 1 Road 2 Shibganj" } })).not.toContain("hater_region_address");

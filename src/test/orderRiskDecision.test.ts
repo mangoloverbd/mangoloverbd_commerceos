@@ -8,8 +8,8 @@ describe("deterministic risk decision", () => {
   it("publishes the contracted families, scores and thresholds", () => {
     expect(FAMILIES).toEqual(["IDENTITY", "DEVICE", "NETWORK", "BEHAVIOUR", "CONTENT", "LOCATION", "HISTORY", "LIST"]);
     expect(SEVERITY_POINTS).toEqual({ critical: 100, high: 40, medium: 20, low: 10 });
-    expect(THRESHOLDS).toMatchObject({ holdScore: 40, blockScore: 100, blockMinHighFamilies: 2, fastCheckoutSeconds: 12, unusualLineQuantity: 10 });
-    expect(Object.keys(SIGNAL_DEFINITIONS)).toHaveLength(32);
+    expect(THRESHOLDS).toMatchObject({ holdScore: 40, blockScore: 100, blockMinHighFamilies: 2, fastCheckoutSeconds: 12, unusualLineQuantity: 10, bulkOrderUnits: 20 });
+    expect(Object.keys(SIGNAL_DEFINITIONS)).toHaveLength(33);
     expect(() => createSignal("unknown", "evidence")).toThrow();
   });
 
@@ -28,6 +28,13 @@ describe("deterministic risk decision", () => {
     expect(genuine.decision).toBe("ALLOW");
     const strong = decideRisk({ signals: signals("address_incomplete", "courier_strong_history"), contextTrusted: true });
     expect(strong.decision).toBe("ALLOW");
+  });
+
+  it("holds a bulk order unless we have delivered to the customer before", () => {
+    expect(decideRisk({ signals: signals("quantity_unusual", "quantity_bulk"), contextTrusted: true })).toMatchObject({ decision: "HOLD", reasons: ["bulk_quantity_unproven"] });
+    // A good record at other couriers is not enough on its own.
+    expect(decideRisk({ signals: signals("quantity_bulk", "courier_strong_history"), contextTrusted: true }).decision).toBe("HOLD");
+    expect(decideRisk({ signals: signals("quantity_bulk", "trusted_delivered_customer"), contextTrusted: true }).decision).toBe("ALLOW");
   });
 
   it("requires two high families to block at 100 points", () => {

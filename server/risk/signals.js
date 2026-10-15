@@ -6,7 +6,7 @@ export const THRESHOLDS = Object.freeze({
   deviceNetworks1h: 3, networkPhones24h: 4, phoneBurst15m: 2,
   deviceBurst15m: 3, phoneVelocity24h: 3, courierBadMinParcels: 3,
   courierBadRate: 50, courierStrongMinParcels: 5, courierStrongRate: 90,
-  phoneRetypedCandidates: 3, unusualLineQuantity: 10,
+  phoneRetypedCandidates: 3, unusualLineQuantity: 10, bulkOrderUnits: 20,
 });
 
 const definitions = [
@@ -39,6 +39,7 @@ const definitions = [
   ["phone_pasted", "BEHAVIOUR", "low", "Pasted details"],
   ["name_suspicious", "CONTENT", "low", "Suspicious name"],
   ["quantity_unusual", "BEHAVIOUR", "low", "Unusual quantity"],
+  ["quantity_bulk", "BEHAVIOUR", "high", "Bulk quantity"],
   ["trusted_delivered_customer", "HISTORY", "trust", "Delivered before", -60],
   ["trusted_device", "DEVICE", "trust", "Trusted device", -40],
   ["courier_strong_history", "HISTORY", "trust", "Good delivery record", -15],

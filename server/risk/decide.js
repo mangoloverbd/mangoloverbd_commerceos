@@ -23,6 +23,9 @@ export function decideRisk({ signals, contextTrusted, dependencyUnavailable = fa
   // customer with a short address is never held for this alone.
   const trusted = signals.some(signal => signal.code === "trusted_delivered_customer" || signal.code === "trusted_device" || signal.code === "courier_strong_history");
   if (!trusted && signals.some(signal => signal.code === "address_incomplete")) reasons.push("incomplete_address_unknown");
+  // Prank orders ask for absurd quantities. Only a customer we have already
+  // delivered to may place a bulk order without a call.
+  if (signals.some(signal => signal.code === "quantity_bulk") && !signals.some(signal => signal.code === "trusted_delivered_customer")) reasons.push("bulk_quantity_unproven");
   if (score >= THRESHOLDS.blockScore && highFamilies.size >= THRESHOLDS.blockMinHighFamilies) reasons.push("independent_high_families");
   // Missing telemetry or an unavailable dependency is not evidence about the
   // customer. Record it for diagnosis without making them wait for staff.

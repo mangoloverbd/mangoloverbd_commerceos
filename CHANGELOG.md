@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.73] - 2026-10-16
+
+### Fixed
+
+- Prank storefront orders with huge quantities are now held for a staff call instead of going straight into Orders. An order with more than 20 units in total is held unless we have already delivered to that phone. A good record at other couriers is not enough on its own. The review shows the reason as "Bulk quantity from a customer we have not delivered to".
+- Crude Bangla, romanized and English words, such as পায়খানা, now count as abusive text, which holds the order. Matching is whole-word only. Checked against every past order with no false matches.
+
 ## [0.1.0.72] - 2026-10-14
 
 ### Changed
