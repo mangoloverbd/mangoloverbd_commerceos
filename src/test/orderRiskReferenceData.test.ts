@@ -26,6 +26,10 @@ describe("pinned BD risk reference data", () => {
     expect(classifyContent({ name: "Test", address: "House 1 Road 2 Dhaka", notes: "" })).toContain("test_content");
     expect(classifyContent({ name: "Rahim", address: "House 1 Road 2 Dhaka", notes: "f.u.c.k" })).toContain("abusive_content");
     expect(classifyContent({ name: "Rahim", address: "House 1 Road 2 Dhaka", notes: "" })).toEqual([]);
+    expect(classifyContent({ name: "জনি সিং", address: "মনসুরা পুর হায়াদ্রাবাদের কাছে বাংলাদেশ জেলা চৌষট্টি নাম তার পায়খানা", notes: "" })).toContain("abusive_content");
+    expect(classifyContent({ name: "Rahim", address: "House 1 Road 2 Dhaka", notes: "bullshit" })).toContain("abusive_content");
+    // Whole words only: ordinary words that contain a slang fragment pass.
+    expect(classifyContent({ name: "বালক", address: "বালুচর বাজার, সিরাজগঞ্জ", notes: "" })).toEqual([]);
   });
 
   it("classifies mobile, broadband, foreign, unknown and mapped IPv4", () => {
