@@ -1,3 +1,5 @@
+import { formatTaka } from "@/lib/orderEditor";
+
 export interface PackingSummaryItem {
   product_name: string | null;
   variant_name: string | null;
@@ -10,6 +12,9 @@ export interface PackingSummaryOrder {
   order_number: string;
   product: string | null;
   quantity: number | null;
+  price?: number | null;
+  delivery_rate?: number | null;
+  advanced_payment?: number | null;
   items?: PackingSummaryItem[] | null;
 }
 
@@ -31,8 +36,13 @@ export interface PackingSummary {
   exceptions: PackingExceptionOrder[];
   totalOrders: number;
   totalKg: number;
+  totalCollectTaka: number;
   hasUnknownWeight: boolean;
 }
+
+// Same amount the Steadfast and Pathao routes send as cash on delivery.
+const amountToCollect = (order: PackingSummaryOrder) =>
+  Math.max(0, (Number(order.price) || 0) + (Number(order.delivery_rate) || 0) - (Number(order.advanced_payment) || 0));
 
 const parseInlineQuantity = (value: string) => {
   const match = value.match(/^(\d+)\s*(?:x|×)\s+(.+)$/i);
@@ -122,6 +132,7 @@ export function buildPackingSummary(orders: PackingSummaryOrder[]): PackingSumma
     exceptions,
     totalOrders: orders.length,
     totalKg: rows.reduce((sum, row) => sum + (row.totalKg || 0), 0),
+    totalCollectTaka: orders.reduce((sum, order) => sum + amountToCollect(order), 0),
     hasUnknownWeight,
   };
 }
@@ -196,13 +207,13 @@ export function buildPackingSummaryHtml(
         <div class="packing-page">
           <header class="packing-header">
             <div class="packing-title">PACKING SUMMARY</div>
-            <div class="packing-meta">${escapeHtml(businessName)} · ${escapeHtml(printedAt)} · ${summary.totalOrders} orders · ${formatKg(summary.totalKg)} to pack</div>
+            <div class="packing-meta">${escapeHtml(businessName)} · ${escapeHtml(printedAt)} · ${summary.totalOrders} orders · ${formatKg(summary.totalKg)} to pack · ${formatTaka(summary.totalCollectTaka)} to collect</div>
           </header>
           <table>
             <thead><tr><th>Product</th><th>Pack</th><th class="number">Orders</th><th class="number">Total kg</th><th class="number">Packed</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
-          <div class="packing-totals">Total: ${summary.totalOrders} orders · ${formatKg(summary.totalKg)}</div>
+          <div class="packing-totals">Total: ${summary.totalOrders} orders · ${formatKg(summary.totalKg)} · ${formatTaka(summary.totalCollectTaka)} to collect</div>
           ${summary.exceptions.length ? `<h2>Multi-item orders — pick separately</h2><ul>${exceptions}</ul><p class="packing-note">kg already includes multi-item orders below — do not pack twice.</p>` : ""}
           ${summary.hasUnknownWeight ? `<p class="packing-note">— = weight not saved in catalog.</p>` : ""}
         </div>

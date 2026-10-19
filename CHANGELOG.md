@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.76] - 2026-10-19
+
+### Changed
+
+- The Packing Summary on the Print tab now shows the total cash to collect, in the header and on the total line, for example "45 orders · 120kg · ৳68,500 to collect". Each order counts as price + delivery charge − advance paid, the same amount sent to Steadfast and Pathao. An order whose advance covers everything counts as ৳0.
+
 ## [0.1.0.75] - 2026-10-19
 
 ### Fixed

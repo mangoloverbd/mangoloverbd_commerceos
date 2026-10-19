@@ -38,6 +38,30 @@ describe("buildPackingSummary", () => {
     expect(summary.hasUnknownWeight).toBe(true);
   });
 
+  it("totals the cash the courier collects: price + delivery − advance, never below zero", () => {
+    const summary = buildPackingSummary([
+      { id: "o1", order_number: "#1", product: "Honey", quantity: 1, price: 1200, delivery_rate: 120, advanced_payment: 0 },
+      { id: "o2", order_number: "#2", product: "Honey", quantity: 1, price: 800, delivery_rate: 60, advanced_payment: 300 },
+      { id: "o3", order_number: "#3", product: "Honey", quantity: 1, price: 500, delivery_rate: 0, advanced_payment: 900 },
+      { id: "o4", order_number: "#4", product: "Honey", quantity: 1 },
+    ]);
+
+    expect(summary.totalCollectTaka).toBe(1320 + 560);
+  });
+
+  it("shows the cash to collect in the header and the total line", () => {
+    const summary = buildPackingSummary([
+      {
+        id: "o1", order_number: "#1", product: null, quantity: null, price: 67000, delivery_rate: 1500, advanced_payment: 0,
+        items: [{ product_name: "Honey", variant_name: "1KG", quantity: 2, weight_kg: 1 }],
+      },
+    ]);
+    const html = buildPackingSummaryHtml(summary, "Mango Lover BD", "Oct 19, 2026");
+
+    expect(html).toContain("1 orders · 2kg to pack · ৳68,500 to collect");
+    expect(html).toContain("Total: 1 orders · 2kg · ৳68,500 to collect");
+  });
+
   it("builds a printable packing sheet with tick boxes and exception ticks", () => {
     const summary = buildPackingSummary([
       {
