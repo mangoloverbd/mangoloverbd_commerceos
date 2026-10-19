@@ -89,6 +89,7 @@ import {
   type OrderStatusFilter,
 } from "@/lib/orderStatusFilters";
 import { planBulkStatusChange } from "@/lib/orderTransitions";
+import { requestBulkStatusChange } from "@/lib/bulkOrderStatus";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobilePnlLayout, type MobilePnlMetric } from "@/components/MobilePnlLayout";
@@ -824,31 +825,17 @@ export default function Dashboard() {
       return false;
     }
     setBulkUpdating(true);
-    let moved = 0;
-    let failed = 0;
     try {
-      for (const orderId of validIds) {
-        try {
-          const res = await apiFetch(`/api/orders/${orderId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: target, ...(holdDetails || {}) }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error || "Failed to update status");
-          if (data?.order) handleOrderUpdate(data.order);
-          else handleStatusUpdate(orderId, target);
-          moved += 1;
-        } catch {
-          failed += 1;
-        }
-      }
-      const skippedTotal = skipped + failed;
+      const { updated, failedIds, error } = await requestBulkStatusChange<Order>(validIds, target, holdDetails);
+      if (updated.length > 0) handleOrdersUpdate(updated);
+      const moved = updated.length;
+      const skippedTotal = skipped + failedIds.size;
       if (moved > 0) {
         toast.success(`${moved} order${moved === 1 ? "" : "s"} moved to ${targetLabel}${skippedTotal > 0 ? `, ${skippedTotal} skipped` : ""}`);
-        setSelectedOrderIds(new Set());
+        // Orders the server could not move stay selected so they can be retried.
+        setSelectedOrderIds(new Set(failedIds));
       } else {
-        toast.error(`No orders moved to ${targetLabel}`);
+        toast.error(error || `No orders moved to ${targetLabel}`);
       }
       return moved > 0;
     } finally {
@@ -865,6 +852,18 @@ export default function Dashboard() {
     patchRangeOrders((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
     setOrders((prev) => {
       const next = prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
+      queryClient.setQueryData(["/api/orders"], next);
+      return next;
+    });
+  };
+
+  // Applies a whole bulk result in one render instead of one per order.
+  const handleOrdersUpdate = (updatedOrders: Order[]) => {
+    const byId = new Map(updatedOrders.map((order) => [order.id, order]));
+    const patch = (order: Order) => byId.get(order.id) ?? order;
+    patchRangeOrders(patch);
+    setOrders((prev) => {
+      const next = prev.map(patch);
       queryClient.setQueryData(["/api/orders"], next);
       return next;
     });

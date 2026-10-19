@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0.75] - 2026-10-19
+
+### Fixed
+
+- Bulk status changes on the Orders page and the warehouse page are now fast. Moving many orders from Approved to Print, or Print to Processing, used to send one request per order and redraw the list after each one, so 50 orders took 25–50 seconds and changed one by one. Now all selected orders go in one request and the list updates once.
+  - The server reads, checks and updates the selected orders together, using the same rules as editing a single order. The status history and Activity Log are saved in one write, grouped as one bulk action.
+  - If someone else changes an order in the middle of the update, that order is skipped and reported instead of being overwritten.
+  - Orders the server could not move stay selected so they can be tried again.
+
 ## [0.1.0.74] - 2026-10-16
 
 ### Changed

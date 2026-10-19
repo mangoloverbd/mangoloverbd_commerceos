@@ -46,6 +46,7 @@ import {
   type OrderStatusFilter,
 } from "@/lib/orderStatusFilters";
 import { planBulkStatusChange } from "@/lib/orderTransitions";
+import { requestBulkStatusChange } from "@/lib/bulkOrderStatus";
 import { useOrderPageSize } from "@/hooks/useOrderPageSize";
 
 const SYS = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif";
@@ -130,30 +131,17 @@ export default function WarehouseDetail() {
       return false;
     }
     setBulkUpdating(true);
-    let moved = 0;
-    let failed = 0;
     try {
-      for (const orderId of validIds) {
-        try {
-          const response = await apiFetch(`/api/orders/${orderId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: target, ...(holdDetails || {}) }),
-          });
-          if (!response.ok) throw await responseError(response, "Failed to update status");
-          await response.json().catch(() => ({}));
-          moved += 1;
-        } catch {
-          failed += 1;
-        }
-      }
+      const { updated, failedIds, error } = await requestBulkStatusChange<Order>(validIds, target, holdDetails);
       await orders.refetch();
-      const skippedTotal = skipped + failed;
+      const moved = updated.length;
+      const skippedTotal = skipped + failedIds.size;
       if (moved > 0) {
         toast.success(`${moved} order${moved === 1 ? "" : "s"} moved to ${targetLabel}${skippedTotal > 0 ? `, ${skippedTotal} skipped` : ""}`);
-        setSelectedOrderIds(new Set());
+        // Orders the server could not move stay selected so they can be retried.
+        setSelectedOrderIds(new Set(failedIds));
       } else {
-        toast.error(`No orders moved to ${targetLabel}`);
+        toast.error(error || `No orders moved to ${targetLabel}`);
       }
       return moved > 0;
     } finally {

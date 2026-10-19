@@ -85,6 +85,7 @@ import {
   parseAbandonedCheckoutStaffEdit,
 } from "./abandonedCheckouts.js";
 import { getOrderApprovalDetailsError } from "./orderApprovalDetails.js";
+import { BULK_STATUS_TARGETS, MAX_BULK_STATUS_ORDERS, planBulkStatusUpdate } from "./orderBulkStatus.js";
 import { normalizeAdvancePaymentProof } from "./advancePaymentProof.js";
 import {
   hashProtectionSignal,
@@ -9667,6 +9668,58 @@ async function recordOrderActivity(supabase, event) {
   return { recorded: false, id: null };
 }
 
+// Batch versions for bulk actions: one insert for all rows. A duplicate key
+// (a retried request) falls back to the single-row writers so the rows that
+// are new still land. Like the single writers, failures never fail the request.
+async function recordStatusEvents(supabase, events) {
+  const rows = events.filter(Boolean).map((event) => ({ ...event, id: event.id || crypto.randomUUID() }));
+  if (!rows.length) return;
+  let lastError = null;
+  for (let attempt = 1; attempt <= MAX_EVENT_INSERT_ATTEMPTS; attempt += 1) {
+    try {
+      const { error } = await supabase.from("order_status_events").insert(rows);
+      if (!error) return;
+      if (error.code === "23505") {
+        for (const row of rows) await recordStatusEvent(supabase, row);
+        return;
+      }
+      lastError = error;
+    } catch (error) { lastError = error; }
+    if (attempt < MAX_EVENT_INSERT_ATTEMPTS) await delay(50 * attempt);
+  }
+  console.error("[attribution] bulk event insert failed:", errorMessage(lastError));
+}
+
+async function recordOrderActivities(supabase, events) {
+  const rows = events.filter(Boolean).map((event) => ({ ...event, id: event.id || crypto.randomUUID() }));
+  if (!rows.length) return;
+  const displayNames = new Map();
+  for (const row of rows) {
+    if (row.actor_kind !== "user" || !row.actor_id || row.actor_display_name) continue;
+    const key = `${row.org_id}:${row.actor_id}`;
+    if (!displayNames.has(key)) {
+      const { data: actor } = await supabase.from("user_roles").select("display_name").eq("org_id", row.org_id).eq("user_id", row.actor_id).maybeSingle();
+      displayNames.set(key, actor?.display_name || "Unknown");
+    }
+    row.actor_display_name = displayNames.get(key);
+  }
+  let lastError = null;
+  for (let attempt = 1; attempt <= MAX_EVENT_INSERT_ATTEMPTS; attempt += 1) {
+    try {
+      const { error } = await supabase.from("order_activity_events").insert(rows);
+      if (!error) return;
+      if (error.code === "23505") {
+        for (const row of rows) await recordOrderActivity(supabase, row);
+        return;
+      }
+      if (isMissingDetailedActivityTable(error)) return;
+      lastError = error;
+    } catch (error) { lastError = error; }
+    if (attempt < MAX_EVENT_INSERT_ATTEMPTS) await delay(50 * attempt);
+  }
+  console.error("[order-activity] bulk event insert failed:", errorMessage(lastError));
+}
+
 function normalizeOperationalFailureCode(value, fallback = "provider_error") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return fallback;
@@ -10260,6 +10313,162 @@ app.delete("/api/orders", async (req, res) => {
     return res.json({ success: true, deleted: data?.length || 0, ids: (data || []).map((row) => row.id) });
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// Bulk status change from the order lists (e.g. Approved → Print, Print →
+// Processing). Same rules as PATCH /api/orders/:id, but orders are read,
+// updated and logged in batches instead of one request per order.
+app.post("/api/orders/bulk-status", async (req, res) => {
+  try {
+    const { user } = await getUser(getToken(req));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const rawOrderIds = req.body?.orderIds;
+    if (!Array.isArray(rawOrderIds) || rawOrderIds.some((id) => typeof id !== "string" || !id.trim())) {
+      return res.status(400).json({ error: "orderIds array of non-empty strings is required" });
+    }
+    const orderIds = [...new Set(rawOrderIds.map((id) => id.trim()))];
+    if (orderIds.length === 0) return res.status(400).json({ error: "At least one order ID is required" });
+    if (orderIds.length > MAX_BULK_STATUS_ORDERS) {
+      return res.status(400).json({ error: `A maximum of ${MAX_BULK_STATUS_ORDERS} orders can be updated at once` });
+    }
+    const targetStatus = typeof req.body?.status === "string" ? req.body.status.trim() : "";
+    const toStatus = normalizeBusinessStatus(targetStatus);
+    if (!BULK_STATUS_TARGETS.includes(toStatus)) return res.status(400).json({ error: "Invalid status" });
+    const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
+
+    const holdMetadataTouched = ["hold_reason_code", "hold_reason_detail", "hold_until_date"]
+      .some((field) => req.body?.[field] !== undefined);
+    let holdDetails = null;
+    if (toStatus === "on_hold") {
+      const holdReasonDetail = req.body?.hold_reason_detail ?? "";
+      const holdUntilDate = req.body?.hold_until_date ?? null;
+      const holdValidation = validateOrderHoldDetails({
+        reasonCode: req.body?.hold_reason_code,
+        reasonDetail: holdReasonDetail,
+        holdUntilDate,
+        currentDate: getBangladeshDateKey(),
+      });
+      if (holdValidation) return res.status(400).json({ error: holdValidation.error, code: holdValidation.code });
+      holdDetails = {
+        hold_reason_code: req.body.hold_reason_code,
+        hold_reason_detail: holdReasonDetail.trim() || null,
+        hold_until_date: typeof holdUntilDate === "string" ? holdUntilDate.trim() || null : null,
+      };
+    } else if (holdMetadataTouched) {
+      return res.status(400).json({ error: "Hold details can only be changed while an order is On Hold", code: "hold_metadata_requires_hold" });
+    }
+    const cancellationReason = toStatus === "cancelled"
+      ? validateCancellationReason({ code: req.body?.cancellation_reason_code, note: req.body?.cancellation_reason_note })
+      : null;
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+
+    const beforeRows = [];
+    for (const idBatch of chunkIds(orderIds)) {
+      const { data: batchOrders, error: fetchError } = await supabase
+        .from("orders")
+        .select("*")
+        .in("id", idBatch)
+        .eq("org_id", orgId);
+      if (fetchError) throw fetchError;
+      beforeRows.push(...(batchOrders || []));
+    }
+    const beforeById = new Map(beforeRows.map((order) => [order.id, order]));
+
+    const now = new Date().toISOString();
+    const { groups, failures } = planBulkStatusUpdate({
+      orders: beforeRows,
+      orderIds,
+      targetStatus,
+      actorId: user.id,
+      now,
+      holdDetails,
+      cancellationReason,
+    });
+
+    // Each write is guarded by the status the order had when it was read, so an
+    // order changed by someone else in the meantime is reported, not overwritten.
+    const writes = groups.flatMap((group) => chunkIds(group.ids).map(async (idBatch) => {
+      let query = supabase.from("orders").update(group.patch).in("id", idBatch).eq("org_id", orgId);
+      query = group.fromStatus === null ? query.is("status", null) : query.eq("status", group.fromStatus);
+      const { data, error } = await query.select("*");
+      if (error) {
+        console.error("[bulk-status] update failed:", errorMessage(error));
+        return { idBatch, rows: [], failed: true };
+      }
+      return { idBatch, rows: data || [], failed: false };
+    }));
+    const updated = [];
+    for (const { idBatch, rows, failed } of await Promise.all(writes)) {
+      updated.push(...rows);
+      const savedIds = new Set(rows.map((row) => row.id));
+      for (const orderId of idBatch) {
+        if (savedIds.has(orderId)) continue;
+        failures.push({
+          orderId,
+          orderNumber: beforeById.get(orderId)?.order_number || null,
+          reason: failed ? "Could not update status" : "Order changed before it could be saved. Refresh and try again.",
+        });
+      }
+    }
+
+    const statusEvents = [];
+    const activityEvents = [];
+    for (const after of updated) {
+      const before = beforeById.get(after.id);
+      const fromBusinessStatus = normalizeBusinessStatus(before?.status);
+      const isStaffCancellation = toStatus === "cancelled" && fromBusinessStatus !== "cancelled";
+      const isReopening = fromBusinessStatus === "cancelled" && toStatus !== "cancelled";
+      const statusEvent = prepareStatusEvent({
+        orgId,
+        orderId: after.id,
+        orderTable: "orders",
+        fromStatus: before?.status,
+        toStatus: targetStatus,
+        actorId: user.id,
+        actorKind: "user",
+        occurredAt: now,
+      });
+      if (statusEvent) statusEvents.push(statusEvent);
+      const metadata = { from_status: before?.status, to_status: targetStatus, legacy_status_event_id: statusEvent?.id };
+      if (holdDetails?.hold_until_date) metadata.hold_until_date = holdDetails.hold_until_date;
+      activityEvents.push(buildDetailedActivityEvent({
+        orgId,
+        orderId: after.id,
+        orderTable: "orders",
+        eventType: isStaffCancellation ? "order.cancelled" : isReopening ? "order.reopened" : "order.status_changed",
+        category: "status",
+        actorId: user.id,
+        actorKind: "user",
+        groupId: activityGroupId,
+        requestId: buildOperationRequestId(activityGroupId, after.id, "bulk_status"),
+        sourceSurface: "order_editor",
+        summary: isStaffCancellation ? "Cancelled order" : isReopening ? "Reopened order" : `Status changed to ${targetStatus}`,
+        reasonCode: cancellationReason?.code || holdDetails?.hold_reason_code,
+        reasonNote: cancellationReason?.note || holdDetails?.hold_reason_detail,
+        changes: buildOrderChanges({ beforeOrder: before, afterOrder: after }),
+        metadata,
+        occurredAt: now,
+      }));
+    }
+    await Promise.all([
+      recordStatusEvents(supabase, statusEvents),
+      recordOrderActivities(supabase, activityEvents),
+      ...updated.map((order) => labelOrderRiskAttempt(supabase, orgId, order)),
+    ]);
+
+    return res.json({
+      success: failures.length === 0,
+      processed: updated.length,
+      failed: failures.length,
+      updated,
+      failures,
+    });
+  } catch (e) {
+    return sendError(res, e);
   }
 });
 
