@@ -222,11 +222,11 @@ export function buildShippingLabelHtml(
             th, td { border: 1px solid #000; padding: 0.022in 0.018in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
             th { background: #000; color: #fff; font-size: 8px; }
             tbody tr { height: 0.29in; }
-            th:nth-child(1) { width: 52%; }
-            th:nth-child(2) { width: 26%; }
+            th:nth-child(1) { width: 44%; }
+            th:nth-child(2) { width: 34%; }
             th:nth-child(3) { width: 22%; }
             td.product { text-align: left; font-weight: 700; }
-            td.weight { text-align: left; white-space: nowrap; overflow: hidden; }
+            td.weight { white-space: nowrap; overflow: hidden; font-size: 14px; font-weight: 800; }
             td.quantity { white-space: nowrap; font-size: 16px; font-weight: 800; }
             @media print {
               html, body { width: 3in; }
