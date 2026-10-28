@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0.77] - 2026-10-28
+
+### Changed
+
+- Redesigned the Orders page shipping label so the phone number is never cut off. The customer name and phone now sit on separate lines: the name wraps onto a second line if long, and the phone prints on its own line in large type.
+- Product names on the label are Bengali only. The English part after "|" is no longer printed.
+- The product table headings are now পণ্য, ওজন and পরিমাণ. Quantities print in Bengali digits (২, ১২) and are larger, in a wider column.
+- Weights saved in the format {"size": "১ কেজি"} now print as just "১ কেজি".
+
 ## [0.1.0.76] - 2026-10-19
 
 ### Changed
