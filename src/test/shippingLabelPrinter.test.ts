@@ -213,6 +213,9 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain('<td class="product">Honey</td>');
     expect(result.html).toContain('<td class="weight">0.5KG</td>');
     expect(result.html).toContain('<td class="quantity">১</td>');
+    expect(result.html).toContain(
+      "td.weight { white-space: nowrap; overflow: hidden; font-size: 14px; font-weight: 800; }",
+    );
   });
 
   it("falls back to legacy merchandise fields", () => {

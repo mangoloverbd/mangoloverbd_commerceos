@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.78] - 2026-10-28
+
+### Changed
+
+- The weight column on the shipping label (ওজন) is now bold and larger (14px), centered in a slightly wider column, so it is as easy to read as the quantity.
+
 ## [0.1.0.77] - 2026-10-28
 
 ### Changed
