@@ -90,11 +90,9 @@ describe("shipping label HTML", () => {
       '<div class="meta-field"><span>COD</span><strong>৳1,580</strong></div>',
     );
     expect(result.html).toContain('<div class="customer-label">CUSTOMER</div>');
-    expect(result.html).toContain(
-      '<div class="recipient-contact contact-size-normal">Rahim Uddin - 01700000000</div>',
-    );
-    expect(result.html).not.toContain('class="recipient-name"');
-    expect(result.html).not.toContain('class="recipient-phone"');
+    expect(result.html).toContain('<div class="recipient-name">Rahim Uddin</div>');
+    expect(result.html).toContain('<div class="recipient-phone">01700000000</div>');
+    expect(result.html).not.toContain('class="recipient-contact');
     expect(result.html).not.toContain('class="recipient-address"');
     expect(result.html).not.toContain('class="address-label"');
     expect(result.html).not.toContain("ADDRESS");
@@ -114,27 +112,22 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("1 kg");
     expect(result.html).toContain("Chia Seed");
     expect(result.html).toContain("500 g pouch");
-    expect(result.html).toContain("<tr><th>Product</th><th>Weight</th><th>Qty</th></tr>");
+    expect(result.html).toContain("<tr><th>পণ্য</th><th>ওজন</th><th>পরিমাণ</th></tr>");
     expect(result.html).not.toContain("<th>Variant</th>");
     expect(result.html).not.toContain('<td class="variant">');
     expect(result.html).toMatch(/<svg[^>]+class="barcode"/);
     expect(result.html).toContain("<rect");
   });
 
-  it.each([
-    [19, "contact-size-compact"],
-    [27, "contact-size-small"],
-    [35, "contact-size-tight"],
-  ])("uses an adaptive contact size for a %i-character customer name", (nameLength, sizeClass) => {
-    const customerName = "A".repeat(nameLength);
+  it("keeps a long customer name from pushing the phone off the label", () => {
+    const customerName = "MD ABDUR RAHMAN CHOWDHURY";
     const result = buildShippingLabelHtml([makeOrder({ customer_name: customerName })]);
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("Expected printable label HTML");
 
-    expect(result.html).toContain(
-      `<div class="recipient-contact ${sizeClass}">${customerName} - 01700000000</div>`,
-    );
+    expect(result.html).toContain(`<div class="recipient-name">${customerName}</div>`);
+    expect(result.html).toContain('<div class="recipient-phone">01700000000</div>');
   });
 
   it("removes phone whitespace without otherwise rewriting the value", () => {
@@ -145,9 +138,7 @@ describe("shipping label HTML", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("Expected printable label HTML");
 
-    expect(result.html).toContain(
-      '<div class="recipient-contact contact-size-normal">Rahim Uddin - +8801700000000</div>',
-    );
+    expect(result.html).toContain('<div class="recipient-phone">+8801700000000</div>');
   });
 
   it("escapes all customer and merchandise text", () => {
@@ -198,7 +189,30 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain(".label-summary { flex: 0 0 auto; }");
     expect(result.html).not.toContain("min-height: 1.58in");
     expect(result.html).toContain("tbody tr { height: 0.29in; }");
-    expect(result.html.match(/<td class="product">পণ্য \d \| Product \d<\/td>/g)).toHaveLength(5);
+    expect(result.html.match(/<td class="product">পণ্য \d<\/td>/g)).toHaveLength(5);
+  });
+
+  it("prints only the Bengali product name, a clean weight and a Bengali quantity", () => {
+    const result = buildShippingLabelHtml([
+      makeOrder({
+        items: [
+          { product_name: "লিচু ফুলের মধু | Litchi Flower Honey", variant_name: '{"size": "১ কেজি"}', quantity: 12 },
+          { product_name: "Honey", variant_name: "0.5KG", quantity: 1 },
+        ],
+      }),
+    ]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected printable label HTML");
+
+    expect(result.html).toContain('<td class="product">লিচু ফুলের মধু</td>');
+    expect(result.html).not.toContain("Litchi Flower Honey");
+    expect(result.html).toContain('<td class="weight">১ কেজি</td>');
+    expect(result.html).not.toContain("&quot;size&quot;");
+    expect(result.html).toContain('<td class="quantity">১২</td>');
+    expect(result.html).toContain('<td class="product">Honey</td>');
+    expect(result.html).toContain('<td class="weight">0.5KG</td>');
+    expect(result.html).toContain('<td class="quantity">১</td>');
   });
 
   it("falls back to legacy merchandise fields", () => {
@@ -210,7 +224,7 @@ describe("shipping label HTML", () => {
     if (!result.ok) throw new Error("Expected printable label HTML");
 
     expect(result.html).toContain("Dried Mango");
-    expect(result.html).toContain('<td class="quantity">3</td>');
+    expect(result.html).toContain('<td class="quantity">৩</td>');
     expect(result.html).toContain('<td class="weight">—</td>');
   });
 });

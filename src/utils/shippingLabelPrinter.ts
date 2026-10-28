@@ -51,11 +51,25 @@ const formatCod = (order: ShippingLabelOrder) => {
 
 const formatShippingPhone = (phone: string) => phone.trim().replace(/\s+/g, "");
 
-const contactSizeClass = (length: number) => {
-  if (length > 48) return "contact-size-tight";
-  if (length > 40) return "contact-size-small";
-  if (length > 32) return "contact-size-compact";
-  return "contact-size-normal";
+const BENGALI_DIGITS = "০১২৩৪৫৬৭৮৯";
+
+const toBengaliDigits = (value: number) =>
+  String(value).replace(/\d/g, (digit) => BENGALI_DIGITS[Number(digit)]);
+
+// Product names are stored as "বাংলা নাম | English Name"; the label keeps the Bengali part.
+const bengaliProductName = (name: string) => name.split("|")[0].trim() || name;
+
+// Some variants are stored as JSON such as {"size": "১ কেজি"}; print only the values.
+const formatWeight = (variant: string) => {
+  if (!variant.trim().startsWith("{")) return variant;
+  try {
+    const values = Object.values(JSON.parse(variant) as Record<string, unknown>)
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+    return values.length ? values.join(" / ") : "—";
+  } catch {
+    return variant;
+  }
 };
 
 const orderNumberText = (orderNumber: string) => orderNumber.replace(/^#/, "");
@@ -89,8 +103,8 @@ function barcodeSvg(cn: string) {
 function productRows(order: ShippingLabelOrder) {
   if (order.items?.length) {
     return order.items.map((item) => ({
-      productName: item.product_name || "Item",
-      weight: item.variant_name || "—",
+      productName: bengaliProductName(item.product_name || "Item"),
+      weight: item.variant_name ? formatWeight(item.variant_name) : "—",
       quantity: item.quantity || 1,
     }));
   }
@@ -103,7 +117,7 @@ function productRows(order: ShippingLabelOrder) {
   return (lines.length ? lines : ["Item"]).map((line) => {
     const parsed = parseInlineQuantity(line);
     return {
-      productName: parsed?.productName || line,
+      productName: bengaliProductName(parsed?.productName || line),
       weight: "—",
       quantity: parsed?.quantity || (lines.length === 1 ? order.quantity || 1 : 1),
     };
@@ -116,12 +130,11 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
       <tr>
         <td class="product">${escapeHtml(item.productName)}</td>
         <td class="weight">${escapeHtml(item.weight)}</td>
-        <td class="quantity">${item.quantity}</td>
+        <td class="quantity">${toBengaliDigits(item.quantity)}</td>
       </tr>`)
     .join("");
   const customerName = order.customer_name || "Customer";
   const phone = order.phone ? formatShippingPhone(order.phone) : "—";
-  const contactClass = contactSizeClass(Array.from(`${customerName} - ${phone}`).length);
 
   return `
     <section class="shipping-label">
@@ -137,12 +150,13 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
             <div class="meta-field"><span>COD</span><strong>${formatCod(order)}</strong></div>
           </div>
           <div class="customer-label">CUSTOMER</div>
-          <div class="recipient-contact ${contactClass}">${escapeHtml(customerName)} - ${escapeHtml(phone)}</div>
+          <div class="recipient-name">${escapeHtml(customerName)}</div>
+          <div class="recipient-phone">${escapeHtml(phone)}</div>
         </div>
       </div>
       <table>
         <thead>
-          <tr><th>Product</th><th>Weight</th><th>Qty</th></tr>
+          <tr><th>পণ্য</th><th>ওজন</th><th>পরিমাণ</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -202,21 +216,18 @@ export function buildShippingLabelHtml(
             .meta-field span, .customer-label { display: block; font-size: 6px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
             .meta-field strong { display: block; margin-top: 0.012in; font-size: 11px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }
             .customer-label { margin-top: 0.025in; }
-            .recipient-contact { margin-top: 0.015in; line-height: 1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.015em; white-space: nowrap; }
-            .contact-size-normal { font-size: 15px; }
-            .contact-size-compact { font-size: 13px; }
-            .contact-size-small { font-size: 11px; }
-            .contact-size-tight { font-size: 9px; }
-            table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.035in; font-size: 7.1px; line-height: 1.08; }
+            .recipient-name { margin-top: 0.015in; font-size: 13px; line-height: 1.1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.015em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+            .recipient-phone { margin-top: 0.03in; font-size: 20px; line-height: 1; font-weight: 800; letter-spacing: 0.06em; white-space: nowrap; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.035in; font-size: 10px; line-height: 1.08; }
             th, td { border: 1px solid #000; padding: 0.022in 0.018in; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
-            th { background: #000; color: #fff; text-transform: uppercase; font-size: 6.5px; letter-spacing: 0.25px; }
+            th { background: #000; color: #fff; font-size: 8px; }
             tbody tr { height: 0.29in; }
-            th:nth-child(1) { width: 46%; }
-            th:nth-child(2) { width: 38%; }
-            th:nth-child(3) { width: 16%; }
+            th:nth-child(1) { width: 52%; }
+            th:nth-child(2) { width: 26%; }
+            th:nth-child(3) { width: 22%; }
             td.product { text-align: left; font-weight: 700; }
-            td.weight { text-align: left; }
-            td.weight, td.quantity { white-space: nowrap; }
+            td.weight { text-align: left; white-space: nowrap; overflow: hidden; }
+            td.quantity { white-space: nowrap; font-size: 16px; font-weight: 800; }
             @media print {
               html, body { width: 3in; }
               .shipping-label { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
