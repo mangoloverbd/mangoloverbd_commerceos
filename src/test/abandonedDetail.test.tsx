@@ -451,11 +451,11 @@ describe("AbandonedDetail pending-order banner", () => {
     const second = await screen.findByRole("link", { name: "#1010" });
     expect(second).toHaveAttribute("href", "/orders/order-10");
     expect(screen.getByRole("link", { name: "#1009" })).toHaveAttribute("href", "/orders/order-9");
-    expect(second.closest("[role='status']")).toHaveTextContent("Already ordered — 2 orders are waiting in Pending: #1009, #1010.");
+    expect(second.closest("[role='status']")).toHaveTextContent("Already ordered — 2 orders are still open: #1009 (Pending), #1010 (Pending).");
   });
 
-  it("shows no banner when the matching order is in another tab", async () => {
-    mockOrders([order("approved")]);
+  it("shows no banner when the matching order is outside Pending, Approved and Print", async () => {
+    mockOrders([order("on_hold")]);
     const client = renderDetail();
 
     expect((await screen.findAllByText("Abandoned Customer")).length).toBeGreaterThan(0);

@@ -330,6 +330,54 @@
 }
 
 @layer components {
+  /* Gloss button (toolbar): fill · inside 1px white→clear stroke at 40% ·
+     drop 0 2 4 black 12% · inner white 24% blur 6 spread 2 · 1px ring in the fill colour */
+  .gloss-button {
+    --gloss-fill: #296ff0;
+    --gloss-ring: #296ff0;
+    position: relative;
+    background-color: var(--gloss-fill);
+    color: #fff;
+    box-shadow: 0 0 0 1px var(--gloss-ring), 0 2px 4px rgb(0 0 0 / 0.12), inset 0 0 6px 2px rgb(255 255 255 / 0.24);
+    transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), filter 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+  }
+  .gloss-button[data-color="mango"] {
+    --gloss-fill: #f5b400;
+    --gloss-ring: #e0a500;
+    color: #1a1200;
+  }
+  .gloss-button::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.4), rgb(255 255 255 / 0));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .gloss-button:not(:disabled):hover {
+      filter: brightness(1.06);
+    }
+  }
+  .gloss-button:not(:disabled):active {
+    transform: scale(0.97);
+    box-shadow: 0 0 0 1px var(--gloss-ring), 0 1px 2px rgb(0 0 0 / 0.1), inset 0 0 6px 2px rgb(255 255 255 / 0.24);
+  }
+  .gloss-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: 0 0 0 1px var(--gloss-ring), inset 0 0 6px 2px rgb(255 255 255 / 0.24);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .gloss-button:not(:disabled):active {
+      transform: none;
+    }
+  }
+
   /* Swiss Grid Container — generous margins */
   .swiss-container {
     @apply max-w-[1440px] mx-auto px-6 md:px-10 lg:px-16;
@@ -503,6 +551,79 @@
 .uv-beam:hover {
   transform: scale(0.975);
   transition: transform 400ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ===== Glass pill (dashboard greeting: online visitors + date) =====
+   Frosted white over the dot pattern, a bright inner edge, a hairline and a soft lift. */
+.glass-pill {
+  display: inline-flex;
+  height: 2rem;
+  align-items: center;
+  gap: 0.4375rem;
+  padding: 0 0.8125rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(0 0 0 / 0.62);
+  background: rgb(255 255 255 / 0.72);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.9), 0 0 0 1px rgb(0 0 0 / 0.05), 0 2px 8px -2px rgb(0 0 0 / 0.08);
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), background-color 150ms ease, color 150ms ease;
+}
+button.glass-pill {
+  cursor: pointer;
+  outline: none;
+}
+button.glass-pill:focus-visible {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.9), 0 0 0 2px rgb(0 0 0 / 0.5);
+}
+@media (hover: hover) and (pointer: fine) {
+  button.glass-pill:hover {
+    background: rgb(255 255 255 / 0.95);
+    color: rgb(0 0 0 / 0.9);
+  }
+}
+button.glass-pill:active {
+  transform: scale(0.97);
+}
+
+/* Live dot: one slow, soft ring — it is always on screen, so it stays calm. */
+.live-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 9999px;
+  background: #ef4444;
+}
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: live-dot-pulse 2.4s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+@keyframes live-dot-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  70%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-dot::after {
+    animation: none;
+  }
+  button.glass-pill:active {
+    transform: none;
+  }
 }
 
 /* ========== GLASS BUTTON (Sidebar Active) ========== */

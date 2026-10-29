@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -43,6 +44,8 @@ type OrderTablePaginationProps = {
   pageSize: number;
   totalItems: number;
   onPageChange: (page: number) => void;
+  /** Optional rows-per-page picker shown beside the page number. */
+  pageSizeControl?: ReactNode;
 };
 
 export function OrderTablePagination({
@@ -50,9 +53,15 @@ export function OrderTablePagination({
   pageSize,
   totalItems,
   onPageChange,
+  pageSizeControl,
 }: OrderTablePaginationProps) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safePage = Math.min(Math.max(page, 0), totalPages - 1);
+  const pagePosition = (
+    <span className="text-center text-[11px] font-medium tabular-nums text-black/55">
+      Page {safePage + 1} of {totalPages}
+    </span>
+  );
 
   return (
     <div data-testid="order-pagination-footer" className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-t border-black/10 px-4 py-3">
@@ -66,9 +75,14 @@ export function OrderTablePagination({
         Previous
       </button>
 
-      <span className="text-center text-[11px] font-medium tabular-nums text-black/55">
-        Page {safePage + 1} of {totalPages}
-      </span>
+      {pageSizeControl ? (
+        <div className="flex items-center justify-center gap-3">
+          {pageSizeControl}
+          {pagePosition}
+        </div>
+      ) : (
+        pagePosition
+      )}
 
       <button
         type="button"

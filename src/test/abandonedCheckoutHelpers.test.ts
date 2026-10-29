@@ -44,6 +44,12 @@ describe("abandoned checkout dashboard helpers", () => {
   it("formats summary and manual contact targets without precomposed outreach", () => {
     expect(abandonedCheckoutCartSummary(checkout.cart)).toBe("2 × Sundarbans Honey — 1 kg");
     expect(abandonedCheckoutSourceLabel(checkout.source)).toBe("Sundarbans Honey");
+    expect(abandonedCheckoutSourceLabel("homemade_pumpkin_bori")).toBe("Homemade Pumpkin Bori");
+    // Carts captured before the storefront fix are stored as Kalojira Mixed; name them by what is in the cart.
+    const bori = [{ productName: "হোমমেড কুমড়ো বড়ি | Homemade Pumpkin Bori", variantName: "১ কেজি", quantity: 1, unitPrice: 650 }];
+    expect(abandonedCheckoutSourceLabel("kalojira_mixed", bori)).toBe("Homemade Pumpkin Bori");
+    expect(abandonedCheckoutSourceLabel("kalojira_mixed", [{ ...bori[0], productName: "কালোজিরা মিক্সড | Kalojira Mixed" }])).toBe("Kalojira Mixed");
+    expect(abandonedCheckoutSourceLabel("kalojira_mixed", [])).toBe("Kalojira Mixed");
     expect(abandonedCheckoutTelHref(checkout.phone)).toBe("tel:01712345678");
     expect(abandonedCheckoutWhatsAppHref(checkout.phone)).toBe("https://wa.me/8801712345678");
     expect(abandonedCheckoutCopySummary(checkout)).toContain("Estimated total: ৳1,600");

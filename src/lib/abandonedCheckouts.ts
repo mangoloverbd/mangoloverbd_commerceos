@@ -46,6 +46,7 @@ const SOURCE_LABELS: Record<string, string> = {
   storefront: "Storefront checkout",
   sundarbans_honey: "Sundarbans Honey",
   kalojira_mixed: "Kalojira Mixed",
+  homemade_pumpkin_bori: "Homemade Pumpkin Bori",
   honey_nut: "Honey Nut",
 };
 
@@ -63,7 +64,13 @@ function formatTaka(amount: number | null) {
   return `৳${amount.toLocaleString("en-BD", { maximumFractionDigits: 0 })}`;
 }
 
-export function abandonedCheckoutSourceLabel(source: string) {
+// The pumpkin bori page reused the Kalojira Mixed checkout, so its carts were
+// stored as "kalojira_mixed". Name those by their contents instead.
+const isPumpkinBoriCart = (cart: AbandonedCheckoutCartItem[]) =>
+  cart.length > 0 && cart.every((item) => /pumpkin bori/i.test(item.productName));
+
+export function abandonedCheckoutSourceLabel(source: string, cart: AbandonedCheckoutCartItem[] = []) {
+  if (source === "kalojira_mixed" && isPumpkinBoriCart(cart)) return SOURCE_LABELS.homemade_pumpkin_bori;
   return SOURCE_LABELS[source] || "Checkout";
 }
 
@@ -82,7 +89,7 @@ export function matchesAbandonedCheckoutSearch(checkout: AbandonedCheckout, quer
     checkout.customer_name,
     checkout.phone,
     checkout.address,
-    abandonedCheckoutSourceLabel(checkout.source),
+    abandonedCheckoutSourceLabel(checkout.source, checkout.cart),
     checkout.source_path,
     ...checkout.cart.flatMap((item) => [item.productName, item.variantName]),
   ];
@@ -103,7 +110,7 @@ export function abandonedCheckoutWhatsAppHref(phone: string | null | undefined) 
 export function abandonedCheckoutCopySummary(checkout: AbandonedCheckout) {
   return [
     "Abandoned checkout",
-    `Source: ${abandonedCheckoutSourceLabel(checkout.source)}`,
+    `Source: ${abandonedCheckoutSourceLabel(checkout.source, checkout.cart)}`,
     `Name: ${checkout.customer_name || "Not provided"}`,
     `Phone: ${checkout.phone || "Not provided"}`,
     `Address: ${checkout.address || "Not provided"}`,

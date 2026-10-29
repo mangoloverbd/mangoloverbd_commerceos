@@ -12,14 +12,25 @@ const pending = (id: string, phone: string | null, order_number: string | null =
 describe("abandonedPendingMatch", () => {
   it("matches a pending order to a checkout phone in a different format", () => {
     const map = buildPendingOrdersByPhone([pending("o1", "+8801712345678", "1001")]);
-    expect(pendingOrdersForPhone(map, "01712345678")).toEqual([{ id: "o1", order_number: "1001" }]);
+    expect(pendingOrdersForPhone(map, "01712345678")).toEqual([{ id: "o1", order_number: "1001", tab: "pending" }]);
   });
 
-  it("ignores orders that are not in the Pending tab", () => {
+  it("also matches orders waiting in the Approved and Print tabs", () => {
     const map = buildPendingOrdersByPhone([
-      { ...pending("a", "01712345678"), status: "approved" },
+      { ...pending("a", "01712345678"), status: "confirmed" },
+      { ...pending("p", "01712345678"), status: "print" },
+    ]);
+    expect(pendingOrdersForPhone(map, "01712345678")).toEqual([
+      { id: "a", order_number: "#a", tab: "approved" },
+      { id: "p", order_number: "#p", tab: "print" },
+    ]);
+  });
+
+  it("ignores orders outside the Pending, Approved and Print tabs", () => {
+    const map = buildPendingOrdersByPhone([
       { ...pending("h", "01712345678"), status: "on_hold" },
       { ...pending("d", "01712345678"), status: "delivered", fulfillment_status: "fulfilled" },
+      { ...pending("c", "01712345678"), status: "cancelled" },
     ]);
     expect(pendingOrdersForPhone(map, "01712345678")).toEqual([]);
   });
@@ -34,8 +45,8 @@ describe("abandonedPendingMatch", () => {
   it("returns every pending order for the same phone", () => {
     const map = buildPendingOrdersByPhone([pending("o1", "01712345678", "1001"), pending("o2", "8801712345678", "1002")]);
     expect(pendingOrdersForPhone(map, "01712345678")).toEqual([
-      { id: "o1", order_number: "1001" },
-      { id: "o2", order_number: "1002" },
+      { id: "o1", order_number: "1001", tab: "pending" },
+      { id: "o2", order_number: "1002", tab: "pending" },
     ]);
   });
 });
