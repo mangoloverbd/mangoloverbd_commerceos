@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.0.79] - 2026-10-29
+
+### Added
+
+- The Print tab on the Orders page can be filtered by product and by pack weight, for example "Pumpkin Bori" + "1 kg". Each order sits in exactly one product group and one weight group, so it can never be printed twice. Orders with different products go under "Mixed products", and orders with different pack sizes go under "Mixed weights". Orders whose product has no saved weight go under "Unknown weight". Each dropdown's counts follow the other dropdown's choice.
+- Packing Summary prints only the orders the Print filters are showing. Changing a filter clears the ticked orders, so hidden orders can't be bulk-printed.
+
+### Changed
+
+- The Orders toolbar reads as one clickable sentence, for example "42 print orders of [All products] in [All weights] from [All warehouses]". Each tab shows only its own filters (district on Approved, dates on Processing and Delivered). The count includes every filter. Product names in the sentence show only the English part, and each word stays attached to its dropdown when the line wraps.
+- The search box is narrower and widens when you click into it. Rows-per-page moved to the page numbers under the table. Packing Summary is now a printer icon button.
+- The toolbar buttons have a new glossy style: Create Order in mango yellow, Update Status and Packing Summary in blue.
+- Status tabs show a large count above the label and dot. Empty queues are greyed out.
+- The "Online visitors" and date pills under the greeting are matching frosted-glass pills. The rotating border is gone, and the live dot pulses once every 2.4 seconds.
+- Ship To and Items in the orders table take up the spare width, so more of the address and product name shows.
+- The Abandoned tab flags carts whose phone already has an order in Pending, Approved or Print, not only Pending. The badge and the abandoned cart's detail page name the tab.
+- Abandoned carts from the pumpkin bori landing page are labelled "Homemade Pumpkin Bori" instead of "Kalojira Mixed". The server and database now accept the `homemade_pumpkin_bori` source (migration `20261029150000`).
+
 ## [0.1.0.78] - 2026-10-28
 
 ### Changed

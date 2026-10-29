@@ -87,7 +87,7 @@ describe("buildPackingSummary", () => {
 });
 
 describe("packing summary action wiring", () => {
-  it("renders a Print-only packing summary button that prints the full queue", () => {
+  it("renders a Print-only packing summary button that prints the product/weight-filtered queue", () => {
     const dashboardSource = readFileSync(resolve(process.cwd(), "src/pages/Dashboard.tsx"), "utf8");
 
     expect(dashboardSource).toContain('data-testid="button-packing-summary"');
@@ -95,7 +95,7 @@ describe("packing summary action wiring", () => {
     expect(dashboardSource).toContain(
       'const { printPackingSummary } = await import("@/utils/packingSummaryPrinter");',
     );
-    expect(dashboardSource).toContain("printPackingSummary(filteredOrders, orgName)");
+    expect(dashboardSource).toContain("printPackingSummary(printFilteredOrders, orgName)");
     expect(dashboardSource).toContain("Failed to prepare packing summary for printing");
   });
 });

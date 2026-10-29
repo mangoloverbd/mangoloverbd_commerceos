@@ -280,12 +280,12 @@ describe("AbandonedCheckoutQueue", () => {
           actionInFlightId={null}
           onAction={vi.fn()}
           onOpenCheckout={onOpenCheckout}
-          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "1009" }]]])}
+          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "1009", tab: "pending" as const }]]])}
         />
       </MemoryRouter>,
     );
 
-    const badge = screen.getByRole("link", { name: "Already ordered · #1009" });
+    const badge = screen.getByRole("link", { name: "Already ordered · #1009 · Pending" });
     expect(badge).toHaveAttribute("href", "/orders/order-9");
     expect(badge).toHaveAttribute("title", "Order #1009 is waiting in Pending. Check it before contacting this customer.");
     expect(screen.getAllByRole("link", { name: /Already ordered/ })).toHaveLength(1);
@@ -294,6 +294,24 @@ describe("AbandonedCheckoutQueue", () => {
 
     await user.click(badge);
     expect(onOpenCheckout).not.toHaveBeenCalled();
+  });
+
+  it("names the Approved or Print tab when the open order is there", () => {
+    render(
+      <MemoryRouter>
+        <AbandonedCheckoutQueue
+          checkouts={[checkout]}
+          loading={false}
+          error={null}
+          actionInFlightId={null}
+          onAction={vi.fn()}
+          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "1009", tab: "approved" as const }]]])}
+        />
+      </MemoryRouter>,
+    );
+
+    const badge = screen.getByRole("link", { name: "Already ordered · #1009 · Approved" });
+    expect(badge).toHaveAttribute("title", "Order #1009 is waiting in Approved. Check it before contacting this customer.");
   });
 
   it("summarises several pending orders on one badge", () => {
@@ -305,14 +323,14 @@ describe("AbandonedCheckoutQueue", () => {
           error={null}
           actionInFlightId={null}
           onAction={vi.fn()}
-          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "1009" }, { id: "order-10", order_number: "1010" }]]])}
+          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "1009", tab: "pending" as const }, { id: "order-10", order_number: "1010", tab: "pending" as const }]]])}
         />
       </MemoryRouter>,
     );
 
-    const badge = screen.getByRole("link", { name: "Already ordered · 2 pending" });
+    const badge = screen.getByRole("link", { name: "Already ordered · 2 open orders" });
     expect(badge).toHaveAttribute("href", "/orders/order-9");
-    expect(badge).toHaveAttribute("title", "2 orders from this customer are waiting in Pending. Check them before contacting.");
+    expect(badge).toHaveAttribute("title", "2 orders from this customer are waiting: #1009 (Pending), #1010 (Pending). Check them before contacting.");
   });
 
   it("does not double the # when the order number already has one", () => {
@@ -324,12 +342,12 @@ describe("AbandonedCheckoutQueue", () => {
           error={null}
           actionInFlightId={null}
           onAction={vi.fn()}
-          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "#1009" }]]])}
+          pendingOrdersByPhone={new Map([["01712345678", [{ id: "order-9", order_number: "#1009", tab: "pending" as const }]]])}
         />
       </MemoryRouter>,
     );
 
-    const badge = screen.getByRole("link", { name: "Already ordered · #1009" });
+    const badge = screen.getByRole("link", { name: "Already ordered · #1009 · Pending" });
     expect(badge).toHaveAttribute("title", "Order #1009 is waiting in Pending. Check it before contacting this customer.");
   });
 });

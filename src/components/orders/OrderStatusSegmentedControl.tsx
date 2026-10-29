@@ -101,8 +101,8 @@ export function OrderStatusSegmentedControl({
           const selected = [...keys][0];
           if (selected) onChange(String(selected) as FulfillmentQueueTab);
         }}
-        thumbClassName="rounded-lg border border-black/[0.08] bg-white shadow-sm"
-        className="w-max min-w-full rounded-lg bg-black/[0.055] p-1 ring-1 ring-black/[0.035] xl:flex xl:w-full"
+        thumbClassName="rounded-xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
+        className="w-max min-w-full rounded-2xl bg-black/[0.055] p-1 ring-1 ring-black/[0.035] xl:flex xl:w-full"
       >
         {FULFILLMENT_QUEUE_TABS.filter((status) => status === "abandoned" || !hiddenStatuses.includes(status)).map((status) => {
           const presentation = STATUS_PRESENTATION[status];
@@ -115,24 +115,28 @@ export function OrderStatusSegmentedControl({
               id={status}
               aria-label={`${presentation.label}: ${loading ? "loading" : formattedCount}`}
               className={({ isSelected }) => [
-                "group min-w-[112px] rounded-lg px-3 py-2 xl:min-w-0 xl:flex-1",
+                "group min-w-[104px] rounded-xl px-3 py-2.5 xl:min-w-0 xl:flex-1",
                 "hover:bg-white/45 data-[pressed]:scale-[0.99]",
-                isSelected ? "text-black" : "text-black/55",
+                isSelected ? "text-black" : "text-black/60",
               ].join(" ")}
             >
-              <span className="flex min-w-0 flex-col items-start gap-1">
-                <span className="flex items-center gap-1.5 text-[8px] font-semibold uppercase leading-none tracking-[0.16em]">
+              <span className="flex min-w-0 flex-col items-center gap-1.5">
+                <span
+                  data-testid={`order-status-count-${status}`}
+                  className={[
+                    "text-[22px] font-medium leading-none tabular-nums tracking-tight",
+                    // Empty queues fade back so the busy ones stand out.
+                    !loading && count === 0 ? "text-black/30" : "text-black/80 group-data-[selected]:text-black",
+                  ].join(" ")}
+                >
+                  {loading ? "—" : formattedCount}
+                </span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap text-[12px] font-medium leading-none">
                   <span
                     aria-hidden
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation.dotClassName}`}
                   />
                   {presentation.label}
-                </span>
-                <span
-                  data-testid={`order-status-count-${status}`}
-                  className="pl-3 text-[14px] font-semibold leading-none tabular-nums tracking-tight text-black/80 group-data-[selected]:text-black"
-                >
-                  {loading ? "—" : formattedCount}
                 </span>
               </span>
             </SegmentedControlItem>

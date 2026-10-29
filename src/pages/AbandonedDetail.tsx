@@ -27,7 +27,7 @@ import { createActivityGroupId, orderItemActivityKey, type AdditionReason } from
 import { prefetchOrderActivity, refreshOrderActivity } from "@/lib/orderActivityQuery";
 import { syncOrders, type SyncableOrder } from "@/lib/ordersSync";
 import type { StatusFilterOrder } from "@/lib/orderStatusFilters";
-import { buildPendingOrdersByPhone, pendingOrderLabel, pendingOrdersForPhone } from "@/lib/abandonedPendingMatch";
+import { buildPendingOrdersByPhone, openOrderTabLabel, pendingOrderLabel, pendingOrdersForPhone } from "@/lib/abandonedPendingMatch";
 import type {
   AbandonedCheckout,
   AbandonedCheckoutResponse,
@@ -518,15 +518,16 @@ export default function AbandonedDetail() {
               <>
                 {" — "}
                 <Link to={`/orders/${pendingMatches[0].id}`} className="rounded-[6px] underline underline-offset-2">{pendingOrderLabel(pendingMatches[0])}</Link>
-                {" is waiting in Pending. Check it before contacting or moving this checkout."}
+                {` is waiting in ${openOrderTabLabel(pendingMatches[0].tab)}. Check it before contacting or moving this checkout.`}
               </>
             ) : (
               <>
-                {` — ${pendingMatches.length} orders are waiting in Pending: `}
+                {` — ${pendingMatches.length} orders are still open: `}
                 {pendingMatches.map((match, index) => (
                   <span key={match.id}>
                     {index > 0 && ", "}
                     <Link to={`/orders/${match.id}`} className="rounded-[6px] underline underline-offset-2">{pendingOrderLabel(match)}</Link>
+                    {` (${openOrderTabLabel(match.tab)})`}
                   </span>
                 ))}
                 .

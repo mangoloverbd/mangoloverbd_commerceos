@@ -1506,7 +1506,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                       {warehouses.map((warehouse) => <BuiSelectItem key={warehouse.id} id={warehouse.id} textValue={warehouse.name}>{warehouse.name}</BuiSelectItem>)}
                     </BuiSelect>
                   </TableCell>
-                  <TableCell className="max-w-[150px] py-3">
+                  <TableCell className="w-[18%] max-w-0 py-3">
                     <Tooltip delayDuration={0}>
                       <TooltipTrigger asChild>
                         <div className="flex items-center gap-1 group/addr cursor-default min-w-0">
@@ -1535,12 +1535,12 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
                     </Tooltip>
                   </TableCell>
                   </>)}
-                  <TableCell className="max-w-[160px] py-3">
+                  <TableCell className="w-[18%] max-w-0 py-3">
                     <Tooltip delayDuration={0}>
                       <TooltipTrigger asChild>
                          <div data-testid="order-items-preview" aria-label={`${lines.length || 0} order items`} className="flex items-center gap-1.5 group/prod cursor-default min-w-0">
                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-blue-400 group-hover/prod:text-blue-500 transition-colors"><g fill="none" stroke="currentColor" strokeWidth="1.2"><rect width="14" height="17" x="5" y="4" fill="currentColor" fillOpacity=".25" rx="2"/><path strokeLinecap="round" d="M9 9h6m-6 4h6m-6 4h4"/></g></svg>
-                           <div className="min-w-0 space-y-0.5 text-xs font-medium leading-tight text-black">{names.length ? names.map((name, index) => <p key={index} className="max-w-[170px] truncate">{name}</p>) : <p>{primary}</p>}</div>
+                           <div className="min-w-0 space-y-0.5 text-xs font-medium leading-tight text-black">{names.length ? names.map((name, index) => <p key={index} className="truncate">{name}</p>) : <p>{primary}</p>}</div>
                          </div>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-[300px] p-0 overflow-hidden rounded-2xl border border-black/10 bg-white/95 shadow-2xl shadow-black/10 backdrop-blur-xl">

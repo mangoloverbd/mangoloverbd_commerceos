@@ -12,6 +12,7 @@ import { useWarehouses } from "@/hooks/useWarehouses";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { getDhakaGreeting } from "@/lib/greeting";
 import { detectDistrict, DISTRICT_UNKNOWN_SENTINEL } from "@/lib/bdDistricts";
+import { countPrintFilterOptions, filterPrintOrders, type PrintFilters } from "@/lib/printQueueFilters";
 import { matchesOrderSearch } from "@/lib/orderSearch";
 import { buildPendingOrdersByPhone } from "@/lib/abandonedPendingMatch";
 import { DottedGlobe } from "@/components/home/DottedGlobe";
@@ -49,7 +50,7 @@ import { Spinner } from "@/components/ui/ios-spinner";
 import { TextEffect } from "@/components/ui/text-effect";
 import { MetricNumberFlow } from "@/components/ui/number-flow";
 import { TextShimmer } from "@/components/ui/text-shimmer";
-import { PopButton } from "@/components/ui/pop-button";
+import { GlossButton } from "@/components/ui/gloss-button";
 import { UpdateStatusIcon } from "@/components/UpdateStatusIcon";
 import {
   Popover,
@@ -490,6 +491,36 @@ const FinanceMetric = memo(function FinanceMetric({
     </div>
   );
 });
+
+// What the toolbar sentence calls each queue: "42 print orders of …".
+const QUEUE_NOUNS: Record<FulfillmentQueueTab, string> = {
+  all: "orders",
+  abandoned: "abandoned carts",
+  pending: "pending orders",
+  on_hold: "on-hold orders",
+  approved: "approved orders",
+  print: "print orders",
+  processing: "processing orders",
+  ready_to_ship: "ready-to-ship orders",
+  in_transit: "in-transit orders",
+  stuck: "follow-up orders",
+  delivered: "delivered orders",
+  cancelled: "cancelled orders",
+};
+
+// Filters inside the toolbar sentence look like words you can click, not boxes.
+const sentenceTokenClass = (active: boolean) =>
+  cn(
+    "h-8 w-auto max-w-[180px] rounded-lg border-0 bg-transparent px-2 py-1 text-[14px] font-medium text-[#111110] shadow-none",
+    "hover:border-0 hover:bg-[#F2F1EC]",
+    active && "bg-sky-50 text-sky-800 hover:bg-sky-100",
+  );
+// The menu shows the full option ("লিচু ফুলের মধু | Litchi Flower Honey (15)");
+// the sentence shows only the English name so the toolbar stays on one line.
+const sentenceTokenValue = ({ selectedText }: { selectedText: string }) => {
+  const name = selectedText.replace(/ \(\d+\)$/, "");
+  return name.split("|").pop()?.trim() || name;
+};
 
 // Module-level so useQueries keeps the combined array stable between renders.
 function rangeOrdersDataOf(results: UseQueryResult<Order[]>[]) {
@@ -1113,6 +1144,9 @@ export default function Dashboard() {
   const isAbandonedQueue = fulfillmentTab === "abandoned";
   const activeOrderStatusFilter: OrderStatusFilter = isAbandonedQueue ? "all" : fulfillmentTab;
   const [districtFilter, setDistrictFilter] = useState("all");
+  // Print tab: product and pack-weight filters.
+  const [printFilters, setPrintFilters] = useState<PrintFilters>({ product: "all", weight: "all" });
+  const isPrintTab = activeOrderStatusFilter === "print";
   // Cancelled tab: date range, which date it applies to, and the reasons picked in the breakdown.
   const isCancelledTab = activeOrderStatusFilter === "cancelled";
   const [cancelPreset, setCancelPreset] = useState<CancellationPreset>("30d");
@@ -1288,18 +1322,34 @@ export default function Dashboard() {
     });
   }, [dateFilteredOrders, districtFilter, activeOrderStatusFilter]);
 
+  const printFilterOptions = useMemo(
+    () => (isPrintTab ? countPrintFilterOptions(districtFilteredOrders, printFilters) : null),
+    [districtFilteredOrders, isPrintTab, printFilters],
+  );
+  const printFilteredOrders = useMemo(
+    () => (isPrintTab ? filterPrintOrders(districtFilteredOrders, printFilters) : districtFilteredOrders),
+    [districtFilteredOrders, isPrintTab, printFilters],
+  );
+  // Clear the selection too, so bulk print never includes orders the filter hides.
+  const changePrintFilter = (next: Partial<PrintFilters>) => {
+    setPrintFilters((prev) => ({ ...prev, ...next }));
+    setSelectedOrderIds(new Set());
+    setOrderPage(0);
+  };
+
   const filteredAbandonedCheckouts = useMemo(
     () => abandonedCheckouts.filter((checkout) => matchesAbandonedCheckoutSearch(checkout, debouncedSearch)),
     [abandonedCheckouts, debouncedSearch],
   );
+  const queueCount = isAbandonedQueue ? filteredAbandonedCheckouts.length : printFilteredOrders.length;
 
   const pendingOrdersByPhone = useMemo(() => buildPendingOrdersByPhone(orders), [orders]);
 
   const handlePackingSummary = async () => {
-    if (filteredOrders.length === 0) return;
+    if (printFilteredOrders.length === 0) return;
     try {
       const { printPackingSummary } = await import("@/utils/packingSummaryPrinter");
-      printPackingSummary(filteredOrders, orgName);
+      printPackingSummary(printFilteredOrders, orgName);
     } catch (error) {
       console.error("Packing summary printing failed:", error);
       toast.error("Failed to prepare packing summary for printing");
@@ -1308,11 +1358,11 @@ export default function Dashboard() {
 
   // Cap rendered rows so the (unvirtualized) table doesn't balloon the DOM,
   // which keeps interactions like the avatar menu responsive on the dashboard.
-  const orderTotalPages = Math.max(1, Math.ceil(districtFilteredOrders.length / orderPageSize));
+  const orderTotalPages = Math.max(1, Math.ceil(printFilteredOrders.length / orderPageSize));
   const orderSafePage = Math.min(orderPage, orderTotalPages - 1);
   const visibleOrders = useMemo(
-    () => districtFilteredOrders.slice(orderSafePage * orderPageSize, (orderSafePage + 1) * orderPageSize),
-    [districtFilteredOrders, orderPageSize, orderSafePage],
+    () => printFilteredOrders.slice(orderSafePage * orderPageSize, (orderSafePage + 1) * orderPageSize),
+    [printFilteredOrders, orderPageSize, orderSafePage],
   );
 
   const metricSparklines = useMemo(() => {
@@ -1616,15 +1666,11 @@ export default function Dashboard() {
           </p>
 
           {/* Moved cluster — centered below the greeting */}
-          <DateRangePicker value={dateRange} onChange={handleDateRangeChange} triggerClassName="uv-beam rounded-lg" placement="bottom">
-            <span className="uv-beam group relative rounded-lg">
-              <div className="flex h-8 items-center gap-1.5 rounded-lg bg-background px-3 text-[11px] font-medium text-foreground/70 tabular-nums">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" style={{ animationDelay: "0.75s" }} />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-                </span>
-                {liveVisitors.count} Online visitors
+          <DateRangePicker value={dateRange} onChange={handleDateRangeChange} placement="bottom" variant="glass">
+            <span className="group relative inline-flex">
+              <div className="glass-pill tabular-nums">
+                <span aria-hidden className="live-dot" />
+                <span><span className="font-semibold text-foreground">{liveVisitors.count}</span> online visitors</span>
               </div>
               <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-44 -translate-x-1/2 rounded-lg border border-black/10 bg-white p-3 text-[11px] font-medium text-foreground/70 shadow-lg group-hover:block">
                 <div className="flex items-center justify-between py-0.5">
@@ -1661,187 +1707,168 @@ export default function Dashboard() {
       >
         {/* Toolbar */}
         <div data-testid="dashboard-order-toolbar" className="flex flex-col gap-3 border-b border-black/10 px-6 py-3 max-md:px-3 lg:flex-row lg:items-center lg:justify-between">
-           <div className="flex shrink-0 flex-wrap items-center gap-2.5 whitespace-nowrap max-md:w-full max-md:justify-between">
-            <TextEffect
-              as="span"
-              per="word"
-              delay={0.12}
-              variants={{
-                container: {
-                  hidden: { opacity: 0 },
-                  visible: {
-                    opacity: 1,
-                    transition: { staggerChildren: 0.16 },
-                  },
-                },
-                item: {
-                  hidden: { opacity: 0, y: 12, filter: "blur(8px)" },
-                  visible: {
-                    opacity: 1,
-                    y: 0,
-                    filter: "blur(0px)",
-                    transition: { duration: 0.55, ease: "easeOut" },
-                  },
-                },
-              }}
-              className="font-sf-display text-[15px] font-semibold tracking-normal text-foreground"
-            >
-              {isAbandonedQueue ? "Abandoned Carts" : "Fulfillment Queue"}
-            </TextEffect>
-            <div className="w-px h-3.5 bg-black/10" />
+           {/* The queue reads as a sentence: "42 print orders of [product] in [weight] from [warehouse]". */}
+           <div data-testid="dashboard-order-sentence" className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[14px] text-black/45">
             {(isAbandonedQueue ? abandonedLoading : loading) ? (
-              <span className="text-[13px] text-muted-foreground tabular-nums">—</span>
+              <span className="text-[15px] font-semibold text-foreground tabular-nums">—</span>
             ) : (
-              <TextEffect
-                key={`${isAbandonedQueue ? "abandoned" : "orders"}-${isAbandonedQueue ? filteredAbandonedCheckouts.length : dateFilteredOrders.length}`}
-                as="span"
-                per="char"
-                delay={0.45}
-                variants={{
-                  container: {
-                    hidden: { opacity: 0 },
-                    visible: {
-                      opacity: 1,
-                      transition: { staggerChildren: 0.045 },
-                    },
-                  },
-                  item: {
-                    hidden: { opacity: 0, y: 8, filter: "blur(6px)" },
-                    visible: {
-                      opacity: 1,
-                      y: 0,
-                      filter: "blur(0px)",
-                      transition: { duration: 0.35, ease: "easeOut" },
-                    },
-                  },
-                }}
-                className="text-[13px] text-muted-foreground tabular-nums"
-              >
-                {`${isAbandonedQueue ? filteredAbandonedCheckouts.length : dateFilteredOrders.length} ${isAbandonedQueue ? "checkouts" : "orders"}`}
-              </TextEffect>
+              <span className="font-sf-display text-[15px] font-semibold text-foreground tabular-nums">
+                {`${queueCount.toLocaleString("en-US")} ${queueCount === 1 ? QUEUE_NOUNS[fulfillmentTab].replace(/s$/, "") : QUEUE_NOUNS[fulfillmentTab]}`}
+              </span>
              )}
-              {!isAbandonedQueue && isMobile && (
-               <OrderRowsPerPageSelect
-                 pageSize={orderPageSize}
-                 onPageSizeChange={(nextPageSize) => {
-                   setOrderPageSize(nextPageSize);
-                   setOrderPage(0);
-                 }}
-                 ariaLabel="Rows per page for dashboard orders"
-               />
-             )}
+
+            {!isAbandonedQueue && activeOrderStatusFilter === "approved" && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span>to</span>
+                <Select
+                  aria-label="Filter approved orders by district"
+                  data-testid="select-district-filter"
+                  selectedKey={districtFilter}
+                  onSelectionChange={(key) => { setDistrictFilter(String(key)); setOrderPage(0); }}
+                  size="sm"
+                  triggerClassName={sentenceTokenClass(districtFilter !== "all")}
+                  renderValue={sentenceTokenValue}
+                >
+                  <SelectItem id="all">{`All districts (${filteredOrders.length})`}</SelectItem>
+                  {districtCounts.ranked.map((entry) => (
+                    <SelectItem key={entry.name} id={entry.name}>{`${entry.name} (${entry.count})`}</SelectItem>
+                  ))}
+                  {districtCounts.unknown > 0 && (
+                    <SelectItem id={DISTRICT_UNKNOWN_SENTINEL}>{`Unknown (${districtCounts.unknown})`}</SelectItem>
+                  )}
+                </Select>
+              </span>
+            )}
+
+            {!isAbandonedQueue && printFilterOptions && (
+              <>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span>of</span>
+                <Select
+                  aria-label="Filter print orders by product"
+                  data-testid="select-print-product-filter"
+                  selectedKey={printFilters.product}
+                  onSelectionChange={(key) => changePrintFilter({ product: String(key) })}
+                  size="sm"
+                  triggerClassName={sentenceTokenClass(printFilters.product !== "all")}
+                  renderValue={sentenceTokenValue}
+                >
+                  <SelectItem id="all">{`All products (${printFilterOptions.productTotal})`}</SelectItem>
+                  {printFilterOptions.products.map((option) => (
+                    <SelectItem key={option.key} id={option.key}>{`${option.label} (${option.count})`}</SelectItem>
+                  ))}
+                </Select>
+              </span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span>in</span>
+                <Select
+                  aria-label="Filter print orders by pack weight"
+                  data-testid="select-print-weight-filter"
+                  selectedKey={printFilters.weight}
+                  onSelectionChange={(key) => changePrintFilter({ weight: String(key) })}
+                  size="sm"
+                  triggerClassName={sentenceTokenClass(printFilters.weight !== "all")}
+                  renderValue={sentenceTokenValue}
+                >
+                  <SelectItem id="all">{`All weights (${printFilterOptions.weightTotal})`}</SelectItem>
+                  {printFilterOptions.weights.map((option) => (
+                    <SelectItem key={option.key} id={option.key}>{`${option.label} (${option.count})`}</SelectItem>
+                  ))}
+                </Select>
+              </span>
+              </>
+            )}
+
+            {!isAbandonedQueue && showOrdersDateFilter && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span>placed</span>
+                <div data-testid="orders-date-filter" className={cn("flex items-center rounded-lg", ordersDateRange?.from && "bg-sky-50 text-sky-800")}>
+                  <DateRangePicker
+                    value={ordersDateRange}
+                    onChange={(range) => {
+                      setOrdersDateRanges((prev) => ({ ...prev, [activeOrderStatusFilter]: range }));
+                      setOrderPage(0);
+                    }}
+                    placement="bottom start"
+                    variant="plain"
+                  />
+                </div>
+              </span>
+            )}
+
+            {!isAbandonedQueue && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span>from</span>
+                <Select
+                  aria-label="Filter orders by warehouse"
+                  data-testid="select-warehouse-filter"
+                  selectedKey={warehouseFilter}
+                  onSelectionChange={(key) => { setWarehouseFilter(String(key)); setOrderPage(0); }}
+                  size="sm"
+                  triggerClassName={sentenceTokenClass(warehouseFilter !== "all")}
+                >
+                  <SelectItem id="all">All warehouses</SelectItem>
+                  {warehouses.map((warehouse) => <SelectItem key={warehouse.id} id={warehouse.id}>{warehouse.name}</SelectItem>)}
+                </Select>
+              </span>
+            )}
            </div>
 
-          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center justify-end gap-2 max-md:flex-col max-md:items-stretch">
+          <div data-testid="dashboard-order-actions" className="flex flex-wrap items-center justify-end gap-2 max-md:flex-col max-md:items-stretch lg:shrink-0 lg:flex-nowrap">
             <div className="relative max-md:w-full">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder={isAbandonedQueue ? "Search name, phone, address or cart…" : "Search name, phone, order or courier ID…"}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 w-56 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none placeholder:text-black/35 focus-visible:ring-1 focus-visible:ring-black/20 max-md:w-full"
+                className="h-9 w-44 rounded-xl border-0 bg-black/[0.06] pl-8 text-sm shadow-none transition-[width] duration-200 ease-out placeholder:text-black/35 focus-visible:w-60 focus-visible:ring-1 focus-visible:ring-black/20 max-md:w-full max-md:focus-visible:w-full"
                 data-testid="input-search-orders"
               />
             </div>
 
             {!isAbandonedQueue && (
               <>
-              {!isMobile && (
-                <OrderRowsPerPageSelect
-                 pageSize={orderPageSize}
-                 onPageSizeChange={(nextPageSize) => {
-                   setOrderPageSize(nextPageSize);
-                   setOrderPage(0);
-                 }}
-                 ariaLabel="Rows per page for dashboard orders"
-                />
-              )}
-
-            <Select
-              aria-label="Filter orders by warehouse"
-              data-testid="select-warehouse-filter"
-              selectedKey={warehouseFilter}
-              onSelectionChange={(key) => { setWarehouseFilter(String(key)); setOrderPage(0); }}
-              triggerClassName="h-9"
-            >
-              <SelectItem id="all">All warehouses</SelectItem>
-              {warehouses.map((warehouse) => <SelectItem key={warehouse.id} id={warehouse.id}>{warehouse.name}</SelectItem>)}
-            </Select>
-
-            {!isAbandonedQueue && showOrdersDateFilter && (
-              <div data-testid="orders-date-filter" className="flex items-center">
-                <DateRangePicker
-                  value={ordersDateRange}
-                  onChange={(range) => {
-                    setOrdersDateRanges((prev) => ({ ...prev, [activeOrderStatusFilter]: range }));
-                    setOrderPage(0);
-                  }}
-                  placement="bottom start"
-                  variant="toolbar"
-                />
-              </div>
-            )}
-
-            {!isAbandonedQueue && activeOrderStatusFilter === "approved" && (
-              <Select
-                aria-label="Filter approved orders by district"
-                data-testid="select-district-filter"
-                selectedKey={districtFilter}
-                onSelectionChange={(key) => { setDistrictFilter(String(key)); setOrderPage(0); }}
-                triggerClassName="h-9"
-              >
-                <SelectItem id="all">{`All districts (${filteredOrders.length})`}</SelectItem>
-                {districtCounts.ranked.map((entry) => (
-                  <SelectItem key={entry.name} id={entry.name}>{`${entry.name} (${entry.count})`}</SelectItem>
-                ))}
-                {districtCounts.unknown > 0 && (
-                  <SelectItem id={DISTRICT_UNKNOWN_SENTINEL}>{`Unknown (${districtCounts.unknown})`}</SelectItem>
-                )}
-              </Select>
-            )}
-
             <div className="w-px h-4 bg-black/10 max-md:hidden" />
 
             <div className="flex items-center gap-2 max-md:w-full max-md:flex-col max-md:items-stretch">
             {!isAbandonedQueue && activeOrderStatusFilter === "print" && (
-              <PopButton
-                color="sky"
-                size="sm"
+              <GlossButton
+                color="blue"
                 onClick={() => void handlePackingSummary()}
-                disabled={filteredOrders.length === 0}
-                className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
+                disabled={printFilteredOrders.length === 0}
+                className="w-9 px-0 max-md:w-full"
                 data-testid="button-packing-summary"
+                aria-label="Packing Summary"
+                title="Packing Summary"
               >
                 <Printer weight="light" className="h-3.5 w-3.5" />
-                Packing Summary
-              </PopButton>
+                <span className="md:hidden">Packing Summary</span>
+              </GlossButton>
             )}
 
-            <PopButton
-              color="yellow"
-              size="sm"
+            <GlossButton
+              color="mango"
               onClick={() => navigate("/orders/new", { state: { from: location.pathname } })}
               disabled={bulkUpdating || autoSyncing}
-              className="gap-1.5 px-3 text-[11px] font-bold tracking-normal text-black max-md:w-full max-md:justify-center"
+              className="max-md:w-full"
               data-testid="button-create-order"
             >
               <Plus className="h-3.5 w-3.5" />
               Create Order
-            </PopButton>
+            </GlossButton>
 
               <Popover open={bulkMenuOpen} onOpenChange={setBulkMenuOpen}>
               <PopoverTrigger asChild>
-                <PopButton
-                  color="sky"
-                  size="sm"
+                <GlossButton
+                  color="blue"
                   disabled={bulkUpdating || selectedOrderIds.size === 0}
-                  className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
+                  className="max-md:w-full"
                   data-testid="button-bulk-status"
                 >
                   {bulkUpdating ? <Spinner size="sm" /> : <UpdateStatusIcon className="h-3.5 w-3.5" />}
                   Update Status
                   <CaretDown weight="bold" className={cn("h-3 w-3 transition-transform duration-200", bulkMenuOpen && "rotate-180")} />
-                </PopButton>
+                </GlossButton>
               </PopoverTrigger>
               <PopoverContent data-testid="bulk-status-menu" className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="end">
                 <div className="flex flex-col gap-1">
@@ -1872,17 +1899,16 @@ export default function Dashboard() {
               <div className="max-md:w-full">
               <Popover open={abandonedBulkMenuOpen} onOpenChange={setAbandonedBulkMenuOpen}>
                 <PopoverTrigger asChild>
-                  <PopButton
-                    color="sky"
-                    size="sm"
+                  <GlossButton
+                    color="blue"
                     disabled={bulkAbandonedRunning || selectedAbandonedIds.size === 0}
-                    className="gap-1.5 px-3 text-[11px] font-bold tracking-normal max-md:w-full max-md:justify-center"
+                    className="max-md:w-full"
                     data-testid="button-bulk-abandoned-status"
                   >
                     {bulkAbandonedRunning ? <Spinner size="sm" /> : <UpdateStatusIcon className="h-3.5 w-3.5" />}
                     Update Status
                     <CaretDown weight="bold" className={cn("h-3 w-3 transition-transform duration-200", abandonedBulkMenuOpen && "rotate-180")} />
-                  </PopButton>
+                  </GlossButton>
                 </PopoverTrigger>
                 <PopoverContent data-testid="bulk-abandoned-status-menu" className="w-[180px] rounded-2xl border border-black/10 bg-white/95 p-2 shadow-2xl shadow-black/10 backdrop-blur-xl" align="end">
                   <div className="flex flex-col gap-1">
@@ -1920,6 +1946,7 @@ export default function Dashboard() {
             setFulfillmentTab(nextTab);
             setOrderPage(0);
             setDistrictFilter("all");
+            setPrintFilters({ product: "all", weight: "all" });
             if (nextTab === "abandoned" || !DATE_FILTER_TABS.includes(nextTab)) setOrdersDateRanges({});
             if (nextTab !== "cancelled") setCancelReasons(new Set());
             if (nextTab !== "stuck") setFollowUpReasons(new Set());
@@ -2021,8 +2048,18 @@ export default function Dashboard() {
             <OrderTablePagination
               page={orderSafePage}
               pageSize={orderPageSize}
-              totalItems={districtFilteredOrders.length}
+              totalItems={printFilteredOrders.length}
               onPageChange={setOrderPage}
+              pageSizeControl={
+                <OrderRowsPerPageSelect
+                  pageSize={orderPageSize}
+                  onPageSizeChange={(nextPageSize) => {
+                    setOrderPageSize(nextPageSize);
+                    setOrderPage(0);
+                  }}
+                  ariaLabel="Rows per page for dashboard orders"
+                />
+              }
             />
           </>
         )}

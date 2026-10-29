@@ -58,7 +58,7 @@ interface ExpandedLine {
   weightKg: number | null;
 }
 
-function expandOrderLines(order: PackingSummaryOrder): ExpandedLine[] {
+export function expandOrderLines(order: PackingSummaryOrder): ExpandedLine[] {
   if (order.items?.length) {
     return order.items.map((item) => ({
       product: (item.product_name || "").trim() || "Item",

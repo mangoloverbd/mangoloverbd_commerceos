@@ -274,7 +274,7 @@ export function DateRangePicker({
   children?: ReactNode;
   triggerClassName?: string;
   placement?: "bottom" | "bottom start" | "bottom end";
-  variant?: "beam" | "toolbar" | "plain";
+  variant?: "beam" | "toolbar" | "plain" | "glass";
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingValue, setPendingValue] = useState<DateRangeValue | null>(toDateRangeValue(value));
@@ -301,6 +301,12 @@ export function DateRangePicker({
         className="flex items-center rounded-lg px-2 py-1 text-[14px] font-medium text-[#111110] outline-none transition-colors hover:bg-[#F2F1EC] focus-visible:ring-2 focus-visible:ring-black"
       >
         {matchedPreset ?? fmtRange(value)}
+      </AriaButton>
+    ) : variant === "glass" ? (
+      <AriaButton ref={triggerRef} data-testid="button-date-range-picker" className="glass-pill tabular-nums">
+        <CalendarIcon size={14} className="shrink-0 opacity-60" />
+        {fmtRange(value)}
+        <CaretDown weight="light" className="h-3 w-3 opacity-50" />
       </AriaButton>
     ) : (
       <AriaButton
@@ -331,9 +337,9 @@ export function DateRangePicker({
   return (
     <DialogTrigger isOpen={isOpen} onOpenChange={handleOpenChange}>
       {children ? (
-        <div className="mt-4 flex flex-row flex-wrap items-center justify-center gap-4 text-center">
+        <div className={cn("mt-4 flex flex-row flex-wrap items-center justify-center text-center", variant === "glass" ? "gap-2.5" : "gap-4")}>
           {children}
-          <span className={cn("uv-beam rounded-full", triggerClassName)}>{trigger}</span>
+          <span className={cn(variant === "glass" ? "inline-flex" : "uv-beam rounded-full", triggerClassName)}>{trigger}</span>
         </div>
       ) : (
         <span className={cn(variant === "beam" ? "uv-beam rounded-full" : "relative inline-flex", triggerClassName)}>

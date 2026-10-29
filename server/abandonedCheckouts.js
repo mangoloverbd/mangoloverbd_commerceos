@@ -4,6 +4,7 @@ export const ABANDONED_CHECKOUT_SOURCE_PATHS = Object.freeze({
   storefront: "/checkout",
   sundarbans_honey: "/step/sundarbans-natural-honey",
   kalojira_mixed: "/step/kalojira-mixed",
+  homemade_pumpkin_bori: "/step/homemade-pumpkin-bori",
   honey_nut: "/step/honey-nut",
 });
 

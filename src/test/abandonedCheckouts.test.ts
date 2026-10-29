@@ -82,6 +82,12 @@ describe("abandoned checkout capture parsing", () => {
     }
   });
 
+  it("accepts captures from the pumpkin bori landing page", () => {
+    const capture = parseAbandonedCheckoutCapture({ ...validCapture, source: "homemade_pumpkin_bori", sourcePath: "/step/homemade-pumpkin-bori" });
+    expect(capture).toMatchObject({ source: "homemade_pumpkin_bori", sourcePath: "/step/homemade-pumpkin-bori" });
+    expect(() => parseAbandonedCheckoutCapture({ ...validCapture, source: "homemade_pumpkin_bori", sourcePath: "/step/kalojira-mixed" })).toThrow(AbandonedCheckoutValidationError);
+  });
+
   it("canonicalizes the opaque UUID before deriving the server-side order reconciliation hash", () => {
     const uppercaseKey = "7CB13B8E-B576-4FAA-B238-CC8B73059772";
 

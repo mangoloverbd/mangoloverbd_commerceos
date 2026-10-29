@@ -39,6 +39,7 @@ import {
   type AbandonedCheckout,
 } from "@/lib/abandonedCheckouts";
 import {
+  openOrderTabLabel,
   pendingOrderLabel,
   pendingOrdersForPhone,
   type PendingOrderMatch,
@@ -350,18 +351,18 @@ export function AbandonedCheckoutQueue({
                       to={`/orders/${firstPendingMatch.id}`}
                       onClick={(event) => event.stopPropagation()}
                       title={pendingMatches.length === 1
-                        ? `Order ${pendingOrderLabel(firstPendingMatch)} is waiting in Pending. Check it before contacting this customer.`
-                        : `${pendingMatches.length} orders from this customer are waiting in Pending. Check them before contacting.`}
+                        ? `Order ${pendingOrderLabel(firstPendingMatch)} is waiting in ${openOrderTabLabel(firstPendingMatch.tab)}. Check it before contacting this customer.`
+                        : `${pendingMatches.length} orders from this customer are waiting: ${pendingMatches.map((match) => `${pendingOrderLabel(match)} (${openOrderTabLabel(match.tab)})`).join(", ")}. Check them before contacting.`}
                       className="inline-flex items-center rounded-md bg-status-rose-background px-1.5 py-0.5 text-[10.5px] font-medium text-status-rose-text transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
                     >
                       {pendingMatches.length === 1
-                        ? `Already ordered · ${pendingOrderLabel(firstPendingMatch)}`
-                        : `Already ordered · ${pendingMatches.length} pending`}
+                        ? `Already ordered · ${pendingOrderLabel(firstPendingMatch)} · ${openOrderTabLabel(firstPendingMatch.tab)}`
+                        : `Already ordered · ${pendingMatches.length} open orders`}
                     </Link>
                   )}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-black">
-                  <span>{abandonedCheckoutSourceLabel(checkout.source)}</span>
+                  <span>{abandonedCheckoutSourceLabel(checkout.source, checkout.cart)}</span>
                   <span aria-hidden>·</span>
                   <span>{captureTime(checkout.created_at)}</span>
                   <Chip variant="subtle" color="gray" className="tabular-nums">

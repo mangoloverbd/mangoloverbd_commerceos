@@ -288,7 +288,7 @@ describe("dashboard order status filter", () => {
     expect(await screen.findByRole("radio", { name: /All Orders.*3/ })).toBeInTheDocument();
     await user.click(await screen.findByRole("radio", { name: /^Abandoned:.*1/ }));
 
-    const badge = await screen.findByRole("link", { name: "Already ordered · #101" });
+    const badge = await screen.findByRole("link", { name: "Already ordered · #101 · Pending" });
     expect(badge).toHaveAttribute("href", "/orders/pending");
   });
 
@@ -395,13 +395,9 @@ describe("dashboard order status filter", () => {
 
     expect(await screen.findByRole("radio", { name: /All Orders.*25/ })).toBeInTheDocument();
     const pageSize = screen.getByRole("combobox", { name: "Rows per page for dashboard orders" });
-    expect(screen.getByTestId("dashboard-order-toolbar")).toContainElement(pageSize);
-    expect(screen.getByTestId("dashboard-order-actions")).toContainElement(pageSize);
-    expect(
-      screen.getByTestId("input-search-orders").compareDocumentPosition(pageSize)
-        & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(screen.getByTestId("order-pagination-footer")).not.toContainElement(pageSize);
+    // Rows per page lives beside the page number so the toolbar stays one line.
+    expect(screen.getByTestId("order-pagination-footer")).toContainElement(pageSize);
+    expect(screen.getByTestId("dashboard-order-toolbar")).not.toContainElement(pageSize);
     pageSize.focus();
     await user.keyboard("{Enter}{Home}{Enter}");
 
