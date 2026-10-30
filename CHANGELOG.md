@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.82] - 2026-10-31
+
+### Changed
+
+- The Abandoned tab goes back to checking for new carts every 60 seconds, as before 0.1.0.81.
+
 ## [0.1.0.81] - 2026-10-31
 
 ### Changed
