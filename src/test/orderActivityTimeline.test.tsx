@@ -220,7 +220,8 @@ describe("OrderActivityTimeline", () => {
   });
 
   it("uses the row's middle space for the change and keeps the exact time under the heading", async () => {
-    const occurredAt = "2026-09-23T06:36:37.000Z";
+    // Relative to now: after 30 days the row's time falls back to the exact timestamp.
+    const occurredAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     renderTimeline([{
       id: "status-2",
       occurred_at: occurredAt,

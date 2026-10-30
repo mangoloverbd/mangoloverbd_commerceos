@@ -1,4 +1,4 @@
-import JsBarcode from "jsbarcode";
+import QRCode from "qrcode";
 
 export interface ShippingLabelItem {
   product_name: string | null;
@@ -83,21 +83,20 @@ export function getShippingLabelCn(order: ShippingLabelOrder): string | null {
   return null;
 }
 
-function barcodeSvg(cn: string) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", "barcode");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `CN barcode ${cn}`);
-  JsBarcode(svg, cn, {
-    format: "CODE128",
-    displayValue: false,
-    background: "#ffffff",
-    lineColor: "#000000",
-    width: 1.35,
-    height: 48,
-    margin: 0,
-  });
-  return new XMLSerializer().serializeToString(svg);
+// The QR holds only the CN. Thermal printers smeared the old thin line barcode
+// into bars Steadfast's scanner could not read; a 0.9in QR prints ~6 dots per square.
+const QR_QUIET_ZONE = 4;
+
+function qrSvg(cn: string) {
+  const { modules } = QRCode.create(cn, { errorCorrectionLevel: "M" });
+  const squares: string[] = [];
+  for (let y = 0; y < modules.size; y += 1) {
+    for (let x = 0; x < modules.size; x += 1) {
+      if (modules.get(y, x)) squares.push(`M${x + QR_QUIET_ZONE} ${y + QR_QUIET_ZONE}h1v1h-1z`);
+    }
+  }
+  const size = modules.size + QR_QUIET_ZONE * 2;
+  return `<svg class="qr" role="img" aria-label="CN QR code ${escapeHtml(cn)}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="#fff"/><path d="${squares.join("")}"/></svg>`;
 }
 
 function productRows(order: ShippingLabelOrder) {
@@ -142,13 +141,15 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
         <header class="brand-header">
           <img src="/mango-lover-print-logo.png" alt="${escapeHtml(businessName)}" />
         </header>
-        <div class="barcode-wrap">${barcodeSvg(cn)}</div>
-        <div class="cn"><span>CN:</span> ${escapeHtml(cn)}</div>
-        <div class="recipient-details">
-          <div class="shipment-meta">
+        <div class="qr-row">
+          ${qrSvg(cn)}
+          <div class="qr-info">
+            <div class="meta-field cn-field"><span>CN</span><strong>${escapeHtml(cn)}</strong></div>
             <div class="meta-field"><span>ORDER</span><strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></div>
             <div class="meta-field"><span>COD</span><strong>${formatCod(order)}</strong></div>
           </div>
+        </div>
+        <div class="recipient-details">
           <div class="customer-label">CUSTOMER</div>
           <div class="recipient-name">${escapeHtml(customerName)}</div>
           <div class="recipient-phone">${escapeHtml(phone)}</div>
@@ -206,16 +207,15 @@ export function buildShippingLabelHtml(
             .label-summary { flex: 0 0 auto; }
             .brand-header { height: 0.25in; display: flex; align-items: center; justify-content: center; padding: 0.01in 0.16in; }
             .brand-header img { display: block; max-width: 2.04in; max-height: 0.22in; filter: grayscale(1) brightness(0); }
-            .barcode-wrap { height: 0.32in; display: flex; align-items: center; justify-content: center; padding: 0.008in 0.08in 0; }
-            .barcode { display: block; width: 100%; height: 0.29in; }
-            .cn { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 0.018in 0; text-align: center; font-size: 14px; line-height: 1; font-weight: 800; letter-spacing: 0.5px; }
-            .cn span { font-size: 12px; }
+            .qr-row { display: grid; grid-template-columns: 0.9in minmax(0, 1fr); gap: 0.06in; align-items: center; padding: 0.02in 0 0.03in; border-top: 1px dashed #000; border-bottom: 1px solid #000; }
+            .qr { display: block; width: 0.9in; height: 0.9in; }
+            .qr-info { display: grid; gap: 0.05in; }
             .recipient-details { padding: 0.025in 0.025in 0.03in; border-bottom: 1px solid #000; }
-            .shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.08in; padding-bottom: 0.025in; border-bottom: 1px solid #000; }
             .meta-field { min-width: 0; }
             .meta-field span, .customer-label { display: block; font-size: 6px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
             .meta-field strong { display: block; margin-top: 0.012in; font-size: 11px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }
-            .customer-label { margin-top: 0.025in; }
+            .cn-field strong { font-size: 19px; letter-spacing: 0.04em; }
+            .customer-label { margin-top: 0.01in; }
             .recipient-name { margin-top: 0.015in; font-size: 13px; line-height: 1.1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.015em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
             .recipient-phone { margin-top: 0.03in; font-size: 20px; line-height: 1; font-weight: 800; letter-spacing: 0.06em; white-space: nowrap; }
             table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 0.035in; font-size: 10px; line-height: 1.08; }
