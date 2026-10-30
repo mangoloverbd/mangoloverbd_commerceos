@@ -831,7 +831,13 @@ export default function Dashboard() {
     void fetchAbandonedCheckouts();
   }, [fetchAbandonedCheckouts, roleLoading, user?.id]);
 
-  useVisibleInterval(() => void fetchAbandonedCheckouts(true), 60000, Boolean(user?.id) && !roleLoading);
+  // Staff watching the Abandoned tab see new checkouts within seconds; elsewhere
+  // the count only needs a slow background refresh.
+  useVisibleInterval(
+    () => void fetchAbandonedCheckouts(true),
+    fulfillmentTab === "abandoned" ? 10000 : 60000,
+    Boolean(user?.id) && !roleLoading,
+  );
 
   // Silent analytics tick keeps the selected range's metric values and mini
   // bars current without flashing the skeleton loader.

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.81] - 2026-10-31
+
+### Changed
+
+- The Abandoned tab checks for new carts every 10 seconds while it is open, instead of every 60 seconds, so a new abandoned cart shows up within about 10 seconds without refreshing the page. Other tabs still refresh abandoned carts every 60 seconds, and nothing refreshes while the browser tab is hidden.
+
 ## [0.1.0.80] - 2026-10-30
 
 ### Changed
