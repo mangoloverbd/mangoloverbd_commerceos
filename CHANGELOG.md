@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.80] - 2026-10-30
+
+### Changed
+
+- Shipping labels print a QR code instead of the thin line barcode, because Steadfast's scanner could not read the barcode. The QR holds only the CN number. It is 0.9 inch square, so each square prints about 6 thermal-printer dots wide; the old barcode's bars were under 2 dots wide and printed unevenly. The CN, order number and COD sit beside the QR, the CN in large text so a rider can still type it in. Five product rows still fit on the label.
+
 ## [0.1.0.79] - 2026-10-29
 
 ### Added

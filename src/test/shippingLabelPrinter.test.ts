@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import QRCode from "qrcode";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -82,7 +83,6 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("<title></title>");
     expect(result.html).not.toContain("Mango Lover BD Shipping Label");
     expect(result.html).toContain("999");
-    expect(result.html).toContain('<div class="shipment-meta">');
     expect(result.html).toContain(
       '<div class="meta-field"><span>ORDER</span><strong>#ML567907</strong></div>',
     );
@@ -97,9 +97,6 @@ describe("shipping label HTML", () => {
     expect(result.html).not.toContain('class="address-label"');
     expect(result.html).not.toContain("ADDRESS");
     expect(result.html).not.toContain("Dhaka");
-    expect(result.html).toContain(
-      ".shipment-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));",
-    );
     expect(result.html).not.toContain('class="cod-box"');
     expect(result.html).not.toContain("DELIVER TO");
     expect(result.html).not.toContain("<b>Name:</b>");
@@ -115,8 +112,6 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("<tr><th>পণ্য</th><th>ওজন</th><th>পরিমাণ</th></tr>");
     expect(result.html).not.toContain("<th>Variant</th>");
     expect(result.html).not.toContain('<td class="variant">');
-    expect(result.html).toMatch(/<svg[^>]+class="barcode"/);
-    expect(result.html).toContain("<rect");
   });
 
   it("keeps a long customer name from pushing the phone off the label", () => {
@@ -229,6 +224,43 @@ describe("shipping label HTML", () => {
     expect(result.html).toContain("Dried Mango");
     expect(result.html).toContain('<td class="quantity">৩</td>');
     expect(result.html).toContain('<td class="weight">—</td>');
+  });
+});
+
+describe("shipping label CN QR code", () => {
+  const html = () => {
+    const result = buildShippingLabelHtml([makeOrder({ consignment_id: 314000072 })]);
+    if (!result.ok) throw new Error("Expected printable label HTML");
+    return result.html;
+  };
+
+  it("replaces the thin line barcode with a QR code", () => {
+    expect(html()).toMatch(/<svg[^>]+class="qr"[^>]+aria-label="CN QR code 314000072"/);
+    expect(html()).not.toContain('class="barcode"');
+  });
+
+  it("encodes only the CN, square by square, with a four-module quiet zone", () => {
+    const { modules } = QRCode.create("314000072", { errorCorrectionLevel: "M" });
+    const expected: string[] = [];
+    for (let y = 0; y < modules.size; y += 1) {
+      for (let x = 0; x < modules.size; x += 1) {
+        if (modules.get(y, x)) expected.push(`M${x + 4} ${y + 4}h1v1h-1z`);
+      }
+    }
+
+    expect(html()).toContain(`viewBox="0 0 ${modules.size + 8} ${modules.size + 8}"`);
+    expect(html()).toContain(`<path d="${expected.join("")}"/>`);
+  });
+
+  it("prints the QR large and keeps the CN readable beside it", () => {
+    expect(html()).toContain(".qr { display: block; width: 0.9in; height: 0.9in; }");
+    // The CN size must come after the shared .meta-field strong size or it is overridden.
+    expect(html().indexOf(".cn-field strong { font-size: 19px;")).toBeGreaterThan(
+      html().indexOf(".meta-field strong {"),
+    );
+    expect(html()).toContain(
+      '<div class="meta-field cn-field"><span>CN</span><strong>314000072</strong></div>',
+    );
   });
 });
 
