@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import Dashboard from "@/pages/Dashboard";
 
 const apiFetch = vi.hoisted(() => vi.fn());
@@ -145,6 +145,10 @@ describe("dashboard order status filter", () => {
   });
 
   it("loads the picked date range from the server so orders beyond the dashboard's loaded list still appear", async () => {
+    // The calendar opens on the current month; pin "today" so September 2026 is on screen.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 15, 12));
+    onTestFinished(() => { vi.useRealTimers(); });
     const user = userEvent.setup();
     // Older than anything in the main /api/orders load (the server caps that list).
     const olderDelivered = {
