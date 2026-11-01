@@ -63,10 +63,10 @@ describe("GET /api/orders delta sync", () => {
     expect(warehouseGuards.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("shares one item-attachment helper between the full, delta and date-range paths", () => {
+  it("shares one item-attachment helper between the full, delta, date-range and first-page paths", () => {
     const route = ordersListHandler();
     const helperCalls = route.match(/await attachOrderItems\(/g) || [];
-    expect(helperCalls.length).toBe(3);
+    expect(helperCalls.length).toBe(4);
     expect((route.match(/enrichOrderItems\(/g) || []).length).toBe(1);
   });
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "@/pages/Dashboard";
@@ -56,6 +56,7 @@ describe("dashboard orders sync on open", () => {
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/orders" && !init?.method) return jsonResponse({ orders: [order], totalCount: 1, syncedAt: "2026-09-27T00:00:00.000Z" });
+      if (url.startsWith("/api/orders?limit=")) return jsonResponse({ orders: [order], totalCount: 1, partial: true });
       if (url.startsWith("/api/orders?changed_since=")) return jsonResponse({ orders: [], totalCount: 1, syncedAt: "2026-09-27T00:00:00.000Z", delta: true });
       if (url === "/api/products") return jsonResponse({ products: [] });
       if (url.startsWith("/api/analytics")) {
@@ -90,5 +91,32 @@ describe("dashboard orders sync on open", () => {
       expect(calls((url) => url.startsWith("/api/orders?changed_since=")).length).toBeGreaterThanOrEqual(1);
     });
     expect(calls((url, init) => url === "/api/orders" && !init?.method)).toHaveLength(1);
+  });
+
+  it("shows the newest orders before the full list arrives, with tab counts waiting for it", async () => {
+    let resolveFull: (value: unknown) => void = () => {};
+    const full = new Promise((resolve) => { resolveFull = resolve; });
+    const baseImpl = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/orders" && !init?.method) return full;
+      if (url.startsWith("/api/orders?limit=")) return jsonResponse({ orders: [order], totalCount: 5, partial: true });
+      return baseImpl(url, init);
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter>
+            <Dashboard />
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Test Customer")).toBeInTheDocument();
+    expect(screen.getByTestId("order-status-count-pending")).toHaveTextContent("—");
+
+    resolveFull(jsonResponse({ orders: [order], totalCount: 1, syncedAt: "2026-09-27T00:00:00.000Z" }));
+    await waitFor(() => expect(screen.getByTestId("order-status-count-pending")).toHaveTextContent("1"));
   });
 });

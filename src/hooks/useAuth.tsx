@@ -2,6 +2,7 @@ import { useState, useEffect, createContext, useContext, ReactNode, useRef } fro
 import { User, Session } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { setOrdersSyncUser } from "@/lib/ordersSync";
 
 interface AuthContextType {
   user: User | null;
@@ -30,6 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
       previousUserIdRef.current = nextUserId;
     }
+    // Before user is set, so the first orders sync can read this user's saved list.
+    setOrdersSyncUser(nextUserId);
 
     setSession(nextSession);
     setUser(nextUser);
@@ -71,6 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     queryClient.clear();
+    // Wipes the order list saved in this browser.
+    setOrdersSyncUser(null);
     await supabase.auth.signOut();
   };
 
