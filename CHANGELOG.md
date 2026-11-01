@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.84] - 2026-11-01
+
+### Changed
+
+- When the storefront's order endpoint refuses an order because a pack is out of stock, the product or pack is no longer available, or delivery cannot be calculated, the response now carries a reason code (`out_of_stock`, `product_unavailable`, `shipping_unavailable`), so the storefront can tell the customer why instead of showing a generic failure.
+
 ## [0.1.0.83] - 2026-11-01
 
 ### Changed

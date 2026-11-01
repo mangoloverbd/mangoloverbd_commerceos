@@ -15382,12 +15382,13 @@ async function handlePublicHandleOrderSubmit(req, res) {
 
     for (const item of items) {
       const variant = variantMap[item.variantId];
+      // `code` lets the storefront tell the customer why the order was refused.
       if (!variant) {
-        return res.status(400).json({ error: `Variant not found or doesn't belong to this store` });
+        return res.status(400).json({ error: `Variant not found or doesn't belong to this store`, code: "product_unavailable" });
       }
       const product = productMap[variant.product_id];
       if (!product) {
-        return res.status(400).json({ error: `Product is no longer available` });
+        return res.status(400).json({ error: `Product is no longer available`, code: "product_unavailable" });
       }
 
       const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
@@ -15395,6 +15396,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
         const attrStr = Object.entries(variant.attributes || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
         return res.status(400).json({
           error: `Insufficient stock for "${product.name}"${attrStr ? ` (${attrStr})` : ""}. Available: ${variant.stock_quantity}`,
+          code: "out_of_stock",
         });
       }
 
@@ -15432,7 +15434,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
     } else {
       const shippingResult = calculateStorefrontShippingCost(subtotal, shippingZoneId, shippingZones);
       if (shippingResult.error) {
-        return res.status(400).json({ error: shippingResult.error });
+        return res.status(400).json({ error: shippingResult.error, code: "shipping_unavailable" });
       }
       shipping = shippingResult.cost;
     }
