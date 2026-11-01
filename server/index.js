@@ -6876,6 +6876,30 @@ app.get("/api/orders", async (req, res) => {
       return res.json({ orders: rangeOrders, totalCount: rangeOrders.length });
     }
 
+    // Optional first page (?limit=N): only the newest N orders, so a cold
+    // dashboard shows its table while the full list loads in the background.
+    if (req.query.limit !== undefined) {
+      const limit = Number(req.query.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+        return res.status(400).json({ error: "limit must be an integer from 1 to 1000" });
+      }
+      let firstPageQuery = supabase
+        .from("orders")
+        .select("*", { count: "exact" })
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(0, limit - 1);
+      if (warehouseFilter) {
+        firstPageQuery = firstPageQuery.eq("warehouse_id", warehouseFilter);
+      }
+      const { data: firstPageRows, count: firstPageCount, error: firstPageError } = await firstPageQuery;
+      if (firstPageError) throw firstPageError;
+      const { ordersWithItems: firstPageOrders } = await attachOrderItems(firstPageRows || []);
+      console.log(`[Orders] first_page=${firstPageOrders.length}`);
+      return res.json({ orders: firstPageOrders, totalCount: firstPageCount ?? firstPageOrders.length, partial: true });
+    }
+
     // One full-list load per workspace (and warehouse filter) at a time.
     // Staff tabs that ask while it runs share it instead of each reading
     // every order again, which used to exhaust the database connections.

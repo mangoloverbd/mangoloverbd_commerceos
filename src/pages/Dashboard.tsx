@@ -2,7 +2,7 @@ import { memo, startTransition, useState, useEffect, useMemo, useCallback, useRe
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueries, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import { OrdersSyncError, syncOrders } from "@/lib/ordersSync";
+import { getOrdersPreview, OrdersSyncError, subscribeOrdersPreview, syncOrders, type OrdersPreview } from "@/lib/ordersSync";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useOrgName } from "@/hooks/useOrgName";
@@ -530,10 +530,19 @@ function rangeOrdersDataOf(results: UseQueryResult<Order[]>[]) {
 export default function Dashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [orders, setOrders] = useState<Order[]>(() => queryClient.getQueryData<Order[]>(["/api/orders"]) || []);
-  const [loading, setLoading] = useState(() => !queryClient.getQueryData<Order[]>(["/api/orders"]));
+  // Without a cached list, a first page loaded ahead of the full list is shown.
+  const [orders, setOrders] = useState<Order[]>(
+    () => queryClient.getQueryData<Order[]>(["/api/orders"]) || getOrdersPreview<Order>()?.orders || [],
+  );
+  const [loading, setLoading] = useState(
+    () => !queryClient.getQueryData<Order[]>(["/api/orders"]) && !getOrdersPreview(),
+  );
+  // True while only the first page is shown: tab counts wait for the full list.
+  const [ordersPartial, setOrdersPartial] = useState(
+    () => !queryClient.getQueryData<Order[]>(["/api/orders"]) && Boolean(getOrdersPreview()),
+  );
   const [totalOrdersCount, setTotalOrdersCount] = useState<number | null>(
-    () => queryClient.getQueryData<number>(["/api/orders/count"]) ?? null,
+    () => queryClient.getQueryData<number>(["/api/orders/count"]) ?? getOrdersPreview()?.totalCount ?? null,
   );
   const cachedAbandonedResponse = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"]);
   const [abandonedCheckouts, setAbandonedCheckouts] = useState<AbandonedCheckout[]>(
@@ -662,7 +671,7 @@ export default function Dashboard() {
   // Hoisted to useCallback so effects can reference it without stale closures
   // Polls sync by delta; pass { full: true } after actions that change many
   // orders, or { fresh: true } to pick up a known change without a full reload.
-  const fetchOrders = useCallback(async (opts: { full?: boolean; fresh?: boolean } = {}) => {
+  const fetchOrders = useCallback(async (opts: { full?: boolean; fresh?: boolean; firstPage?: boolean } = {}) => {
     try {
       // Orders already on screen means this is a refresh (see the transition below).
       const isRefresh = Boolean(queryClient.getQueryData<Order[]>(["/api/orders"])?.length);
@@ -673,6 +682,7 @@ export default function Dashboard() {
       const apply = () => {
         setOrders(nextOrders);
         setTotalOrdersCount(nextTotalOrdersCount);
+        setOrdersPartial(false);
       };
       // A refresh re-renders the whole table; as a transition React renders it in
       // slices, so it never freezes the page (or its entrance) for a few hundred ms.
@@ -734,20 +744,31 @@ export default function Dashboard() {
     }
   }, [queryClient]);
 
+  // Orders that can be shown before the running sync finishes: the list saved in
+  // this browser (complete) or the newest first page (partial).
+  useEffect(() => subscribeOrdersPreview<Order>((preview: OrdersPreview<Order>) => {
+    setOrders(preview.orders);
+    setTotalOrdersCount(preview.totalCount);
+    setOrdersPartial(preview.partial);
+    setLoading(false);
+  }), []);
+
   // Rehydrate user-scoped cached data. On a route remount this preserves the
   // existing P&L section instead of replacing it with skeletons.
   useEffect(() => {
     const cachedOrders = queryClient.getQueryData<Order[]>(["/api/orders"]);
+    const earlyOrders = cachedOrders ? null : getOrdersPreview<Order>();
     const cachedAbandoned = queryClient.getQueryData<AbandonedCheckoutResponse>(["/api/abandoned-checkouts"]);
     const cached = cachedSnapshotFor(dateRange, user?.id);
-    setOrders(cachedOrders || []);
+    setOrders(cachedOrders || earlyOrders?.orders || []);
+    setOrdersPartial(Boolean(earlyOrders));
     setAbandonedCheckouts(cachedAbandoned?.checkouts || []);
     setAbandonedActiveCount(cachedAbandoned?.activeCount ?? cachedAbandoned?.checkouts.length ?? 0);
     setAbandonedLoading(!cachedAbandoned);
     setAbandonedError(null);
     setAnalytics(cached?.analytics ?? null);
     setPrevAnalytics(cached?.prev ?? null);
-    setLoading(!cachedOrders);
+    setLoading(!cachedOrders && !earlyOrders);
     setAnalyticsLoading(!cached?.analytics);
   }, [dateRange, queryClient, user?.id]);
 
@@ -785,8 +806,9 @@ export default function Dashboard() {
     const alreadySynced = sessionStorage.getItem(syncKey);
 
     const runAutoSync = async () => {
-      // Load orders from DB immediately — don't wait for Shopify sync
-      fetchOrders();
+      // Load orders from DB immediately — don't wait for Shopify sync. With
+      // nothing cached, the newest page is shown while the full list loads.
+      fetchOrders({ firstPage: true });
 
       // Refresh Pathao courier statuses in background, at most once per 10
       // minutes per browser tab session. The timestamp is only recorded when
@@ -1941,7 +1963,7 @@ export default function Dashboard() {
           hiddenStatuses={["ready_to_ship"]}
           abandonedCount={abandonedActiveCount}
           value={fulfillmentTab}
-          loading={isAbandonedQueue ? abandonedLoading : loading}
+          loading={isAbandonedQueue ? abandonedLoading : loading || ordersPartial}
           onChange={(nextTab) => {
             setFulfillmentTab(nextTab);
             setOrderPage(0);

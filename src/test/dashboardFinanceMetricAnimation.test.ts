@@ -42,11 +42,12 @@ describe("dashboard P&L metric animation", () => {
     const fetchStart = source.indexOf("const fetchAnalytics", dashboardStart);
     const initialStateSource = source.slice(dashboardStart, fetchStart);
 
+    // Cached list first; without one, a first page already loaded by the sync.
     expect(initialStateSource).toContain(
-      'useState<Order[]>(() => queryClient.getQueryData<Order[]>(["/api/orders"]) || [])',
+      '() => queryClient.getQueryData<Order[]>(["/api/orders"]) || getOrdersPreview<Order>()?.orders || []',
     );
     expect(initialStateSource).toContain(
-      'useState(() => !queryClient.getQueryData<Order[]>(["/api/orders"]))',
+      '() => !queryClient.getQueryData<Order[]>(["/api/orders"]) && !getOrdersPreview()',
     );
     expect(initialStateSource).not.toContain("const [loading, setLoading] = useState(true)");
   });

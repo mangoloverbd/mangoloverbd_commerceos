@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.83] - 2026-11-01
+
+### Changed
+
+- The Orders page opens faster after a reload. The browser keeps the last full order list, so a reload shows it straight away and then fetches only the orders that changed since. The saved list is deleted on sign-out, when another person signs in, and once it is a day old.
+- When no saved list is available (first visit, a new device, or after signing out), the newest 200 orders show first while the rest load in the background. The tab counts show "—" until the full list is in.
+
 ## [0.1.0.82] - 2026-10-31
 
 ### Changed
