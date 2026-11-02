@@ -6,6 +6,7 @@ import { buildPersonalDataScrubPatch, parseAbandonedCheckoutCapture, hashAbandon
 import { storefrontVisibleVariants } from "../../server/publicCatalog.js";
 import { analyticsSessionFromHeaders, isAnalyticsId } from "../../server/websiteAnalytics.js";
 import { signCampaignReceipt } from "../../server/campaignEvents.js";
+import { applyOrderOffers } from "../../server/orderOffers.js";
 
 const body = { customerName: "Customer", phone: "01712345678", address: "House 12, Road 8, Dhaka", items: [{ variantId: uuid(20), quantity: 2 }], abandonedCheckoutDraftKey: uuid(30), campaign_link_id: uuid(999), campaign_attributed_at: "2000-01-01T00:00:00Z" };
 const captureBody = { draftKey: uuid(30), source: "storefront", sourcePath: "/checkout", customerName: "Customer", phone: "01712345678", address: "Dhaka", items: [{ productName: "Honey", variantName: null, quantity: 2, unitPrice: 100 }], subtotal: 200, deliveryRate: 0, total: 200 };
@@ -18,7 +19,7 @@ function fixture(extra: Record<string, unknown> = {}, seed: Record<string, Recor
     redisClient: null, getTrustedRequestIp: () => "203.0.113.5", normalizeLandingPagePath: () => null,
     deviceHashFromContext: () => null, isBlockedCustomer: async () => false,
     assessOrderRisk: risk, finalizeOrderRisk: async () => {}, storefrontVisibleVariants, resolveOrderRouting: async () => ({ warehouseId: null, weightKg: null, resolvedItems: [{}, {}] }),
-    calculateStorefrontShippingCost: () => ({ cost: 0 }), cartHasFreeDeliveryProduct: () => false,
+    calculateStorefrontShippingCost: () => ({ cost: 0 }), cartHasFreeDeliveryProduct: () => false, applyOrderOffers,
     getNextManualOrderNumber: async () => 1001, purgeProductCache: async () => {}, checkStorefrontOrderFraud: () => {},
     recordOrderActivity: async () => {}, buildDetailedActivityEvent: () => ({}), sendBulkSms: async () => {},
     customStoreApiKeyFromRequest: () => "server-key", resolveCustomStoreOrgId: async () => orgId, allowAbandonedCheckoutCapture: async () => true, recordAbandonedRiskLinks: async () => {},
@@ -232,5 +233,39 @@ describe("website visit linkage through actual purchase HTTP handlers", () => {
       cart: captureBody.items, phone: body.phone, customer_name: body.customerName, address: body.address, delivery_rate: 0 }] });
     expect((await http(converted.app, "POST", `/api/abandoned-checkouts/${uuid(31)}/convert`, { status: "pending" })).status).toBe(201);
     expect(factCalls(converted.db)).toHaveLength(0);
+  });
+});
+
+describe("bori + mustard oil offer through the actual purchase handler", () => {
+  const BORI = "db9134d3-4771-4f66-960c-7fac1fb782e1";
+  const BORI_1KG = "c5d6dba4-4a34-4980-9a55-e05b273ad673";
+  const OIL = "363dae9a-5135-4f40-9379-3f1764b0377c";
+  const OIL_1L = "823862e1-56f9-4594-9191-a50c43a0f75d";
+  const catalog = {
+    product_variants: [
+      { id: BORI_1KG, org_id: orgId, product_id: BORI, stock_quantity: 50, attributes: { size: "১ কেজি" }, price_adjustment: 250 },
+      { id: OIL_1L, org_id: orgId, product_id: OIL, stock_quantity: 50, attributes: { size: "১ লিটার" }, price_adjustment: 0 },
+    ],
+    products: [
+      { id: BORI, org_id: orgId, name: "হোমমেড কুমড়ো বড়ি | Homemade Pumpkin Bori", selling_price: 400, published: true },
+      { id: OIL, org_id: orgId, name: "সরিষার তেল | Mustard Oil", selling_price: 350, published: true },
+    ],
+  };
+  const order = (items: { variantId: string; quantity: number }[]) => ({ ...body, abandonedCheckoutDraftKey: undefined, items });
+
+  it("charges ৳280 for one bottle ordered with bori", async () => {
+    const { app, db } = fixture({}, catalog);
+    const result = await http(app, "POST", "/api/public/v1/mangoloverbd/orders", order([{ variantId: BORI_1KG, quantity: 1 }, { variantId: OIL_1L, quantity: 1 }]), signedHeaders());
+    expect(result.status).toBe(200);
+    expect(db.tables.orders[0].price).toBe(930);
+    expect(db.tables.order_items.find(row => row.variant_id === OIL_1L)?.unit_price).toBe(280);
+    expect(db.tables.order_items.find(row => row.variant_id === BORI_1KG)?.unit_price).toBe(650);
+  });
+
+  it("charges the catalog ৳350 for the bottle on its own", async () => {
+    const { app, db } = fixture({}, catalog);
+    const result = await http(app, "POST", "/api/public/v1/mangoloverbd/orders", order([{ variantId: OIL_1L, quantity: 1 }]), signedHeaders());
+    expect(result.status).toBe(200);
+    expect(db.tables.orders[0].price).toBe(350);
   });
 });

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0.87] - 2026-11-02
+
+### Added
+
+- Bori + mustard oil offer. A website order that includes Homemade Pumpkin Bori gets one 1-litre bottle of mustard oil at ৳280 instead of ৳350. The server applies the price on order submit and when a held order is approved; mustard oil ordered without bori, or more than one bottle, keeps the catalog price.
+- New public endpoint `GET /api/public/v1/:handle/order-offers` (also under `/storefronts/:storefrontId/`) so the storefront can show the offer with its live price and stock. It returns an empty list when the bottle cannot be sold.
+
 ## [0.1.0.86] - 2026-11-02
 
 ### Changed
