@@ -21,6 +21,7 @@ import { buildCampaignReport, resolveCampaignReportRequest, redactCampaignFinanc
 import { buildOverviewData } from "./overview.js";
 import { HISTORY_DAYS as STOCK_FORECAST_HISTORY_DAYS, buildStockForecast } from "./stockForecast.js";
 import { calculateStorefrontShippingCost, cartHasFreeDeliveryProduct } from "./shippingCalculation.js";
+import { MUSTARD_OIL_1L_VARIANT_ID, applyOrderOffers, buildBoriMustardOilOffer } from "./orderOffers.js";
 import {
   computeOrderWeightKg,
   parseOptionalWeightKg,
@@ -14869,6 +14870,9 @@ async function approveHeldProtectionReview(supabase, orgId, reviewId) {
     });
     subtotal += unitPrice * quantity;
     }
+    // Offer prices (e.g. bori + mustard oil) must match what the customer saw at submit.
+    orderItems.splice(0, orderItems.length, ...applyOrderOffers(orderItems));
+    subtotal = orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
 
     let shipping = 0;
     let shippingZones = [];
@@ -15478,6 +15482,9 @@ async function handlePublicHandleOrderSubmit(req, res) {
       });
       subtotal += lineTotal;
     }
+    // Server-side offer prices (e.g. one bori + mustard oil bottle at ৳280).
+    orderItems.splice(0, orderItems.length, ...applyOrderOffers(orderItems));
+    subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
     // ── Shipping calculation ─────────────────────────────────────────────
     let shipping = 0;
@@ -15757,7 +15764,43 @@ async function handlePublicHandleProductInventory(req, res) {
   }
 }
 
+// Checkout add-on offers. Prices here are display-only; order submit re-prices
+// every item with applyOrderOffers, so the storefront never sets a price.
+async function handlePublicHandleOrderOffers(req, res) {
+  res.set("Cache-Control", "no-store");
+  try {
+    const orgId = req.params.storefrontId || (await resolveStorefrontHandle(req.params.handle));
+    if (!orgId) return res.status(404).json({ error: "not_found" });
+    const supabase = getServiceSupabase();
+    const { data: variant, error: variantError } = await supabase
+      .from("product_variants")
+      .select("id, product_id, attributes, price_adjustment, stock_quantity, storefront_visible")
+      .eq("id", MUSTARD_OIL_1L_VARIANT_ID)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (variantError) throw variantError;
+    let product = null;
+    if (variant) {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, slug, selling_price, published, image_url")
+        .eq("id", variant.product_id)
+        .eq("org_id", orgId)
+        .eq("published", true)
+        .maybeSingle();
+      if (error) throw error;
+      product = data;
+    }
+    const offer = buildBoriMustardOilOffer(variant, product);
+    return res.json({ offers: offer ? [offer] : [] });
+  } catch (e) {
+    console.error("[OrderOffers] failed:", e?.message);
+    return res.status(500).json({ error: "offers_unavailable" });
+  }
+}
+
 app.get("/api/public/v1/:handle/config", rateLimitPublicRead, handlePublicHandleConfig);
+app.get("/api/public/v1/:handle/order-offers", rateLimitPublicRead, handlePublicHandleOrderOffers);
 app.get("/api/public/v1/:handle/products", rateLimitPublicRead, handlePublicHandleProducts);
 app.post("/api/public/v1/:handle/orders", handlePublicHandleOrderSubmit);
 app.get("/api/public/v1/:handle/products/:slug", rateLimitPublicRead, handlePublicHandleProductDetail);
@@ -15768,6 +15811,7 @@ app.get("/api/public/v1/storefronts/:storefrontId/products", rateLimitPublicRead
 app.get("/api/public/v1/storefronts/:storefrontId/products/:slug", rateLimitPublicRead, handlePublicStorefrontProductDetail);
 app.get("/api/public/v1/storefronts/:storefrontId/products/:slug/inventory", rateLimitPublicRead, handlePublicHandleProductInventory);
 app.get("/api/public/v1/storefronts/:storefrontId/inventory", rateLimitPublicRead, handlePublicHandleInventory);
+app.get("/api/public/v1/storefronts/:storefrontId/order-offers", rateLimitPublicRead, handlePublicHandleOrderOffers);
 
 app.get("/api/public/storefronts/:storefrontId/products", (req, res) => {
   setDeprecationHeaders(res, `/api/public/v1/storefronts/${req.params.storefrontId}/products`);

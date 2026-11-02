@@ -44,12 +44,14 @@ describe("campaign receipt signatures", () => {
     const foreignLinkId = uuid(91);
     const db = database({ campaign_links: [{ id: event.linkId, org_id: orgId, slug: "mango-reel" }, { id: foreignLinkId, org_id: foreignOrg, slug: "foreign" }] });
     const { app } = handlers(db);
-    const token = signCampaignReceipt(event, secret);
+    // The handler checks receipts against the real clock, so the click must be recent.
+    const liveEvent = { ...event, clickedAt: new Date(Date.now() - 1000).toISOString() };
+    const token = signCampaignReceipt(liveEvent, secret);
     expect((await http(app, "POST", "/api/public/v1/mangoloverbd/campaign-click-events", undefined, { "x-mlbd-campaign-receipt": token })).status).toBe(202);
-    expect(db.tables.campaign_link_clicks[0]).toMatchObject({ id: event.clickId, org_id: orgId, link_id: event.linkId, clicked_at: event.clickedAt });
+    expect(db.tables.campaign_link_clicks[0]).toMatchObject({ id: event.clickId, org_id: orgId, link_id: event.linkId, clicked_at: liveEvent.clickedAt });
     expect((await http(app, "POST", "/api/public/v1/foreign/campaign-click-events", undefined, { "x-mlbd-campaign-receipt": token })).status).toBe(401);
     expect((await http(app, "POST", "/api/public/v1/mangoloverbd/campaign-click-events", undefined, { "x-mlbd-campaign-receipt": "forged" })).status).toBe(401);
-    const foreignToken = signCampaignReceipt({ ...event, clickId: randomUUID(), linkId: foreignLinkId }, secret);
+    const foreignToken = signCampaignReceipt({ ...liveEvent, clickId: randomUUID(), linkId: foreignLinkId }, secret);
     expect((await http(app, "POST", "/api/public/v1/mangoloverbd/campaign-click-events", undefined, { "x-mlbd-campaign-receipt": foreignToken })).status).toBe(404);
     expect(db.tables.campaign_link_clicks).toHaveLength(1);
     delete process.env.CAMPAIGN_EDGE_SECRET;
