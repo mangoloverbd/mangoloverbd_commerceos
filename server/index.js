@@ -103,6 +103,7 @@ import { buildDisplayHint, toAttemptDetail, toAttemptSummary } from "./risk/seri
 import { computeAccuracy } from "./risk/accuracy.js";
 import { labelOrderRiskAttempt } from "./risk/labels.js";
 import { recordAbandonedRiskLinks } from "./risk/abandoned.js";
+import { BLOCK_KINDS, blockOrderIdentity, deviceHashFromContext, isBlockedCustomer, orderBlockStatus, unblockOrderIdentity } from "./blockedCustomers.js";
 import bdLocations from "./risk/dictionaries/bdLocations.json" with { type: "json" };
 import {
   FRAUD_QUOTA_RESERVE,
@@ -7938,6 +7939,56 @@ async function enrichOrderItems(supabase, orgId, items) {
 
 const ORDER_ITEM_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Block an order's phone number or device from placing future orders. Any
+// staff member in the workspace may block or unblock.
+async function loadOrderForBlocking(req) {
+  const { user } = await getUser(getToken(req));
+  if (!user) return { user: null };
+  const supabase = getServiceSupabase();
+  const { orgId } = await getUserOrg(supabase, user.id);
+  if (!orgId) return { user, supabase, orgId: null, order: null };
+  const { data: order, error } = await supabase.from("orders").select("id, order_number, phone, device_hash")
+    .eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+  if (error) throw error;
+  return { user, supabase, orgId, order: order ? { ...order, phone: normalizeBdMobileInput(order.phone) } : null };
+}
+
+function blockStatusResponse(order, status) {
+  return {
+    phone: { available: Boolean(order.phone), blocked: status.phone },
+    device: { available: Boolean(order.device_hash), blocked: status.device },
+  };
+}
+
+app.get("/api/orders/:id/block-status", async (req, res) => {
+  try {
+    const { user, supabase, orgId, order } = await loadOrderForBlocking(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    return res.json(blockStatusResponse(order, await orderBlockStatus(supabase, { orgId, order })));
+  } catch (error) {
+    console.error("[BlockedCustomers] status failed:", error?.message || error);
+    return res.status(500).json({ error: "Could not load block status" });
+  }
+});
+
+app.post("/api/orders/:id/block", async (req, res) => {
+  try {
+    const { user, supabase, orgId, order } = await loadOrderForBlocking(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const { kind, blocked } = req.body ?? {};
+    if (!BLOCK_KINDS.includes(kind) || typeof blocked !== "boolean") return res.status(400).json({ error: "Invalid block request" });
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (kind === "phone" ? !order.phone : !order.device_hash) return res.status(400).json({ error: kind === "phone" ? "This order has no valid phone number" : "No device was recorded for this order" });
+    if (blocked) await blockOrderIdentity(supabase, { orgId, order, kind, userId: user.id });
+    else await unblockOrderIdentity(supabase, { orgId, order, kind });
+    return res.json(blockStatusResponse(order, await orderBlockStatus(supabase, { orgId, order })));
+  } catch (error) {
+    console.error("[BlockedCustomers] update failed:", error?.message || error);
+    return res.status(500).json({ error: "Could not update block" });
+  }
+});
+
 app.get("/api/orders/:id", async (req, res) => {
   try {
     const { user } = await getUser(getToken(req));
@@ -8433,6 +8484,10 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
     const verified = verifyClientContext(req.headers[CLIENT_CONTEXT_HEADER], { secret: process.env.STOREFRONT_CONTEXT_SECRET });
     const clientContext = verified.ok ? verified.context : null;
     if (!(await allowOrderSubmission(req, res, orgId, "*", mode, clientContext))) return;
+    const deviceHash = deviceHashFromContext(clientContext);
+    if (await isBlockedCustomer(supabase, { orgId, phone: webhookPhone, deviceHash })) {
+      return res.status(403).json({ decision: "block", error: "order_not_accepted", message: "We could not accept this order.", retryable: false });
+    }
     const protection = await assessOrderRisk({
       orgId, route: "custom_webhook",
       body: { ...req.body, phone: webhookPhone, items: Array.isArray(req.body?.items) && req.body.items.length
@@ -8475,6 +8530,7 @@ app.post("/api/custom-orders/webhook", async (req, res) => {
       if (req.body?.[key] !== undefined) row[key] = req.body[key];
     }
     row.phone = webhookPhone;
+    if (deviceHash) row.device_hash = deviceHash;
 
     const submittedDraftKey = req.body?.abandoned_checkout_draft_key;
     const abandonedDraftKey = isAbandonedCheckoutDraftKey(submittedDraftKey)
@@ -15278,6 +15334,10 @@ async function handlePublicHandleOrderSubmit(req, res) {
     if (!cleanPhone) {
       return res.status(400).json({ error: "A valid Bangladeshi phone number is required" });
     }
+    const deviceHash = deviceHashFromContext(clientContext);
+    if (await isBlockedCustomer(supabase, { orgId, phone: cleanPhone, deviceHash })) {
+      return res.status(403).json({ decision: "block", error: "order_not_accepted", message: "We could not accept this order.", retryable: false });
+    }
     if (!address || typeof address !== "string") {
       return res.status(400).json({ error: "address is required" });
     }
@@ -15498,6 +15558,7 @@ async function handlePublicHandleOrderSubmit(req, res) {
       origin_actor_kind: "customer",
       detailed_activity_started_at: new Date().toISOString(),
       landing_page_path: landingPagePath,
+      device_hash: deviceHash,
       warehouse_id: routing.warehouseId,
       warehouse_auto: true,
       weight_kg: routing.weightKg,

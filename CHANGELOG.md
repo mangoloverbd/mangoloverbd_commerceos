@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.85] - 2026-11-02
+
+### Added
+
+- Staff can block a customer's phone number or device from ordering. The order editor has **Block number** and **Block device** buttons (admins and team members; click again to unblock), and blocks can also be added by hand as rows in the new Supabase `blocked_customers` table. Website checkout and the custom-store webhook refuse a blocked phone or device with "We could not accept this order.", even when Order Protection is off.
+- New website orders save the customer's device code (`orders.device_hash`), so the device can be blocked from that order. Orders placed before this release have no device code.
+
+### Changed
+
+- The order editor's Risk tab is hidden while Order Protection is off and shows again when it is set to shadow or active.
+
 ## [0.1.0.84] - 2026-11-01
 
 ### Changed
