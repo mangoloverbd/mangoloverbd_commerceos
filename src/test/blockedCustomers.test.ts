@@ -69,4 +69,13 @@ describe("checkout wiring", () => {
     expect(loader).toContain("getUser(getToken(req))");
     expect(loader).toContain('.eq("org_id", orgId)');
   });
+
+  it("only lets admins view, block or unblock", () => {
+    for (const route of ['app.get("/api/orders/:id/block-status"', 'app.post("/api/orders/:id/block"']) {
+      const start = source.indexOf(route);
+      const handler = source.slice(start, source.indexOf("\n});\n", start));
+      expect(start).toBeGreaterThan(0);
+      expect(handler).toContain('if (role !== "admin") return res.status(403)');
+    }
+  });
 });

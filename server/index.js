@@ -7939,18 +7939,18 @@ async function enrichOrderItems(supabase, orgId, items) {
 
 const ORDER_ITEM_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Block an order's phone number or device from placing future orders. Any
-// staff member in the workspace may block or unblock.
+// Block an order's phone number or device from placing future orders. Only
+// workspace admins may view, block or unblock.
 async function loadOrderForBlocking(req) {
   const { user } = await getUser(getToken(req));
   if (!user) return { user: null };
   const supabase = getServiceSupabase();
-  const { orgId } = await getUserOrg(supabase, user.id);
-  if (!orgId) return { user, supabase, orgId: null, order: null };
+  const { orgId, role } = await getUserOrg(supabase, user.id);
+  if (!orgId) return { user, supabase, orgId: null, role, order: null };
   const { data: order, error } = await supabase.from("orders").select("id, order_number, phone, device_hash")
     .eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
   if (error) throw error;
-  return { user, supabase, orgId, order: order ? { ...order, phone: normalizeBdMobileInput(order.phone) } : null };
+  return { user, supabase, orgId, role, order: order ? { ...order, phone: normalizeBdMobileInput(order.phone) } : null };
 }
 
 function blockStatusResponse(order, status) {
@@ -7962,8 +7962,9 @@ function blockStatusResponse(order, status) {
 
 app.get("/api/orders/:id/block-status", async (req, res) => {
   try {
-    const { user, supabase, orgId, order } = await loadOrderForBlocking(req);
+    const { user, supabase, orgId, role, order } = await loadOrderForBlocking(req);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") return res.status(403).json({ error: "Only admins can block customers" });
     if (!order) return res.status(404).json({ error: "Order not found" });
     return res.json(blockStatusResponse(order, await orderBlockStatus(supabase, { orgId, order })));
   } catch (error) {
@@ -7974,8 +7975,9 @@ app.get("/api/orders/:id/block-status", async (req, res) => {
 
 app.post("/api/orders/:id/block", async (req, res) => {
   try {
-    const { user, supabase, orgId, order } = await loadOrderForBlocking(req);
+    const { user, supabase, orgId, role, order } = await loadOrderForBlocking(req);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (role !== "admin") return res.status(403).json({ error: "Only admins can block customers" });
     const { kind, blocked } = req.body ?? {};
     if (!BLOCK_KINDS.includes(kind) || typeof blocked !== "boolean") return res.status(400).json({ error: "Invalid block request" });
     if (!order) return res.status(404).json({ error: "Order not found" });

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.86] - 2026-11-02
+
+### Changed
+
+- Only admins can block or unblock a customer's phone number or device. Team members no longer see the **Block number** / **Block device** buttons in the order editor, and the block endpoints refuse them.
+
 ## [0.1.0.85] - 2026-11-02
 
 ### Added
