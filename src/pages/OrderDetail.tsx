@@ -18,6 +18,8 @@ import type { OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
 import { OrderActivityTimeline } from "@/components/OrderActivityTimeline";
 import { OrderEditorTabPanels, OrderEditorTabSwitch } from "@/components/order-editor/OrderEditorTabs";
 import { OrderRiskPanel } from "@/components/risk/OrderRiskPanel";
+import { OrderBlockButtons } from "@/components/order-editor/OrderBlockButtons";
+import { fetchRiskSettings } from "@/lib/orderRisk";
 import { useOrderEditorTab } from "@/hooks/useOrderEditorTab";
 import {
   calculateCartTotals,
@@ -154,7 +156,10 @@ export default function OrderDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const [editorTab, setEditorTab] = useOrderEditorTab();
+  const [savedEditorTab, setEditorTab] = useOrderEditorTab();
+  // The Risk tab only appears while Order Protection is on (shadow or active).
+  const protectionModeQuery = useQuery({ queryKey: ["order-protection-settings"], queryFn: fetchRiskSettings });
+  const protectionOn = protectionModeQuery.data ? protectionModeQuery.data.mode !== "off" : false;
   const returnTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
   const backState = typeof returnTab === "string" && returnTab ? { fulfillmentTab: returnTab } : undefined;
   function goBack() {
@@ -305,6 +310,8 @@ export default function OrderDetail() {
 
   const detail = detailQuery.data;
   const order = detail?.order;
+  const showRisk = protectionOn && order?.source === "website";
+  const editorTab = savedEditorTab === "risk" && !showRisk ? "details" : savedEditorTab;
   const cancellationReasonLabel = ["cancelled", "canceled"].includes((order?.status || "").toLowerCase()) && order?.cancellation_reason_code
     ? CANCELLATION_REASON_OPTIONS.find((option) => option.value === order.cancellation_reason_code)?.label ?? order.cancellation_reason_code
     : null;
@@ -544,7 +551,8 @@ export default function OrderDetail() {
             <ArrowUpRight weight="light" size={12} aria-hidden="true" className="shrink-0" />
           </Link>
         )}
-        {order?.id && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} showRisk={order.source === "website"} className="sm:ml-auto" />}
+        {order?.id && <OrderBlockButtons orderId={order.id} />}
+        {order?.id && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} showRisk={showRisk} className="sm:ml-auto" />}
       </div>
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={goBack} className="mt-2 text-[13px] text-black underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (
@@ -558,7 +566,7 @@ export default function OrderDetail() {
         >
           <OrderEditorTabPanels
             tab={editorTab}
-            risk={order.source === "website" ? <OrderRiskPanel orderId={order.id} /> : null}
+            risk={showRisk ? <OrderRiskPanel orderId={order.id} /> : null}
             logs={
               <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.07]">
                 <OrderActivityTimeline endpoint={`/api/orders/${order.id}/activity`} variant="full" />

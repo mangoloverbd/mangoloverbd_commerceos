@@ -16,6 +16,7 @@ function fixture(extra: Record<string, unknown> = {}, seed: Record<string, Recor
   const harness = handlers(db, {
     PROTECTION_MODE_SETTING_SUFFIX: "order_protection_mode", getSettings: async () => ({}), resolveProtectionMode: () => "active", allowOrderSubmission: async () => true,
     redisClient: null, getTrustedRequestIp: () => "203.0.113.5", normalizeLandingPagePath: () => null,
+    deviceHashFromContext: () => null, isBlockedCustomer: async () => false,
     assessOrderRisk: risk, finalizeOrderRisk: async () => {}, storefrontVisibleVariants, resolveOrderRouting: async () => ({ warehouseId: null, weightKg: null, resolvedItems: [{}, {}] }),
     calculateStorefrontShippingCost: () => ({ cost: 0 }), cartHasFreeDeliveryProduct: () => false,
     getNextManualOrderNumber: async () => 1001, purgeProductCache: async () => {}, checkStorefrontOrderFraud: () => {},
