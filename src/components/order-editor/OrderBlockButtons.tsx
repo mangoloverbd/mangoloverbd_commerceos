@@ -20,9 +20,12 @@ async function readJson<T>(res: Response, fallback: string): Promise<T> {
 
 export function OrderBlockButtons({ orderId }: { orderId: string }) {
   const queryClient = useQueryClient();
+  // Blocking is admin-only: the server refuses team members (403), so the
+  // status never loads and the buttons stay hidden.
   const queryKey = ["order-block-status", orderId];
   const statusQuery = useQuery({
     queryKey,
+    retry: false,
     queryFn: async () => readJson<OrderBlockStatus>(await apiFetch(`/api/orders/${orderId}/block-status`), "Could not load block status"),
   });
   const mutation = useMutation({
