@@ -129,7 +129,7 @@ export function MobileOrderCards({
                   )}
                   <span className={cn("rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wide", statusClass(order.status))}>{displayStatusLabel(order.status)}</span>
                 </div>
-                <div className="mt-1 flex items-center gap-1 text-[10px] text-black"><CalendarBlank weight="light" size={13} />{format(new Date(order.created_at), "MMM d, yyyy")}</div>
+                <div className="mt-1 flex items-center gap-1 text-[10px] text-black"><CalendarBlank weight="light" size={13} />{format(new Date(order.created_at), "MMM d, yyyy · h:mm a")}</div>
               </div>
               <span className="shrink-0 text-base font-semibold tabular-nums text-black">{money(order.price)}</span>
             </div>

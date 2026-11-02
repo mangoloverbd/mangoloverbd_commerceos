@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.0.88] - 2026-11-02
+
+### Changed
+
+- On phones, each order card on the Orders page shows the order time next to the date (for example "Nov 2, 2026 · 9:14 PM").
+
 ## [0.1.0.87] - 2026-11-02
 
 ### Added

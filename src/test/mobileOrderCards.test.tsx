@@ -26,6 +26,26 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 }
 
 describe("MobileOrderCards", () => {
+  it("shows the order time next to the date", () => {
+    // Local time, as on the desktop table; built the same way so the test is timezone-independent.
+    const createdAt = new Date(2026, 10, 2, 21, 14).toISOString();
+    render(
+      <MemoryRouter>
+        <MobileOrderCards
+          orders={[makeOrder({ created_at: createdAt })]}
+          loading={false}
+          selectedIds={new Set()}
+          onToggleSelection={vi.fn()}
+          onToggleSelectAll={vi.fn()}
+          onOpenOrder={vi.fn()}
+          renderActions={() => null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Nov 2, 2026 · 9:14 PM")).toBeInTheDocument();
+  });
+
   it("renders the mobile order summary and opens the order", async () => {
     const user = userEvent.setup();
     const order = makeOrder({ order_number: "ML-1001", customer_name: "Mango Buyer", price: 1250, status: "confirmed" });
