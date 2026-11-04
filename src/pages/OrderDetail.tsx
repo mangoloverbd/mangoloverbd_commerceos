@@ -539,9 +539,14 @@ export default function OrderDetail() {
 
   return (
     <div className="flex min-h-full flex-col gap-3 bg-[#FAFAF8] px-2 pb-3 pt-0 lg:px-3 lg:pt-1">
-      <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
-        <BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} />
-        <div className="flex min-w-0 items-baseline gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span>{cancellationReasonLabel && <Chip data-testid="order-editor-cancellation-reason" color="yellow" className="max-w-[min(28rem,60vw)] self-center truncate" title={`Cancelled: ${cancellationReasonLabel}`}>Cancelled: {cancellationReasonLabel}</Chip>}</div>
+      <div data-testid="order-editor-toolbar" className="sticky top-0 z-30 flex flex-wrap items-start gap-3 bg-[#FAFAF8]/95 py-2 backdrop-blur-sm">
+        <div className="flex h-10 items-center"><BuiButton variant="ghost" size="small" iconOnly leadingIcon={ArrowLeft} aria-label="Back" onClick={goBack} /></div>
+        {/* Everything aligns to the 40px title line. The cancellation reason hangs under the title, so it never pushes the actions down or onto their own row. */}
+        <div data-testid="order-editor-title" className="flex min-w-0 flex-col items-start gap-1">
+          <div className="flex h-10 min-w-0 items-center gap-2.5"><h1 style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium leading-10 tracking-tight text-black">Order editor</h1><span style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }} className="text-[28px] font-medium leading-10 tracking-tight text-black">{orderNumberLabel(order?.order_number)}</span></div>
+          {cancellationReasonLabel && <Chip data-testid="order-editor-cancellation-reason" color="yellow" variant="caption" className="max-w-full truncate" title={`Cancelled: ${cancellationReasonLabel}`}>Cancelled: {cancellationReasonLabel}</Chip>}
+        </div>
+        <div data-testid="order-editor-toolbar-actions" className="flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-3">
         {detail?.campaign && order?.campaign_link_id && <Link to={`/campaign-links/${order.campaign_link_id}`} className="inline-flex min-h-8 items-center rounded-lg bg-black/5 px-3 text-xs hover:bg-black/10">Campaign: {detail.campaign.name}</Link>}
         {order?.id && (
           <Link to={customerProfileHref(order)} aria-label="View customer profile" className="inline-flex h-8 min-w-0 items-center gap-2 rounded-full bg-black/[0.04] px-3 text-[12px] text-black transition-colors hover:bg-black/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/25">
@@ -553,6 +558,7 @@ export default function OrderDetail() {
         )}
         {order?.id && <OrderBlockButtons orderId={order.id} />}
         {order?.id && <OrderEditorTabSwitch value={editorTab} onChange={setEditorTab} showRisk={showRisk} className="sm:ml-auto" />}
+        </div>
       </div>
 
       {detailQuery.isPending ? <div data-testid="order-detail-loading" className="grid place-items-center py-24"><Spinner size="md" /></div> : detailQuery.error && (detailQuery.error as ApiError).status === 404 ? <div className="py-24 text-center"><p className="text-[15px] font-medium text-black">Order not found.</p><button type="button" onClick={goBack} className="mt-2 text-[13px] text-black underline">Back to orders</button></div> : detailQuery.error ? <div className="py-24 text-center text-[13px] text-red-600">{detailQuery.error.message}</div> : order && detail && (

@@ -9,10 +9,11 @@ import { resetOrdersSyncCursor } from "@/lib/ordersSync";
 const apiFetch = vi.hoisted(() => vi.fn());
 const toastSuccess = vi.hoisted(() => vi.fn());
 const toastError = vi.hoisted(() => vi.fn());
+const roleState = vi.hoisted(() => ({ loading: false }));
 
 vi.mock("@/lib/api", () => ({ apiFetch }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "user-1" } }) }));
-vi.mock("@/hooks/useUserRole", () => ({ useUserRole: () => ({ isAdmin: true, loading: false }) }));
+vi.mock("@/hooks/useUserRole", () => ({ useUserRole: () => ({ isAdmin: true, loading: roleState.loading }) }));
 vi.mock("@/hooks/useLiveVisitors", () => ({
   useLiveVisitors: () => ({ count: 0, details: { activeCarts: 0, checkingOut: 0, purchased: 0 }, visitors: [] }),
 }));
@@ -52,6 +53,7 @@ describe("dashboard orders sync on open", () => {
     // Courier refresh and Shopify sync both run on this visit.
     sessionStorage.clear();
     localStorage.clear();
+    roleState.loading = false;
     resetOrdersSyncCursor();
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -118,5 +120,25 @@ describe("dashboard orders sync on open", () => {
 
     resolveFull(jsonResponse({ orders: [order], totalCount: 1, syncedAt: "2026-09-27T00:00:00.000Z" }));
     await waitFor(() => expect(screen.getByTestId("order-status-count-pending")).toHaveTextContent("1"));
+  });
+
+  it("starts loading orders on open without waiting for the role check", async () => {
+    roleState.loading = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter>
+            <Dashboard />
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+
+    const calls = (match: (url: string, init?: RequestInit) => boolean) =>
+      apiFetch.mock.calls.filter(([url, init]) => match(String(url), init as RequestInit | undefined));
+    await waitFor(() => expect(calls((url, init) => url === "/api/orders" && !init?.method)).toHaveLength(1));
+    // Background Shopify and courier syncs still wait for the role.
+    expect(calls((url) => url === "/api/fetch-shopify-orders")).toHaveLength(0);
   });
 });

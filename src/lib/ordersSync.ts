@@ -35,7 +35,7 @@ export interface OrdersPreview<T> {
 // Newest orders fetched alongside a cold full load. Covers the largest table page size.
 export const FIRST_PAGE_SIZE = 200;
 
-// Deletes are caught by the count check on every delta; this is only a safety net.
+// Deletes are caught by the count check on every delta (and pruned by id); this is only a safety net.
 const FULL_REFRESH_MS = 30 * 60_000;
 
 // Cursor for the list currently held in the ["/api/orders"] cache.
@@ -122,6 +122,47 @@ async function hydrateFromSnapshot<T extends SyncableOrder>(queryClient: QueryCl
   cursor = { syncedAt: snapshot.syncedAt, fullAt: snapshot.fullAt };
   emitPreview({ orders: snapshot.orders, totalCount: snapshot.totalCount, partial: false });
   return snapshot.orders;
+}
+
+/**
+ * Removes orders this user just deleted from the cached list and the list saved
+ * in this browser, and shows the result. The save is awaited, so a reload right
+ * after starts from a list that no longer has them (and the next delta's count
+ * check passes without reloading every order).
+ */
+export async function removeOrdersFromCache<T extends SyncableOrder>(queryClient: QueryClient, ids: string[]): Promise<void> {
+  const current = queryClient.getQueryData<T[]>(["/api/orders"]);
+  if (!Array.isArray(current) || ids.length === 0) return;
+  const removed = new Set(ids);
+  const orders = current.filter((order) => !removed.has(order.id));
+  const previousCount = queryClient.getQueryData<number>(["/api/orders/count"]) ?? current.length;
+  const totalCount = Math.max(0, previousCount - (current.length - orders.length));
+  writeCache(queryClient, orders, totalCount);
+  emitPreview({ orders, totalCount, partial: false });
+  const userId = snapshotUserId;
+  // Supersedes any idle save still waiting with the older list.
+  pendingSave = null;
+  if (!userId) return;
+  if (!cursor) await clearOrdersSnapshot();
+  else await saveOrdersSnapshot({ userId, orders, totalCount, syncedAt: cursor.syncedAt, fullAt: cursor.fullAt });
+}
+
+// A delta cannot see deleted rows. When the count is off, fetch only the ids
+// (far smaller than every order) and drop cached orders that no longer exist.
+// Returns null when that still does not add up, so the caller reloads in full.
+async function pruneDeletedOrders<T extends SyncableOrder>(orders: T[]): Promise<{ orders: T[]; totalCount: number } | null> {
+  try {
+    const res = await apiFetch("/api/orders?ids_only=1");
+    if (!res.ok) return null;
+    const data = (await res.json()) as { ids?: unknown; totalCount?: unknown };
+    if (!Array.isArray(data.ids)) return null;
+    const ids = new Set(data.ids.filter((id): id is string => typeof id === "string"));
+    const pruned = orders.filter((order) => ids.has(order.id));
+    if (pruned.length !== ids.size) return null;
+    return { orders: pruned, totalCount: ids.size };
+  } catch {
+    return null;
+  }
 }
 
 /** Replace changed orders by id, insert new ones, sort by created_at desc (stable). */
@@ -234,10 +275,22 @@ async function runSync<T extends SyncableOrder>(
   // optimistic updates made while the delta was in flight are kept.
   const latest = queryClient.getQueryData<T[]>(["/api/orders"]);
   if (!Array.isArray(latest)) return fullSync<T>(queryClient);
-  const merged = mergeOrderDelta(latest, data.orders || []);
-  const totalCount = totalCountOf(data, merged.length);
-  // Deletes are invisible to a delta; a count mismatch means reload.
-  if (merged.length !== totalCount) return fullSync<T>(queryClient);
+  let merged = mergeOrderDelta(latest, data.orders || []);
+  let totalCount = totalCountOf(data, merged.length);
+  // Deletes are invisible to a delta; on a count mismatch drop the deleted ids,
+  // and reload in full only if the list still does not add up.
+  if (merged.length !== totalCount) {
+    const pruned = await pruneDeletedOrders(merged);
+    if (!pruned) return fullSync<T>(queryClient);
+    const changed = pruned.orders.length !== merged.length;
+    ({ orders: merged, totalCount } = pruned);
+    if (changed) {
+      writeCache(queryClient, merged, totalCount);
+      cursor = data.syncedAt ? { syncedAt: data.syncedAt, fullAt } : null;
+      scheduleSnapshotSave(merged, totalCount);
+      return merged;
+    }
+  }
 
   writeCache(queryClient, merged, totalCount);
   const previousSyncedAt = cursor?.syncedAt;

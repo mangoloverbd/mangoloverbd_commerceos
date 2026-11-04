@@ -6,7 +6,7 @@
 // classification and filter-parsing rules stay unit-testable without a
 // database.
 
-import { isApprovedStatus, isCancelledStatus } from "./orderAttribution.js";
+import { isApprovalTransition, isApprovedStatus, isCancelledStatus } from "./orderAttribution.js";
 
 export const ACTIVITY_ORDER_TABLES = Object.freeze(["orders", "social_inbox_orders", "abandoned_checkouts"]);
 
@@ -80,7 +80,7 @@ export function classifyActivityEvent(event) {
   }
 
   if (isCreation) return "created";
-  if (isApprovedStatus(toStatus)) return "confirmed";
+  if (isApprovedStatus(toStatus)) return isApprovalTransition(event?.from_status, toStatus) ? "confirmed" : "status_changed";
   if (isCancelledStatus(toStatus)) return "cancelled";
   return "status_changed";
 }
@@ -134,6 +134,27 @@ export function mergeActivityStreams(detailedEvents = [], legacyEvents = []) {
       const timeDelta = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       return timeDelta || String(b.id || "").localeCompare(String(a.id || ""));
     });
+}
+
+// Approval credit is earned once per order. firstApprovals maps
+// "<order_table>:<order_id>" to that order's first approval status event (see
+// firstApprovalByOrder); any other "confirmed" event for the order is a
+// re-approval and is shown as a plain status change. Orders with no approval
+// history keep their classification.
+export function markRepeatApprovals(events = [], firstApprovals = new Map()) {
+  return events.map((event) => {
+    if (event?.action !== "confirmed") return event;
+    const first = firstApprovals.get(orderReferenceKey(event.order_table, event.order_id));
+    if (!first) return event;
+    const linkedId = event.metadata?.legacy_status_event_id;
+    const isFirst = linkedId
+      ? linkedId === first.id
+      : event.id === first.id || (
+        event.actor_id === first.actor_id
+        && Math.abs(new Date(event.created_at).getTime() - new Date(first.created_at).getTime()) < 2000
+      );
+    return isFirst ? event : { ...event, action: "status_changed" };
+  });
 }
 
 export function orderReferenceKey(orderTable, orderId) {

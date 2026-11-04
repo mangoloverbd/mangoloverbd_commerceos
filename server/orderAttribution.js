@@ -26,6 +26,18 @@ export function isCancelledStatus(status) {
   return CANCELLED_STATES.has(normalizeAttributionStatus(status));
 }
 
+// Print is a fulfillment step after approval. Moving an order from Print back
+// to Approved undoes that step; the order was already approved, so it is not
+// a new approval and must not re-credit or double-count the approver.
+const POST_APPROVAL_STATES = new Set(["print"]);
+
+export function isApprovalTransition(fromStatus, toStatus) {
+  if (!isApprovedStatus(toStatus)) return false;
+  if (fromStatus === null || fromStatus === undefined) return true;
+  const from = normalizeAttributionStatus(fromStatus);
+  return !APPROVED_STATES.has(from) && !POST_APPROVAL_STATES.has(from);
+}
+
 function businessState(status) {
   const normalized = normalizeAttributionStatus(status);
   if (APPROVED_STATES.has(normalized)) return "approved";
@@ -36,7 +48,10 @@ function businessState(status) {
 // Returns only the attribution fields a user-owned transition should change.
 // Courier and system writes can add audit events, but must never overwrite the
 // staff member who actually approved or cancelled an order.
-export function buildAttributionPatch({ fromStatus, toStatus, actorId, actorKind, now }) {
+//
+// Approval credit is earned once per order: pass the order's current
+// confirmed_by, and a re-approval (from any status) keeps the first approver.
+export function buildAttributionPatch({ fromStatus, toStatus, actorId, actorKind, now, confirmedBy = null }) {
   if (actorKind !== "user" || !actorId) return {};
 
   const from = businessState(fromStatus);
@@ -44,7 +59,11 @@ export function buildAttributionPatch({ fromStatus, toStatus, actorId, actorKind
   if (!to || from === to) return {};
 
   if (to === "approved") {
-    const patch = { confirmed_by: actorId, confirmed_at: now };
+    const patch = {};
+    if (isApprovalTransition(fromStatus, toStatus) && !confirmedBy) {
+      patch.confirmed_by = actorId;
+      patch.confirmed_at = now;
+    }
     if (from === "cancelled") {
       patch.cancelled_by = null;
       patch.cancelled_at = null;
@@ -57,6 +76,23 @@ export function buildAttributionPatch({ fromStatus, toStatus, actorId, actorKind
   }
 
   return {};
+}
+
+// Each order's first approval status event (earliest created_at, then id),
+// keyed by order id. Later re-approvals and Print → Approved returns are not
+// in the map, so only the first approver earns credit.
+export function firstApprovalByOrder(events) {
+  const first = new Map();
+  for (const event of events || []) {
+    if (!event?.order_id || !event?.created_at) continue;
+    if (!isApprovalTransition(event.from_status, event.to_status)) continue;
+    const at = new Date(event.created_at).getTime();
+    if (!Number.isFinite(at)) continue;
+    const current = first.get(event.order_id);
+    const currentAt = current ? new Date(current.created_at).getTime() : Infinity;
+    if (at < currentAt || (at === currentAt && String(event.id) < String(current.id))) first.set(event.order_id, event);
+  }
+  return first;
 }
 
 // Returns an insertable audit row, or null when the supplied transition is not

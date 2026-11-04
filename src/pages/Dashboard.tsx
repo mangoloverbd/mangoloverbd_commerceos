@@ -799,6 +799,14 @@ export default function Dashboard() {
   // Auto-sync on mount, then poll orders every 60 s (paused while hidden).
   // The Shopify sync is throttled to once per session per user via sessionStorage
   // so HMR hot-reloads and navigation back to the dashboard don't re-trigger it.
+  // Load orders from the DB as soon as the user is known — not after the role
+  // check or the Shopify sync — so a reload shows new orders as early as possible.
+  // With nothing cached, the newest page is shown while the full list loads.
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchOrders({ firstPage: true });
+  }, [user?.id, fetchOrders]);
+
   useEffect(() => {
     if (!user?.id || roleLoading) return;
 
@@ -806,9 +814,6 @@ export default function Dashboard() {
     const alreadySynced = sessionStorage.getItem(syncKey);
 
     const runAutoSync = async () => {
-      // Load orders from DB immediately — don't wait for Shopify sync. With
-      // nothing cached, the newest page is shown while the full list loads.
-      fetchOrders({ firstPage: true });
 
       // Refresh Pathao courier statuses in background, at most once per 10
       // minutes per browser tab session. The timestamp is only recorded when

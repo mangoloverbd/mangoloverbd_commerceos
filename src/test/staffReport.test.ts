@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStaffReport,
+  buildStaffReportActivities,
   calculateRetainedUpsells,
   classifyCourierOutcome,
   resolveStaffReportRequest,
   toDhakaInterval,
 } from "../../server/reports.js";
+import { firstApprovalByOrder } from "../../server/orderAttribution.js";
 
 const ADMIN_ID = "11111111-1111-1111-1111-111111111111";
 const TEAM_MEMBER_ID = "22222222-2222-2222-2222-222222222222";
@@ -1265,5 +1267,41 @@ describe("buildStaffReport handled orders and product outcomes", () => {
       product_id: "p-honey", product_name: "Honey", packs: 2, kg: 1,
       delivered_packs: 0, delivered_kg: 0, returned_packs: 2, returned_kg: 1, cancelled_packs: 0, cancelled_kg: 0,
     }]);
+  });
+});
+
+describe("buildStaffReportActivities", () => {
+  const order = { id: "o1", price: 500 };
+  const ordersById = new Map([["o1", order]]);
+  const approvals = [
+    { id: "first", order_id: "o1", from_status: "pending", to_status: "confirmed", actor_id: "rafi", created_at: "2026-09-18T04:00:00.000Z" },
+    { id: "back-from-print", order_id: "o1", from_status: "print", to_status: "confirmed", actor_id: "nadia", created_at: "2026-09-18T06:00:00.000Z" },
+    { id: "again", order_id: "o1", from_status: "pending", to_status: "confirmed", actor_id: "nadia", created_at: "2026-09-18T08:00:00.000Z" },
+  ];
+
+  it("credits only the order's first approval, however many times it is re-approved", () => {
+    const activities = buildStaffReportActivities(approvals, ordersById, {
+      // The order row was overwritten by the later re-approval before this fix.
+      confirmed: [{ ...order, confirmed_by: "nadia", confirmed_at: "2026-09-18T08:00:00.000Z" }],
+      cancelled: [],
+    }, firstApprovalByOrder(approvals));
+    expect(activities.filter((a) => a.action === "confirmed").map((a) => [a.id, a.actor_id])).toEqual([["first", "rafi"]]);
+  });
+
+  it("gives no credit in range when the first approval happened before the range", () => {
+    const inRange = approvals.slice(1);
+    const activities = buildStaffReportActivities(inRange, ordersById, {
+      confirmed: [{ ...order, confirmed_by: "nadia", confirmed_at: "2026-09-18T08:00:00.000Z" }],
+      cancelled: [],
+    }, firstApprovalByOrder(approvals));
+    expect(activities.filter((a) => a.action === "confirmed")).toEqual([]);
+  });
+
+  it("falls back to the order's approver when the order has no approval history", () => {
+    const activities = buildStaffReportActivities([], new Map(), {
+      confirmed: [{ ...order, confirmed_by: "rafi", confirmed_at: "2026-09-18T04:00:00.000Z" }],
+      cancelled: [],
+    }, new Map());
+    expect(activities.map((a) => [a.action, a.actor_id])).toEqual([["confirmed", "rafi"]]);
   });
 });

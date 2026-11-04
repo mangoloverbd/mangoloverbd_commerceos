@@ -63,6 +63,14 @@ describe("bulk status rules", () => {
       cancelled_at: null,
       updated_at: now,
     });
+    const reapprove = planBulkStatusUpdate({
+      orders: [order(1, "pending", { confirmed_by: uuid(9) }), order(2, "pending")],
+      orderIds: [uuid(1), uuid(2)], targetStatus: "confirmed", actorId, now,
+    });
+    expect(reapprove.groups).toEqual([
+      { fromStatus: "pending", ids: [uuid(1)], patch: { status: "confirmed", updated_at: now } },
+      { fromStatus: "pending", ids: [uuid(2)], patch: { status: "confirmed", confirmed_by: actorId, confirmed_at: now, updated_at: now } },
+    ]);
     const cancel = planBulkStatusUpdate({
       orders: [order(1, "pending")], orderIds: [uuid(1)], targetStatus: "cancelled", actorId, now,
       cancellationReason: { code: "duplicate_order", note: null },
