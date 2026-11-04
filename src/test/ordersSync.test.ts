@@ -70,10 +70,12 @@ describe("syncOrders", () => {
     expect(apiFetch).toHaveBeenLastCalledWith(`/api/orders?changed_since=${encodeURIComponent("2026-09-24T00:01:00.000Z")}`);
   });
 
-  it("falls back to a full fetch when the merged length disagrees with totalCount (deletes)", async () => {
+  it("falls back to a full fetch when a count mismatch (deletes) cannot be pruned by id", async () => {
     apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [b, a], totalCount: 2, syncedAt: "2026-09-24T00:00:00.000Z" }));
     await syncOrders(queryClient);
     apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [], totalCount: 1, syncedAt: "2026-09-24T00:01:00.000Z", delta: true }));
+    // The id list request fails, so the whole list is reloaded.
+    apiFetch.mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500));
     apiFetch.mockResolvedValueOnce(jsonResponse({ orders: [b], totalCount: 1, syncedAt: "2026-09-24T00:01:01.000Z" }));
     const orders = await syncOrders(queryClient);
 

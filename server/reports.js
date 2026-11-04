@@ -1,4 +1,5 @@
 import { detectCustomerOrderSource } from "./customers.js";
+import { isApprovedStatus, isCancelledStatus } from "./orderAttribution.js";
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -411,6 +412,83 @@ function mergeProductOutcomes(confirmedRows, outcomeRows = {}) {
     (b.packs + b.cancelled_packs) - (a.packs + a.cancelled_packs)
     || a.product_name.localeCompare(b.product_name)
   ));
+}
+
+function staffReportActivityKey({ orderId, actorId, action, occurredAt }) {
+  const timestamp = new Date(occurredAt).getTime();
+  const instant = Number.isFinite(timestamp)
+    ? timestamp
+    : String(occurredAt || "");
+  return `${action}:${orderId}:${actorId}:${instant}`;
+}
+
+// Turns order_status_events (plus order-row attribution for orders with no
+// event history) into confirmed/cancelled activities for the Staff report.
+//
+// Approval credit is earned once per order: firstApprovals maps each order id
+// to its first approval event across all members and dates (see
+// firstApprovalByOrder). Only that event counts; re-approvals — from Print,
+// Pending, On Hold, Cancelled or anywhere else — earn nothing. An order with
+// approval history never falls back to its confirmed_by column, which older
+// re-approvals overwrote.
+export function buildStaffReportActivities(events, ordersById, fallbackOrders, firstApprovals = new Map()) {
+  const activities = [];
+  const recordedKeys = new Set();
+
+  for (const event of events || []) {
+    const order = ordersById.get(event?.order_id);
+    if (!order || !event?.actor_id || !event?.created_at) continue;
+    let action = null;
+    if (isApprovedStatus(event.to_status)) {
+      if (firstApprovals.get(order.id)?.id === event.id) action = "confirmed";
+    } else if (isCancelledStatus(event.to_status)) {
+      action = "cancelled";
+    }
+    if (!action) continue;
+
+    activities.push({
+      id: event.id,
+      action,
+      actor_id: event.actor_id,
+      occurred_at: event.created_at,
+      order,
+    });
+    recordedKeys.add(staffReportActivityKey({
+      orderId: order.id,
+      actorId: event.actor_id,
+      action,
+      occurredAt: event.created_at,
+    }));
+  }
+
+  for (const action of ["confirmed", "cancelled"]) {
+    const actorField = action === "confirmed" ? "confirmed_by" : "cancelled_by";
+    const timestampField = action === "confirmed" ? "confirmed_at" : "cancelled_at";
+    for (const order of fallbackOrders?.[action] || []) {
+      const actorId = order?.[actorField];
+      const occurredAt = order?.[timestampField];
+      if (!order?.id || !actorId || !occurredAt) continue;
+      if (action === "confirmed" && firstApprovals.has(order.id)) continue;
+
+      const key = staffReportActivityKey({
+        orderId: order.id,
+        actorId,
+        action,
+        occurredAt,
+      });
+      if (recordedKeys.has(key)) continue;
+
+      activities.push({
+        id: `fallback:${action}:${order.id}:${actorId}:${occurredAt}`,
+        action,
+        actor_id: actorId,
+        occurred_at: occurredAt,
+        order,
+      });
+    }
+  }
+
+  return activities;
 }
 
 function currentAttributionActivities(orders, action) {

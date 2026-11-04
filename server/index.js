@@ -121,10 +121,11 @@ import {
 import {
   buildAttributionPatch,
   buildStatusEvent,
+  firstApprovalByOrder,
   isApprovedStatus,
   isCancelledStatus,
 } from "./orderAttribution.js";
-import { buildStaffReport, resolveStaffReportRequest } from "./reports.js";
+import { buildStaffReport, buildStaffReportActivities, resolveStaffReportRequest } from "./reports.js";
 import { buildBusinessReport, normalizeBusinessReportSource, resolveBusinessReportRequest, resolvePreviousBusinessReportRequest } from "./businessReport.js";
 import { buildDataHealth, normalizeWebsiteReport, resolveAnalyticsReportRequest } from "./analyticsReport.js";
 import {
@@ -134,7 +135,9 @@ import {
   buildOrderLookup,
   classifyActivityEvent,
   filterLegacyActivityEvents,
+  markRepeatApprovals,
   mergeActivityStreams,
+  orderReferenceKey,
   resolveActivityActionFilter,
   resolveActivityPage,
   resolveActivityTableFilter,
@@ -4245,73 +4248,6 @@ async function fetchReportPages(createQuery, { pageSize = 500 } = {}) {
   return allRows;
 }
 
-function staffReportEventAction(status) {
-  if (isApprovedStatus(status)) return "confirmed";
-  if (isCancelledStatus(status)) return "cancelled";
-  return null;
-}
-
-function staffReportActivityKey({ orderId, actorId, action, occurredAt }) {
-  const timestamp = new Date(occurredAt).getTime();
-  const instant = Number.isFinite(timestamp)
-    ? timestamp
-    : String(occurredAt || "");
-  return `${action}:${orderId}:${actorId}:${instant}`;
-}
-
-function buildStaffReportActivities(events, ordersById, fallbackOrders) {
-  const activities = [];
-  const recordedKeys = new Set();
-
-  for (const event of events || []) {
-    const action = staffReportEventAction(event?.to_status);
-    const order = ordersById.get(event?.order_id);
-    if (!action || !order || !event?.actor_id || !event?.created_at) continue;
-
-    activities.push({
-      id: event.id,
-      action,
-      actor_id: event.actor_id,
-      occurred_at: event.created_at,
-      order,
-    });
-    recordedKeys.add(staffReportActivityKey({
-      orderId: order.id,
-      actorId: event.actor_id,
-      action,
-      occurredAt: event.created_at,
-    }));
-  }
-
-  for (const action of ["confirmed", "cancelled"]) {
-    const actorField = action === "confirmed" ? "confirmed_by" : "cancelled_by";
-    const timestampField = action === "confirmed" ? "confirmed_at" : "cancelled_at";
-    for (const order of fallbackOrders?.[action] || []) {
-      const actorId = order?.[actorField];
-      const occurredAt = order?.[timestampField];
-      if (!order?.id || !actorId || !occurredAt) continue;
-
-      const key = staffReportActivityKey({
-        orderId: order.id,
-        actorId,
-        action,
-        occurredAt,
-      });
-      if (recordedKeys.has(key)) continue;
-
-      activities.push({
-        id: `fallback:${action}:${order.id}:${actorId}:${occurredAt}`,
-        action,
-        actor_id: actorId,
-        occurred_at: occurredAt,
-        order,
-      });
-    }
-  }
-
-  return activities;
-}
-
 // ─── Staff Performance Report ────────────────────────────────────────────────
 
 app.get("/api/reports/staff", async (req, res) => {
@@ -4361,7 +4297,7 @@ app.get("/api/reports/staff", async (req, res) => {
 
     const regularOrderFields = "id, assigned_to, confirmed_by, confirmed_at, cancelled_by, cancelled_at, created_at, price, weight_kg, source, courier_status, return_status";
     const inboxOrderFields = "id, confirmed_by, confirmed_at, cancelled_by, cancelled_at, total_price, weight_kg, items, courier_status, return_status";
-    const statusEventFields = "id, order_id, to_status, actor_id, created_at";
+    const statusEventFields = "id, order_id, from_status, to_status, actor_id, created_at";
     const fetchRegularRows = async (actorColumn, timestampColumn) => {
       const rows = [];
       for (const staffIds of chunkIds(request.selectedUserIds)) {
@@ -4485,13 +4421,13 @@ app.get("/api/reports/staff", async (req, res) => {
 
     const regularEventOrderIds = [...new Set(
       regularStatusEvents
-        .filter((event) => staffReportEventAction(event.to_status))
+        .filter((event) => isApprovedStatus(event.to_status) || isCancelledStatus(event.to_status))
         .map((event) => event.order_id)
         .filter(Boolean),
     )];
     const socialEventOrderIds = [...new Set(
       socialStatusEvents
-        .filter((event) => staffReportEventAction(event.to_status))
+        .filter((event) => isApprovedStatus(event.to_status) || isCancelledStatus(event.to_status))
         .map((event) => event.order_id)
         .filter(Boolean),
     )];
@@ -4512,15 +4448,42 @@ app.get("/api/reports/staff", async (req, res) => {
         .in("id", orderIdBatch)));
     }
 
+    // Approval credit is earned once per order, by its first approval. Read
+    // each candidate order's whole approval history (every member, any date)
+    // so a re-approval in range never counts when the first one came earlier.
+    const fetchFirstApprovals = async (orderTable, statusEvents, approvedOrders) => {
+      const orderIds = [...new Set([
+        ...statusEvents.filter((event) => isApprovedStatus(event.to_status)).map((event) => event.order_id),
+        ...approvedOrders.map((order) => order.id),
+      ].filter(Boolean))];
+      const history = [];
+      for (const orderIdBatch of chunkIds(orderIds)) {
+        history.push(...await fetchReportPages(() => supabase
+          .from("order_status_events")
+          .select(statusEventFields)
+          .eq("org_id", orgId)
+          .eq("order_table", orderTable)
+          .in("order_id", orderIdBatch)
+          .in("to_status", ["approved", "confirmed"])));
+      }
+      return firstApprovalByOrder(history);
+    };
+    const [regularFirstApprovals, socialFirstApprovals] = await Promise.all([
+      fetchFirstApprovals("orders", regularStatusEvents, confirmedOrders),
+      fetchFirstApprovals("social_inbox_orders", socialStatusEvents, confirmedInboxOrders),
+    ]);
+
     const regularActivities = buildStaffReportActivities(
       regularStatusEvents,
       new Map(regularEventOrders.map((order) => [order.id, order])),
       { confirmed: confirmedOrders, cancelled: cancelledOrders },
+      regularFirstApprovals,
     );
     const socialActivities = buildStaffReportActivities(
       socialStatusEvents,
       new Map(socialEventOrders.map((order) => [order.id, order])),
       { confirmed: confirmedInboxOrders, cancelled: cancelledInboxOrders },
+      socialFirstApprovals,
     );
     const regularHandledOrderIds = [...new Set(
       regularActivities
@@ -4697,7 +4660,33 @@ app.get("/api/reports/activity", async (req, res) => {
       if ((detailed || []).length === fetchLimit) sourceTruncated = true;
     }
 
-    const classifiedAll = mergeActivityStreams(detailedEvents, rawEvents);
+    // An order's approval counts once, for its first approval; re-approvals
+    // are listed as status changes. Read the whole approval history (every
+    // member, any date) for the orders with a "confirmed" event here.
+    const mergedEvents = mergeActivityStreams(detailedEvents, rawEvents);
+    const approvedOrderIdsByTable = new Map();
+    for (const event of mergedEvents) {
+      if (event.action !== "confirmed" || !event.order_id || !event.order_table) continue;
+      if (!approvedOrderIdsByTable.has(event.order_table)) approvedOrderIdsByTable.set(event.order_table, new Set());
+      approvedOrderIdsByTable.get(event.order_table).add(event.order_id);
+    }
+    const firstApprovals = new Map();
+    for (const [orderTable, orderIds] of approvedOrderIdsByTable) {
+      const history = [];
+      for (const orderIdBatch of chunkIds([...orderIds])) {
+        history.push(...await fetchReportPages(() => supabase
+          .from("order_status_events")
+          .select("id, order_id, from_status, to_status, actor_id, created_at")
+          .eq("org_id", orgId)
+          .eq("order_table", orderTable)
+          .in("order_id", orderIdBatch)
+          .in("to_status", ["approved", "confirmed"])));
+      }
+      for (const [orderId, first] of firstApprovalByOrder(history)) {
+        firstApprovals.set(orderReferenceKey(orderTable, orderId), first);
+      }
+    }
+    const classifiedAll = markRepeatApprovals(mergedEvents, firstApprovals);
     const actionCounts = {};
     for (const event of classifiedAll) {
       actionCounts[event.action] = (actionCounts[event.action] || 0) + 1;
@@ -6775,6 +6764,31 @@ app.get("/api/orders", async (req, res) => {
       return { ordersWithItems, itemsMaxUpdatedAt };
     };
 
+    // Every order id (and nothing else), so the client can drop orders deleted
+    // since its cached list without reloading every order. Pages run in parallel.
+    if (req.query.ids_only === "1") {
+      const { count: idsCount, error: idsCountError } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId);
+      if (idsCountError) throw idsCountError;
+      const idPageSize = 1000;
+      const idPages = await Promise.all(
+        Array.from({ length: Math.ceil((idsCount ?? 0) / idPageSize) }, async (_, page) => {
+          const { data: idRows, error: idsError } = await supabase
+            .from("orders")
+            .select("id")
+            .eq("org_id", orgId)
+            .order("id", { ascending: true })
+            .range(page * idPageSize, page * idPageSize + idPageSize - 1);
+          if (idsError) throw idsError;
+          return (idRows || []).map((row) => row.id);
+        }),
+      );
+      const ids = [...new Set(idPages.flat())];
+      return res.json({ ids, totalCount: ids.length });
+    }
+
     if (changedSinceParam) {
       const changedSince = new Date(Date.parse(changedSinceParam)).toISOString();
       // Re-read a 120s window before the cursor so rows from long-running
@@ -6790,17 +6804,29 @@ app.get("/api/orders", async (req, res) => {
       if (warehouseFilter) {
         changedOrdersQuery = changedOrdersQuery.eq("warehouse_id", warehouseFilter);
       }
-      const { data: changedOrderRows, error: changedOrdersError } = await changedOrdersQuery;
-      if (changedOrdersError) throw changedOrdersError;
-
       // order_items.updated_at defaults to now() on insert and is bumped by a
       // BEFORE UPDATE trigger, so it covers both new and edited items.
-      const { data: changedItemRows, error: changedItemsError } = await supabase
+      const changedItemsQuery = supabase
         .from("order_items")
         .select("order_id, updated_at")
         .eq("org_id", orgId)
         .gt("updated_at", overlapSince);
+      let countQuery = supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId);
+      if (warehouseFilter) {
+        countQuery = countQuery.eq("warehouse_id", warehouseFilter);
+      }
+      // Independent reads: run together so every poll waits on one round trip, not three.
+      const [
+        { data: changedOrderRows, error: changedOrdersError },
+        { data: changedItemRows, error: changedItemsError },
+        { count: deltaCount, error: countError },
+      ] = await Promise.all([changedOrdersQuery, changedItemsQuery, countQuery]);
+      if (changedOrdersError) throw changedOrdersError;
       if (changedItemsError) throw changedItemsError;
+      if (countError) throw countError;
 
       const changedIds = [...new Set([
         ...(changedOrderRows || []).map((row) => row.id),
@@ -6821,16 +6847,6 @@ app.get("/api/orders", async (req, res) => {
         if (batchError) throw batchError;
         changedRows.push(...(batchOrders || []));
       }
-
-      let countQuery = supabase
-        .from("orders")
-        .select("id", { count: "exact", head: true })
-        .eq("org_id", orgId);
-      if (warehouseFilter) {
-        countQuery = countQuery.eq("warehouse_id", warehouseFilter);
-      }
-      const { count: deltaCount, error: countError } = await countQuery;
-      if (countError) throw countError;
 
       const { ordersWithItems: changedOrders } = await attachOrderItems(changedRows);
       // Max updated_at over the rows looked at; never behind the incoming cursor.
@@ -10271,6 +10287,7 @@ app.patch("/api/orders/:id", async (req, res) => {
         actorId: user.id,
         actorKind: "user",
         now: transitionAt,
+        confirmedBy: orderCheck.confirmed_by,
       }));
     }
 
@@ -13815,6 +13832,7 @@ app.patch("/api/social/inbox-orders/:id", async (req, res) => {
         actorId: user.id,
         actorKind: "user",
         now: transitionAt,
+        confirmedBy: currentOrder.confirmed_by,
       }));
     }
 

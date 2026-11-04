@@ -490,6 +490,7 @@ export async function executeAiAction({ supabase, orgId, userId, tool, args, hel
           actorId: userId,
           actorKind: "user",
           now: new Date().toISOString(),
+          confirmedBy: before.confirmed_by,
         }));
       }
 

@@ -259,6 +259,31 @@ describe("order editor cancellation reason", () => {
     expect(reason).toHaveClass("bg-status-yellow-background");
   });
 
+  it("stacks the cancellation reason under the title so the toolbar stays on one row", async () => {
+    mockOrder({ ...orderOne, status: "cancelled", cancellation_reason_code: "customer_changed_mind" });
+
+    renderNewTabOrderDetail("/orders/order-1");
+
+    const reason = await screen.findByTestId("order-editor-cancellation-reason");
+    const title = screen.getByTestId("order-editor-title");
+    expect(title).toHaveClass("flex-col");
+    expect(reason.parentElement).toBe(title);
+    expect(title.querySelector("h1")?.parentElement).not.toBe(title);
+  });
+
+  it("aligns the toolbar actions with the title line, not the middle of the title and reason", async () => {
+    mockOrder({ ...orderOne, status: "cancelled", cancellation_reason_code: "customer_changed_mind" });
+
+    renderNewTabOrderDetail("/orders/order-1");
+
+    await screen.findByTestId("order-editor-cancellation-reason");
+    expect(screen.getByTestId("order-editor-toolbar")).toHaveClass("items-start");
+    const actions = screen.getByTestId("order-editor-toolbar-actions");
+    expect(actions).toHaveClass("min-h-10", "items-center");
+    expect(actions).toContainElement(screen.getByRole("link", { name: "View customer profile" }));
+    expect(screen.getByTestId("order-editor-title").firstElementChild).toHaveClass("h-10");
+  });
+
   it("hides the reason when the order is not cancelled", async () => {
     mockOrder({ ...orderOne, status: "confirmed", cancellation_reason_code: "customer_unreachable" });
 

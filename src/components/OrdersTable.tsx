@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { removeOrdersFromCache } from "@/lib/ordersSync";
 import { apiFetch } from "@/lib/api";
 import { useProgressiveCount } from "@/hooks/useProgressiveCount";
 import SteadfastLogo from "@/components/SteadfastLogo";
@@ -1165,6 +1166,10 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
 
       // Clear selection
       setSelectedIds(new Set());
+
+      // Drop them from the list saved in this browser first, so the reload shows
+      // the list without them at once instead of waiting for a full reload of every order.
+      if (data.deleted === idsToDelete.length) await removeOrdersFromCache(queryClient, idsToDelete);
 
       // Force a page reload to refresh the orders list
       window.location.reload();

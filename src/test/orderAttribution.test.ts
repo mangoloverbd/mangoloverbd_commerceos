@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildAttributionPatch,
   buildStatusEvent,
+  firstApprovalByOrder,
+  isApprovalTransition,
   isApprovedStatus,
   isCancelledStatus,
   normalizeAttributionStatus,
@@ -250,5 +252,60 @@ describe("buildStatusEvent", () => {
         actorKind: "user",
       }),
     ).toMatchObject({ from_status: null, to_status: "confirmed" });
+  });
+});
+
+describe("Print back to Approved is not a new approval", () => {
+  it("keeps the original approver when an order moves from Print back to Approved", () => {
+    for (const toStatus of ["approved", "confirmed"]) {
+      expect(
+        buildAttributionPatch({ fromStatus: "print", toStatus, actorId: ACTOR, actorKind: "user", now: NOW }),
+      ).toEqual({});
+    }
+  });
+
+  it("still credits a real approval from pending or cancelled", () => {
+    expect(isApprovalTransition("pending", "approved")).toBe(true);
+    expect(isApprovalTransition("cancelled", "confirmed")).toBe(true);
+    expect(isApprovalTransition(null, "approved")).toBe(true);
+  });
+
+  it("does not treat Print → Approved, or non-approval moves, as an approval", () => {
+    expect(isApprovalTransition("print", "approved")).toBe(false);
+    expect(isApprovalTransition("Print", "confirmed")).toBe(false);
+    expect(isApprovalTransition("approved", "confirmed")).toBe(false);
+    expect(isApprovalTransition("approved", "print")).toBe(false);
+  });
+});
+
+describe("approval credit counts once per order", () => {
+  const FIRST = "22222222-2222-2222-2222-222222222222";
+
+  it("keeps the first approver when an already-approved order is approved again from any status", () => {
+    for (const fromStatus of ["pending", "on_hold", "processing", "print"]) {
+      expect(
+        buildAttributionPatch({ fromStatus, toStatus: "confirmed", actorId: ACTOR, actorKind: "user", now: NOW, confirmedBy: FIRST }),
+      ).toEqual({});
+    }
+  });
+
+  it("keeps the first approver but clears the cancellation when a cancelled order is reopened as approved", () => {
+    expect(
+      buildAttributionPatch({ fromStatus: "cancelled", toStatus: "approved", actorId: ACTOR, actorKind: "user", now: NOW, confirmedBy: FIRST }),
+    ).toEqual({ cancelled_by: null, cancelled_at: null });
+  });
+
+  it("finds each order's first approval and ignores later re-approvals and Print returns", () => {
+    const events = [
+      { id: "e3", order_id: "o1", from_status: "pending", to_status: "confirmed", actor_id: "b", created_at: "2026-09-03T00:00:00Z" },
+      { id: "e1", order_id: "o1", from_status: "pending", to_status: "confirmed", actor_id: "a", created_at: "2026-09-01T00:00:00Z" },
+      { id: "e2", order_id: "o1", from_status: "confirmed", to_status: "print", actor_id: "a", created_at: "2026-09-02T00:00:00Z" },
+      { id: "e4", order_id: "o2", from_status: "print", to_status: "confirmed", actor_id: "c", created_at: "2026-09-01T00:00:00Z" },
+      { id: "e5", order_id: "o3", from_status: null, to_status: "confirmed", actor_id: "d", created_at: "2026-09-05T00:00:00Z" },
+    ];
+    const first = firstApprovalByOrder(events);
+    expect(first.get("o1")?.id).toBe("e1");
+    expect(first.has("o2")).toBe(false);
+    expect(first.get("o3")?.id).toBe("e5");
   });
 });

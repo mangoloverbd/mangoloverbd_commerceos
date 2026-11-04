@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0.89] - 2026-11-04
+
+### Fixed
+
+- An order's approval now counts once and is credited to the team member who approved it first. Moving an order back to Approved (from Print, Processing, Pending, On Hold or Cancelled) no longer moves the credit to whoever moved it back or counts it a second time. This applies to single and bulk status changes, inbox orders and Order Chat.
+- The Staff Performance report and the Activity log's "Orders confirmed by staff" count credit only each order's first approval, including orders re-approved before this release.
+- Deleted orders disappear at once on the Orders page instead of after a full reload of every order.
+
+### Changed
+
+- When orders are deleted elsewhere, the Orders page drops them using a small list of order ids (new `GET /api/orders?ids_only=1`) instead of downloading every order again.
+- On open or reload, the Orders page starts loading new orders right away instead of waiting for the role check, and each background check makes one database round trip instead of three for its first reads.
+- In the order editor, a cancelled order's reason sits under the title, and the header buttons line up with the title line.
+
 ## [0.1.0.88] - 2026-11-02
 
 ### Changed

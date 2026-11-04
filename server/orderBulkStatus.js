@@ -42,7 +42,7 @@ export function bulkStatusTransitionError(order, targetStatus) {
   return null;
 }
 
-export function buildBulkStatusPatch({ fromStatus, targetStatus, actorId, now, holdDetails = null, cancellationReason = null }) {
+export function buildBulkStatusPatch({ fromStatus, targetStatus, actorId, now, holdDetails = null, cancellationReason = null, confirmedBy = null }) {
   const from = normalizeOrderStatus(fromStatus);
   const to = normalizeOrderStatus(targetStatus);
   const patch = { status: targetStatus };
@@ -54,13 +54,14 @@ export function buildBulkStatusPatch({ fromStatus, targetStatus, actorId, now, h
     patch.cancellation_reason_code = null;
     patch.cancellation_reason_note = null;
   }
-  Object.assign(patch, buildAttributionPatch({ fromStatus, toStatus: targetStatus, actorId, actorKind: "user", now }));
+  Object.assign(patch, buildAttributionPatch({ fromStatus, toStatus: targetStatus, actorId, actorKind: "user", now, confirmedBy }));
   patch.updated_at = now;
   return patch;
 }
 
-// Orders that share a stored status get the same patch, so each group becomes
-// one UPDATE guarded by that status (a concurrent change makes the row miss).
+// Orders that share a stored status (and whether they already have an approver)
+// get the same patch, so each group becomes one UPDATE guarded by that status
+// (a concurrent change makes the row miss).
 export function planBulkStatusUpdate({ orders, orderIds, targetStatus, actorId, now, holdDetails = null, cancellationReason = null }) {
   const byId = new Map((orders || []).map((order) => [order.id, order]));
   const failures = [];
@@ -77,14 +78,16 @@ export function planBulkStatusUpdate({ orders, orderIds, targetStatus, actorId, 
       continue;
     }
     const fromStatus = order.status ?? null;
-    let group = groups.get(fromStatus);
+    const confirmedBy = order.confirmed_by ?? null;
+    const groupKey = `${fromStatus}\u0000${confirmedBy ? "approved-before" : "never-approved"}`;
+    let group = groups.get(groupKey);
     if (!group) {
       group = {
         fromStatus,
         ids: [],
-        patch: buildBulkStatusPatch({ fromStatus, targetStatus, actorId, now, holdDetails, cancellationReason }),
+        patch: buildBulkStatusPatch({ fromStatus, targetStatus, actorId, now, holdDetails, cancellationReason, confirmedBy }),
       };
-      groups.set(fromStatus, group);
+      groups.set(groupKey, group);
     }
     group.ids.push(orderId);
   }

@@ -5,6 +5,7 @@ import {
   buildActivityLogEntry,
   buildOrderLookup,
   classifyActivityEvent,
+  markRepeatApprovals,
   mergeActivityStreams,
   orderReferenceKey,
   resolveActivityActionFilter,
@@ -62,6 +63,19 @@ describe("classifyActivityEvent", () => {
       from_status: "pending",
       to_status: "confirmed",
     })).toBe("confirmed");
+  });
+
+  it("does not log moving an order from Print back to Approved as a confirmation", () => {
+    expect(classifyActivityEvent({
+      order_table: "orders",
+      from_status: "print",
+      to_status: "confirmed",
+    })).toBe("status_changed");
+    expect(classifyActivityEvent({
+      event_type: "order.status_changed",
+      order_table: "orders",
+      metadata: { from_status: "print", to_status: "approved" },
+    })).toBe("status_changed");
   });
 
   it("classifies a cancelled/rejected transition as cancelled", () => {
@@ -224,5 +238,29 @@ describe("buildActivityLogEntry summaries for legacy status rows", () => {
   it("keeps an existing detailed summary", () => {
     const entry = buildActivityLogEntry({ ...base, order_table: "orders", event_type: "order.edited", summary: "Edited order items" }, { orderLookup, staffById });
     expect(entry.summary).toBe("Edited order items");
+  });
+});
+
+describe("markRepeatApprovals", () => {
+  const first = { id: "legacy-1", order_id: "order-1", order_table: "orders", actor_id: "rafi", created_at: "2026-09-22T10:00:00.000Z" };
+  const firstApprovals = new Map([[orderReferenceKey("orders", "order-1"), first]]);
+
+  it("counts only an order's first approval as confirmed; re-approvals become status changes", () => {
+    const events = [
+      { id: "detailed-1", order_id: "order-1", order_table: "orders", actor_id: "rafi", created_at: "2026-09-22T10:00:00.400Z", metadata: { legacy_status_event_id: "legacy-1" }, action: "confirmed" },
+      { id: "detailed-2", order_id: "order-1", order_table: "orders", actor_id: "nadia", created_at: "2026-09-23T10:00:00.000Z", metadata: { legacy_status_event_id: "legacy-9" }, action: "confirmed" },
+      { id: "legacy-3", order_id: "order-1", order_table: "orders", actor_id: "nadia", created_at: "2026-09-24T10:00:00.000Z", action: "confirmed" },
+      { id: "unlinked", order_id: "order-1", order_table: "orders", actor_id: "rafi", created_at: "2026-09-22T10:00:01.000Z", metadata: {}, action: "confirmed" },
+      { id: "no-history", order_id: "order-2", order_table: "orders", actor_id: "nadia", created_at: "2026-09-24T10:00:00.000Z", action: "confirmed" },
+      { id: "cancel", order_id: "order-1", order_table: "orders", actor_id: "nadia", created_at: "2026-09-25T10:00:00.000Z", action: "cancelled" },
+    ];
+    expect(markRepeatApprovals(events, firstApprovals).map((event) => [event.id, event.action])).toEqual([
+      ["detailed-1", "confirmed"],
+      ["detailed-2", "status_changed"],
+      ["legacy-3", "status_changed"],
+      ["unlinked", "confirmed"],
+      ["no-history", "confirmed"],
+      ["cancel", "cancelled"],
+    ]);
   });
 });
