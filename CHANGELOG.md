@@ -6,6 +6,7 @@
 
 - Incomplete orders tab: an **Active | Dismissed** switch next to the search box, each with its count for the current search. Dismissed shows checkouts dismissed in the last 30 days with who dismissed them and when, and offers **Restore** and **Create order** (restore, then open the checkout). Checkouts rejected in Order Protection are listed but cannot be restored.
 - Searching on Active also lists matching dismissed checkouts under a "Dismissed" heading, so a customer who calls back is found in one place. The search runs on the server across every unexpired dismissed checkout, not only the newest 200.
+- Switching Active | Dismissed slides the selected pill and fades the list in (instant when the system's reduce-motion setting is on). Update Status stays visible on the whole Incomplete tab.
 - Dismissing a single checkout shows a "Checkout dismissed" toast with **Undo**.
 - New `GET /api/abandoned-checkouts/dismissed` (optional `?search=`). `PATCH /api/abandoned-checkouts/:id` with action `open` now restores a dismissed checkout and clears its contacted time, resolved time and resolution.
 - Loading the Active list now dismisses checkouts whose phone already has an order in Pending, marked "auto: already ordered".

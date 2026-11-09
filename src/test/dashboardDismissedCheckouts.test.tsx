@@ -157,7 +157,8 @@ describe("Incomplete tab: Active | Dismissed", () => {
     expect(list).toHaveTextContent(/Dismissed · 9 Nov, \d+:15 [AP]M · by Rahim/);
     expect(list).toHaveTextContent("auto: already ordered");
     expect(screen.queryByTestId("abandoned-checkout-queue")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("button-bulk-abandoned-status")).not.toBeInTheDocument();
+    // Update Status stays visible on the Incomplete tab; nothing is selectable in Dismissed.
+    expect(screen.getByTestId("button-bulk-abandoned-status")).toBeDisabled();
   });
 
   it("restores a dismissed checkout with PATCH action open and drops it from Dismissed", async () => {

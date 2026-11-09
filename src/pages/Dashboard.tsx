@@ -661,6 +661,10 @@ export default function Dashboard() {
   const liveVisitors = useLiveVisitors();
   const isMobile = useIsMobile();
   const reduceMotion = useReducedMotion();
+  // Switching Active | Dismissed fades the new list in (a soft rise, no exit wait).
+  const abandonedViewFade = reduceMotion
+    ? {}
+    : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.2, ease: [0.32, 0.72, 0, 1] as const } };
 
   // `fresh` bypasses the server's short analytics cache for the selected range
   // (user-triggered refreshes); the previous-period call stays cached.
@@ -2102,7 +2106,7 @@ export default function Dashboard() {
             </div>
               </>
             )}
-            {isAbandonedQueue && abandonedView === "active" && (
+            {isAbandonedQueue && (
               <div className="max-md:w-full">
               <Popover open={abandonedBulkMenuOpen} onOpenChange={setAbandonedBulkMenuOpen}>
                 <PopoverTrigger asChild>
@@ -2163,6 +2167,7 @@ export default function Dashboard() {
         />
 
         {isAbandonedQueue && abandonedView === "dismissed" ? (
+          <motion.div key="abandoned-dismissed" {...abandonedViewFade}>
           <DismissedCheckoutList
             checkouts={dismissedCheckouts}
             loading={dismissedCheckoutsQuery.isPending}
@@ -2173,8 +2178,9 @@ export default function Dashboard() {
             onCreateOrder={(checkoutId) => void createOrderFromDismissed(checkoutId)}
             onRetry={() => void dismissedCheckoutsQuery.refetch()}
           />
+          </motion.div>
         ) : isAbandonedQueue ? (
-          <>
+          <motion.div key="abandoned-active" {...abandonedViewFade}>
           <AbandonedCheckoutQueue
             checkouts={filteredAbandonedCheckouts}
             loading={abandonedLoading}
@@ -2210,7 +2216,7 @@ export default function Dashboard() {
               onCreateOrder={(checkoutId) => void createOrderFromDismissed(checkoutId)}
             />
           )}
-          </>
+          </motion.div>
         ) : (
           <>
             {isCancelledTab && (
