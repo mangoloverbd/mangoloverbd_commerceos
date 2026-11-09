@@ -1,7 +1,8 @@
-import { memo, startTransition, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { memo, startTransition, useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQueries, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { markScrollRestored } from "@/lib/scrollRestore";
 import { getOrdersPreview, OrdersSyncError, subscribeOrdersPreview, syncOrders, type OrdersPreview } from "@/lib/ordersSync";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -28,6 +29,8 @@ import {
   type FulfillmentQueueTab,
 } from "@/components/orders/OrderStatusSegmentedControl";
 import { AbandonedCheckoutQueue } from "@/components/orders/AbandonedCheckoutQueue";
+import { AbandonedViewToggle, type AbandonedView } from "@/components/orders/AbandonedViewToggle";
+import { DismissedCheckoutList } from "@/components/orders/DismissedCheckoutList";
 import { OrderHoldDialog } from "@/components/orders/OrderHoldDialog";
 import type { OrderHoldMetadata } from "@/components/orders/OrderHoldFields";
 import {
@@ -98,7 +101,41 @@ import {
   matchesAbandonedCheckoutSearch,
   type AbandonedCheckout,
   type AbandonedCheckoutResponse,
+  type DismissedAbandonedCheckoutResponse,
 } from "@/lib/abandonedCheckouts";
+
+const DISMISSED_CHECKOUTS_QUERY_KEY = "/api/abandoned-checkouts/dismissed";
+const FULFILLMENT_TAB_STORAGE_KEY = "dashboard-fulfillment-tab";
+/** {"tab", "page"}: the page is restored only when reopening the same tab. */
+const ORDER_PAGE_STORAGE_KEY = "dashboard-order-page";
+/** The last order opened in the editor; the list scrolls back to it once. */
+const RETURN_ORDER_STORAGE_KEY = "dashboard-return-order";
+
+function readSessionValue(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionValue(key: string, value: string | null) {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    // sessionStorage unavailable (private mode / blocked): nothing to restore later.
+  }
+}
+
+function readStoredOrderPage(tab: string): number {
+  try {
+    const stored = JSON.parse(readSessionValue(ORDER_PAGE_STORAGE_KEY) || "null") as { tab?: unknown; page?: unknown } | null;
+    return stored?.tab === tab && Number.isInteger(stored.page) && (stored.page as number) >= 0 ? stored.page as number : 0;
+  } catch {
+    return 0;
+  }
+}
 
 function toYMD(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -554,6 +591,7 @@ export default function Dashboard() {
   const [abandonedLoading, setAbandonedLoading] = useState(() => !cachedAbandonedResponse);
   const [abandonedError, setAbandonedError] = useState<string | null>(null);
   const [abandonedActionInFlightId, setAbandonedActionInFlightId] = useState<string | null>(null);
+  const [abandonedView, setAbandonedView] = useState<AbandonedView>("active");
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [selectedAbandonedIds, setSelectedAbandonedIds] = useState<Set<string>>(new Set());
@@ -571,7 +609,7 @@ export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const initialFulfillmentTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
-  const storedFulfillmentTab = sessionStorage.getItem("dashboard-fulfillment-tab");
+  const storedFulfillmentTab = readSessionValue(FULFILLMENT_TAB_STORAGE_KEY);
   const [fulfillmentTab, setFulfillmentTab] = useState<FulfillmentQueueTab>(
     typeof initialFulfillmentTab === "string" && (FULFILLMENT_QUEUE_TABS as readonly string[]).includes(initialFulfillmentTab)
       ? (initialFulfillmentTab as FulfillmentQueueTab)
@@ -587,7 +625,7 @@ export default function Dashboard() {
   }, [location.pathname, location.state, navigate]);
   // Remember the tab for this session so browser-back from an order returns here.
   useEffect(() => {
-    sessionStorage.setItem("dashboard-fulfillment-tab", fulfillmentTab);
+    writeSessionValue(FULFILLMENT_TAB_STORAGE_KEY, fulfillmentTab);
   }, [fulfillmentTab]);
   const { warehouses } = useWarehouses();
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -610,7 +648,14 @@ export default function Dashboard() {
     () => !initialAnalyticsSnapshot?.analytics,
   );
   const [orderPageSize, setOrderPageSize] = useOrderPageSize("dashboard-order-page-size");
-  const [orderPage, setOrderPage] = useState(0);
+  const [orderPage, setOrderPage] = useState(() => readStoredOrderPage(fulfillmentTab));
+  useEffect(() => {
+    writeSessionValue(ORDER_PAGE_STORAGE_KEY, JSON.stringify({ tab: fulfillmentTab, page: orderPage }));
+  }, [fulfillmentTab, orderPage]);
+  // Read once at mount: coming back from the editor, the table renders this
+  // order in its first paint and the list is scrolled to it before it shows.
+  const [returnOrderIdAtOpen] = useState(() => readSessionValue(RETURN_ORDER_STORAGE_KEY));
+  const returnOrderIdRef = useRef(returnOrderIdAtOpen);
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { orgName } = useOrgName();
   const liveVisitors = useLiveVisitors();
@@ -1009,13 +1054,59 @@ export default function Dashboard() {
         toast.success("Checkout marked as not contacted");
       } else {
         await runAbandonedDismissed(checkoutId);
-        toast.success("Checkout dismissed");
+        void queryClient.invalidateQueries({ queryKey: [DISMISSED_CHECKOUTS_QUERY_KEY] });
+        toast.custom((toastId) => (
+          <DarkToast className="flex items-center gap-3">
+            <p className="flex-1 text-[13px] font-medium text-white">Checkout dismissed</p>
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(toastId);
+                void restoreAbandonedCheckout(checkoutId);
+              }}
+              className="rounded-md px-2 py-1 text-[12px] font-medium text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            >
+              Undo
+            </button>
+          </DarkToast>
+        ), { duration: 6000, fit: true });
       }
     } catch {
       toast.error("Could not update abandoned checkout");
     } finally {
       setAbandonedActionInFlightId(null);
     }
+  };
+
+  // Restore = PATCH action "open": the checkout leaves Dismissed and is back
+  // in the Active queue as a fresh, never-contacted checkout.
+  const restoreAbandonedCheckout = async (checkoutId: string, { quiet = false } = {}): Promise<boolean> => {
+    setAbandonedActionInFlightId(checkoutId);
+    try {
+      const res = await apiFetch(`/api/abandoned-checkouts/${checkoutId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "open" }),
+      });
+      if (!res.ok) throw new AbandonedCheckoutActionError("Could not restore checkout", res.status);
+      queryClient.setQueriesData<DismissedAbandonedCheckoutResponse>(
+        { queryKey: [DISMISSED_CHECKOUTS_QUERY_KEY] },
+        (current) => current && { checkouts: current.checkouts.filter((checkout) => checkout.id !== checkoutId) },
+      );
+      if (!quiet) toast.success("Checkout restored");
+      return true;
+    } catch {
+      toast.error("Could not restore checkout");
+      return false;
+    } finally {
+      setAbandonedActionInFlightId(null);
+      void fetchAbandonedCheckouts(true);
+      void queryClient.invalidateQueries({ queryKey: [DISMISSED_CHECKOUTS_QUERY_KEY] });
+    }
+  };
+
+  const createOrderFromDismissed = async (checkoutId: string) => {
+    if (await restoreAbandonedCheckout(checkoutId, { quiet: true })) navigate(`/abandoned/${checkoutId}`);
   };
 
   const runAbandonedConvert = async (
@@ -1163,12 +1254,27 @@ export default function Dashboard() {
       setSelectedAbandonedIds(new Set(failed));
       setBulkDismissCount(0);
       void fetchAbandonedCheckouts(true);
+      void queryClient.invalidateQueries({ queryKey: [DISMISSED_CHECKOUTS_QUERY_KEY] });
     } finally {
       setBulkAbandonedRunning(false);
     }
   };
 
   const isAbandonedQueue = fulfillmentTab === "abandoned";
+  // Dismissed checkouts are searched on the server, so a customer who calls
+  // back is found even among older dismissals beyond the newest 200.
+  const dismissedSearch = debouncedSearch.trim();
+  const dismissedCheckoutsQuery = useQuery({
+    queryKey: [DISMISSED_CHECKOUTS_QUERY_KEY, dismissedSearch],
+    enabled: isAbandonedQueue,
+    queryFn: async (): Promise<DismissedAbandonedCheckoutResponse> => {
+      const res = await apiFetch(`${DISMISSED_CHECKOUTS_QUERY_KEY}${dismissedSearch ? `?search=${encodeURIComponent(dismissedSearch)}` : ""}`);
+      const data: Partial<DismissedAbandonedCheckoutResponse> = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("Could not load dismissed checkouts");
+      return { checkouts: Array.isArray(data.checkouts) ? data.checkouts : [] };
+    },
+  });
+  const dismissedCheckouts = dismissedCheckoutsQuery.data?.checkouts ?? [];
   const activeOrderStatusFilter: OrderStatusFilter = isAbandonedQueue ? "all" : fulfillmentTab;
   const [districtFilter, setDistrictFilter] = useState("all");
   // Print tab: product and pack-weight filters.
@@ -1391,6 +1497,59 @@ export default function Dashboard() {
     () => printFilteredOrders.slice(orderSafePage * orderPageSize, (orderSafePage + 1) * orderPageSize),
     [printFilteredOrders, orderPageSize, orderSafePage],
   );
+
+  // Back from the editor: open the page holding the last opened order and
+  // centre it, all before the browser paints, so the top never flashes. A
+  // layout effect (not useEffect) is what makes this happen before paint.
+  useLayoutEffect(() => {
+    const returnOrderId = returnOrderIdRef.current;
+    if (!returnOrderId) return;
+    const clearReturnOrder = () => {
+      returnOrderIdRef.current = null;
+      writeSessionValue(RETURN_ORDER_STORAGE_KEY, null);
+    };
+    if (isAbandonedQueue) {
+      clearReturnOrder();
+      return;
+    }
+    if (loading || ordersPartial || orders.length === 0) return;
+
+    const index = printFilteredOrders.findIndex((order) => order.id === returnOrderId);
+    if (index < 0) {
+      // e.g. the order was confirmed and left this tab.
+      clearReturnOrder();
+      return;
+    }
+    const page = Math.floor(index / orderPageSize);
+    if (page !== orderSafePage) {
+      setOrderPage(page);
+      return;
+    }
+
+    const findRow = () => [...document.querySelectorAll<HTMLElement>("[data-order-row]")]
+      .find((element) => element.getAttribute("data-order-row") === returnOrderId);
+    const reveal = (row: HTMLElement | undefined) => {
+      row?.scrollIntoView?.({ block: "center" });
+      markScrollRestored(location.pathname);
+      clearReturnOrder();
+    };
+    const row = findRow();
+    if (row) {
+      reveal(row);
+      return;
+    }
+    // The row is not mounted yet: poll briefly, then give up quietly.
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      tries += 1;
+      const found = findRow();
+      if (found || tries >= 60) {
+        window.clearInterval(timer);
+        reveal(found);
+      }
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [isAbandonedQueue, loading, ordersPartial, orders.length, printFilteredOrders, orderPageSize, orderSafePage, location.pathname]);
 
   const metricSparklines = useMemo(() => {
     const buckets = analytics?.series?.buckets;
@@ -1853,8 +2012,29 @@ export default function Dashboard() {
               />
             </div>
 
+            {isAbandonedQueue && (
+              <AbandonedViewToggle
+                value={abandonedView}
+                onChange={(view) => {
+                  setAbandonedView(view);
+                  setSelectedAbandonedIds(new Set());
+                }}
+                activeCount={filteredAbandonedCheckouts.length}
+                dismissedCount={dismissedCheckoutsQuery.data ? dismissedCheckouts.length : null}
+              />
+            )}
+
             {!isAbandonedQueue && (
               <>
+            <OrderRowsPerPageSelect
+              pageSize={orderPageSize}
+              onPageSizeChange={(nextPageSize) => {
+                setOrderPageSize(nextPageSize);
+                setOrderPage(0);
+              }}
+              ariaLabel="Rows per page for dashboard orders"
+            />
+
             <div className="w-px h-4 bg-black/10 max-md:hidden" />
 
             <div className="flex items-center gap-2 max-md:w-full max-md:flex-col max-md:items-stretch">
@@ -1922,7 +2102,7 @@ export default function Dashboard() {
             </div>
               </>
             )}
-            {isAbandonedQueue && (
+            {isAbandonedQueue && abandonedView === "active" && (
               <div className="max-md:w-full">
               <Popover open={abandonedBulkMenuOpen} onOpenChange={setAbandonedBulkMenuOpen}>
                 <PopoverTrigger asChild>
@@ -1982,7 +2162,19 @@ export default function Dashboard() {
           }}
         />
 
-        {isAbandonedQueue ? (
+        {isAbandonedQueue && abandonedView === "dismissed" ? (
+          <DismissedCheckoutList
+            checkouts={dismissedCheckouts}
+            loading={dismissedCheckoutsQuery.isPending}
+            error={dismissedCheckoutsQuery.isError ? "Could not load dismissed checkouts" : null}
+            searching={Boolean(dismissedSearch)}
+            actionInFlightId={abandonedActionInFlightId}
+            onRestore={(checkoutId) => void restoreAbandonedCheckout(checkoutId)}
+            onCreateOrder={(checkoutId) => void createOrderFromDismissed(checkoutId)}
+            onRetry={() => void dismissedCheckoutsQuery.refetch()}
+          />
+        ) : isAbandonedQueue ? (
+          <>
           <AbandonedCheckoutQueue
             checkouts={filteredAbandonedCheckouts}
             loading={abandonedLoading}
@@ -2005,6 +2197,20 @@ export default function Dashboard() {
             ))}
             onOpenCheckout={(checkoutId) => navigate(`/abandoned/${checkoutId}`)}
           />
+          {/* A customer calling back is found in one place: matching dismissed checkouts below the active ones. */}
+          {dismissedSearch && (
+            <DismissedCheckoutList
+              inline
+              checkouts={dismissedCheckouts}
+              loading={dismissedCheckoutsQuery.isPending}
+              error={dismissedCheckoutsQuery.isError ? "Could not load dismissed checkouts" : null}
+              searching
+              actionInFlightId={abandonedActionInFlightId}
+              onRestore={(checkoutId) => void restoreAbandonedCheckout(checkoutId)}
+              onCreateOrder={(checkoutId) => void createOrderFromDismissed(checkoutId)}
+            />
+          )}
+          </>
         ) : (
           <>
             {isCancelledTab && (
@@ -2053,6 +2259,7 @@ export default function Dashboard() {
             )}
             <OrdersTable
               orders={visibleOrders}
+              revealOrderId={returnOrderIdAtOpen || undefined}
               selectionOrders={orders}
               loading={loading}
               onStatusUpdate={handleStatusUpdate}
@@ -2077,16 +2284,6 @@ export default function Dashboard() {
               pageSize={orderPageSize}
               totalItems={printFilteredOrders.length}
               onPageChange={setOrderPage}
-              pageSizeControl={
-                <OrderRowsPerPageSelect
-                  pageSize={orderPageSize}
-                  onPageSizeChange={(nextPageSize) => {
-                    setOrderPageSize(nextPageSize);
-                    setOrderPage(0);
-                  }}
-                  ariaLabel="Rows per page for dashboard orders"
-                />
-              }
             />
           </>
         )}
@@ -2096,7 +2293,7 @@ export default function Dashboard() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Dismiss {bulkDismissCount} checkouts?</AlertDialogTitle>
-            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+            <AlertDialogDescription>You can restore them from Dismissed for up to 30 days.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep checkouts</AlertDialogCancel>

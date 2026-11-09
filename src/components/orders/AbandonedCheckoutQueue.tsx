@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -36,6 +35,8 @@ import {
   abandonedCheckoutSourceLabel,
   abandonedCheckoutTelHref,
   abandonedCheckoutWhatsAppHref,
+  formatAbandonedCheckoutCaptureTime as captureTime,
+  formatAbandonedCheckoutTotal as formatEstimatedTotal,
   type AbandonedCheckout,
 } from "@/lib/abandonedCheckouts";
 import {
@@ -77,7 +78,7 @@ const actionChipContacted =
   "bg-status-lime-background text-black hover:bg-status-lime-background/80 focus-visible:ring-black/30";
 
 /** Crossfades the copy glyph to a check while a copy is freshly confirmed. */
-function CopyGlyph({ copied, size = 13 }: { copied: boolean; size?: number }) {
+export function CopyGlyph({ copied, size = 13 }: { copied: boolean; size?: number }) {
   return (
     <span className="relative inline-flex shrink-0" style={{ width: size, height: size }} aria-hidden>
       <span
@@ -115,17 +116,6 @@ export type AbandonedCheckoutQueueProps = {
 };
 
 const NO_PENDING_MATCHES = new Map<string, PendingOrderMatch[]>();
-
-function formatEstimatedTotal(total: number | null) {
-  return typeof total === "number" && Number.isFinite(total)
-    ? `৳${total.toLocaleString("en-BD", { maximumFractionDigits: 0 })}`
-    : "—";
-}
-
-function captureTime(createdAt: string) {
-  const date = new Date(createdAt);
-  return Number.isNaN(date.getTime()) ? "Captured recently" : `Captured ${format(date, "d MMM, h:mm a")}`;
-}
 
 export function AbandonedCheckoutQueue({
   checkouts,
@@ -522,7 +512,7 @@ export function AbandonedCheckoutQueue({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Dismiss checkout?</AlertDialogTitle>
-            <AlertDialogDescription>Dismiss this checkout from the recovery queue? This cannot be undone.</AlertDialogDescription>
+            <AlertDialogDescription>Dismiss this checkout from the recovery queue? You can restore it from Dismissed for up to 30 days.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep checkout</AlertDialogCancel>

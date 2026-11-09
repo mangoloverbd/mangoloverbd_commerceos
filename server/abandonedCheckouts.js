@@ -182,7 +182,9 @@ export function canAcceptBrowserCapture({ status, expiresAt }, now = new Date())
 export function canTransitionAbandonedCheckout(from, to, actor = "staff") {
   if (actor === "staff") {
     return (from === "open" && (to === "contacted" || to === "dismissed"))
-      || (from === "contacted" && (to === "dismissed" || to === "open"));
+      || (from === "contacted" && (to === "dismissed" || to === "open"))
+      // Restore: a dismissed checkout goes back to the active queue.
+      || (from === "dismissed" && to === "open");
   }
   if (actor === "system") {
     return ACTIVE_ABANDONED_CHECKOUT_STATUSES.includes(from)
@@ -236,12 +238,14 @@ export function buildStaffActionPatch(status, action, now = new Date()) {
       contacted_at: now.toISOString(),
     };
   }
-  // Staff un-marking a mis-clicked "contacted"; clear the timestamp so the
-  // checkout reads as never contacted rather than contacted-then-reverted.
+  // Un-marking a mis-clicked "contacted", or restoring a dismissed checkout:
+  // either way it reads as a fresh, never-contacted, unresolved checkout.
   if (action === "open") {
     return {
       status: "open",
       contacted_at: null,
+      resolved_at: null,
+      resolution: null,
     };
   }
   return {
@@ -323,4 +327,159 @@ export function normalizeAbandonedCheckoutConvertOverrides(customerName, address
     customerName: optionalString(customerName, 120),
     address: optionalString(address, 500),
   };
+}
+
+/** Dismissed checkouts staff may restore. Order Protection rejections stay dismissed. */
+export const RESTORABLE_DISMISSED_RESOLUTIONS = Object.freeze(["dismissed", "already_ordered"]);
+
+/**
+ * Patch for a staff status action, or the HTTP status that refuses it.
+ * Only open → contacted|dismissed, contacted → dismissed|open and a restorable
+ * dismissed → open are allowed; everything else is a 409 conflict.
+ */
+export function resolveAbandonedStaffAction(current, action, now = new Date()) {
+  if (current.status === "dismissed" && !RESTORABLE_DISMISSED_RESOLUTIONS.includes(current.resolution)) {
+    return { error: 409 };
+  }
+  const patch = buildStaffActionPatch(current.status, action, now);
+  return patch ? { patch } : { error: 409 };
+}
+
+export function buildAlreadyOrderedDismissPatch(now = new Date()) {
+  return {
+    status: "dismissed",
+    resolved_at: now.toISOString(),
+    resolution: "already_ordered",
+  };
+}
+
+export const DISMISSED_CHECKOUT_LIST_LIMIT = 200;
+
+/**
+ * Turn staff search text into an ilike pattern that is safe inside a PostgREST
+ * or() filter (no commas, parentheses or wildcards of the caller's own).
+ */
+export function dismissedCheckoutSearchPattern(search) {
+  const text = String(search || "").replace(/[,()%*\\:"']/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+  return text ? `%${text}%` : null;
+}
+
+/**
+ * The workspace's dismissed checkouts that have not expired yet, newest
+ * dismissal first, each with the staff name from its latest dismiss event.
+ * With a search, every unexpired dismissed checkout is searched by name,
+ * phone and address; otherwise the newest DISMISSED_CHECKOUT_LIST_LIMIT.
+ */
+export async function loadDismissedAbandonedCheckouts(supabase, { orgId, fields, search, now = new Date() }) {
+  let query = supabase
+    .from("abandoned_checkouts")
+    .select(fields)
+    .eq("org_id", orgId)
+    .eq("status", "dismissed")
+    .gt("expires_at", now.toISOString());
+  const pattern = dismissedCheckoutSearchPattern(search);
+  if (pattern) {
+    const phone = normalizeBdPhone(search);
+    const phonePattern = phone ? `%${phone}%` : pattern;
+    query = query.or(`customer_name.ilike.${pattern},phone.ilike.${phonePattern},address.ilike.${pattern}`);
+  }
+  const { data, error } = await query
+    .order("resolved_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(DISMISSED_CHECKOUT_LIST_LIMIT);
+  if (error) throw error;
+  const checkouts = data || [];
+  if (!checkouts.length) return [];
+
+  const { data: events, error: eventsError } = await supabase
+    .from("order_status_events")
+    .select("order_id, actor_id, actor_kind, created_at")
+    .eq("org_id", orgId)
+    .eq("order_table", "abandoned_checkouts")
+    .eq("to_status", "dismissed")
+    .in("order_id", checkouts.map((checkout) => checkout.id))
+    .order("created_at", { ascending: false });
+  if (eventsError) throw eventsError;
+  const latestEvent = new Map();
+  for (const event of events || []) {
+    if (!latestEvent.has(event.order_id)) latestEvent.set(event.order_id, event);
+  }
+
+  const actorIds = [...new Set([...latestEvent.values()]
+    .filter((event) => event.actor_kind === "user" && event.actor_id)
+    .map((event) => event.actor_id))];
+  const names = new Map();
+  if (actorIds.length) {
+    const { data: members, error: membersError } = await supabase
+      .from("user_roles")
+      .select("user_id, display_name")
+      .eq("org_id", orgId)
+      .in("user_id", actorIds);
+    if (membersError) throw membersError;
+    for (const member of members || []) names.set(member.user_id, member.display_name || "Unnamed member");
+  }
+
+  return checkouts.map((checkout) => {
+    const event = latestEvent.get(checkout.id);
+    return { ...checkout, dismissed_by: event?.actor_id ? names.get(event.actor_id) || null : null };
+  });
+}
+
+/**
+ * Dismiss active checkouts whose customer already has an order waiting in
+ * Pending (matched on the normalised BD phone), with resolution
+ * "already_ordered". Returns the ids it dismissed.
+ */
+export async function autoDismissAlreadyOrderedCheckouts(supabase, {
+  orgId,
+  checkouts,
+  classifyOrderStatus,
+  recordStatusEvent,
+  buildStatusEvent,
+  now = new Date(),
+}) {
+  const phones = [...new Set(checkouts.map((checkout) => normalizeBdPhone(checkout.phone)).filter(Boolean))];
+  if (!phones.length) return [];
+
+  const { data: orders, error } = await supabase
+    .from("orders")
+    .select("id, phone, status, fulfillment_status, courier_status, courier_name, courier_message, sent_to_courier, processing_at, courier_status_at, fraud_checked, fraud_total:fraud_data->total_parcels, fraud_delivered:fraud_data->total_delivered")
+    .eq("org_id", orgId)
+    .in("phone", phones);
+  if (error) throw error;
+  const pendingPhones = new Set();
+  for (const order of orders || []) {
+    const fraud = { total_parcels: order.fraud_total, total_delivered: order.fraud_delivered };
+    if (classifyOrderStatus({ ...order, fraud_data: order.fraud_checked ? fraud : null }, now.getTime()) !== "pending") continue;
+    const phone = normalizeBdPhone(order.phone);
+    if (phone) pendingPhones.add(phone);
+  }
+
+  const dismissed = [];
+  for (const checkout of checkouts) {
+    if (!pendingPhones.has(normalizeBdPhone(checkout.phone))) continue;
+    const { data: updated, error: updateError } = await supabase
+      .from("abandoned_checkouts")
+      .update(buildAlreadyOrderedDismissPatch(now))
+      .eq("id", checkout.id)
+      .eq("org_id", orgId)
+      .eq("status", checkout.status)
+      .gt("expires_at", now.toISOString())
+      .select("id")
+      .maybeSingle();
+    if (updateError) throw updateError;
+    if (!updated) continue;
+    dismissed.push(checkout.id);
+    await recordStatusEvent(supabase, buildStatusEvent({
+      orgId,
+      orderId: checkout.id,
+      orderTable: "abandoned_checkouts",
+      fromStatus: checkout.status,
+      toStatus: "dismissed",
+      actorId: null,
+      actorKind: "system",
+      occurredAt: now.toISOString(),
+    }));
+  }
+  return dismissed;
 }

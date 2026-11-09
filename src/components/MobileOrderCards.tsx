@@ -109,7 +109,7 @@ export function MobileOrderCards({
         const selected = selectedIds.has(order.id);
         const actions = renderActions(order);
         return (
-          <article key={order.id} className={cn("rounded-2xl border bg-white p-4 transition-colors", selected ? "border-blue-300 bg-blue-50/30" : "border-black/[0.08]")}>
+          <article key={order.id} data-order-row={order.id} className={cn("rounded-2xl border bg-white p-4 transition-colors", selected ? "border-blue-300 bg-blue-50/30" : "border-black/[0.08]")}>
             <div className="flex items-start gap-3">
               <label className="flex min-h-11 min-w-11 shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}>
                 <input

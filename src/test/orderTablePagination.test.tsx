@@ -2,6 +2,7 @@ import { act, render, renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getPageSlots,
   OrderRowsPerPageSelect,
   OrderTablePagination,
 } from "@/components/orders/OrderTablePagination";
@@ -60,8 +61,41 @@ describe("OrderTablePagination", () => {
     const footer = screen.getByTestId("order-pagination-footer");
     expect(footer.children).toHaveLength(3);
     expect(footer.children[0]).toBe(screen.getByRole("button", { name: "Previous page" }));
-    expect(footer.children[1]).toBe(screen.getByText("Page 1 of 2"));
+    expect(footer.children[1]).toContainElement(screen.getByRole("button", { name: "Page 1" }));
     expect(footer.children[2]).toBe(screen.getByRole("button", { name: "Next page" }));
+  });
+
+  it("shows at most seven page slots with gaps around the current page", () => {
+    expect(getPageSlots(1, 5)).toEqual([1, 2, 3, 4, 5]);
+    expect(getPageSlots(1, 261)).toEqual([1, 2, 3, 4, 5, "gap-end", 261]);
+    expect(getPageSlots(50, 261)).toEqual([1, "gap-start", 49, 50, 51, "gap-end", 261]);
+    expect(getPageSlots(260, 261)).toEqual([1, "gap-start", 257, 258, 259, 260, 261]);
+  });
+
+  it("jumps to a clicked page number and marks the current page", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+
+    render(<OrderTablePagination page={0} pageSize={100} totalItems={26_100} onPageChange={onPageChange} />);
+
+    expect(screen.getByRole("button", { name: "Page 1" })).toHaveAttribute("aria-current", "page");
+    await user.click(screen.getByRole("button", { name: "Page 261" }));
+    expect(onPageChange).toHaveBeenCalledWith(260);
+  });
+
+  it("jumps to a typed page and clamps it to the valid range", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+
+    render(<OrderTablePagination page={0} pageSize={100} totalItems={26_100} onPageChange={onPageChange} />);
+
+    const jump = screen.getByRole("spinbutton", { name: "Go to page" });
+    await user.type(jump, "120{Enter}");
+    expect(onPageChange).toHaveBeenLastCalledWith(119);
+    expect(jump).toHaveValue(null);
+
+    await user.type(jump, "999{Enter}");
+    expect(onPageChange).toHaveBeenLastCalledWith(260);
   });
 
   it("offers the supported row limits from the standalone selector", async () => {
