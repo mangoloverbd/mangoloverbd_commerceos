@@ -193,6 +193,8 @@ describe("abandoned checkout lifecycle", () => {
     expect(buildStaffActionPatch("contacted", "open", now)).toEqual({
       status: "open",
       contacted_at: null,
+      resolved_at: null,
+      resolution: null,
     });
     expect(buildStaffActionPatch("dismissed", "contacted", now)).toBeNull();
   });

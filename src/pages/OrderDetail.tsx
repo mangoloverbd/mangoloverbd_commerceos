@@ -160,6 +160,16 @@ export default function OrderDetail() {
   // The Risk tab only appears while Order Protection is on (shadow or active).
   const protectionModeQuery = useQuery({ queryKey: ["order-protection-settings"], queryFn: fetchRiskSettings });
   const protectionOn = protectionModeQuery.data ? protectionModeQuery.data.mode !== "off" : false;
+  // The Orders list scrolls back to the last order opened here, including one
+  // reached through the editor's Previous/Next.
+  useEffect(() => {
+    if (!id) return;
+    try {
+      sessionStorage.setItem("dashboard-return-order", id);
+    } catch {
+      // sessionStorage unavailable: the list simply opens at the top.
+    }
+  }, [id]);
   const returnTab = (location.state as { fulfillmentTab?: unknown } | null)?.fulfillmentTab;
   const backState = typeof returnTab === "string" && returnTab ? { fulfillmentTab: returnTab } : undefined;
   function goBack() {

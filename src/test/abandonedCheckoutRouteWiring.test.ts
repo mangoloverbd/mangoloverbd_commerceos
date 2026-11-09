@@ -62,7 +62,7 @@ describe("abandoned checkout route wiring", () => {
       expect(route).toContain('.gt("expires_at", now.toISOString())');
     }
     expect(queueRead).toContain("ACTIVE_ABANDONED_CHECKOUT_STATUSES");
-    expect(queuePatch).toContain("buildStaffActionPatch");
+    expect(queuePatch).toContain("resolveAbandonedStaffAction");
     expect(queuePatch).toContain("isAbandonedCheckoutDraftKey(req.params.id)");
   });
 
@@ -79,7 +79,8 @@ describe("abandoned checkout route wiring", () => {
     expect(queuePatch).toContain('"activity_group_id"');
     expect(queuePatch).toContain('.eq("status", current.status)');
     expect(
-      queuePatch.indexOf('.in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)'),
+      // Edits only reach active checkouts; status actions may also restore dismissed ones.
+      queuePatch.indexOf('hasAction ? [...ACTIVE_ABANDONED_CHECKOUT_STATUSES, "dismissed"] : ACTIVE_ABANDONED_CHECKOUT_STATUSES'),
     ).toBeLessThan(queuePatch.indexOf("parseAbandonedCheckoutStaffEdit"));
   });
 

@@ -75,7 +75,7 @@ import {
   buildPersonalDataScrubPatch,
   buildRecoveredPatch,
   buildProtectionRejectedPatch,
-  buildStaffActionPatch,
+  autoDismissAlreadyOrderedCheckouts,
   canAcceptBrowserCapture,
   hashAbandonedCheckoutDraftKey,
   isAbandonedCheckoutDraftKey,
@@ -84,6 +84,8 @@ import {
   normalizeBdMobileInput,
   parseAbandonedCheckoutCapture,
   parseAbandonedCheckoutStaffEdit,
+  loadDismissedAbandonedCheckouts,
+  resolveAbandonedStaffAction,
 } from "./abandonedCheckouts.js";
 import { getOrderApprovalDetailsError } from "./orderApprovalDetails.js";
 import { BULK_STATUS_TARGETS, MAX_BULK_STATUS_ORDERS, planBulkStatusUpdate } from "./orderBulkStatus.js";
@@ -7379,10 +7381,30 @@ app.get("/api/abandoned-checkouts", async (req, res) => {
       .order("created_at", { ascending: false });
     if (error) throw error;
 
+    // A customer who already has an order waiting in Pending needs no recovery
+    // call: move their checkout to Dismissed ("auto: already ordered").
+    let activeRows = data || [];
+    try {
+      const autoDismissed = await autoDismissAlreadyOrderedCheckouts(supabase, {
+        orgId,
+        checkouts: activeRows,
+        classifyOrderStatus,
+        recordStatusEvent,
+        buildStatusEvent,
+        now,
+      });
+      if (autoDismissed.length) {
+        const dismissedIds = new Set(autoDismissed);
+        activeRows = activeRows.filter((checkout) => !dismissedIds.has(checkout.id));
+      }
+    } catch {
+      console.warn("[AbandonedCheckout] already-ordered auto-dismiss failed");
+    }
+
     // Checkouts whose order is waiting in Order Protection get a review id so
     // staff see it is being handled there instead of chasing it twice.
     const heldByCheckout = new Map();
-    const checkoutIds = (data || []).map((checkout) => checkout.id);
+    const checkoutIds = activeRows.map((checkout) => checkout.id);
     if (checkoutIds.length > 0) {
       const { data: heldReviews, error: heldError } = await supabase
         .from("order_protection_reviews")
@@ -7394,7 +7416,7 @@ app.get("/api/abandoned-checkouts", async (req, res) => {
       for (const review of heldReviews || []) heldByCheckout.set(review.abandoned_checkout_id, review.id);
     }
 
-    const checkouts = (data || [])
+    const checkouts = activeRows
       .map((checkout) => ({ ...checkout, protection_review_id: heldByCheckout.get(checkout.id) || null }))
       .sort((left, right) => {
         if (left.status !== right.status) return left.status === "open" ? -1 : 1;
@@ -7404,6 +7426,27 @@ app.get("/api/abandoned-checkouts", async (req, res) => {
   } catch {
     console.warn("[AbandonedCheckout] active queue read failed");
     return res.status(500).json({ error: "Could not load abandoned checkouts" });
+  }
+});
+
+app.get("/api/abandoned-checkouts/dismissed", async (req, res) => {
+  try {
+    const token = getToken(req);
+    const { user } = await getUser(token);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const supabase = getServiceSupabase();
+    const { orgId } = await getUserOrg(supabase, user.id);
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+    const checkouts = await loadDismissedAbandonedCheckouts(supabase, {
+      orgId,
+      fields: `${ABANDONED_CHECKOUT_DASHBOARD_FIELDS}, resolved_at, resolution`,
+      search,
+    });
+    return res.json({ checkouts });
+  } catch {
+    console.warn("[AbandonedCheckout] dismissed list read failed");
+    return res.status(500).json({ error: "Could not load dismissed checkouts" });
   }
 });
 
@@ -7431,12 +7474,14 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
     const { orgId } = await getUserOrg(supabase, user.id);
     const activityGroupId = normalizeActivityGroupId(req.body?.activity_group_id);
     const now = new Date();
+    // Status actions also reach dismissed checkouts (Restore); edits only
+    // apply to checkouts still in the active queue.
     const { data: current, error: currentError } = await supabase
       .from("abandoned_checkouts")
       .select("*")
       .eq("id", req.params.id)
       .eq("org_id", orgId)
-      .in("status", ACTIVE_ABANDONED_CHECKOUT_STATUSES)
+      .in("status", hasAction ? [...ACTIVE_ABANDONED_CHECKOUT_STATUSES, "dismissed"] : ACTIVE_ABANDONED_CHECKOUT_STATUSES)
       .gt("expires_at", now.toISOString())
       .maybeSingle();
     if (currentError) throw currentError;
@@ -7448,8 +7493,9 @@ app.patch("/api/abandoned-checkouts/:id", async (req, res) => {
       if (action !== "contacted" && action !== "dismissed" && action !== "open") {
         return res.status(400).json({ error: "Invalid checkout action" });
       }
-      patch = buildStaffActionPatch(current.status, action, now);
-      if (!patch) return res.status(409).json({ error: "Checkout action is not allowed" });
+      const resolved = resolveAbandonedStaffAction(current, action, now);
+      if (resolved.error) return res.status(resolved.error).json({ error: "Checkout action is not allowed" });
+      patch = resolved.patch;
     } else {
       try {
         patch = parseAbandonedCheckoutStaffEdit({ customerName: req.body?.customerName, phone: req.body?.phone, address: req.body?.address, items: req.body?.items, deliveryRate: req.body?.deliveryRate });

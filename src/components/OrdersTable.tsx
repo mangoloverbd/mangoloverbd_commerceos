@@ -311,6 +311,12 @@ interface OrdersTableProps {
   onSelectionChange?: (ids: Set<string>) => void;
   orderLinkState?: Record<string, unknown>;
   enableOrderIdLinks?: boolean;
+  /**
+   * Order to reveal at mount (returning from the order editor): its row and
+   * the 12 below are rendered in the first paint so it can be scrolled to the
+   * middle of the screen before anything is shown.
+   */
+  revealOrderId?: string;
 }
 
 interface BulkSteadfastResponse {
@@ -661,7 +667,7 @@ function NotesPopover({ order, onOrderUpdate }: { order: Order; onOrderUpdate?: 
   );
 }
 
-export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, showCancellationReason = false, selectedIds: controlledSelectedIds, onSelectionChange, orderLinkState, enableOrderIdLinks = false }: OrdersTableProps) {
+export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, onOrderUpdate, isPrintView = false, showRiskColumn = true, showCancellationReason = false, selectedIds: controlledSelectedIds, onSelectionChange, orderLinkState, enableOrderIdLinks = false, revealOrderId }: OrdersTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -679,7 +685,11 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
   const { warehouses } = useWarehouses();
   // A 100-row page renders its first rows at once and the rest after the page's
   // entrance, so opening Orders doesn't freeze; print renders everything.
-  const renderedRowCount = useProgressiveCount(orders.length, { enabled: !isPrintView });
+  const [initialRowCount] = useState(() => {
+    const index = revealOrderId ? orders.findIndex((order) => order.id === revealOrderId) : -1;
+    return index < 0 ? 20 : Math.max(20, index + 13);
+  });
+  const renderedRowCount = useProgressiveCount(orders.length, { initial: initialRowCount, enabled: !isPrintView });
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [sendingPathaoIds, setSendingPathaoIds] = useState<Set<string>>(new Set());
@@ -1366,6 +1376,7 @@ export function OrdersTable({ orders, selectionOrders, loading, onStatusUpdate, 
               return (
                 <TableRow
                   key={order.id}
+                  data-order-row={order.id}
                   tabIndex={0}
                   aria-label={`Open order ${order.order_number}`}
                   onMouseEnter={() => prefetchOrder(order.id)}

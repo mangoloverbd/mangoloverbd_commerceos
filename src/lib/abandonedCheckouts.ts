@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+
 export type AbandonedCheckoutStatus = "open" | "contacted";
 
 export type AbandonedCheckoutCartItem = {
@@ -26,6 +28,50 @@ export type AbandonedCheckout = {
   /** Set while this shopper's order is waiting in Order Protection. */
   protection_review_id?: string | null;
 };
+
+export type AbandonedCheckoutResolution = "dismissed" | "already_ordered" | "rejected_in_order_protection" | (string & {});
+
+/** A checkout in the Dismissed list: GET /api/abandoned-checkouts/dismissed. */
+export type DismissedAbandonedCheckout = Omit<AbandonedCheckout, "status"> & {
+  status: "dismissed";
+  resolved_at: string | null;
+  resolution: AbandonedCheckoutResolution | null;
+  /** Staff name from the latest dismiss event; null for automatic dismissals. */
+  dismissed_by: string | null;
+};
+
+export type DismissedAbandonedCheckoutResponse = {
+  checkouts: DismissedAbandonedCheckout[];
+};
+
+/** Order Protection rejections stay dismissed; everything else can be restored. */
+export function isRestorableDismissedCheckout(checkout: Pick<DismissedAbandonedCheckout, "resolution">): boolean {
+  return checkout.resolution !== "rejected_in_order_protection";
+}
+
+/** "Dismissed · 9 Nov, 3:15 PM · by Rahim", or why it was dismissed automatically. */
+export function dismissedCheckoutLabel(checkout: Pick<DismissedAbandonedCheckout, "resolved_at" | "resolution" | "dismissed_by">): string {
+  const date = checkout.resolved_at ? new Date(checkout.resolved_at) : null;
+  const when = date && !Number.isNaN(date.getTime()) ? format(date, "d MMM, h:mm a") : null;
+  if (checkout.resolution === "rejected_in_order_protection") {
+    return ["Rejected in Order Protection", when].filter(Boolean).join(" · ");
+  }
+  const who = checkout.resolution === "already_ordered"
+    ? "auto: already ordered"
+    : checkout.dismissed_by ? `by ${checkout.dismissed_by}` : null;
+  return ["Dismissed", when, who].filter(Boolean).join(" · ");
+}
+
+export function formatAbandonedCheckoutTotal(total: number | null) {
+  return typeof total === "number" && Number.isFinite(total)
+    ? `৳${total.toLocaleString("en-BD", { maximumFractionDigits: 0 })}`
+    : "—";
+}
+
+export function formatAbandonedCheckoutCaptureTime(createdAt: string) {
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? "Captured recently" : `Captured ${format(date, "d MMM, h:mm a")}`;
+}
 
 export type AbandonedCheckoutResponse = {
   checkouts: AbandonedCheckout[];

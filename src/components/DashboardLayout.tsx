@@ -18,6 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { prefetchOrdersPage } from "@/pages/Dashboard";
 import { preloadDashboardPages } from "@/dashboardPages";
 import { Spinner } from "@/components/ui/ios-spinner";
+import { consumeScrollRestored } from "@/lib/scrollRestore";
 
 // Long enough for the page being opened to load first.
 const ORDERS_PREFETCH_DELAY_MS = 1500;
@@ -76,6 +77,7 @@ export function DashboardLayout() {
     }, [queryClient, user?.id]);
 
     useLayoutEffect(() => {
+        if (consumeScrollRestored(location.pathname)) return;
         window.scrollTo(0, 0);
         mainRef.current?.scrollTo?.({ top: 0 });
     }, [location.pathname]);

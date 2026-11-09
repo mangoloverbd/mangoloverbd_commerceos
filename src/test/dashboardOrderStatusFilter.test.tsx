@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -36,7 +36,7 @@ vi.mock("@/components/OrdersTable", () => ({
     <div data-testid="dashboard-orders">
       <span data-testid="dashboard-risk-column">{showRiskColumn ? "visible" : "hidden"}</span>
       <span data-testid="dashboard-order-link-state">{JSON.stringify(orderLinkState ?? null)}</span>
-      {orders.map((order) => <span key={order.id}>{order.customer_name}</span>)}
+      {orders.map((order) => <span key={order.id} data-order-row={order.id}>{order.customer_name}</span>)}
     </div>
   ),
 }));
@@ -92,6 +92,8 @@ describe("dashboard order status filter", () => {
   beforeEach(() => {
     sessionStorage.setItem("autosync_done_user-1", "1");
     sessionStorage.removeItem("dashboard-fulfillment-tab");
+    sessionStorage.removeItem("dashboard-order-page");
+    sessionStorage.removeItem("dashboard-return-order");
     localStorage.clear();
     apiFetch.mockReset();
     apiFetch.mockImplementation(async (url: string) => {
@@ -399,9 +401,9 @@ describe("dashboard order status filter", () => {
 
     expect(await screen.findByRole("radio", { name: /All Orders.*25/ })).toBeInTheDocument();
     const pageSize = screen.getByRole("combobox", { name: "Rows per page for dashboard orders" });
-    // Rows per page lives beside the page number so the toolbar stays one line.
-    expect(screen.getByTestId("order-pagination-footer")).toContainElement(pageSize);
-    expect(screen.getByTestId("dashboard-order-toolbar")).not.toContainElement(pageSize);
+    // Rows per page lives in the toolbar actions, above the table.
+    expect(screen.getByTestId("dashboard-order-toolbar")).toContainElement(pageSize);
+    expect(screen.getByTestId("order-pagination-footer")).not.toContainElement(pageSize);
     pageSize.focus();
     await user.keyboard("{Enter}{Home}{Enter}");
 
@@ -936,6 +938,74 @@ describe("dashboard order status filter", () => {
 
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByRole("heading")).toHaveTextContent("Dismiss 2 checkouts?");
-    expect(within(dialog).getByText("This cannot be undone.")).toBeInTheDocument();
+    expect(within(dialog).getByText("You can restore them from Dismissed for up to 30 days.")).toBeInTheDocument();
+  });
+  describe("returning from the order editor", () => {
+    const pagedOrders = Array.from({ length: 25 }, (_, index) => ({
+      ...orders[0],
+      id: `pending-${index + 1}`,
+      shopify_order_id: index + 1,
+      order_number: `#${index + 1}`,
+      customer_name: `Return Customer ${index + 1}`,
+    }));
+
+    beforeEach(() => {
+      localStorage.setItem("dashboard-order-page-size", "20");
+      apiFetch.mockImplementation(async (url: string) => {
+        if (url === "/api/orders") return jsonResponse({ orders: pagedOrders });
+        if (url === "/api/abandoned-checkouts") return jsonResponse({ checkouts: [], activeCount: 0 });
+        if (url === "/api/products") return jsonResponse({ products: [] });
+        if (url.startsWith("/api/analytics")) {
+          return jsonResponse({
+            revenue: 0, shipping: 0, adSpend: 0, totalCog: 0, cogCoverage: { set: 0, total: 0 },
+            profit: 0, fbConfigured: false, usdToBdt: 120, fbError: null,
+          });
+        }
+        return jsonResponse({ updated: 0 });
+      });
+    });
+
+    function renderDashboard(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+      return render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter><Dashboard /></MemoryRouter>
+        </QueryClientProvider>,
+      );
+    }
+
+    it("opens the page holding the last opened order and scrolls that row into view", async () => {
+      const scrolled: string[] = [];
+      const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+        scrolled.push(this.getAttribute("data-order-row") || "");
+      });
+      onTestFinished(() => spy.mockRestore());
+      sessionStorage.setItem("dashboard-return-order", "pending-23");
+
+      renderDashboard();
+
+      expect(await screen.findByText("Return Customer 23")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Page 2" })).toHaveAttribute("aria-current", "page");
+      expect(screen.queryByText("Return Customer 1")).not.toBeInTheDocument();
+      await waitFor(() => expect(scrolled).toContain("pending-23"));
+      expect(spy).toHaveBeenCalledWith({ block: "center" });
+      expect(sessionStorage.getItem("dashboard-return-order")).toBeNull();
+    });
+
+    it("keeps the current page for the same tab after leaving and coming back", async () => {
+      const user = userEvent.setup();
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const first = renderDashboard(client);
+      await screen.findByText("Return Customer 1");
+      await user.click(screen.getByRole("button", { name: "Next page" }));
+      expect(await screen.findByText("Return Customer 21")).toBeInTheDocument();
+
+      act(() => first.unmount());
+      cleanup();
+      renderDashboard(client);
+
+      expect(await screen.findByText("Return Customer 21")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Page 2" })).toHaveAttribute("aria-current", "page");
+      expect(JSON.parse(sessionStorage.getItem("dashboard-order-page") || "null")).toEqual({ tab: "all", page: 1 });
+    });
   });
 });
