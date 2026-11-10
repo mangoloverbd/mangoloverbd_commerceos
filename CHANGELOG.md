@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0.91] - 2026-11-10
+
+### Added
+
+- Shipping labels show the day they are printed (Bangladesh time) as **DATE** beside the order number, for example "10 Nov 2026". The label keeps its 3-by-4-inch layout.
+
+### Fixed
+
+- Orders page, Processing tab: the date filter and its count now match the day an order moved to Processing, not the day it was placed. Picking today shows every order sent to Processing today. The Delivered tab still filters by order date.
+- `GET /api/orders` accepts `date_field=processing_at` with `created_from` / `created_to` to load a Processing date range from the server.
+
 ## [0.1.0.90] - 2026-11-09
 
 ### Added

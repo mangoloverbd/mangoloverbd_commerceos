@@ -197,6 +197,45 @@ describe("dashboard order status filter", () => {
     expect(within(screen.getByTestId("orders-date-filter")).getByTestId("button-date-range-picker")).toHaveTextContent("All time");
   });
 
+  it("filters the Processing tab by the day orders moved to Processing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 15, 12));
+    onTestFinished(() => { vi.useRealTimers(); });
+    const user = userEvent.setup();
+    // Placed long before the picked days, moved to Processing inside them.
+    const movedToProcessing = {
+      ...orders[0], id: "moved-to-processing", order_number: "#91", customer_name: "Moved To Processing Customer",
+      status: "processing", created_at: new Date(2026, 9, 1, 12).toISOString(), processing_at: new Date(2026, 9, 14, 11).toISOString(),
+    };
+    const baseImpl = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/orders?created_from=")) return jsonResponse({ orders: [movedToProcessing] });
+      return baseImpl(url);
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter><Dashboard /></MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(await screen.findByRole("radio", { name: /Processing/ }));
+    const filter = screen.getByTestId("orders-date-filter");
+    await user.click(within(filter).getByTestId("button-date-range-picker"));
+    const october = await screen.findByRole("grid", { name: /October 2026/ });
+    await user.click(within(october).getByRole("button", { name: /October 13, 2026/ }));
+    await user.click(within(october).getByRole("button", { name: /October 14, 2026/ }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    const from = encodeURIComponent(new Date(2026, 9, 13).toISOString());
+    const to = encodeURIComponent(new Date(2026, 9, 15).toISOString());
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(`/api/orders?created_from=${from}&created_to=${to}&date_field=processing_at`);
+      expect(screen.getByTestId("dashboard-orders")).toHaveTextContent("Moved To Processing Customer");
+    });
+    expect(screen.getByRole("radio", { name: /Processing.*1/ })).toBeInTheDocument();
+  });
+
   it("shows the exact All Orders total without changing which orders are loaded", async () => {
     apiFetch.mockImplementation(async (url: string) => (
       url === "/api/orders"

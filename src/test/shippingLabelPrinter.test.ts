@@ -252,6 +252,16 @@ describe("shipping label CN QR code", () => {
     expect(html()).toContain(`<path d="${expected.join("")}"/>`);
   });
 
+  it("prints the day the label is printed, in Dhaka time, beside the order number", () => {
+    // 20:30 UTC on 9 Nov is already 10 Nov in Dhaka (UTC+6).
+    const result = buildShippingLabelHtml([makeOrder()], "Mango Lover BD", new Date("2026-11-09T20:30:00Z"));
+    if (!result.ok) throw new Error("Expected printable label HTML");
+    expect(result.html).toContain(
+      '<div class="meta-pair"><div class="meta-field"><span>ORDER</span><strong>#ML567907</strong></div><div class="meta-field"><span>DATE</span><strong>10 Nov 2026</strong></div></div>',
+    );
+    expect(result.html).toContain(".meta-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.06in; }");
+  });
+
   it("prints the QR large and keeps the CN readable beside it", () => {
     expect(html()).toContain(".qr { display: block; width: 0.9in; height: 0.9in; }");
     // The CN size must come after the shared .meta-field strong size or it is overridden.
