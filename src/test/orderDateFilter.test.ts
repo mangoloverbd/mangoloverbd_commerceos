@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { filterOrdersByDateRange, DATE_FILTER_TABS, orderDateRangeBounds } from "@/lib/orderDateFilter";
+import { filterOrdersByDateRange, DATE_FILTER_TABS, orderDateFieldFor, orderDateRangeBounds } from "@/lib/orderDateFilter";
 
 const order = (id: string, created_at: string | null) => ({ id, created_at });
 
@@ -43,6 +43,30 @@ describe("filterOrdersByDateRange", () => {
     // Clearing goes through the picker's own "All Time" preset.
     expect(dashboard).not.toContain("All dates");
     expect(dashboard).toContain("lg:flex-row lg:items-center lg:justify-between");
+  });
+});
+
+describe("orderDateFieldFor", () => {
+  it("filters Processing by the day the order moved to Processing and Delivered by the order date", () => {
+    expect(orderDateFieldFor("processing")).toBe("processing_at");
+    expect(orderDateFieldFor("delivered")).toBe("created_at");
+  });
+
+  it("filters by the given date field", () => {
+    const rows = [
+      { id: "placed-earlier-processed-today", created_at: new Date(2026, 8, 20, 10).toISOString(), processing_at: new Date(2026, 8, 24, 11).toISOString() },
+      { id: "placed-today-processed-today", created_at: new Date(2026, 8, 24, 1).toISOString(), processing_at: new Date(2026, 8, 24, 10).toISOString() },
+      { id: "placed-today-not-processed", created_at: new Date(2026, 8, 24, 2).toISOString(), processing_at: null },
+    ];
+    const today = { from: new Date(2026, 8, 24) };
+    expect(filterOrdersByDateRange(rows, today, "processing_at").map((row) => row.id)).toEqual([
+      "placed-earlier-processed-today",
+      "placed-today-processed-today",
+    ]);
+    expect(filterOrdersByDateRange(rows, today).map((row) => row.id)).toEqual([
+      "placed-today-processed-today",
+      "placed-today-not-processed",
+    ]);
   });
 });
 

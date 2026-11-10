@@ -74,6 +74,10 @@ const formatWeight = (variant: string) => {
 
 const orderNumberText = (orderNumber: string) => orderNumber.replace(/^#/, "");
 
+// The day the label is printed, in Bangladesh time, e.g. "10 Nov 2026".
+const formatPrintDate = (printedAt: Date) =>
+  new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Dhaka" }).format(printedAt);
+
 export function getShippingLabelCn(order: ShippingLabelOrder): string | null {
   for (const candidate of [order.consignment_id, order.tracking_code]) {
     if (candidate == null) continue;
@@ -123,7 +127,7 @@ function productRows(order: ShippingLabelOrder) {
   });
 }
 
-function labelSection(order: ShippingLabelOrder, cn: string, businessName: string) {
+function labelSection(order: ShippingLabelOrder, cn: string, businessName: string, printDate: string) {
   const rows = productRows(order)
     .map((item) => `
       <tr>
@@ -145,7 +149,7 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
           ${qrSvg(cn)}
           <div class="qr-info">
             <div class="meta-field cn-field"><span>CN</span><strong>${escapeHtml(cn)}</strong></div>
-            <div class="meta-field"><span>ORDER</span><strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></div>
+            <div class="meta-pair"><div class="meta-field"><span>ORDER</span><strong>#${escapeHtml(orderNumberText(order.order_number))}</strong></div><div class="meta-field"><span>DATE</span><strong>${escapeHtml(printDate)}</strong></div></div>
             <div class="meta-field"><span>COD</span><strong>${formatCod(order)}</strong></div>
           </div>
         </div>
@@ -167,6 +171,7 @@ function labelSection(order: ShippingLabelOrder, cn: string, businessName: strin
 export function buildShippingLabelHtml(
   orders: ShippingLabelOrder[],
   businessName = "Mango Lover BD",
+  printedAt: Date = new Date(),
 ): ShippingLabelHtmlResult {
   const missingOrderNumbers = orders
     .filter((order) => !getShippingLabelCn(order))
@@ -176,8 +181,9 @@ export function buildShippingLabelHtml(
     return { ok: false, missingOrderNumbers };
   }
 
+  const printDate = formatPrintDate(printedAt);
   const labels = orders
-    .map((order) => labelSection(order, getShippingLabelCn(order) as string, businessName))
+    .map((order) => labelSection(order, getShippingLabelCn(order) as string, businessName, printDate))
     .join("");
 
   return {
@@ -211,6 +217,7 @@ export function buildShippingLabelHtml(
             .qr { display: block; width: 0.9in; height: 0.9in; }
             .qr-info { display: grid; gap: 0.05in; }
             .recipient-details { padding: 0.025in 0.025in 0.03in; border-bottom: 1px solid #000; }
+            .meta-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.06in; }
             .meta-field { min-width: 0; }
             .meta-field span, .customer-label { display: block; font-size: 6px; line-height: 1; font-weight: 700; letter-spacing: 0.14em; }
             .meta-field strong { display: block; margin-top: 0.012in; font-size: 11px; line-height: 1; font-weight: 800; overflow-wrap: anywhere; }

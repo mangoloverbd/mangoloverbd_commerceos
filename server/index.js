@@ -6861,14 +6861,21 @@ app.get("/api/orders", async (req, res) => {
       return res.json({ orders: changedOrders, totalCount: deltaCount ?? 0, syncedAt: deltaSyncedAt, delta: true });
     }
 
-    // Optional placed-date window [created_from, created_to) for the dashboard
-    // date filter. Paged so a window is never cut off at PostgREST's 1000-row cap.
+    // Optional date window [created_from, created_to) for the dashboard date
+    // filter. It matches the placed date (created_at) unless date_field=processing_at
+    // asks for the day the order moved to Processing. Paged so a window is never
+    // cut off at PostgREST's 1000-row cap.
     const createdFromParam = typeof req.query.created_from === "string" ? req.query.created_from.trim() : "";
     const createdToParam = typeof req.query.created_to === "string" ? req.query.created_to.trim() : "";
     if (createdFromParam || createdToParam) {
       if (Number.isNaN(Date.parse(createdFromParam)) || Number.isNaN(Date.parse(createdToParam))) {
         return res.status(400).json({ error: "Invalid created_from / created_to timestamp" });
       }
+      const dateFieldParam = typeof req.query.date_field === "string" ? req.query.date_field.trim() : "";
+      if (dateFieldParam && dateFieldParam !== "created_at" && dateFieldParam !== "processing_at") {
+        return res.status(400).json({ error: "date_field must be created_at or processing_at" });
+      }
+      const rangeField = dateFieldParam || "created_at";
       const createdFrom = new Date(Date.parse(createdFromParam)).toISOString();
       const createdTo = new Date(Date.parse(createdToParam)).toISOString();
       const pageSize = 1000;
@@ -6878,8 +6885,8 @@ app.get("/api/orders", async (req, res) => {
           .from("orders")
           .select("*")
           .eq("org_id", orgId)
-          .gte("created_at", createdFrom)
-          .lt("created_at", createdTo)
+          .gte(rangeField, createdFrom)
+          .lt(rangeField, createdTo)
           .order("created_at", { ascending: false })
           .order("id", { ascending: true })
           .range(offset, offset + pageSize - 1);

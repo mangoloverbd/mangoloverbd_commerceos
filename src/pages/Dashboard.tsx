@@ -71,7 +71,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { DATE_FILTER_TABS, filterOrdersByDateRange, orderDateRangeBounds } from "@/lib/orderDateFilter";
+import { DATE_FILTER_TABS, filterOrdersByDateRange, orderDateFieldFor, orderDateRangeBounds } from "@/lib/orderDateFilter";
 import { CancellationInsights } from "@/components/orders/CancellationInsights";
 import { FollowUpPanel, sortFollowUpNewestFirst } from "@/components/orders/FollowUpPanel";
 import {
@@ -212,6 +212,7 @@ interface Order {
   price: number | null;
   status: string;
   created_at: string;
+  processing_at?: string | null;
   fraud_checked: boolean | null;
   fraud_data: FraudData | null;
   delivery_rate: number | null;
@@ -1293,18 +1294,20 @@ export default function Dashboard() {
   // Follow up tab: the reasons picked in the breakdown.
   const isFollowUpTab = activeOrderStatusFilter === "stuck";
   const [followUpReasons, setFollowUpReasons] = useState<ReadonlySet<FollowUpReasonKey>>(new Set());
-  // Each of the Processing and Delivered tabs keeps its own order-date range; both clear when leaving them.
+  // Each of the Processing and Delivered tabs keeps its own date range; both clear when leaving them.
+  // Processing matches the day an order moved to Processing; Delivered matches the order date.
   const [ordersDateRanges, setOrdersDateRanges] = useState<Partial<Record<OrderStatusFilter, DateRange | null>>>({});
   const showOrdersDateFilter = DATE_FILTER_TABS.includes(activeOrderStatusFilter);
   const ordersDateRange = showOrdersDateFilter ? ordersDateRanges[activeOrderStatusFilter] ?? null : null;
   // The dashboard list is capped server-side, so each picked range is loaded on its own.
   const rangeOrdersData = useQueries({
-    queries: DATE_FILTER_TABS.map((tab) => orderDateRangeBounds(ordersDateRanges[tab])).map((bounds) => ({
-      queryKey: ["/api/orders?created-range", bounds?.from, bounds?.to],
+    queries: DATE_FILTER_TABS.map((tab) => ({ field: orderDateFieldFor(tab), bounds: orderDateRangeBounds(ordersDateRanges[tab]) })).map(({ field, bounds }) => ({
+      queryKey: ["/api/orders?created-range", field, bounds?.from, bounds?.to],
       enabled: Boolean(bounds),
       staleTime: 30_000,
       queryFn: async () => {
-        const res = await apiFetch(`/api/orders?created_from=${encodeURIComponent(bounds!.from)}&created_to=${encodeURIComponent(bounds!.to)}`);
+        const fieldParam = field === "created_at" ? "" : `&date_field=${field}`;
+        const res = await apiFetch(`/api/orders?created_from=${encodeURIComponent(bounds!.from)}&created_to=${encodeURIComponent(bounds!.to)}${fieldParam}`);
         if (!res.ok) throw new Error("Failed to load orders for the selected dates");
         return ((await res.json()).orders || []) as Order[];
       },
@@ -1329,7 +1332,7 @@ export default function Dashboard() {
           ? loaded
             .map((order) => liveById.get(order.id) ?? order)
             .filter((order) => warehouseFilter === "all" || order.warehouse_id === warehouseFilter)
-          : filterOrdersByDateRange(warehouseOrders, range);
+          : filterOrdersByDateRange(warehouseOrders, range, orderDateFieldFor(tab));
     });
     return byTab;
   }, [orders, ordersDateRanges, rangeOrdersData, warehouseFilter, warehouseOrders]);
@@ -1448,8 +1451,10 @@ export default function Dashboard() {
   const dateFilteredOrders = useMemo(() => {
     if (isCancelledTab) return cancelledListOrders;
     if (isFollowUpTab) return followUpListOrders;
-    return showOrdersDateFilter ? filterOrdersByDateRange(filteredOrders, ordersDateRange) : filteredOrders;
-  }, [cancelledListOrders, filteredOrders, followUpListOrders, isCancelledTab, isFollowUpTab, ordersDateRange, showOrdersDateFilter]);
+    return showOrdersDateFilter
+      ? filterOrdersByDateRange(filteredOrders, ordersDateRange, orderDateFieldFor(activeOrderStatusFilter))
+      : filteredOrders;
+  }, [activeOrderStatusFilter, cancelledListOrders, filteredOrders, followUpListOrders, isCancelledTab, isFollowUpTab, ordersDateRange, showOrdersDateFilter]);
 
   const districtFilteredOrders = useMemo(() => {
     if (activeOrderStatusFilter !== "approved" || districtFilter === "all") return dateFilteredOrders;
